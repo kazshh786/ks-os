@@ -1,0 +1,165 @@
+.widgetContainer {
+  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-widget: #ffffff;
+  --border-color: #e2e8f0;
+  --border-focus: var(--accent-color, #10b981);
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  
+  font-family: var(--font-sans);
+  background: var(--bg-widget);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05),
+              0 1px 3px rgba(0, 0, 0, 0.01);
+  padding: 24px;
+  max-width: 400px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.widgetTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-top: 0;
+  margin-bottom: 20px;
+  letter-spacing: -0.5px;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.select, .inputDate {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-main);
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background-color: #ffffff;
+  outline: none;
+  transition: border-color 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.select:focus, .inputDate:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+}
+
+.slotsWrapper {
+  margin-top: 24px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 20px;
+}
+
+.slotsHeader {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.statusMessage {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 16px 0;
+}
+
+.errorMessage {
+  font-size: 13px;
+  color: #ef4444;
+  text-align: center;
+  padding: 16px 0;
+  background: #fef2f2;
+  border-radius: var(--radius-sm);
+}
+
+.emptyMessage {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px 0;
+  line-height: 1.5;
+}
+
+.slotsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  max-height: 250px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.slotButton {
+  font-family: var(--font-sans);
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.slotButton:hover {
+  background: var(--accent-color, #10b981);
+  border-color: var(--accent-color, #10b981);
+}
+
+.slotButton:hover .slotTime,
+.slotButton:hover .slotStaff {
+  color: #ffffff;
+}
+
+.slotTime {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.slotStaff {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+/* Scrollbar adjustment */
+.slotsGrid::-webkit-scrollbar {
+  width: 5px;
+}
+.slotsGrid::-webkit-scrollbar-track {
+  background: transparent;
+}
+.slotsGrid::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+.slotsGrid::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

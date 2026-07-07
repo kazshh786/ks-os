@@ -1,0 +1,208 @@
+.formContainer {
+  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  --bg-card: #ffffff;
+  --border-color: #e2e8f0;
+  --border-focus: var(--accent-color, #10b981);
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  
+  font-family: var(--font-sans);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  padding: 28px;
+  max-width: 500px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto;
+}
+
+.formTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-top: 0;
+  margin-bottom: 6px;
+  letter-spacing: -0.5px;
+}
+
+.formSubtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 0;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.fieldWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.requiredAsterisk {
+  color: #ef4444;
+  margin-left: 2px;
+}
+
+.textInput, .textareaInput {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-main);
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  outline: none;
+  background-color: #ffffff;
+  transition: all 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.textInput:focus, .textareaInput:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+}
+
+.inputErrorBorder {
+  border-color: #f87171 !important;
+}
+
+.errorMessageText {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ef4444;
+  margin-top: 2px;
+}
+
+/* Checkbox Styles using Radix primitives */
+.checkboxWrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.checkboxRoot {
+  all: unset;
+  background-color: white;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.checkboxRoot[data-state='checked'] {
+  background-color: var(--border-focus);
+  border-color: var(--border-focus);
+}
+
+.checkboxRoot:focus-visible {
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.checkboxIndicator {
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.checkboxLabel {
+  font-size: 13px;
+  color: var(--text-main);
+  line-height: 1.4;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+}
+
+/* Canvas Signature Pad Styling */
+.signaturePadWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.canvasContainer {
+  position: relative;
+  width: 100%;
+}
+
+.signatureCanvas {
+  background-color: #f8fafc;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  width: 100%;
+  height: 140px;
+  display: block;
+  cursor: crosshair;
+  box-sizing: border-box;
+}
+
+.clearSignButton {
+  font-family: var(--font-sans);
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.15s ease;
+}
+
+.clearSignButton:hover {
+  background: #f1f5f9;
+  color: var(--text-main);
+}
+
+/* Submit Action Button */
+.submitButton {
+  font-family: var(--font-sans);
+  background: var(--primary-color, #0f172a);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm);
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 12px;
+  box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.submitButton:hover {
+  background: var(--secondary-color, #334155);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -2px rgba(15, 23, 42, 0.15);
+}
+
+.submitButton:active {
+  transform: translateY(0);
+}
