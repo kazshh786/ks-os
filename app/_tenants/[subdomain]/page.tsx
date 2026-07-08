@@ -34,6 +34,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   const [activeTab, setActiveTab] = useState<'calendar' | 'booking' | 'crm' | 'manage'>('calendar');
   const [tenantId, setTenantId] = useState<string>('00000000-0000-0000-0000-000000000000');
   const [tenantName, setTenantName] = useState<string>('');
+  const [customDomain, setCustomDomain] = useState<string | null>(null);
   
   // Dynamic collections loaded from DB
   const [services, setServices] = useState<any[]>([]);
@@ -66,7 +67,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
       // 1. Resolve tenant details
       const { data: tenant, error: tErr } = await supabase
         .from('tenants')
-        .select('id, name')
+        .select('id, name, custom_domain')
         .eq('subdomain', subdomain.toLowerCase())
         .single();
 
@@ -80,6 +81,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
 
       setTenantId(tenant.id);
       setTenantName(tenant.name);
+      setCustomDomain(tenant.custom_domain);
 
       // 2. Fetch services
       const { data: svcData } = await supabase
@@ -237,8 +239,10 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
     }
   };
 
-  const hostname = typeof window !== 'undefined' ? window.location.host : `${subdomain}.kasimshah.com`;
-  const iframeEmbedCode = `<iframe src="https://${hostname}/book" width="100%" height="700px" style="border:none; border-radius:12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"></iframe>`;
+  const embedUrl = customDomain 
+    ? `admin.${customDomain}` 
+    : (typeof window !== 'undefined' ? window.location.host : `${subdomain}.kasimshah.com`);
+  const iframeEmbedCode = `<iframe src="https://${embedUrl}/book" width="100%" height="700px" style="border:none; border-radius:12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"></iframe>`;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#090d16', color: '#cbd5e1', fontFamily: 'var(--md-font-sans)' }}>

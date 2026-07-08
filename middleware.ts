@@ -27,30 +27,40 @@ export async function middleware(req: NextRequest) {
   
   let subdomain = '';
   let isCustomDomain = false;
-  
-  // 1. Handle development environments (subdomains on localhost)
+  let customDomainLookup = '';
+
+  // 1. Handle development subdomains on localhost
   if (hostname.includes('.localhost:')) {
     subdomain = hostname.split('.localhost:')[0];
   } else if (hostname.includes('localhost:')) {
     subdomain = '';
   } else {
-    // 2. Production: Check if it ends with a known root domain (e.g. *.kasimshah.com)
+    // 2. Production: Check if it ends with a known root domain (e.g. salon.kasimshah.com)
     const rootDomain = rootDomains.find((d) => hostname.endsWith(d));
-    if (rootDomain && hostname !== rootDomain) {
-      subdomain = hostname.replace(`.${rootDomain}`, '');
-    } else if (!rootDomain) {
-      // 3. Custom Domain Mapping check (e.g. hairlounge.com)
-      isCustomDomain = true;
+    
+    if (rootDomain) {
+      if (hostname !== rootDomain) {
+        subdomain = hostname.replace(`.${rootDomain}`, '');
+      }
+    } else {
+      // 3. Custom Domain Strategy: If the host starts with 'admin.', e.g., admin.salonname.com
+      if (hostname.toLowerCase().startsWith('admin.')) {
+        isCustomDomain = true;
+        customDomainLookup = hostname.replace(/^admin\./i, ''); // extract 'salonname.com'
+      } else {
+        // If it's a root custom domain (salonname.com) pointed to us, we can direct it to the booking widget
+        isCustomDomain = true;
+        customDomainLookup = hostname;
+      }
     }
   }
 
-  // If it's a custom domain, query Supabase PostgREST endpoint directly
-  // Using native fetch instead of @supabase/supabase-js client prevents Edge Runtime build warnings
-  if (isCustomDomain && hostname) {
+  // Query database matching custom_domain (the stripped root domain)
+  if (isCustomDomain && customDomainLookup) {
     try {
-      const cleanHost = hostname.toLowerCase();
+      const cleanLookup = customDomainLookup.toLowerCase();
       const res = await fetch(
-        `${supabaseUrl}/rest/v1/tenants?custom_domain=eq.${encodeURIComponent(cleanHost)}&select=subdomain`,
+        `${supabaseUrl}/rest/v1/tenants?custom_domain=eq.${encodeURIComponent(cleanLookup)}&select=subdomain`,
         {
           headers: {
             'apikey': supabaseAnonKey,
@@ -64,6 +74,15 @@ export async function middleware(req: NextRequest) {
         const matchedTenants = await res.json();
         if (matchedTenants && matchedTenants.length > 0) {
           subdomain = matchedTenants[0].subdomain;
+          
+          // If the customer visits the root custom domain directly (e.g. salonname.com/bookings mapping to us),
+          // or if they go to admin.salonname.com/book, let it route to the booking subpath page.
+          // Otherwise, if they visit admin.salonname.com, route them to the dashboard portal.
+          if (!hostname.toLowerCase().startsWith('admin.') && url.pathname === '/') {
+            // Rewrite root visits on their custom website mapping to book directly
+            const rewritePath = `/_tenants/${subdomain}/book`;
+            return NextResponse.rewrite(new URL(rewritePath, req.url));
+          }
         }
       }
     } catch (err) {
@@ -71,7 +90,7 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // If there is no subdomain, or if it resolves to 'www' or 'app', route to primary root landing/admin portal
+  // If there is no subdomain resolved, or if it resolves to 'www' or 'app', route to primary root landing/admin portal
   if (!subdomain || subdomain === 'www' || subdomain === 'app') {
     return NextResponse.next();
   }
