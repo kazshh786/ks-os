@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tooltip from '@radix-ui/react-tooltip';
+import { supabase } from '@/utils/supabase/client';
 import { useRealtimeAppointments, Appointment } from '@/utils/useRealtimeAppointments';
 import styles from './WeeklyCalendar.module.css';
 
@@ -12,7 +13,6 @@ interface WeeklyCalendarProps {
   services: { id: string; name: string; price: number; duration: number }[];
 }
 
-// Days of the week header helper
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function WeeklyCalendar({ tenantId, staffMembers, services }: WeeklyCalendarProps) {
@@ -20,31 +20,37 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [activeAppointment, setActiveAppointment] = useState<Appointment | null>(null);
 
+  // Time-Block Form states
+  const [isBlockOpen, setIsBlockOpen] = useState(false);
+  const [blockStaffId, setBlockStaffId] = useState('');
+  const [blockDate, setBlockDate] = useState('');
+  const [blockStart, setBlockStart] = useState('09:00');
+  const [blockEnd, setBlockEnd] = useState('10:00');
+  const [blockReason, setBlockReason] = useState('');
+  const [isSavingBlock, setIsSavingBlock] = useState(false);
+
   // Hour limits for the salon day
   const startHour = 8; // 8:00 AM
   const endHour = 20;  // 8:00 PM
   const totalHours = endHour - startHour;
   const hourHeight = 60; // 60px per hour row
 
-  // Get start of the current week (Monday)
   const getStartOfWeek = (date: Date) => {
     const d = new Date(date);
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     d.setHours(0, 0, 0, 0);
     return new Date(d.setDate(diff));
   };
 
   const startOfWeek = getStartOfWeek(selectedDate);
 
-  // Get array of the 7 dates in the week
   const weekDates = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(startOfWeek);
     d.setDate(startOfWeek.getDate() + i);
     return d;
   });
 
-  // Check if a date is today
   const isToday = (date: Date) => {
     const today = new Date();
     return (
@@ -54,7 +60,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
     );
   };
 
-  // Helper to calculate CSS absolute position for appointments
   const getAppointmentPosition = (startStr: string, endStr: string) => {
     const start = new Date(startStr);
     const end = new Date(endStr);
@@ -69,7 +74,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
     return { top: `${top}px`, height: `${height}px` };
   };
 
-  // Filter appointments for a specific day of the week
   const getAppointmentsForDay = (date: Date) => {
     return appointments.filter((appt) => {
       const apptDate = new Date(appt.startTime);
@@ -81,11 +85,48 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
     });
   };
 
-  // Shift weeks
   const changeWeek = (offset: number) => {
     const next = new Date(selectedDate);
     next.setDate(selectedDate.getDate() + offset * 7);
     setSelectedDate(next);
+  };
+
+  const handleSaveBlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blockStaffId || !blockDate || !blockStart || !blockEnd) return;
+    setIsSavingBlock(true);
+
+    try {
+      const startDateTime = new Date(`${blockDate}T${blockStart}:00`);
+      const endDateTime = new Date(`${blockDate}T${blockEnd}:00`);
+
+      if (endDateTime <= startDateTime) {
+        alert('End time must be after start time.');
+        return;
+      }
+
+      const { error: insertErr } = await supabase
+        .from('appointments')
+        .insert({
+          tenant_id: tenantId,
+          user_id: blockStaffId,
+          start_time: startDateTime.toISOString(),
+          end_time: endDateTime.toISOString(),
+          status: 'BLOCKED',
+          client_name: 'Blocked Time',
+          notes: blockReason || 'Out of office'
+        });
+
+      if (insertErr) throw insertErr;
+
+      // Reset form
+      setBlockReason('');
+      setIsBlockOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save time block.');
+    } finally {
+      setIsSavingBlock(false);
+    }
   };
 
   if (loading) return <div className={styles.loadingContainer}>Loading calendar schedule...</div>;
@@ -101,16 +142,109 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
             Week of {startOfWeek.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
           </span>
         </div>
+
         <div className={styles.navigationControls}>
           <button className={styles.navButton} onClick={() => changeWeek(-1)}>Previous Week</button>
           <button className={styles.todayButton} onClick={() => setSelectedDate(new Date())}>Today</button>
           <button className={styles.navButton} onClick={() => changeWeek(1)}>Next Week</button>
+
+          {/* Radix Trigger for Block Off Time Modal */}
+          <Dialog.Root open={isBlockOpen} onOpenChange={setIsBlockOpen}>
+            <Dialog.Trigger asChild>
+              <button 
+                onClick={() => {
+                  if (staffMembers.length > 0) setBlockStaffId(staffMembers[0].id);
+                  setBlockDate(new Date().toISOString().split('T')[0]);
+                }}
+                className={styles.blockBtn}
+              >
+                🔒 Block Off Time
+              </button>
+            </Dialog.Trigger>
+            <Dialog.Portal>
+              <Dialog.Overlay className={styles.modalOverlay} />
+              <Dialog.Content className={styles.modalContent}>
+                <Dialog.Title className={styles.modalTitle}>Block Off Stylist Time</Dialog.Title>
+                <p className={styles.modalDesc}>Add out-of-office blocks. This time will show as "Busy" to online client booking slot calculators.</p>
+                
+                <form onSubmit={handleSaveBlock} className={styles.blockForm}>
+                  <div className={styles.formGroup}>
+                    <label>Select Provider:</label>
+                    <select 
+                      value={blockStaffId} 
+                      onChange={(e) => setBlockStaffId(e.target.value)}
+                      className={styles.formSelect}
+                      required
+                    >
+                      <option value="">-- Choose Provider --</option>
+                      {staffMembers.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className={styles.formGroup}>
+                    <label>Date:</label>
+                    <input 
+                      type="date" 
+                      value={blockDate} 
+                      onChange={(e) => setBlockDate(e.target.value)}
+                      className={styles.formInput}
+                      required
+                    />
+                  </div>
+
+                  <div className={styles.formRow}>
+                    <div className={styles.formGroup}>
+                      <label>Start Time:</label>
+                      <input 
+                        type="time" 
+                        value={blockStart} 
+                        onChange={(e) => setBlockStart(e.target.value)}
+                        className={styles.formInput}
+                        required
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>End Time:</label>
+                      <input 
+                        type="time" 
+                        value={blockEnd} 
+                        onChange={(e) => setBlockEnd(e.target.value)}
+                        className={styles.formInput}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className={styles.formGroup}>
+                    <label>Reason / Notes:</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Lunch Break, Personal Appointment"
+                      value={blockReason} 
+                      onChange={(e) => setBlockReason(e.target.value)}
+                      className={styles.formInput}
+                    />
+                  </div>
+
+                  <div className={styles.modalActions}>
+                    <button type="submit" className={styles.saveBtn} disabled={isSavingBlock}>
+                      {isSavingBlock ? 'Saving...' : 'Save Block'}
+                    </button>
+                    <Dialog.Close asChild>
+                      <button type="button" className={styles.cancelBtn}>Cancel</button>
+                    </Dialog.Close>
+                  </div>
+                </form>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
         </div>
       </div>
 
       {/* Grid Wrapper */}
       <div className={styles.calendarGrid}>
-        {/* Time Sidebar Grid Columns */}
         <div className={styles.timeColumnHeader}>Time</div>
         {weekDates.map((date, idx) => (
           <div key={idx} className={`${styles.dayHeader} ${isToday(date) ? styles.todayHeaderActive : ''}`}>
@@ -119,7 +253,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
           </div>
         ))}
 
-        {/* Time Slots Sidebar Rows */}
         <div className={styles.gridContentBody}>
           <div className={styles.timeSidebar}>
             {Array.from({ length: totalHours }).map((_, h) => {
@@ -134,16 +267,13 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
             })}
           </div>
 
-          {/* Appointment Columns Container */}
           <div className={styles.daysContainer}>
-            {/* Background grid lines */}
             <div className={styles.gridLinesContainer}>
               {Array.from({ length: totalHours }).map((_, h) => (
                 <div key={h} className={styles.gridRowLine} style={{ height: `${hourHeight}px` }} />
               ))}
             </div>
 
-            {/* Individual Columns for appointments */}
             <Tooltip.Provider delayDuration={150}>
               <div className={styles.daysColumnsGrid}>
                 {weekDates.map((date, colIdx) => {
@@ -154,7 +284,10 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
                       {dayAppointments.map((appt) => {
                         const stylePos = getAppointmentPosition(appt.startTime, appt.endTime);
                         const assignedStaff = staffMembers.find((s) => s.id === appt.userId)?.name || 'Unassigned';
-                        const serviceType = services.find((s) => s.id === appt.serviceId)?.name || 'Service';
+                        
+                        const isBlocked = appt.status === 'BLOCKED';
+                        const serviceType = isBlocked ? 'Time Block' : (services.find((s) => s.id === appt.serviceId)?.name || 'Service');
+                        const displayName = isBlocked ? `🔒 Busy: ${appt.notes || 'Time Blocked'}` : (appt.clientName || 'Client');
 
                         return (
                           <Dialog.Root key={appt.id}>
@@ -162,15 +295,15 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
                               <Tooltip.Trigger asChild>
                                 <Dialog.Trigger asChild>
                                   <button
-                                    className={`${styles.appointmentCard} ${styles[appt.status.toLowerCase()]}`}
+                                    className={`${styles.appointmentCard} ${isBlocked ? styles.blocked : styles[appt.status.toLowerCase()]}`}
                                     style={stylePos}
                                     onClick={() => setActiveAppointment(appt)}
                                   >
                                     <div className={styles.cardTimeText}>
                                       {new Date(appt.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </div>
-                                    <div className={styles.cardTitle}>{appt.clientName}</div>
-                                    <div className={styles.cardSubtitle}>{serviceType}</div>
+                                    <div className={styles.cardTitle}>{displayName}</div>
+                                    {!isBlocked && <div className={styles.cardSubtitle}>{serviceType}</div>}
                                     <div className={styles.cardStaff}>w/ {assignedStaff}</div>
                                   </button>
                                 </Dialog.Trigger>
@@ -178,30 +311,55 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
 
                               <Tooltip.Portal>
                                 <Tooltip.Content className={styles.tooltipContent} sideOffset={5}>
-                                  <strong>Client:</strong> {appt.clientName} <br />
-                                  <strong>Service:</strong> {serviceType} <br />
-                                  <strong>Staff:</strong> {assignedStaff} <br />
-                                  <strong>Status:</strong> <span className={`${styles.statusBadge} ${styles[appt.status.toLowerCase() + 'Badge']}`}>{appt.status}</span>
+                                  {isBlocked ? (
+                                    <>
+                                      <strong>Busy Block:</strong> {appt.notes || 'Out of Office'} <br />
+                                      <strong>Provider:</strong> {assignedStaff}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <strong>Client:</strong> {appt.clientName} <br />
+                                      <strong>Service:</strong> {serviceType} <br />
+                                      <strong>Staff:</strong> {assignedStaff} <br />
+                                      <strong>Status:</strong> <span className={`${styles.statusBadge} ${styles[appt.status.toLowerCase() + 'Badge']}`}>{appt.status}</span>
+                                    </>
+                                  )}
                                   <Tooltip.Arrow className={styles.tooltipArrow} />
                                 </Tooltip.Content>
                               </Tooltip.Portal>
                             </Tooltip.Root>
 
-                            {/* Radix Dialog Modal on click */}
+                            {/* Details Modal on click */}
                             <Dialog.Portal>
                               <Dialog.Overlay className={styles.modalOverlay} />
                               <Dialog.Content className={styles.modalContent}>
-                                <Dialog.Title className={styles.modalTitle}>Appointment Detail</Dialog.Title>
+                                <Dialog.Title className={styles.modalTitle}>
+                                  {isBlocked ? 'Blocked Time Block' : 'Appointment Detail'}
+                                </Dialog.Title>
+                                
                                 <div className={styles.detailList}>
-                                  <div className={styles.detailRow}>
-                                    <strong>Client Name:</strong> <span>{activeAppointment?.clientName}</span>
-                                  </div>
-                                  <div className={styles.detailRow}>
-                                    <strong>Stylist:</strong> <span>{assignedStaff}</span>
-                                  </div>
-                                  <div className={styles.detailRow}>
-                                    <strong>Service:</strong> <span>{serviceType}</span>
-                                  </div>
+                                  {isBlocked ? (
+                                    <>
+                                      <div className={styles.detailRow}>
+                                        <strong>Provider:</strong> <span>{assignedStaff}</span>
+                                      </div>
+                                      <div className={styles.detailRow}>
+                                        <strong>Reason / Notes:</strong> <span>{activeAppointment?.notes || 'No description'}</span>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div className={styles.detailRow}>
+                                        <strong>Client Name:</strong> <span>{activeAppointment?.clientName}</span>
+                                      </div>
+                                      <div className={styles.detailRow}>
+                                        <strong>Stylist:</strong> <span>{assignedStaff}</span>
+                                      </div>
+                                      <div className={styles.detailRow}>
+                                        <strong>Service:</strong> <span>{serviceType}</span>
+                                      </div>
+                                    </>
+                                  )}
                                   <div className={styles.detailRow}>
                                     <strong>Date:</strong> <span>{new Date(activeAppointment?.startTime || '').toLocaleDateString()}</span>
                                   </div>
@@ -211,12 +369,14 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
                                       {new Date(activeAppointment?.endTime || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                   </div>
-                                  <div className={styles.detailRow}>
-                                    <strong>Status:</strong>
-                                    <span className={`${styles.statusBadge} ${styles[(activeAppointment?.status || '').toLowerCase() + 'Badge']}`}>
-                                      {activeAppointment?.status}
-                                    </span>
-                                  </div>
+                                  {!isBlocked && (
+                                    <div className={styles.detailRow}>
+                                      <strong>Status:</strong>
+                                      <span className={`${styles.statusBadge} ${styles[(activeAppointment?.status || '').toLowerCase() + 'Badge']}`}>
+                                        {activeAppointment?.status}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
 
                                 <div className={styles.modalActions}>

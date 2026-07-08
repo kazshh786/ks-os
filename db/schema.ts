@@ -85,13 +85,12 @@ export const appointments = pgTable('appointments', {
     .references(() => users.id, { onDelete: 'cascade' }),
   clientId: uuid('client_id')
     .references(() => clients.id, { onDelete: 'set null' }), // Linked directly to CRM
-  clientName: varchar('client_name', { length: 255 }).notNull(),
+  clientName: varchar('client_name', { length: 255 }),
   serviceId: uuid('service_id')
-    .notNull()
     .references(() => services.id, { onDelete: 'cascade' }),
   startTime: timestamp('start_time', { withTimezone: true }).notNull(),
   endTime: timestamp('end_time', { withTimezone: true }).notNull(),
-  status: text('status', { enum: ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'] })
+  status: text('status', { enum: ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'BLOCKED'] })
     .default('PENDING')
     .notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

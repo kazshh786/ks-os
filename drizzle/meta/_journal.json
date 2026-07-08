@@ -15,6 +15,13 @@
       "when": 1783504613436,
       "tag": "0001_silky_vulcan",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783505259351,
+      "tag": "0002_perfect_agent_brand",
+      "breakpoints": true
     }
   ]
 }
