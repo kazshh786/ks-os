@@ -93,6 +93,9 @@ export const appointments = pgTable('appointments', {
   status: text('status', { enum: ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'BLOCKED'] })
     .default('PENDING')
     .notNull(),
+  notes: text('notes'),
+  resourceId: uuid('resource_id')
+    .references(() => resources.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

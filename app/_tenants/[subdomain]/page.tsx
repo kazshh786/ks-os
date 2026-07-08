@@ -348,6 +348,10 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                   tenantId={tenantId} 
                   staffMembers={staff} 
                   services={services} 
+                  onCheckoutAppt={(apptId) => {
+                    setCheckoutApptId(apptId);
+                    setIsCheckoutOpen(true);
+                  }}
                 />
                 
                 {/* Checkout Trigger simulation card */}
@@ -387,7 +391,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                   services={services} 
                   staffMembers={staff} 
                   onSlotSelected={(slot) => {
-                    alert(`Booking Mock Confirmed!\nTime: ${slot.date.toLocaleTimeString()}\nStylist: ${slot.staffId}`);
+                    loadWorkspaceData();
                   }}
                 />
               </div>

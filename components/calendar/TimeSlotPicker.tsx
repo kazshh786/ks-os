@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/utils/supabase/client';
 import styles from './TimeSlotPicker.module.css';
 
@@ -28,9 +28,13 @@ interface AvailableSlot {
   dateTime: Date;
   staffId: string;
   staffName: string;
+  price: number; // custom or default service price
+  duration: number; // custom or default service duration
 }
 
 export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlotSelected }: TimeSlotPickerProps) {
+  // Navigation & View Mode
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
   const [selectedStaffId, setSelectedStaffId] = useState<string>('any'); // 'any' or specific staffId
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -41,8 +45,75 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [staffPricingRules, setStaffPricingRules] = useState<any[]>([]);
 
-  // Load available slots when parameters change
+  // Real-time synchronization
+  const [reloadTrigger, setReloadTrigger] = useState(0);
+
+  // Booking Flow Steps Dialog
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
+  const [modalStep, setModalStep] = useState<'info' | 'intake' | 'deposit' | 'confirm'>('info');
+
+  // Multi-step form values
+  const [clientName, setClientName] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+
+  // Medical compliance / patch test details
+  const [allergyNotes, setAllergyNotes] = useState('');
+  const [patchTestConfirmed, setPatchTestConfirmed] = useState(false);
+  const [consentConfirmed, setConsentConfirmed] = useState(false);
+
+  // Credit Card checkout values
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
+  const [cardZip, setCardZip] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'deposit' | 'card_on_file'>('deposit');
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
+
+  // Signature canvas pad references
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSignature, setHasSignature] = useState(false);
+  const [signatureDataUrl, setSignatureDataUrl] = useState('');
+
+  // 1. Subscribe to appointments Real-time channels to auto-recalculate
+  useEffect(() => {
+    const channel = supabase
+      .channel('realtime-avail-picker')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'appointments', filter: `tenant_id=eq.${tenantId}` },
+        () => {
+          setReloadTrigger((prev) => prev + 1);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [tenantId]);
+
+  // 2. Fetch staff-specific pricing configuration
+  useEffect(() => {
+    if (!selectedServiceId) {
+      setStaffPricingRules([]);
+      return;
+    }
+    const loadPricing = async () => {
+      const { data } = await supabase
+        .from('staff_pricing')
+        .select('*')
+        .eq('service_id', selectedServiceId);
+      setStaffPricingRules(data || []);
+    };
+    loadPricing();
+  }, [selectedServiceId]);
+
+  // 3. Calculate Availability slots
   useEffect(() => {
     if (!selectedServiceId || !selectedDate) {
       setAvailableSlots([]);
@@ -54,9 +125,9 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
       setError(null);
       try {
         const targetDate = new Date(selectedDate);
-        const dayOfWeek = targetDate.getDay(); // 0 = Sunday, 1 = Monday, ...
+        const dayOfWeek = targetDate.getDay();
 
-        // 1. Fetch schedules for the day of week
+        // Fetch staff schedules for this day of week
         let scheduleQuery = supabase
           .from('staff_schedules')
           .select('*, users(name)')
@@ -75,7 +146,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
           return;
         }
 
-        // 2. Fetch existing appointments for this date
+        // Fetch existing appointments to block busy times
         const startOfDay = new Date(targetDate);
         startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date(targetDate);
@@ -87,7 +158,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
           .eq('tenant_id', tenantId)
           .gte('start_time', startOfDay.toISOString())
           .lte('start_time', endOfDay.toISOString())
-          .neq('status', 'CANCELLED'); // Ignore cancelled slots
+          .neq('status', 'CANCELLED');
 
         if (selectedStaffId !== 'any') {
           apptsQuery = apptsQuery.eq('user_id', selectedStaffId);
@@ -96,24 +167,30 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
         const { data: appointments, error: apptErr } = await apptsQuery;
         if (apptErr) throw apptErr;
 
-        // 3. Math calculation for available slots
         const selectedService = services.find((s) => s.id === selectedServiceId);
-        const serviceDuration = selectedService ? selectedService.duration : 30; // default 30m
+        if (!selectedService) {
+          setAvailableSlots([]);
+          return;
+        }
+
         const generatedSlots: AvailableSlot[] = [];
 
         schedules.forEach((schedule: any) => {
           const staffId = schedule.user_id;
           const staffName = schedule.users?.name || 'Stylist';
 
-          // Parse start and end hours
+          // Apply staff-specific duration and pricing overrides
+          const staffOverride = staffPricingRules.find((p) => p.user_id === staffId);
+          const serviceDuration = staffOverride ? staffOverride.custom_duration_minutes : selectedService.duration;
+          const servicePrice = staffOverride ? staffOverride.custom_price_in_cents : selectedService.price;
+
           const [startH, startM] = schedule.start_time.split(':').map(Number);
           const [endH, endM] = schedule.end_time.split(':').map(Number);
 
           const workStartMinutes = startH * 60 + startM;
           const workEndMinutes = endH * 60 + endM;
 
-          // Generate 30-minute intervals
-          const interval = 30; 
+          const interval = 30; // generate every 30 mins
           for (let min = workStartMinutes; min + serviceDuration <= workEndMinutes; min += interval) {
             const slotStartHour = Math.floor(min / 60);
             const slotStartMin = min % 60;
@@ -124,13 +201,15 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
             const slotEndDate = new Date(slotStartDate);
             slotEndDate.setMinutes(slotStartDate.getMinutes() + serviceDuration);
 
-            // Check if this slot overlaps with any appointment for this staff member
+            // Block booking slots in the past
+            if (slotStartDate.getTime() < Date.now()) {
+              continue;
+            }
+
             const hasOverlap = (appointments || []).some((appt) => {
               if (appt.user_id !== staffId) return false;
               const apptStart = new Date(appt.start_time);
               const apptEnd = new Date(appt.end_time);
-
-              // Overlap logic: Start A < End B AND End A > Start B
               return slotStartDate < apptEnd && slotEndDate > apptStart;
             });
 
@@ -138,6 +217,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
               const timeStr = slotStartDate.toLocaleTimeString([], {
                 hour: '2-digit',
                 minute: '2-digit',
+                hour12: false,
               });
 
               generatedSlots.push({
@@ -145,12 +225,13 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
                 dateTime: slotStartDate,
                 staffId,
                 staffName,
+                price: servicePrice,
+                duration: serviceDuration,
               });
             }
           }
         });
 
-        // Sort slots chronologically
         generatedSlots.sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime());
         setAvailableSlots(generatedSlots);
       } catch (err: any) {
@@ -161,30 +242,254 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
     };
 
     calculateAvailability();
-  }, [selectedServiceId, selectedStaffId, selectedDate, tenantId, services]);
+  }, [selectedServiceId, selectedStaffId, selectedDate, tenantId, services, staffPricingRules, reloadTrigger]);
 
+  // Handle clicking a slot
   const handleSlotClick = (slot: AvailableSlot) => {
-    onSlotSelected({
-      date: slot.dateTime,
-      staffId: slot.staffId,
-      serviceId: selectedServiceId,
-    });
+    setSelectedSlot(slot);
+    setModalStep('info');
+    setIsModalOpen(true);
+  };
+
+  // Generate the next 7 days for the date picker ribbon
+  const getNext7Days = () => {
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      dates.push(d);
+    }
+    return dates;
+  };
+
+  // Signature canvas operations
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.strokeStyle = '#090d16';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+
+    const coords = getEventCoords(e, canvas);
+    ctx.beginPath();
+    ctx.moveTo(coords.x, coords.y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getEventCoords(e, canvas);
+    ctx.lineTo(coords.x, coords.y);
+    ctx.stroke();
+    setHasSignature(true);
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+    if (canvasRef.current && hasSignature) {
+      setSignatureDataUrl(canvasRef.current.toDataURL());
+    }
+  };
+
+  const getEventCoords = (
+    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>,
+    canvas: HTMLCanvasElement
+  ) => {
+    const rect = canvas.getBoundingClientRect();
+    if ('touches' in e) {
+      if (e.touches.length === 0) return { x: 0, y: 0 };
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top,
+      };
+    } else {
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+    }
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasSignature(false);
+    setSignatureDataUrl('');
+  };
+
+  // Submit flow database writer
+  const handleFinalBooking = async () => {
+    if (!selectedSlot) return;
+    setIsSubmittingBooking(true);
+    setError(null);
+
+    try {
+      // 1. Search or create client profile
+      let clientId = '';
+      const { data: existingClient } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('email', clientEmail.trim().toLowerCase())
+        .maybeSingle();
+
+      if (existingClient) {
+        clientId = existingClient.id;
+        // Update client notes / patch test
+        await supabase
+          .from('clients')
+          .update({
+            medical_notes: allergyNotes || 'None',
+            patch_test_date: patchTestConfirmed ? new Date().toISOString() : null,
+            phone: clientPhone,
+          })
+          .eq('id', clientId);
+      } else {
+        const { data: newClient, error: createClientErr } = await supabase
+          .from('clients')
+          .insert({
+            tenant_id: tenantId,
+            name: clientName,
+            email: clientEmail.trim().toLowerCase(),
+            phone: clientPhone,
+            medical_notes: allergyNotes || 'None',
+            patch_test_date: patchTestConfirmed ? new Date().toISOString() : null,
+          })
+          .select('id')
+          .single();
+
+        if (createClientErr) throw createClientErr;
+        clientId = newClient.id;
+      }
+
+      // 2. Fetch or create a form template to link form submission
+      let formId = '00000000-0000-0000-0000-000000000000';
+      const { data: existingForm } = await supabase
+        .from('forms')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingForm) {
+        formId = existingForm.id;
+      } else {
+        // Seed default medical intake form row
+        const { data: seededForm } = await supabase
+          .from('forms')
+          .insert({
+            tenant_id: tenantId,
+            title: 'Medical History & Patch Test Consent',
+            fields_json: [
+              { label: 'Allergy Notes', type: 'textarea', required: false },
+              { label: 'Consent Wave', type: 'checkbox', required: true },
+            ],
+          })
+          .select('id')
+          .single();
+
+        if (seededForm) formId = seededForm.id;
+      }
+
+      // Write submission record
+      await supabase.from('client_form_submissions').insert({
+        tenant_id: tenantId,
+        client_id: clientId,
+        form_id: formId,
+        response_json: {
+          allergy_notes: allergyNotes,
+          patch_test_done: patchTestConfirmed,
+          consent_given: consentConfirmed,
+          signature_image: signatureDataUrl,
+        },
+      });
+
+      // 3. Create appointment
+      const serviceDuration = selectedSlot.duration;
+      const endDateTime = new Date(selectedSlot.dateTime);
+      endDateTime.setMinutes(endDateTime.getMinutes() + serviceDuration);
+
+      const { data: appt, error: apptErr } = await supabase
+        .from('appointments')
+        .insert({
+          tenant_id: tenantId,
+          user_id: selectedSlot.staffId,
+          client_id: clientId,
+          client_name: clientName,
+          service_id: selectedServiceId,
+          start_time: selectedSlot.dateTime.toISOString(),
+          end_time: endDateTime.toISOString(),
+          status: 'CONFIRMED',
+        })
+        .select('id')
+        .single();
+
+      if (apptErr) throw apptErr;
+
+      // 4. Create deposit checkout transaction if deposit selected
+      if (paymentMethod === 'deposit') {
+        const depositAmount = Math.round(selectedSlot.price * 0.3); // 30% deposit in cents
+        await supabase.from('checkout_transactions').insert({
+          tenant_id: tenantId,
+          appointment_id: appt.id,
+          total_amount: depositAmount,
+          payment_status: 'SUCCEEDED',
+          payment_method: 'CARD',
+          purchased_products: [],
+          stripe_payment_intent_id: 'dep_pi_' + Math.random().toString(36).substr(2, 9),
+        });
+      }
+
+      // Proceed to SMS mockup screen
+      setModalStep('confirm');
+    } catch (err: any) {
+      alert(err.message || 'Failed to complete checkout booking.');
+    } finally {
+      setIsSubmittingBooking(false);
+    }
   };
 
   return (
     <div className={styles.widgetContainer}>
-      <h3 className={styles.widgetTitle}>Book an Appointment</h3>
-      
+      <div className={styles.widgetHeader}>
+        <h3 className={styles.widgetTitle}>Live Scheduling Desk</h3>
+        <div className={styles.viewToggle}>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`${styles.toggleBtn} ${viewMode === 'list' ? styles.toggleBtnActive : ''}`}
+          >
+            Classic List
+          </button>
+          <button
+            onClick={() => setViewMode('calendar')}
+            className={`${styles.toggleBtn} ${viewMode === 'calendar' ? styles.toggleBtnActive : ''}`}
+          >
+            Showcase Calendar
+          </button>
+        </div>
+      </div>
+
       {/* 1. Service Selection */}
       <div className={styles.inputGroup}>
-        <label htmlFor="service-select" className={styles.label}>Select Service</label>
+        <label htmlFor="service-select" className={styles.label}>1. Select Treatment / Service</label>
         <select
           id="service-select"
           className={styles.select}
           value={selectedServiceId}
           onChange={(e) => setSelectedServiceId(e.target.value)}
         >
-          <option value="">-- Choose a service --</option>
+          <option value="">-- Click to choose service --</option>
           {services.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name} ({s.duration} min) - ${(s.price / 100).toFixed(2)}
@@ -194,68 +499,434 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
       </div>
 
       {/* 2. Staff Selection */}
-      <div className={styles.inputGroup}>
-        <label htmlFor="staff-select" className={styles.label}>Preferred Provider</label>
-        <select
-          id="staff-select"
-          className={styles.select}
-          value={selectedStaffId}
-          onChange={(e) => setSelectedStaffId(e.target.value)}
-        >
-          <option value="any">Any Available Stylist</option>
-          {staffMembers.map((sm) => (
-            <option key={sm.id} value={sm.id}>
-              {sm.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* 3. Date Selection */}
-      <div className={styles.inputGroup}>
-        <label htmlFor="date-select" className={styles.label}>Choose Date</label>
-        <input
-          id="date-select"
-          type="date"
-          className={styles.inputDate}
-          value={selectedDate}
-          min={new Date().toISOString().split('T')[0]} // Block historical dates
-          onChange={(e) => setSelectedDate(e.target.value)}
-        />
-      </div>
-
-      {/* 4. Slot Availability Display */}
-      <div className={styles.slotsWrapper}>
-        <h4 className={styles.slotsHeader}>Available Times</h4>
-        
-        {loading && <div className={styles.statusMessage}>Calculating available slots...</div>}
-        {error && <div className={styles.errorMessage}>{error}</div>}
-        
-        {!loading && !error && selectedServiceId === '' && (
-          <div className={styles.emptyMessage}>Please select a service to view openings.</div>
-        )}
-
-        {!loading && !error && selectedServiceId !== '' && availableSlots.length === 0 && (
-          <div className={styles.emptyMessage}>No available slots found for this selection. Try another date.</div>
-        )}
-
-        {!loading && !error && availableSlots.length > 0 && (
-          <div className={styles.slotsGrid}>
-            {availableSlots.map((slot, idx) => (
-              <button
-                key={idx}
-                className={styles.slotButton}
-                onClick={() => handleSlotClick(slot)}
-              >
-                <span className={styles.slotTime}>{slot.timeStr}</span>
-                {selectedStaffId === 'any' && (
-                  <span className={styles.slotStaff}>w/ {slot.staffName}</span>
-                )}
-              </button>
+      {viewMode === 'list' && (
+        <div className={styles.inputGroup}>
+          <label htmlFor="staff-select" className={styles.label}>2. Preferred Provider</label>
+          <select
+            id="staff-select"
+            className={styles.select}
+            value={selectedStaffId}
+            onChange={(e) => setSelectedStaffId(e.target.value)}
+          >
+            <option value="any">Any Available Stylist</option>
+            {staffMembers.map((sm) => (
+              <option key={sm.id} value={sm.id}>
+                {sm.name}
+              </option>
             ))}
+          </select>
+        </div>
+      )}
+
+      {/* 3. Date Selection (RIBBON for Calendar, INPUT for List) */}
+      {selectedServiceId !== '' && (
+        <>
+          {viewMode === 'list' ? (
+            <div className={styles.inputGroup}>
+              <label htmlFor="date-select" className={styles.label}>3. Choose Booking Date</label>
+              <input
+                id="date-select"
+                type="date"
+                className={styles.inputDate}
+                value={selectedDate}
+                min={new Date().toISOString().split('T')[0]}
+                onChange={(e) => setSelectedDate(e.target.value)}
+              />
+            </div>
+          ) : (
+            <div className={styles.inputGroup}>
+              <label className={styles.label}>2. Choose Booking Date</label>
+              <div className={styles.dateRibbon}>
+                {getNext7Days().map((d, i) => {
+                  const dateStr = d.toISOString().split('T')[0];
+                  const dayName = d.toLocaleDateString(undefined, { weekday: 'short' });
+                  const dateNum = d.getDate();
+                  const isActive = selectedDate === dateStr;
+
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedDate(dateStr)}
+                      className={`${styles.ribbonItem} ${isActive ? styles.ribbonItemActive : ''}`}
+                    >
+                      <span className={styles.ribbonDay}>{dayName}</span>
+                      <span className={styles.ribbonDate}>{dateNum}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Slots Display */}
+      {selectedServiceId !== '' && (
+        <div className={styles.slotsWrapper}>
+          <h4 className={styles.slotsHeader}>Available Openings</h4>
+
+          {loading && <div className={styles.statusMessage}>Calculating real-time slots...</div>}
+          {error && <div className={styles.errorMessage}>{error}</div>}
+
+          {!loading && !error && availableSlots.length === 0 && (
+            <div className={styles.emptyMessage}>No available slots found for this date. Select another day.</div>
+          )}
+
+          {!loading && !error && availableSlots.length > 0 && (
+            <>
+              {viewMode === 'list' ? (
+                <div className={styles.slotsGrid}>
+                  {availableSlots.map((slot, idx) => (
+                    <button
+                      key={idx}
+                      className={styles.slotButton}
+                      onClick={() => handleSlotClick(slot)}
+                    >
+                      <span className={styles.slotTime}>{slot.timeStr}</span>
+                      <span className={styles.slotStaff}>w/ {slot.staffName}</span>
+                      <span className={styles.slotPrice}>${(slot.price / 100).toFixed(2)}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                /* Showcase Calendar columns (staff grouped) */
+                <div className={styles.calendarColumnsGrid}>
+                  {staffMembers.map((sm) => {
+                    const staffSlots = availableSlots.filter((slot) => slot.staffId === sm.id);
+                    return (
+                      <div key={sm.id} className={styles.staffColumn}>
+                        <div className={styles.staffColumnHeader}>{sm.name}</div>
+                        {staffSlots.length === 0 ? (
+                          <span style={{ fontSize: '11px', color: '#64748b', marginTop: '12px' }}>Fully Booked</span>
+                        ) : (
+                          staffSlots.map((slot, idx) => (
+                            <button
+                              key={idx}
+                              className={styles.slotButton}
+                              onClick={() => handleSlotClick(slot)}
+                            >
+                              <span className={styles.slotTime}>{slot.timeStr}</span>
+                              <span className={styles.slotPrice}>${(slot.price / 100).toFixed(2)}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {selectedServiceId === '' && (
+        <div className={styles.emptyMessage}>Please select a service above to search availability calendar.</div>
+      )}
+
+      {/* Multi-step checkout Dialog portal */}
+      {isModalOpen && selectedSlot && (
+        <>
+          <div className={styles.overlay} onClick={() => { if (modalStep !== 'confirm') setIsModalOpen(false); }} />
+          <div className={styles.modalContent}>
+            <div className={styles.modalHeader}>
+              <h4 className={styles.modalTitle}>Secure Your Slot</h4>
+              {modalStep !== 'confirm' && (
+                <button className={styles.closeBtn} onClick={() => setIsModalOpen(false)}>×</button>
+              )}
+            </div>
+
+            {/* Steps indicator */}
+            <div className={styles.stepIndicator}>
+              <div className={`${styles.stepDot} ${modalStep === 'info' ? styles.stepDotActive : styles.stepDotDone}`}>1</div>
+              <div className={`${styles.stepDot} ${modalStep === 'intake' ? styles.stepDotActive : modalStep === 'deposit' || modalStep === 'confirm' ? styles.stepDotDone : ''}`}>2</div>
+              <div className={`${styles.stepDot} ${modalStep === 'deposit' ? styles.stepDotActive : modalStep === 'confirm' ? styles.stepDotDone : ''}`}>3</div>
+              <div className={`${styles.stepDot} ${modalStep === 'confirm' ? styles.stepDotActive : ''}`}>4</div>
+            </div>
+
+            {/* STEP 1: Contact Details */}
+            {modalStep === 'info' && (
+              <div className={styles.stepBody}>
+                <div className={styles.inputGroup}>
+                  <label className={styles.label}>Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter your name"
+                    className={styles.formInputText}
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                  />
+                </div>
+                <div className={styles.inputGroup}>
+                  <label className={styles.label}>Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="Enter email"
+                    className={styles.formInputText}
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                  />
+                </div>
+                <div className={styles.inputGroup}>
+                  <label className={styles.label}>Phone Number</label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="Enter mobile phone"
+                    className={styles.formInputText}
+                    value={clientPhone}
+                    onChange={(e) => setClientPhone(e.target.value)}
+                  />
+                </div>
+
+                <div className={styles.stepFooter}>
+                  <button
+                    className={styles.primaryBtn}
+                    onClick={() => {
+                      if (!clientName || !clientEmail || !clientPhone) {
+                        alert('All details are required.');
+                        return;
+                      }
+                      setModalStep('intake');
+                    }}
+                  >
+                    Next: Compliance Form
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 2: Compliance Forms & Signature Canvas */}
+            {modalStep === 'intake' && (
+              <div className={styles.stepBody}>
+                <div className={styles.inputGroup}>
+                  <label className={styles.label}>Allergies or Sensitive Skin notes</label>
+                  <textarea
+                    placeholder="List dye allergies, chemical sensitivities..."
+                    className={styles.formInputText}
+                    rows={2}
+                    value={allergyNotes}
+                    onChange={(e) => setAllergyNotes(e.target.value)}
+                  />
+                </div>
+
+                <div className={styles.formCheckboxRow}>
+                  <input
+                    id="patch-check"
+                    type="checkbox"
+                    checked={patchTestConfirmed}
+                    onChange={(e) => setPatchTestConfirmed(e.target.checked)}
+                  />
+                  <label htmlFor="patch-check" className={styles.checkboxLabel}>
+                    I confirm I have had a hair patch test done at least 48 hours prior, or choose to proceed without one at my own risk.
+                  </label>
+                </div>
+
+                <div className={styles.formCheckboxRow}>
+                  <input
+                    id="consent-check"
+                    type="checkbox"
+                    checked={consentConfirmed}
+                    onChange={(e) => setConsentConfirmed(e.target.checked)}
+                  />
+                  <label htmlFor="consent-check" className={styles.checkboxLabel}>
+                    I consent to the treatment formulas and release the stylist from liability. *
+                  </label>
+                </div>
+
+                <div className={styles.inputGroup} style={{ marginTop: '8px' }}>
+                  <label className={styles.signaturePadLabel}>Draw Signature Consent Below: *</label>
+                  <div className={styles.canvasContainer}>
+                    <canvas
+                      ref={canvasRef}
+                      width={430}
+                      height={120}
+                      className={styles.signatureCanvas}
+                      onMouseDown={startDrawing}
+                      onMouseMove={draw}
+                      onMouseUp={stopDrawing}
+                      onMouseLeave={stopDrawing}
+                      onTouchStart={startDrawing}
+                      onTouchMove={draw}
+                      onTouchEnd={stopDrawing}
+                    />
+                    <button type="button" className={styles.clearSignButton} onClick={clearSignature}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div className={styles.stepFooter}>
+                  <button className={styles.secondaryBtn} onClick={() => setModalStep('info')}>
+                    Back
+                  </button>
+                  <button
+                    className={styles.primaryBtn}
+                    onClick={() => {
+                      if (!consentConfirmed) {
+                        alert('You must check the consent checkbox.');
+                        return;
+                      }
+                      if (!hasSignature) {
+                        alert('Signature consent is required.');
+                        return;
+                      }
+                      setModalStep('deposit');
+                    }}
+                  >
+                    Next: Secure Slot
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 3: Upfront Deposit Securement */}
+            {modalStep === 'deposit' && (
+              <div className={styles.stepBody}>
+                <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#cbd5e1' }}>Receipt Summary</h5>
+                <div className={styles.summaryRow}>
+                  <span>Service Total:</span>
+                  <strong>${(selectedSlot.price / 100).toFixed(2)}</strong>
+                </div>
+                <div className={styles.summaryTotalRow}>
+                  <span>30% Deposit Due Now:</span>
+                  <strong>${((selectedSlot.price * 0.3) / 100).toFixed(2)}</strong>
+                </div>
+
+                <div className={styles.inputGroup} style={{ marginTop: '10px' }}>
+                  <label className={styles.label}>Choose Payment Method</label>
+                  <select
+                    className={styles.select}
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value as any)}
+                  >
+                    <option value="deposit">Pay 30% Upfront Deposit Now</option>
+                    <option value="card_on_file">Capture Card (Protect from No-Shows, $0 today)</option>
+                  </select>
+                </div>
+
+                <div className={styles.inputGroup}>
+                  <label className={styles.label}>Cardholder Name</label>
+                  <input
+                    type="text"
+                    placeholder="Jane Doe"
+                    className={styles.formInputText}
+                    required
+                  />
+                </div>
+
+                <div className={styles.inputGroup}>
+                  <label className={styles.label}>Card Details</label>
+                  <input
+                    type="text"
+                    placeholder="1111 2222 3333 4444"
+                    className={styles.formInputText}
+                    value={cardNumber}
+                    onChange={(e) => setCardNumber(e.target.value.replace(/\s?/g, '').replace(/(\d{4})/g, '$1 ').trim())}
+                    maxLength={19}
+                  />
+                  <div className={styles.cardFormGrid}>
+                    <input
+                      type="text"
+                      placeholder="MM / YY"
+                      className={styles.formInputText}
+                      value={cardExpiry}
+                      onChange={(e) => setCardExpiry(e.target.value)}
+                      maxLength={7}
+                    />
+                    <input
+                      type="password"
+                      placeholder="CVC"
+                      className={styles.formInputText}
+                      value={cardCvc}
+                      onChange={(e) => setCardCvc(e.target.value)}
+                      maxLength={4}
+                    />
+                  </div>
+                </div>
+
+                <div className={styles.stepFooter}>
+                  <button className={styles.secondaryBtn} onClick={() => setModalStep('intake')}>
+                    Back
+                  </button>
+                  <button
+                    className={styles.primaryBtn}
+                    disabled={isSubmittingBooking}
+                    onClick={handleFinalBooking}
+                  >
+                    {isSubmittingBooking
+                      ? 'Securing Slot...'
+                      : paymentMethod === 'deposit'
+                      ? `Pay $${((selectedSlot.price * 0.3) / 100).toFixed(2)} Deposit`
+                      : 'Confirm Slot Security'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 4: Automated Reassurance Notification Mock */}
+            {modalStep === 'confirm' && (
+              <div className={styles.stepBody}>
+                <div style={{ textAlign: 'center', margin: '10px 0' }}>
+                  <span style={{ fontSize: '48px', color: '#10b981' }}>✔️</span>
+                  <h4 style={{ margin: '12px 0 4px 0', fontSize: '18px', fontWeight: 800 }}>Appointment Confirmed!</h4>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
+                    Your booking is safe. Real-time slot availability updated.
+                  </p>
+                </div>
+
+                <div className={styles.phoneWrapper}>
+                  <div className={styles.phoneContainer}>
+                    <div className={styles.phoneSpeaker} />
+                    <div className={styles.phoneScreen}>
+                      <div className={styles.phoneHeader}>
+                        <span>12:00</span>
+                        <span>📶 🔋</span>
+                      </div>
+                      <div className={styles.smsBubble}>
+                        <span className={styles.smsSender}>💬 Studio Alert</span>
+                        <p className={styles.smsBody}>
+                          Hi {clientName}! Your appointment for{' '}
+                          {services.find((s) => s.id === selectedServiceId)?.name} w/ {selectedSlot.staffName} is
+                          confirmed for {new Date(selectedSlot.dateTime).toLocaleDateString()} at{' '}
+                          {new Date(selectedSlot.dateTime).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                          .{' '}
+                          {paymentMethod === 'deposit'
+                            ? `Deposit of $${((selectedSlot.price * 0.3) / 100).toFixed(2)} paid.`
+                            : 'Card saved on file.'}{' '}
+                          Manage: booking.link
+                        </p>
+                        <span className={styles.smsTime}>Just now</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.stepFooter}>
+                  <button
+                    className={styles.primaryBtn}
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      onSlotSelected({
+                        date: selectedSlot.dateTime,
+                        staffId: selectedSlot.staffId,
+                        serviceId: selectedServiceId,
+                      });
+                    }}
+                  >
+                    Close & Finish
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
