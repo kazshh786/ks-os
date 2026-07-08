@@ -1,20 +1,61 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --font-sans: 'Outfit', 'Inter', -apple-system, sans-serif;
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --primary-color: #0f172a;
-  --secondary-color: #475569;
-  --accent-color: #10b981;
+  /* Material 3 Dark System - Midnight Gold Theme */
+  --md-sys-color-primary: #d4af37; /* Premium Gold */
+  --md-sys-color-on-primary: #1e1400;
+  --md-sys-color-primary-container: #3c2a00;
+  --md-sys-color-on-primary-container: #ffe09d;
+  
+  --md-sys-color-secondary: #e2c275; /* Soft Gold / Brass */
+  --md-sys-color-on-secondary: #241900;
+  --md-sys-color-secondary-container: #473200;
+  --md-sys-color-on-secondary-container: #ffdfa9;
+
+  --md-sys-color-tertiary: #10b981; /* Keep Emerald for positive states (loyalty points, succeeds) */
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #00523a;
+  --md-sys-color-on-tertiary-container: #95f5c9;
+
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container: #93000a;
+  --md-sys-color-on-error-container: #ffdad6;
+
+  --md-sys-color-background: #090d16; /* Deep Midnight Black */
+  --md-sys-color-on-background: #cbd5e1;
+  
+  /* M3 Surface Container Tiers (Dark) */
+  --md-sys-color-surface: #111625; /* Elevated Slate/Navy Blue-Black */
+  --md-sys-color-on-surface: #f1f5f9;
+  
+  --md-sys-color-surface-container-lowest: #0c101c;
+  --md-sys-color-surface-container-low: #141a2a;
+  --md-sys-color-surface-container: #1b2238;
+  --md-sys-color-surface-container-high: #242c48;
+  --md-sys-color-surface-container-highest: #2d3757;
+
+  --md-sys-color-outline: rgba(212, 175, 55, 0.25); /* Gold tinted outline */
+  --md-sys-color-outline-variant: rgba(212, 175, 55, 0.12);
+
+  /* Corner Shapes */
+  --md-shape-corner-none: 0;
+  --md-shape-corner-extra-small: 4px;
+  --md-shape-corner-small: 8px;
+  --md-shape-corner-medium: 12px;
+  --md-shape-corner-large: 16px;
+  --md-shape-corner-extra-large: 28px;
+  --md-shape-corner-full: 9999px;
+
+  --md-font-sans: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 body {
   margin: 0;
   padding: 0;
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
+  background-color: var(--md-sys-color-background);
+  color: var(--md-sys-color-on-background);
+  font-family: var(--md-font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
