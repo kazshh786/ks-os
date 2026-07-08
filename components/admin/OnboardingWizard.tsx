@@ -209,7 +209,7 @@ export default function OnboardingWizard() {
                   value={formData.subdomain}
                   onChange={(e) => handleInputChange('subdomain', e.target.value)}
                 />
-                <span className={styles.subdomainDomainSuffix}>.growthos.com</span>
+                <span className={styles.subdomainDomainSuffix}>.kasimshah.com</span>
               </div>
             </div>
           </div>
@@ -300,7 +300,7 @@ export default function OnboardingWizard() {
               </div>
               <div className={styles.confirmRow}>
                 <span>URL Domain:</span>
-                <strong>{formData.subdomain}.growthos.com</strong>
+                <strong>{formData.subdomain}.kasimshah.com</strong>
               </div>
               <div className={styles.confirmRow}>
                 <span>Industry Vertical:</span>
@@ -330,7 +330,7 @@ export default function OnboardingWizard() {
             <p><strong>{formData.salonName}</strong> has been successfully configured.</p>
             <div className={styles.successDetails}>
               <div>Tenant ID: <span className={styles.monoUuid}>{successTenantId}</span></div>
-              <div>Subdomain: <span>{formData.subdomain}.growthos.com</span></div>
+              <div>Subdomain: <span>{formData.subdomain}.kasimshah.com</span></div>
               <div>Starter Pack Installed: <span style={{ textTransform: 'capitalize' }}>{formData.industry}</span></div>
             </div>
             <button
