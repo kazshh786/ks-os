@@ -12,7 +12,11 @@ interface ProvisionFormData {
   ownerPassword: string; // Captured to automatically generate Auth user on server
 }
 
-export default function OnboardingWizard() {
+interface OnboardingWizardProps {
+  onSuccessComplete?: () => void;
+}
+
+export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizardProps) {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [step, setStep] = useState(1);
@@ -344,23 +348,35 @@ export default function OnboardingWizard() {
               <div>Subdomain: <span>{formData.subdomain}.kasimshah.com</span></div>
               <div>Starter Pack Installed: <span style={{ textTransform: 'capitalize' }}>{formData.industry}</span></div>
             </div>
-            <button
-              type="button"
-              className={styles.successResetButton}
-              onClick={() => {
-                setFormData({
-                  salonName: '',
-                  subdomain: '',
-                  industry: '',
-                  ownerEmail: '',
-                  ownerPassword: '',
-                });
-                setStep(1);
-                setSuccessTenantId(null);
-              }}
-            >
-              Onboard Another Salon
-            </button>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '8px' }}>
+              <button
+                type="button"
+                className={styles.successResetButton}
+                onClick={() => {
+                  setFormData({
+                    salonName: '',
+                    subdomain: '',
+                    industry: '',
+                    ownerEmail: '',
+                    ownerPassword: '',
+                  });
+                  setStep(1);
+                  setSuccessTenantId(null);
+                }}
+              >
+                Onboard Another Salon
+              </button>
+              {onSuccessComplete && (
+                <button
+                  type="button"
+                  className={styles.successResetButton}
+                  style={{ background: '#0f172a', color: '#ffffff' }}
+                  onClick={onSuccessComplete}
+                >
+                  View Salons List
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
