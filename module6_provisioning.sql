@@ -23,9 +23,13 @@ BEGIN
     VALUES (p_name, p_subdomain, '#0f172a', '#475569', '#10b981')
     RETURNING id INTO v_tenant_id;
 
-    -- 2. Insert the owner into the users table
+    -- 2. Insert the owner into the users table (or update if already synced by auth trigger)
     INSERT INTO public.users (id, tenant_id, email, name, role, permissions)
-    VALUES (p_owner_id, v_tenant_id, p_owner_email, 'Salon Owner', 'owner', '{"admin": true}'::jsonb);
+    VALUES (p_owner_id, v_tenant_id, p_owner_email, 'Salon Owner', 'owner', '{"admin": true}'::jsonb)
+    ON CONFLICT (id) DO UPDATE
+    SET tenant_id = v_tenant_id,
+        role = 'owner',
+        permissions = '{"admin": true}'::jsonb;
 
     -- 3. Case switch based on selected industry vertical to insert Starter Packs
     CASE lower(p_industry)
