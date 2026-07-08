@@ -147,7 +147,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
                 staffName,
               });
             }
-          });
+          }
         });
 
         // Sort slots chronologically
