@@ -20,7 +20,7 @@ export function middleware(req: NextRequest) {
   const hostname = req.headers.get('host') || '';
 
   // Define hostnames to ignore (root domains)
-  const rootDomains = ['growthos.com', 'localhost:3000', 'localhost:3001'];
+  const rootDomains = ['kasimshah.com', 'growthos.com', 'localhost:3000', 'localhost:3001'];
   
   // Extract subdomain
   let subdomain = '';
@@ -40,8 +40,8 @@ export function middleware(req: NextRequest) {
     }
   }
 
-  // If there is no subdomain, or if the subdomain is 'www', treat as root website (landing page, global login, etc.)
-  if (!subdomain || subdomain === 'www') {
+  // If there is no subdomain, or if the subdomain is 'www' or 'app', treat as root website (landing page, global login, etc.)
+  if (!subdomain || subdomain === 'www' || subdomain === 'app') {
     return NextResponse.next();
   }
 
