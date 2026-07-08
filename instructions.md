@@ -13,7 +13,22 @@ lean-salon-os/
 ├── db/
 │   └── schema.ts                      <-- Update existing with appended models (Modules 1-5)
 ├── utils/
-│   └── useRealtimeAppointments.ts     <-- Create new realtime custom hook (Module 2)
+│   ├── useRealtimeAppointments.ts     <-- Create new realtime custom hook (Module 2)
+│   └── supabase/
+│       └── client.ts                  <-- Supabase client component builder
+├── app/
+│   ├── globals.css                    <-- Global styles
+│   ├── layout.tsx                     <-- Root HTML layout
+│   ├── page.tsx                       <-- Global landing page index
+│   ├── admin/
+│   │   ├── onboard/
+│   │   │   └── page.tsx               <-- Admin onboarding dashboard route
+│   │   └── login/
+│   │       ├── page.tsx               <-- Admin login page route
+│   │       └── login.module.css       <-- CSS module for login page
+│   └── _tenants/
+│       └── [subdomain]/
+│           └── page.tsx               <-- Salon tenant dashboard workspace route
 ├── components/
 │   ├── calendar/
 │   │   ├── WeeklyCalendar.tsx         <-- Create new calendar UI grid (Module 2)
@@ -32,13 +47,6 @@ lean-salon-os/
 │   └── admin/
 │       ├── OnboardingWizard.tsx       <-- Create multi-step agency onboarding dashboard (Module 6)
 │       └── OnboardingWizard.module.css <-- Create CSS module for onboarding wizard (Module 6)
-├── module2_schema.sql                 <-- Module 2 SQL setup
-├── module3_schema.sql                 <-- Module 3 SQL setup
-├── module4_schema.sql                 <-- Module 4 SQL setup
-├── module5_loyalty.sql                <-- Module 5 SQL setup (Run on Supabase SQL Editor)
-├── module6_provisioning.sql           <-- Module 6 SQL setup
-├── instructions.md                    <-- This file
-└── walkthrough.md                     <-- Accomplishments log
 ```
 
 ---

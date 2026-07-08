@@ -29,7 +29,7 @@ export default function OnboardingWizard() {
   const [successTenantId, setSuccessTenantId] = useState<string | null>(null);
 
   // Hardcoded security check: Only the agency owner can view this wizard
-  const AUTHORIZED_AGENCY_EMAIL = 'your-email@ks-studio.com';
+  const AUTHORIZED_AGENCY_EMAIL = 'kasimashah@gmail.com';
 
   useEffect(() => {
     const checkAgencyAdmin = async () => {
@@ -136,7 +136,24 @@ export default function OnboardingWizard() {
         <div className={styles.unauthorizedCard}>
           <span className={styles.alertIcon}>🔒</span>
           <h3>Access Denied</h3>
-          <p>This onboarding dashboard is restricted to the KS Studio Master Agency Administrator.</p>
+          <p style={{ marginBottom: '16px' }}>This onboarding dashboard is restricted to the KS Studio Master Agency Administrator.</p>
+          <a
+            href="/admin/login"
+            style={{
+              display: 'inline-block',
+              background: '#0f172a',
+              color: '#ffffff',
+              borderRadius: '6px',
+              padding: '10px 18px',
+              textDecoration: 'none',
+              fontWeight: 700,
+              fontSize: '12px',
+              boxShadow: '0 4px 12px rgba(15, 23, 42, 0.15)',
+              transition: 'background-color 0.15s ease'
+            }}
+          >
+            Authenticate Admin Session
+          </a>
         </div>
       </div>
     );
