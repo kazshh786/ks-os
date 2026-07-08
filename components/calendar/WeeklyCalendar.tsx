@@ -18,7 +18,17 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export default function WeeklyCalendar({ tenantId, staffMembers, services }: WeeklyCalendarProps) {
   const { appointments, loading, error } = useRealtimeAppointments(tenantId);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  
+  // Dialog and Edit states
   const [activeAppointment, setActiveAppointment] = useState<Appointment | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editStaffId, setEditStaffId] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editStart, setEditStart] = useState('09:00');
+  const [editEnd, setEditEnd] = useState('10:00');
+  const [editStatus, setEditStatus] = useState('PENDING');
+  const [editNotes, setEditNotes] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Time-Block Form states
   const [isBlockOpen, setIsBlockOpen] = useState(false);
@@ -91,6 +101,59 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
     setSelectedDate(next);
   };
 
+  const handleOpenEdit = (appt: Appointment) => {
+    setActiveAppointment(appt);
+    setIsEditing(false);
+    
+    // Seed edit form values
+    setEditStaffId(appt.userId);
+    const dateObj = new Date(appt.startTime);
+    setEditDate(dateObj.toISOString().split('T')[0]);
+    setEditStart(dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+    
+    const endDateObj = new Date(appt.endTime);
+    setEditEnd(endDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+    setEditStatus(appt.status);
+    setEditNotes(appt.notes || '');
+  };
+
+  const handleSaveChanges = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeAppointment || !editStaffId || !editDate || !editStart || !editEnd) return;
+    setIsSavingEdit(true);
+
+    try {
+      const startDateTime = new Date(`${editDate}T${editStart}:00`);
+      const endDateTime = new Date(`${editDate}T${editEnd}:00`);
+
+      if (endDateTime <= startDateTime) {
+        alert('End time must be after start time.');
+        return;
+      }
+
+      const { error: updateErr } = await supabase
+        .from('appointments')
+        .update({
+          user_id: editStaffId,
+          start_time: startDateTime.toISOString(),
+          end_time: endDateTime.toISOString(),
+          status: editStatus,
+          notes: editNotes
+        })
+        .eq('id', activeAppointment.id);
+
+      if (updateErr) throw updateErr;
+
+      setIsEditing(false);
+      // Close main Dialog by clearing active appointment
+      setActiveAppointment(null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to update appointment details.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   const handleSaveBlock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!blockStaffId || !blockDate || !blockStart || !blockEnd) return;
@@ -119,7 +182,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
 
       if (insertErr) throw insertErr;
 
-      // Reset form
       setBlockReason('');
       setIsBlockOpen(false);
     } catch (err: any) {
@@ -148,7 +210,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
           <button className={styles.todayButton} onClick={() => setSelectedDate(new Date())}>Today</button>
           <button className={styles.navButton} onClick={() => changeWeek(1)}>Next Week</button>
 
-          {/* Radix Trigger for Block Off Time Modal */}
           <Dialog.Root open={isBlockOpen} onOpenChange={setIsBlockOpen}>
             <Dialog.Trigger asChild>
               <button 
@@ -290,14 +351,14 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
                         const displayName = isBlocked ? `🔒 Busy: ${appt.notes || 'Time Blocked'}` : (appt.clientName || 'Client');
 
                         return (
-                          <Dialog.Root key={appt.id}>
+                          <Dialog.Root key={appt.id} open={activeAppointment?.id === appt.id} onOpenChange={(open) => { if (!open) setActiveAppointment(null); }}>
                             <Tooltip.Root>
                               <Tooltip.Trigger asChild>
                                 <Dialog.Trigger asChild>
                                   <button
                                     className={`${styles.appointmentCard} ${isBlocked ? styles.blocked : styles[appt.status.toLowerCase()]}`}
                                     style={stylePos}
-                                    onClick={() => setActiveAppointment(appt)}
+                                    onClick={() => handleOpenEdit(appt)}
                                   >
                                     <div className={styles.cardTimeText}>
                                       {new Date(appt.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -334,56 +395,152 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services }: Wee
                               <Dialog.Overlay className={styles.modalOverlay} />
                               <Dialog.Content className={styles.modalContent}>
                                 <Dialog.Title className={styles.modalTitle}>
-                                  {isBlocked ? 'Blocked Time Block' : 'Appointment Detail'}
+                                  {isEditing ? 'Rearrange / Reschedule Slot' : (isBlocked ? 'Blocked Time Details' : 'Appointment Details')}
                                 </Dialog.Title>
                                 
-                                <div className={styles.detailList}>
-                                  {isBlocked ? (
-                                    <>
-                                      <div className={styles.detailRow}>
-                                        <strong>Provider:</strong> <span>{assignedStaff}</span>
-                                      </div>
-                                      <div className={styles.detailRow}>
-                                        <strong>Reason / Notes:</strong> <span>{activeAppointment?.notes || 'No description'}</span>
-                                      </div>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <div className={styles.detailRow}>
-                                        <strong>Client Name:</strong> <span>{activeAppointment?.clientName}</span>
-                                      </div>
-                                      <div className={styles.detailRow}>
-                                        <strong>Stylist:</strong> <span>{assignedStaff}</span>
-                                      </div>
-                                      <div className={styles.detailRow}>
-                                        <strong>Service:</strong> <span>{serviceType}</span>
-                                      </div>
-                                    </>
-                                  )}
-                                  <div className={styles.detailRow}>
-                                    <strong>Date:</strong> <span>{new Date(activeAppointment?.startTime || '').toLocaleDateString()}</span>
-                                  </div>
-                                  <div className={styles.detailRow}>
-                                    <strong>Time:</strong> <span>
-                                      {new Date(activeAppointment?.startTime || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {' '}
-                                      {new Date(activeAppointment?.endTime || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                  </div>
-                                  {!isBlocked && (
-                                    <div className={styles.detailRow}>
-                                      <strong>Status:</strong>
-                                      <span className={`${styles.statusBadge} ${styles[(activeAppointment?.status || '').toLowerCase() + 'Badge']}`}>
-                                        {activeAppointment?.status}
-                                      </span>
+                                {isEditing ? (
+                                  /* Reschedule / Edit Form */
+                                  <form onSubmit={handleSaveChanges} className={styles.blockForm}>
+                                    <div className={styles.formGroup}>
+                                      <label>Provider Assignment:</label>
+                                      <select
+                                        value={editStaffId}
+                                        onChange={(e) => setEditStaffId(e.target.value)}
+                                        className={styles.formSelect}
+                                        required
+                                      >
+                                        {staffMembers.map((s) => (
+                                          <option key={s.id} value={s.id}>{s.name}</option>
+                                        ))}
+                                      </select>
                                     </div>
-                                  )}
-                                </div>
 
-                                <div className={styles.modalActions}>
-                                  <Dialog.Close asChild>
-                                    <button className={styles.closeButton}>Close</button>
-                                  </Dialog.Close>
-                                </div>
+                                    <div className={styles.formGroup}>
+                                      <label>Date:</label>
+                                      <input
+                                        type="date"
+                                        value={editDate}
+                                        onChange={(e) => setEditDate(e.target.value)}
+                                        className={styles.formInput}
+                                        required
+                                      />
+                                    </div>
+
+                                    <div className={styles.formRow}>
+                                      <div className={styles.formGroup}>
+                                        <label>Start Time:</label>
+                                        <input
+                                          type="time"
+                                          value={editStart}
+                                          onChange={(e) => setEditStart(e.target.value)}
+                                          className={styles.formInput}
+                                          required
+                                        />
+                                      </div>
+                                      <div className={styles.formGroup}>
+                                        <label>End Time:</label>
+                                        <input
+                                          type="time"
+                                          value={editEnd}
+                                          onChange={(e) => setEditEnd(e.target.value)}
+                                          className={styles.formInput}
+                                          required
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {!isBlocked && (
+                                      <div className={styles.formGroup}>
+                                        <label>Status:</label>
+                                        <select
+                                          value={editStatus}
+                                          onChange={(e) => setEditStatus(e.target.value)}
+                                          className={styles.formSelect}
+                                          required
+                                        >
+                                          <option value="PENDING">Pending Approval</option>
+                                          <option value="CONFIRMED">Confirmed Booked</option>
+                                          <option value="COMPLETED">Completed Transaction</option>
+                                          <option value="CANCELLED">Cancelled</option>
+                                          <option value="NO_SHOW">No Show</option>
+                                        </select>
+                                      </div>
+                                    )}
+
+                                    <div className={styles.formGroup}>
+                                      <label>Notes / Reason:</label>
+                                      <input
+                                        type="text"
+                                        value={editNotes}
+                                        onChange={(e) => setEditNotes(e.target.value)}
+                                        className={styles.formInput}
+                                      />
+                                    </div>
+
+                                    <div className={styles.modalActions}>
+                                      <button type="submit" className={styles.saveBtn} disabled={isSavingEdit}>
+                                        {isSavingEdit ? 'Saving...' : 'Reschedule'}
+                                      </button>
+                                      <button type="button" className={styles.cancelBtn} onClick={() => setIsEditing(false)}>
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </form>
+                                ) : (
+                                  /* Normal details display mode */
+                                  <>
+                                    <div className={styles.detailList}>
+                                      {isBlocked ? (
+                                        <>
+                                          <div className={styles.detailRow}>
+                                            <strong>Provider:</strong> <span>{assignedStaff}</span>
+                                          </div>
+                                          <div className={styles.detailRow}>
+                                            <strong>Reason / Notes:</strong> <span>{activeAppointment?.notes || 'No notes'}</span>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <div className={styles.detailRow}>
+                                            <strong>Client Name:</strong> <span>{activeAppointment?.clientName}</span>
+                                          </div>
+                                          <div className={styles.detailRow}>
+                                            <strong>Stylist:</strong> <span>{assignedStaff}</span>
+                                          </div>
+                                          <div className={styles.detailRow}>
+                                            <strong>Service:</strong> <span>{serviceType}</span>
+                                          </div>
+                                        </>
+                                      )}
+                                      <div className={styles.detailRow}>
+                                        <strong>Date:</strong> <span>{new Date(activeAppointment?.startTime || '').toLocaleDateString()}</span>
+                                      </div>
+                                      <div className={styles.detailRow}>
+                                        <strong>Time:</strong> <span>
+                                          {new Date(activeAppointment?.startTime || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {' '}
+                                          {new Date(activeAppointment?.endTime || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                      </div>
+                                      {!isBlocked && (
+                                        <div className={styles.detailRow}>
+                                          <strong>Status:</strong>
+                                          <span className={`${styles.statusBadge} ${styles[(activeAppointment?.status || '').toLowerCase() + 'Badge']}`}>
+                                            {activeAppointment?.status}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className={styles.modalActions} style={{ gap: '10px' }}>
+                                      <button className={styles.saveBtn} onClick={() => setIsEditing(true)}>
+                                        Reschedule
+                                      </button>
+                                      <Dialog.Close asChild>
+                                        <button className={styles.cancelBtn}>Close</button>
+                                      </Dialog.Close>
+                                    </div>
+                                  </>
+                                )}
                               </Dialog.Content>
                             </Dialog.Portal>
                           </Dialog.Root>
