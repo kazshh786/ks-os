@@ -37,7 +37,12 @@ BEGIN
       WHEN NEW.email = 'kasimashah@gmail.com' THEN '{"admin": true, "requires_password_change": true}'::jsonb
       ELSE '{}'::jsonb
     END
-  );
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET email = EXCLUDED.email,
+      name = EXCLUDED.name,
+      role = EXCLUDED.role,
+      permissions = EXCLUDED.permissions;
   
   RETURN NEW;
 END;
