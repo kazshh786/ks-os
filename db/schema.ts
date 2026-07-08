@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, jsonb, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, jsonb, timestamp, integer, boolean, time } from 'drizzle-orm/pg-core';
 
 export const tenants = pgTable('tenants', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -168,4 +168,88 @@ export const loyaltyLedger = pgTable('loyalty_ledger', {
   pointsDelta: integer('points_delta').notNull(),
   reason: varchar('reason', { length: 255 }).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const resources = pgTable('resources', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  type: varchar('type', { length: 100 }).notNull(), // e.g. 'room', 'chair', 'laser'
+  capacity: integer('capacity').default(1).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const serviceResources = pgTable('service_resources', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  serviceId: uuid('service_id')
+    .notNull()
+    .references(() => services.id, { onDelete: 'cascade' }),
+  resourceId: uuid('resource_id')
+    .notNull()
+    .references(() => resources.id, { onDelete: 'cascade' }),
+});
+
+export const waitlist = pgTable('waitlist', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  clientId: uuid('client_id')
+    .notNull()
+    .references(() => clients.id, { onDelete: 'cascade' }),
+  serviceId: uuid('service_id')
+    .notNull()
+    .references(() => services.id, { onDelete: 'cascade' }),
+  staffId: uuid('staff_id')
+    .references(() => users.id, { onDelete: 'set null' }),
+  preferredDate: timestamp('preferred_date').notNull(),
+  status: varchar('status', { length: 50 }).default('PENDING').notNull(), // PENDING, FILLED, EXPIRED
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const clientWallets = pgTable('client_wallets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  clientId: uuid('client_id')
+    .notNull()
+    .references(() => clients.id, { onDelete: 'cascade' }),
+  balanceInCents: integer('balance_in_cents').default(0).notNull(),
+  giftCardBalanceInCents: integer('gift_card_balance_in_cents').default(0).notNull(),
+  packagesJson: jsonb('packages_json').default([]).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const staffPricing = pgTable('staff_pricing', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  serviceId: uuid('service_id')
+    .notNull()
+    .references(() => services.id, { onDelete: 'cascade' }),
+  customPriceInCents: integer('custom_price_in_cents').notNull(),
+  customDurationMinutes: integer('custom_duration_minutes').notNull(),
+});
+
+export const automationRules = pgTable('automation_rules', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  triggerEvent: varchar('trigger_event', { length: 100 }).notNull(), // booking_created, off_peak_discount
+  templateText: text('template_text').notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const offPeakRules = pgTable('off_peak_rules', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  dayOfWeek: integer('day_of_week').notNull(), // 0 = Sunday, 1 = Monday...
+  startTime: time('start_time').notNull(),
+  endTime: time('end_time').notNull(),
+  discountPercentage: integer('discount_percentage').notNull(),
 });
