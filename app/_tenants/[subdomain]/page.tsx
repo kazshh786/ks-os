@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
 import { supabase } from '@/utils/supabase/client';
 import WeeklyCalendar from '@/components/calendar/WeeklyCalendar';
@@ -29,6 +30,7 @@ interface StaffRevenue {
 export default function TenantDashboard({ params }: { params: Promise<{ subdomain: string }> }) {
   const resolvedParams = use(params);
   const subdomain = resolvedParams.subdomain;
+  const router = useRouter();
   
   // Local states
   const [activeTab, setActiveTab] = useState<'calendar' | 'booking' | 'crm' | 'manage'>('calendar');
@@ -268,6 +270,23 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
         </div>
         
         <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={() => router.push('/book-manual')}
+            style={{
+              background: 'rgba(212, 175, 55, 0.12)',
+              color: '#d4af37',
+              border: '1px solid rgba(212, 175, 55, 0.25)',
+              borderRadius: '99px',
+              padding: '8px 18px',
+              fontWeight: 700,
+              fontSize: '13px',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              marginRight: '8px'
+            }}
+          >
+            ➕ Manual Booking Desk
+          </button>
           <button
             onClick={() => setActiveTab('calendar')}
             style={{

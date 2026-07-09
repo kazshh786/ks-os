@@ -516,6 +516,9 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
           <button className={styles.navButton} onClick={() => changeWeek(-1)}>Previous Week</button>
           <button className={styles.todayButton} onClick={() => setSelectedDate(new Date())}>Today</button>
           <button className={styles.navButton} onClick={() => changeWeek(1)}>Next Week</button>
+          <button className={styles.todayButton} onClick={() => window.location.href = '/book-manual'}>
+            ➕ Manual Book Desk
+          </button>
 
           <Dialog.Root open={isBlockOpen} onOpenChange={setIsBlockOpen}>
             <Dialog.Trigger asChild>
