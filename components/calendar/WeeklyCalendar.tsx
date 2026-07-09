@@ -42,6 +42,16 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
   const [blockResource, setBlockResource] = useState('');
   const [isSavingBlock, setIsSavingBlock] = useState(false);
 
+  // Unified Calendar Booking options
+  const [bookingType, setBookingType] = useState<'BLOCKED' | 'CLIENT'>('BLOCKED');
+  const [blockServiceId, setBlockServiceId] = useState('');
+  const [blockClientId, setBlockClientId] = useState<string | null>(null);
+  const [blockClientName, setBlockClientName] = useState('');
+  const [blockClientEmail, setBlockClientEmail] = useState('');
+  const [blockClientPhone, setBlockClientPhone] = useState('');
+  const [blockClientSearch, setBlockClientSearch] = useState('');
+  const [blockClientResults, setBlockClientResults] = useState<any[]>([]);
+
   // Group Bookings states
   const [isGroupBooking, setIsGroupBooking] = useState(false);
   const [groupGuests, setGroupGuests] = useState('');
@@ -69,6 +79,17 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
   // Drag and Drop highlights
   const [dragOverDayIdx, setDragOverDayIdx] = useState<number | null>(null);
 
+  // Drag to Resize State
+  const [resizingAppt, setResizingAppt] = useState<{
+    apptId: string;
+    edge: 'TOP' | 'BOTTOM';
+    initialY: number;
+    initialStart: string;
+    initialEnd: string;
+    currentStart: string;
+    currentEnd: string;
+  } | null>(null);
+
   // Hour limits for the salon day
   const startHour = 8; // 8:00 AM
   const endHour = 20;  // 8:00 PM
@@ -86,6 +107,84 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
     };
     loadResources();
   }, [tenantId]);
+
+  // Client Autocomplete lookup
+  useEffect(() => {
+    if (blockClientSearch.trim() === '') {
+      setBlockClientResults([]);
+      return;
+    }
+    const searchClients = async () => {
+      const { data } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .ilike('name', `%${blockClientSearch}%`)
+        .limit(5);
+      setBlockClientResults(data || []);
+    };
+    const delayDebounce = setTimeout(searchClients, 300);
+    return () => clearTimeout(delayDebounce);
+  }, [blockClientSearch, tenantId]);
+
+  // Document Mousemove and Mouseup for Drag-to-Resize
+  useEffect(() => {
+    if (!resizingAppt) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaY = e.clientY - resizingAppt.initialY;
+      const deltaMins = Math.round(((deltaY / hourHeight) * 60) / 15) * 15;
+
+      const startObj = new Date(resizingAppt.initialStart);
+      const endObj = new Date(resizingAppt.initialEnd);
+
+      if (resizingAppt.edge === 'TOP') {
+        const nextStart = new Date(startObj.getTime() + deltaMins * 60000);
+        if (nextStart.getTime() < endObj.getTime() - 900000) { // minimum 15 mins
+          setResizingAppt((prev) => prev ? { ...prev, currentStart: nextStart.toISOString() } : null);
+        }
+      } else {
+        const nextEnd = new Date(endObj.getTime() + deltaMins * 60000);
+        if (nextEnd.getTime() > startObj.getTime() + 900000) { // minimum 15 mins
+          setResizingAppt((prev) => prev ? { ...prev, currentEnd: nextEnd.toISOString() } : null);
+        }
+      }
+    };
+
+    const handleMouseUp = async () => {
+      const { apptId, currentStart, currentEnd } = resizingAppt;
+      setResizingAppt(null);
+
+      // check conflict
+      const appt = appointments.find((a) => a.id === apptId);
+      if (!appt) return;
+      const { resource } = parseNotes(appt.notes);
+
+      if (resource && hasResourceConflict(resource, currentStart, currentEnd, apptId)) {
+        alert(`Resource Conflict: ${resource} is busy during the resized slot.`);
+        return;
+      }
+
+      const { error: updErr } = await supabase
+        .from('appointments')
+        .update({
+          start_time: currentStart,
+          end_time: currentEnd
+        })
+        .eq('id', apptId);
+
+      if (updErr) {
+        alert('Failed resizing slot: ' + updErr.message);
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingAppt, appointments]);
 
   const getStartOfWeek = (date: Date) => {
     const d = new Date(date);
@@ -243,6 +342,55 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
     }
   };
 
+  // Click-to-Book Grid columns
+  const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, date: Date) => {
+    if (e.target !== e.currentTarget) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+
+    const totalMinutes = Math.round(((offsetY / hourHeight) * 60) / 15) * 15;
+    const clickHour = startHour + Math.floor(totalMinutes / 60);
+    const clickMin = totalMinutes % 60;
+
+    const targetStart = new Date(date);
+    targetStart.setHours(clickHour, clickMin, 0, 0);
+
+    const targetEnd = new Date(targetStart);
+    targetEnd.setMinutes(targetStart.getMinutes() + 60); // default 60 min
+
+    if (staffMembers.length > 0) setBlockStaffId(staffMembers[0].id);
+    
+    setBlockDate(targetStart.toISOString().split('T')[0]);
+    setBlockStart(targetStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+    setBlockEnd(targetEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+    
+    setBookingType('CLIENT'); // default click to book client!
+    setBlockClientSearch('');
+    setBlockClientName('');
+    setBlockClientEmail('');
+    setBlockClientPhone('');
+    setBlockClientId(null);
+    setBlockServiceId(services.length > 0 ? services[0].id : '');
+
+    setIsBlockOpen(true);
+  };
+
+  const handleResizeStart = (e: React.MouseEvent, appt: Appointment, edge: 'TOP' | 'BOTTOM') => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    setResizingAppt({
+      apptId: appt.id,
+      edge,
+      initialY: e.clientY,
+      initialStart: appt.startTime,
+      initialEnd: appt.endTime,
+      currentStart: appt.startTime,
+      currentEnd: appt.endTime
+    });
+  };
+
   // Open Edit Appointment Form
   const handleOpenEdit = (appt: Appointment) => {
     setActiveAppointment(appt);
@@ -333,37 +481,84 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
 
       const finalBlockNotes = formatNotes(blockResource, blockReason || 'Busy block');
 
-      if (isGroupBooking && groupGuests.trim() !== '') {
-        // Group booking: Create multiple concurrent slot blocks
-        const guests = groupGuests.split(',').map((g) => g.trim());
-        const bookingPromises = guests.map((guestName) => {
-          return supabase.from('appointments').insert({
-            tenant_id: tenantId,
-            user_id: blockStaffId,
-            start_time: startDateTime.toISOString(),
-            end_time: endDateTime.toISOString(),
-            status: 'CONFIRMED',
-            client_name: guestName,
-            notes: `[Group Appointment w/ ${guests.join(', ')}] ${finalBlockNotes}`
-          });
-        });
+      if (bookingType === 'CLIENT') {
+        // Register Client lookup or create new client profile
+        let finalClientId = blockClientId;
+        if (!finalClientId) {
+          if (!blockClientName) throw new Error('Client name is required.');
+          const { data: existing } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .eq('email', blockClientEmail.trim().toLowerCase())
+            .maybeSingle();
 
-        await Promise.all(bookingPromises);
-      } else {
-        // Single Busy block
+          if (existing) {
+            finalClientId = existing.id;
+          } else {
+            const { data: newCl, error: clErr } = await supabase
+              .from('clients')
+              .insert({
+                tenant_id: tenantId,
+                name: blockClientName,
+                email: blockClientEmail.trim().toLowerCase() || null,
+                phone: blockClientPhone || null
+              })
+              .select('id')
+              .single();
+
+            if (clErr) throw clErr;
+            finalClientId = newCl.id;
+          }
+        }
+
         const { error: insertErr } = await supabase
           .from('appointments')
           .insert({
             tenant_id: tenantId,
             user_id: blockStaffId,
+            client_id: finalClientId,
+            client_name: blockClientName,
+            service_id: blockServiceId || null,
             start_time: startDateTime.toISOString(),
             end_time: endDateTime.toISOString(),
-            status: 'BLOCKED',
-            client_name: 'Blocked Time',
+            status: 'CONFIRMED',
             notes: finalBlockNotes
           });
 
         if (insertErr) throw insertErr;
+      } else {
+        // Group Bookings or normal Busy block
+        if (isGroupBooking && groupGuests.trim() !== '') {
+          const guests = groupGuests.split(',').map((g) => g.trim());
+          const bookingPromises = guests.map((guestName) => {
+            return supabase.from('appointments').insert({
+              tenant_id: tenantId,
+              user_id: blockStaffId,
+              start_time: startDateTime.toISOString(),
+              end_time: endDateTime.toISOString(),
+              status: 'CONFIRMED',
+              client_name: guestName,
+              notes: `[Group Appointment w/ ${guests.join(', ')}] ${finalBlockNotes}`
+            });
+          });
+
+          await Promise.all(bookingPromises);
+        } else {
+          const { error: insertErr } = await supabase
+            .from('appointments')
+            .insert({
+              tenant_id: tenantId,
+              user_id: blockStaffId,
+              start_time: startDateTime.toISOString(),
+              end_time: endDateTime.toISOString(),
+              status: 'BLOCKED',
+              client_name: 'Blocked Time',
+              notes: finalBlockNotes
+            });
+
+          if (insertErr) throw insertErr;
+        }
       }
 
       setBlockReason('');
@@ -381,7 +576,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
   // Waitlist Scanner
   const scanWaitlist = async (apptId: string, serviceId: string, startTime: string) => {
     try {
-      // Find waitlisted clients seeking the cancelled service
       const { data: waitlisted } = await supabase
         .from('waitlist')
         .select('*, clients(name, email), services(name)')
@@ -408,7 +602,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
   const handleFillWaitlistSlot = async () => {
     if (!waitlistAlert || !activeAppointment) return;
     try {
-      // Fetch details of waitlisted client
       const { data: wl } = await supabase
         .from('waitlist')
         .select('client_id, staff_id')
@@ -417,7 +610,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
 
       if (!wl) return;
 
-      // Update the cancelled appointment card to the waitlist client details
       await supabase
         .from('appointments')
         .update({
@@ -428,7 +620,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
         })
         .eq('id', activeAppointment.id);
 
-      // Update waitlist entry to FILLED
       await supabase
         .from('waitlist')
         .update({ status: 'FILLED' })
@@ -448,7 +639,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
     setCrmDrawerOpen(true);
     
     try {
-      // 1. Client profile information
       const { data: client } = await supabase
         .from('clients')
         .select('*')
@@ -457,7 +647,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
       setCrmClientInfo(client);
       setCrmFormulaNotes(client?.medical_notes || '');
 
-      // 2. Client visit history (last 3 visits)
       const { data: pastVisits } = await supabase
         .from('appointments')
         .select('*, services(name)')
@@ -466,7 +655,6 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
         .limit(3);
       setCrmClientHistory(pastVisits || []);
 
-      // 3. Active packages / loyalty wallets
       const { data: wallet } = await supabase
         .from('client_wallets')
         .select('*')
@@ -526,6 +714,7 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
                 onClick={() => {
                   if (staffMembers.length > 0) setBlockStaffId(staffMembers[0].id);
                   setBlockDate(new Date().toISOString().split('T')[0]);
+                  setBookingType('BLOCKED');
                 }}
                 className={styles.blockBtn}
               >
@@ -534,11 +723,137 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
             </Dialog.Trigger>
             <Dialog.Portal>
               <Dialog.Overlay className={styles.modalOverlay} />
-              <Dialog.Content className={styles.modalContent}>
-                <Dialog.Title className={styles.modalTitle}>Allocate Stylist Hours</Dialog.Title>
-                <p className={styles.modalDesc}>Set up blocks for lunch breaks or reserve slots for group bookings.</p>
+              <Dialog.Content className={styles.modalContent} style={{ overflowY: 'auto' }}>
+                <Dialog.Title className={styles.modalTitle}>Internal Studio Scheduler</Dialog.Title>
+                <p className={styles.modalDesc}>Quickly reserve salon capacity or book clients manually.</p>
                 
                 <form onSubmit={handleSaveBlock} className={styles.blockForm}>
+                  
+                  {/* Selector of Booking Type */}
+                  <div className={styles.formGroup}>
+                    <label>Action Mode:</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setBookingType('CLIENT')}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          background: bookingType === 'CLIENT' ? 'var(--accent-color, #d4af37)' : 'rgba(255,255,255,0.03)',
+                          color: bookingType === 'CLIENT' ? '#1e1400' : '#ffffff',
+                          border: '1px solid rgba(255,255,255,0.05)',
+                          borderRadius: '8px',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Client Booking
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBookingType('BLOCKED')}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          background: bookingType === 'BLOCKED' ? 'var(--accent-color, #d4af37)' : 'rgba(255,255,255,0.03)',
+                          color: bookingType === 'BLOCKED' ? '#1e1400' : '#ffffff',
+                          border: '1px solid rgba(255,255,255,0.05)',
+                          borderRadius: '8px',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🔒 Busy Block
+                      </button>
+                    </div>
+                  </div>
+
+                  {bookingType === 'CLIENT' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', background: 'rgba(0,0,0,0.2)' }}>
+                      <div className={styles.formGroup} style={{ position: 'relative' }}>
+                        <label>Search Client Directory:</label>
+                        <input
+                          type="text"
+                          placeholder="Search directory..."
+                          className={styles.formInput}
+                          value={blockClientSearch}
+                          onChange={(e) => setBlockClientSearch(e.target.value)}
+                        />
+                        {blockClientResults.length > 0 && (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#0b101d', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', zIndex: 10, overflow: 'hidden' }}>
+                            {blockClientResults.map((cl) => (
+                              <button
+                                key={cl.id}
+                                type="button"
+                                onClick={() => {
+                                  setBlockClientId(cl.id);
+                                  setBlockClientName(cl.name);
+                                  setBlockClientEmail(cl.email || '');
+                                  setBlockClientPhone(cl.phone || '');
+                                  setBlockClientResults([]);
+                                  setBlockClientSearch('');
+                                }}
+                                style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '8px 12px', color: '#fff', textAlign: 'left', cursor: 'pointer' }}
+                              >
+                                <strong>{cl.name}</strong> - {cl.email || 'No email'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className={styles.formGroup}>
+                        <label>Client Name: *</label>
+                        <input
+                          type="text"
+                          required
+                          className={styles.formInput}
+                          placeholder="Jane Doe"
+                          value={blockClientName}
+                          onChange={(e) => { setBlockClientName(e.target.value); setBlockClientId(null); }}
+                        />
+                      </div>
+
+                      <div className={styles.formRow}>
+                        <div className={styles.formGroup}>
+                          <label>Email:</label>
+                          <input
+                            type="email"
+                            className={styles.formInput}
+                            placeholder="jane@gmail.com"
+                            value={blockClientEmail}
+                            onChange={(e) => { setBlockClientEmail(e.target.value); setBlockClientId(null); }}
+                          />
+                        </div>
+                        <div className={styles.formGroup}>
+                          <label>Phone:</label>
+                          <input
+                            type="tel"
+                            className={styles.formInput}
+                            placeholder="+4477..."
+                            value={blockClientPhone}
+                            onChange={(e) => { setBlockClientPhone(e.target.value); setBlockClientId(null); }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className={styles.formGroup}>
+                        <label>Service Treatment: *</label>
+                        <select
+                          className={styles.formSelect}
+                          value={blockServiceId}
+                          onChange={(e) => setBlockServiceId(e.target.value)}
+                          required
+                        >
+                          <option value="">-- Select Service --</option>
+                          {services.map((s) => (
+                            <option key={s.id} value={s.id}>{s.name} (${(s.price / 100).toFixed(2)})</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
                   <div className={styles.formGroup}>
                     <label>Select Stylist:</label>
                     <select 
@@ -603,28 +918,30 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
                   </div>
 
                   {/* Group Booking Section */}
-                  <div className={styles.formGroup}>
-                    <div className={{ display: 'flex', alignItems: 'center', gap: '8px' } as any}>
-                      <input
-                        type="checkbox"
-                        id="group-toggle"
-                        checked={isGroupBooking}
-                        onChange={(e) => setIsGroupBooking(e.target.checked)}
-                      />
-                      <label htmlFor="group-toggle" style={{ fontWeight: 800, cursor: 'pointer' }}>Group Appointment (Multiple Guests)</label>
+                  {bookingType === 'BLOCKED' && (
+                    <div className={styles.formGroup}>
+                      <div className={{ display: 'flex', alignItems: 'center', gap: '8px' } as any}>
+                        <input
+                          type="checkbox"
+                          id="group-toggle"
+                          checked={isGroupBooking}
+                          onChange={(e) => setIsGroupBooking(e.target.checked)}
+                        />
+                        <label htmlFor="group-toggle" style={{ fontWeight: 800, cursor: 'pointer' }}>Group Appointment (Multiple Guests)</label>
+                      </div>
+                      {isGroupBooking && (
+                        <input
+                          type="text"
+                          placeholder="Guest names separated by commas (e.g. Alice, Bob, Charlie)"
+                          value={groupGuests}
+                          onChange={(e) => setGroupGuests(e.target.value)}
+                          className={styles.formInput}
+                          style={{ marginTop: '6px' }}
+                          required
+                        />
+                      )}
                     </div>
-                    {isGroupBooking && (
-                      <input
-                        type="text"
-                        placeholder="Guest names separated by commas (e.g. Alice, Bob, Charlie)"
-                        value={groupGuests}
-                        onChange={(e) => setGroupGuests(e.target.value)}
-                        className={styles.formInput}
-                        style={{ marginTop: '6px' }}
-                        required
-                      />
-                    )}
-                  </div>
+                  )}
 
                   <div className={styles.formGroup}>
                     <label>Notes / Reason:</label>
@@ -639,7 +956,7 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
 
                   <div className={styles.modalActions}>
                     <button type="submit" className={styles.saveBtn} disabled={isSavingBlock}>
-                      {isSavingBlock ? 'Saving...' : 'Save Block'}
+                      {isSavingBlock ? 'Saving...' : 'Save booking'}
                     </button>
                     <Dialog.Close asChild>
                       <button type="button" className={styles.cancelBtn}>Cancel</button>
@@ -695,9 +1012,14 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
                       onDragOver={(e) => handleDragOver(e, colIdx)}
                       onDragLeave={handleDragLeave}
                       onDrop={(e) => handleDrop(e, date)}
+                      onClick={(e) => handleColumnClick(e, date)}
                     >
                       {dayAppointments.map((appt) => {
-                        const stylePos = getAppointmentPosition(appt.startTime, appt.endTime);
+                        let stylePos = getAppointmentPosition(appt.startTime, appt.endTime);
+                        if (resizingAppt && resizingAppt.apptId === appt.id) {
+                          stylePos = getAppointmentPosition(resizingAppt.currentStart, resizingAppt.currentEnd);
+                        }
+
                         const assignedStaff = staffMembers.find((s) => s.id === appt.userId)?.name || 'Unassigned';
                         
                         const isBlocked = appt.status === 'BLOCKED';
@@ -708,18 +1030,28 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
                           ? `🔒 Busy: ${actualNotes || 'Time Blocked'}` 
                           : (appt.clientName || 'Client');
 
+                        const isCurrentlyResizing = resizingAppt && resizingAppt.apptId === appt.id;
+
                         return (
                           <Dialog.Root key={appt.id} open={activeAppointment?.id === appt.id} onOpenChange={(open) => { if (!open) setActiveAppointment(null); }}>
                             <Tooltip.Root>
                               <Tooltip.Trigger asChild>
                                 <Dialog.Trigger asChild>
                                   <button
-                                    draggable={appt.status !== 'COMPLETED' && appt.status !== 'CANCELLED'}
+                                    draggable={appt.status !== 'COMPLETED' && appt.status !== 'CANCELLED' && !isCurrentlyResizing}
                                     onDragStart={(e) => handleDragStart(e, appt.id)}
                                     className={`${styles.appointmentCard} ${isBlocked ? styles.blocked : styles[appt.status.toLowerCase()]}`}
-                                    style={stylePos}
+                                    style={{ ...stylePos, position: 'absolute' }}
                                     onClick={() => handleOpenEdit(appt)}
                                   >
+                                    {/* Google Calendar style resize handles */}
+                                    {appt.status !== 'COMPLETED' && appt.status !== 'CANCELLED' && (
+                                      <>
+                                        <div className={styles.topResizeHandle} onMouseDown={(e) => handleResizeStart(e, appt, 'TOP')} />
+                                        <div className={styles.bottomResizeHandle} onMouseDown={(e) => handleResizeStart(e, appt, 'BOTTOM')} />
+                                      </>
+                                    )}
+
                                     <div className={styles.cardTimeText}>
                                       {new Date(appt.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </div>

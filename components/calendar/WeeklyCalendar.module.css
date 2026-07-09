@@ -641,3 +641,46 @@
   line-height: 1.4;
   margin-bottom: 12px;
 }
+
+.topResizeHandle, .bottomResizeHandle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+  z-index: 10;
+}
+
+.topResizeHandle {
+  top: 0;
+}
+
+.bottomResizeHandle {
+  bottom: 0;
+}
+
+.topResizeHandle::after, .bottomResizeHandle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 99px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.topResizeHandle:hover::after, .bottomResizeHandle:hover::after {
+  opacity: 1;
+}
+
+.topResizeHandle::after {
+  top: 3px;
+}
+
+.bottomResizeHandle::after {
+  bottom: 3px;
+}
+
