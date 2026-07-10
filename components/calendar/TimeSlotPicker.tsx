@@ -9,6 +9,7 @@ interface Service {
   name: string;
   duration: number; // in minutes
   price: number; // in cents
+  discount?: number; // in cents
 }
 
 interface Staff {
@@ -182,7 +183,8 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
           // Apply staff-specific duration and pricing overrides
           const staffOverride = staffPricingRules.find((p) => p.user_id === staffId);
           const serviceDuration = staffOverride ? staffOverride.custom_duration_minutes : selectedService.duration;
-          const servicePrice = staffOverride ? staffOverride.custom_price_in_cents : selectedService.price;
+          const basePrice = staffOverride ? staffOverride.custom_price_in_cents : selectedService.price;
+          const servicePrice = Math.max(0, basePrice - (selectedService.discount || 0));
 
           const [startH, startM] = schedule.start_time.split(':').map(Number);
           const [endH, endM] = schedule.end_time.split(':').map(Number);
@@ -490,11 +492,15 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
           onChange={(e) => setSelectedServiceId(e.target.value)}
         >
           <option value="">-- Click to choose service --</option>
-          {services.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name} ({s.duration} min) - ${(s.price / 100).toFixed(2)}
-            </option>
-          ))}
+          {services.map((s) => {
+            const hasDiscount = s.discount && s.discount > 0;
+            const finalPrice = hasDiscount ? Math.max(0, s.price - s.discount) : s.price;
+            return (
+              <option key={s.id} value={s.id}>
+                {s.name} ({s.duration} min) - {hasDiscount ? `Discounted: $${(finalPrice / 100).toFixed(2)} (Was $${(s.price / 100).toFixed(2)})` : `$${(s.price / 100).toFixed(2)}`}
+              </option>
+            );
+          })}
         </select>
       </div>
 

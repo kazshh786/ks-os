@@ -245,7 +245,7 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
   // Helper to extract resource name and actual notes from formatted notes string
   const parseNotes = (notesStr: string | null) => {
     if (!notesStr) return { resource: '', actualNotes: '' };
-    const match = notesStr.match(/^\[Resource:\s*([^\]]+)\]\s*(.*)$/s);
+    const match = notesStr.match(/^\[Resource:\s*([^\]]+)\]\s*([\s\S]*)$/);
     if (match) {
       return { resource: match[1], actualNotes: match[2] };
     }

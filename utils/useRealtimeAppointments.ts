@@ -11,9 +11,11 @@ export interface Appointment {
   serviceId: string;
   startTime: string; // ISO String
   endTime: string; // ISO String
-  status: 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+  status: 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW' | 'BLOCKED';
   createdAt: string;
   updatedAt: string;
+  notes?: string;
+  clientId?: string;
 }
 
 /**

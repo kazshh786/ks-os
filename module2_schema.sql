@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS "services" (
     "description" text,
     "duration" integer NOT NULL, -- in minutes
     "price" integer NOT NULL, -- in cents (e.g. $50.00 is stored as 5000)
+    "discount" integer DEFAULT 0 NOT NULL,
     "requires_deposit" boolean DEFAULT false NOT NULL,
     "is_active" boolean DEFAULT true NOT NULL,
     "created_at" timestamp DEFAULT now() NOT NULL,

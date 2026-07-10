@@ -32,7 +32,23 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   const subdomain = resolvedParams.subdomain;
   const router = useRouter();
   
-  // Local states
+  // Auth and Login States
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  
+  // Password change states
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordChangeError, setPasswordChangeError] = useState<string | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordChangeSuccess, setPasswordChangeSuccess] = useState(false);
+
+  // Workspace settings tab and metadata
   const [activeTab, setActiveTab] = useState<'calendar' | 'booking' | 'crm' | 'manage'>('calendar');
   const [tenantId, setTenantId] = useState<string>('00000000-0000-0000-0000-000000000000');
   const [tenantName, setTenantName] = useState<string>('');
@@ -46,12 +62,21 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   // Tenant-specific Analytics State
   const [totalSales, setTotalSales] = useState(0);
   const [salesCount, setSalesCount] = useState(0);
+  const [conversionRate, setConversionRate] = useState(0);
   const [staffRevenues, setStaffRevenues] = useState<StaffRevenue[]>([]);
 
-  // Studio Forms States
+  // Service Inline Editing State
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [editServiceName, setEditServiceName] = useState('');
+  const [editServicePrice, setEditServicePrice] = useState('');
+  const [editServiceDuration, setEditServiceDuration] = useState('30');
+  const [editServiceDiscount, setEditServiceDiscount] = useState('0');
+
+  // Studio Forms States (Adding service / staff)
   const [newServiceName, setNewServiceName] = useState('');
   const [newServicePrice, setNewServicePrice] = useState('');
   const [newServiceDuration, setNewServiceDuration] = useState('30');
+  const [newServiceDiscount, setNewServiceDiscount] = useState('0');
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffEmail, setNewStaffEmail] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -63,50 +88,84 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   // Active client selected for CRM view
   const [selectedClientId, setSelectedClientId] = useState<string>('99999999-9999-9999-9999-999999999999');
 
+  // Check auth session on load
+  const checkAuthSession = async () => {
+    try {
+      setCheckingAuth(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Fetch current tenant configuration to match
+        const { data: tenant, error: tErr } = await supabase
+          .from('tenants')
+          .select('id, name, custom_domain')
+          .eq('subdomain', subdomain.toLowerCase())
+          .single();
+
+        if (tErr || !tenant) {
+          setCurrentUser(null);
+          return;
+        }
+
+        // Validate user is owner of this tenant
+        const { data: profile, error: pErr } = await supabase
+          .from('users')
+          .select('id, role, tenant_id, permissions')
+          .eq('id', user.id)
+          .single();
+
+        if (pErr || !profile || profile.role !== 'owner' || profile.tenant_id !== tenant.id) {
+          await supabase.auth.signOut();
+          setCurrentUser(null);
+        } else {
+          setCurrentUser(user);
+          setTenantId(tenant.id);
+          setTenantName(tenant.name);
+          setCustomDomain(tenant.custom_domain);
+          if (profile.permissions?.requires_password_change === true) {
+            setMustChangePassword(true);
+          }
+        }
+      } else {
+        setCurrentUser(null);
+      }
+    } catch (err) {
+      console.error('Session validation error:', err);
+    } finally {
+      setCheckingAuth(false);
+    }
+  };
+
+  useEffect(() => {
+    checkAuthSession();
+  }, [subdomain]);
+
   const loadWorkspaceData = async () => {
+    if (!currentUser) return;
     try {
       setLoading(true);
-      // 1. Resolve tenant details
-      const { data: tenant, error: tErr } = await supabase
-        .from('tenants')
-        .select('id, name, custom_domain')
-        .eq('subdomain', subdomain.toLowerCase())
-        .single();
-
-      if (tErr || !tenant) {
-        console.warn('Subdomain not provisioned, running in mock workspace fallback.');
-        setServices(MOCK_SERVICES);
-        setStaff(MOCK_STAFF);
-        setTenantName(subdomain);
-        return;
-      }
-
-      setTenantId(tenant.id);
-      setTenantName(tenant.name);
-      setCustomDomain(tenant.custom_domain);
-
-      // 2. Fetch services
+      
+      // 1. Fetch services (including discount)
       const { data: svcData } = await supabase
         .from('services')
-        .select('id, name, price, duration')
-        .eq('tenant_id', tenant.id);
+        .select('id, name, price, duration, discount')
+        .eq('tenant_id', tenantId);
       
-      // 3. Fetch staff
+      // 2. Fetch staff
       const { data: staffData } = await supabase
         .from('users')
         .select('id, name, email')
-        .eq('tenant_id', tenant.id);
+        .eq('tenant_id', tenantId);
 
       const activeSvcList = svcData && svcData.length > 0 ? svcData : MOCK_SERVICES;
       const activeStaffList = staffData && staffData.length > 0 ? staffData : MOCK_STAFF;
       setServices(activeSvcList);
       setStaff(activeStaffList);
 
-      // 4. Fetch local checkout transactions for local analytics calculations
+      // 3. Fetch local checkout transactions for analytics calculations
       const { data: transactions } = await supabase
         .from('checkout_transactions')
         .select('total_amount, appointments(user_id)')
-        .eq('tenant_id', tenant.id);
+        .eq('tenant_id', tenantId);
 
       if (transactions && transactions.length > 0) {
         let total = 0;
@@ -144,6 +203,21 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
         setStaffRevenues([]);
       }
 
+      // 4. Fetch appointments to calculate booked-to-sold conversion rates
+      const { data: apptData } = await supabase
+        .from('appointments')
+        .select('id, status')
+        .eq('tenant_id', tenantId);
+
+      if (apptData && apptData.length > 0) {
+        const total = apptData.length;
+        const sold = apptData.filter((a: any) => a.status === 'COMPLETED').length;
+        const rate = Math.round((sold / total) * 100);
+        setConversionRate(rate);
+      } else {
+        setConversionRate(0);
+      }
+
     } catch (err) {
       console.error('Failed to load workspace parameters:', err);
       setServices(MOCK_SERVICES);
@@ -154,9 +228,131 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   };
 
   useEffect(() => {
-    loadWorkspaceData();
-  }, [subdomain]);
+    if (currentUser && tenantId !== '00000000-0000-0000-0000-000000000000') {
+      loadWorkspaceData();
+    }
+  }, [currentUser, tenantId]);
 
+  // Login handler
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setIsLoggingIn(true);
+
+    try {
+      const { data: tenant, error: tErr } = await supabase
+        .from('tenants')
+        .select('id, name, custom_domain')
+        .eq('subdomain', subdomain.toLowerCase())
+        .single();
+
+      if (tErr || !tenant) {
+        throw new Error('Tenant workspace not found.');
+      }
+
+      const { data: authData, error: loginErr } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword
+      });
+
+      if (loginErr) throw loginErr;
+      if (!authData.user) throw new Error('Could not retrieve authenticated user details.');
+
+      // Check role
+      const { data: profile, error: pErr } = await supabase
+        .from('users')
+        .select('id, role, tenant_id, permissions')
+        .eq('id', authData.user.id)
+        .single();
+
+      if (pErr || !profile) {
+        await supabase.auth.signOut();
+        throw new Error('Owner profile details not found in database.');
+      }
+
+      if (profile.role !== 'owner' || profile.tenant_id !== tenant.id) {
+        await supabase.auth.signOut();
+        throw new Error('Access denied: You do not have owner administrative rights for this workspace.');
+      }
+
+      setTenantId(tenant.id);
+      setTenantName(tenant.name);
+      setCustomDomain(tenant.custom_domain);
+      setCurrentUser(authData.user);
+      
+      if (profile.permissions?.requires_password_change === true) {
+        setMustChangePassword(true);
+      }
+    } catch (err: any) {
+      setAuthError(err.message || 'Login credentials invalid.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // Logout handler
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setMustChangePassword(false);
+    setTenantId('00000000-0000-0000-0000-000000000000');
+    setActiveTab('calendar');
+  };
+
+  // Change password handler (handles both forced and manual resets)
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordChangeError(null);
+    setPasswordChangeSuccess(false);
+    setIsChangingPassword(true);
+
+    if (newPassword !== confirmNewPassword) {
+      setPasswordChangeError('Passwords do not match.');
+      setIsChangingPassword(false);
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordChangeError('Password must be at least 8 characters long.');
+      setIsChangingPassword(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+
+      // Update public.users database metadata flag
+      if (currentUser) {
+        const { error: dbErr } = await supabase
+          .from('users')
+          .update({
+            permissions: { requires_password_change: false }
+          })
+          .eq('id', currentUser.id);
+        
+        if (dbErr) console.warn('Could not clear force password flag in profile:', dbErr.message);
+      }
+
+      setPasswordChangeSuccess(true);
+      setNewPassword('');
+      setConfirmNewPassword('');
+      
+      if (mustChangePassword) {
+        setMustChangePassword(false);
+        alert('Password successfully updated! Redirecting to workspace...');
+        await loadWorkspaceData();
+      } else {
+        alert('Password updated successfully!');
+      }
+    } catch (err: any) {
+      setPasswordChangeError(err.message || 'Failed to update password.');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  // Create new service
   const handleAddService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (tenantId === '00000000-0000-0000-0000-000000000000') {
@@ -167,7 +363,11 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
 
     try {
       const priceCents = Math.round(parseFloat(newServicePrice) * 100);
+      const discountCents = Math.round(parseFloat(newServiceDiscount || '0') * 100);
+
       if (isNaN(priceCents) || priceCents <= 0) throw new Error('Specify a valid price.');
+      if (isNaN(discountCents) || discountCents < 0) throw new Error('Specify a valid discount.');
+      if (discountCents > priceCents) throw new Error('Discount cannot exceed the service price.');
 
       const { data, error } = await supabase
         .from('services')
@@ -177,6 +377,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
           description: 'Custom service added by Studio Owner.',
           duration: parseInt(newServiceDuration, 10),
           price: priceCents,
+          discount: discountCents,
           is_active: true
         })
         .select()
@@ -186,12 +387,73 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
       setServices((prev) => [...prev, data]);
       setNewServiceName('');
       setNewServicePrice('');
+      setNewServiceDiscount('0');
       alert('New service added successfully!');
     } catch (err: any) {
       alert(err.message || 'Failed to add service.');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // Update existing service
+  const handleUpdateService = async (serviceId: string) => {
+    setIsSaving(true);
+    try {
+      const priceCents = Math.round(parseFloat(editServicePrice) * 100);
+      const discountCents = Math.round(parseFloat(editServiceDiscount) * 100);
+
+      if (isNaN(priceCents) || priceCents <= 0) throw new Error('Specify a valid price.');
+      if (isNaN(discountCents) || discountCents < 0) throw new Error('Specify a valid discount.');
+      if (discountCents > priceCents) throw new Error('Discount cannot exceed the service price.');
+
+      const { data, error } = await supabase
+        .from('services')
+        .update({
+          name: editServiceName,
+          price: priceCents,
+          duration: parseInt(editServiceDuration, 10),
+          discount: discountCents
+        })
+        .eq('id', serviceId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      setServices((prev) => prev.map((s) => (s.id === serviceId ? data : s)));
+      setEditingServiceId(null);
+      alert('Service catalog item updated successfully!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to update service.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Delete service
+  const handleDeleteService = async (serviceId: string) => {
+    if (!confirm('Are you sure you want to permanently remove this service from the catalog?')) return;
+    try {
+      const { error } = await supabase
+        .from('services')
+        .delete()
+        .eq('id', serviceId);
+
+      if (error) throw error;
+      setServices((prev) => prev.filter((s) => s.id !== serviceId));
+      alert('Service deleted successfully.');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete service.');
+    }
+  };
+
+  const handleStartEditService = (s: any) => {
+    setEditingServiceId(s.id);
+    setEditServiceName(s.name);
+    setEditServicePrice((s.price / 100).toString());
+    setEditServiceDuration(s.duration.toString());
+    setEditServiceDiscount((s.discount / 100).toString());
   };
 
   const handleAddStaff = async (e: React.FormEvent) => {
@@ -246,9 +508,132 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
     : (typeof window !== 'undefined' ? window.location.host : `${subdomain}.kasimshah.com`);
   const iframeEmbedCode = `<iframe src="https://${embedUrl}/book" width="100%" height="700px" style="border:none; border-radius:12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"></iframe>`;
 
+  // UI GATE A: Checking session loading state
+  if (checkingAuth) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090d16', color: '#94a3b8', fontSize: '14px', fontWeight: 700 }}>
+        Resolving owner credentials and workspace settings...
+      </div>
+    );
+  }
+
+  // UI GATE B: Login Screen
+  if (!currentUser) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090d16', fontFamily: 'sans-serif', padding: '16px', boxSizing: 'border-box' }}>
+        <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <span style={{ fontSize: '40px' }}>🔒</span>
+            <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#ffffff', margin: '12px 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              {subdomain.toUpperCase()} Workspace
+            </h2>
+            <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>Sign in to access your administrative control panel.</p>
+          </div>
+
+          {authError && (
+            <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444', borderRadius: '8px', padding: '12px', fontSize: '12px', marginBottom: '16px', fontWeight: 600 }}>
+              ⚠️ {authError}
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label htmlFor="loginEmail" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Email Address</label>
+              <input
+                id="loginEmail"
+                type="email"
+                required
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                placeholder="owner@yourstudio.com"
+                style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label htmlFor="loginPassword" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Password</label>
+              <input
+                id="loginPassword"
+                type="password"
+                required
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="••••••••"
+                style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '12px', fontWeight: 800, cursor: 'pointer', fontSize: '13px', marginTop: '8px', boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)' }}
+            >
+              {isLoggingIn ? 'Authenticating...' : 'Sign In'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // UI GATE C: Force Password Reset view (for requires_password_change = true)
+  if (mustChangePassword) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090d16', fontFamily: 'sans-serif', padding: '16px', boxSizing: 'border-box' }}>
+        <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <span style={{ fontSize: '40px' }}>🔑</span>
+            <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#ffffff', margin: '12px 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Set New Password
+            </h2>
+            <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>For security, please change the temporary password provided by your agency admin.</p>
+          </div>
+
+          {passwordChangeError && (
+            <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444', borderRadius: '8px', padding: '12px', fontSize: '12px', marginBottom: '16px', fontWeight: 600 }}>
+              ⚠️ {passwordChangeError}
+            </div>
+          )}
+
+          <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label htmlFor="newPassword" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>New Password</label>
+              <input
+                id="newPassword"
+                type="password"
+                required
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Min. 8 characters"
+                style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label htmlFor="confirmNewPassword" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Confirm Password</label>
+              <input
+                id="confirmNewPassword"
+                type="password"
+                required
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                placeholder="Confirm password"
+                style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isChangingPassword}
+              style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '12px', fontWeight: 800, cursor: 'pointer', fontSize: '13px', marginTop: '8px', boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)' }}
+            >
+              {isChangingPassword ? 'Saving Password...' : 'Save & Enter Dashboard'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Dashboard Frame (Authenticated and Verified)
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#090d16', color: '#cbd5e1', fontFamily: 'var(--md-font-sans)' }}>
-      {/* M3 Styled Top Banner Navigation */}
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#090d16', color: '#cbd5e1', fontFamily: 'sans-serif' }}>
       <header style={{
         background: '#111625',
         color: '#ffffff',
@@ -260,107 +645,61 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
         boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '22px', filter: 'drop-shadow(0 2px 8px rgba(212,175,55,0.3))' }}>🏢</span>
-          <h1 style={{ fontSize: '18px', fontWeight: 800, margin: 0, background: 'linear-gradient(135deg, #ffffff 0%, #d4af37 100%)', WebkitBackgroundClip: text, WebkitTextFillColor: 'transparent' }}>
+          <span style={{ fontSize: '22px' }}>🏢</span>
+          <h1 style={{ fontSize: '18px', fontWeight: 800, margin: 0, background: 'linear-gradient(135deg, #ffffff 0%, #d4af37 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             {tenantName ? tenantName.toUpperCase() : subdomain.toUpperCase()} Studio
           </h1>
           <span style={{ fontSize: '10px', background: '#3c2a00', color: '#d4af37', border: '1px solid rgba(212,175,55,0.3)', padding: '2px 10px', borderRadius: '99px', fontWeight: 700 }}>
-            {loading ? 'Resolving...' : 'Studio Portal'}
+            Owner Control Panel
           </span>
         </div>
         
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
             onClick={() => router.push('/book-manual')}
-            style={{
-              background: 'rgba(212, 175, 55, 0.12)',
-              color: '#d4af37',
-              border: '1px solid rgba(212, 175, 55, 0.25)',
-              borderRadius: '99px',
-              padding: '8px 18px',
-              fontWeight: 700,
-              fontSize: '13px',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              marginRight: '8px'
-            }}
+            style={{ background: 'rgba(212, 175, 55, 0.12)', color: '#d4af37', border: '1px solid rgba(212, 175, 55, 0.25)', borderRadius: '99px', padding: '8px 18px', fontWeight: 700, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', marginRight: '8px' }}
           >
             ➕ Manual Booking Desk
           </button>
           <button
             onClick={() => setActiveTab('calendar')}
-            style={{
-              background: activeTab === 'calendar' ? '#d4af37' : 'transparent',
-              color: activeTab === 'calendar' ? '#1e1400' : '#94a3b8',
-              border: 'none',
-              borderRadius: '99px',
-              padding: '8px 18px',
-              fontWeight: 700,
-              fontSize: '13px',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
+            style={{ background: activeTab === 'calendar' ? '#d4af37' : 'transparent', color: activeTab === 'calendar' ? '#1e1400' : '#94a3b8', border: 'none', borderRadius: '99px', padding: '8px 18px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
           >
             Schedules Calendar
           </button>
           <button
             onClick={() => setActiveTab('booking')}
-            style={{
-              background: activeTab === 'booking' ? '#d4af37' : 'transparent',
-              color: activeTab === 'booking' ? '#1e1400' : '#94a3b8',
-              border: 'none',
-              borderRadius: '99px',
-              padding: '8px 18px',
-              fontWeight: 700,
-              fontSize: '13px',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
+            style={{ background: activeTab === 'booking' ? '#d4af37' : 'transparent', color: activeTab === 'booking' ? '#1e1400' : '#94a3b8', border: 'none', borderRadius: '99px', padding: '8px 18px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
           >
             Live Booking Page
           </button>
           <button
             onClick={() => setActiveTab('crm')}
-            style={{
-              background: activeTab === 'crm' ? '#d4af37' : 'transparent',
-              color: activeTab === 'crm' ? '#1e1400' : '#94a3b8',
-              border: 'none',
-              borderRadius: '99px',
-              padding: '8px 18px',
-              fontWeight: 700,
-              fontSize: '13px',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
+            style={{ background: activeTab === 'crm' ? '#d4af37' : 'transparent', color: activeTab === 'crm' ? '#1e1400' : '#94a3b8', border: 'none', borderRadius: '99px', padding: '8px 18px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
           >
             Client CRM
           </button>
           <button
             onClick={() => setActiveTab('manage')}
-            style={{
-              background: activeTab === 'manage' ? '#d4af37' : 'transparent',
-              color: activeTab === 'manage' ? '#1e1400' : '#94a3b8',
-              border: 'none',
-              borderRadius: '99px',
-              padding: '8px 18px',
-              fontWeight: 700,
-              fontSize: '13px',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
+            style={{ background: activeTab === 'manage' ? '#d4af37' : 'transparent', color: activeTab === 'manage' ? '#1e1400' : '#94a3b8', border: 'none', borderRadius: '99px', padding: '8px 18px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
           >
             Manage Studio
+          </button>
+          
+          <button
+            onClick={handleLogout}
+            style={{ background: '#3b0712', color: '#fca5a5', border: '1px solid #7f1d1d', borderRadius: '99px', padding: '8px 14px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', marginLeft: '12px' }}
+          >
+            Logout ➡️
           </button>
         </div>
       </header>
 
-      {/* Main Workspace Frame */}
       <main style={{ flex: 1, padding: '32px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '1200px', margin: '0 auto', boxSizing: 'border-box' }}>
         {loading ? (
-          <div style={{ padding: '60px', fontWeight: 'bold', color: '#94a3b8', fontSize: '14px' }}>Resolving studio parameter configurations...</div>
+          <div style={{ padding: '60px', fontWeight: 'bold', color: '#94a3b8', fontSize: '14px' }}>Loading workspace analytics and configurations...</div>
         ) : (
           <>
-            {/* VIEW 1: Calendar Scheduling Board */}
             {activeTab === 'calendar' && (
               <div style={{ width: '100%' }}>
                 <WeeklyCalendar 
@@ -372,29 +711,17 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                     setIsCheckoutOpen(true);
                   }}
                 />
-                
-                {/* Checkout Trigger simulation card */}
                 <div style={{ marginTop: '24px', background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
                   <div>
                     <h4 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: 800, color: '#ffffff' }}>POS Checkout Terminal</h4>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>Checkout completed bookings, decrement product inventory, and credit reward points.</p>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>Checkout completed bookings, calculate loyalty rewards, and record checkout sales totals.</p>
                   </div>
                   <button
                     onClick={() => {
                       setCheckoutApptId('88888888-8888-8888-8888-888888888888');
                       setIsCheckoutOpen(true);
                     }}
-                    style={{
-                      background: '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '99px',
-                      padding: '10px 22px',
-                      fontWeight: 800,
-                      fontSize: '13px',
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 14px rgba(16, 185, 129, 0.25)'
-                    }}
+                    style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '99px', padding: '10px 22px', fontWeight: 800, fontSize: '13px', cursor: 'pointer', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.25)' }}
                   >
                     Launch Checkout Terminal
                   </button>
@@ -402,7 +729,6 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
               </div>
             )}
 
-            {/* VIEW 2: Client Booking Page Preview */}
             {activeTab === 'booking' && (
               <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
                 <TimeSlotPicker 
@@ -416,7 +742,6 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
               </div>
             )}
 
-            {/* VIEW 3: Client CRM Timelines */}
             {activeTab === 'crm' && (
               <div style={{ width: '100%' }}>
                 <ClientTimeline 
@@ -426,19 +751,27 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
               </div>
             )}
 
-            {/* VIEW 4: Local Tenant Studio Manager Panel */}
             {activeTab === 'manage' && (
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '28px' }}>
                 
                 {/* Section A: Revenue Metrics for this salon */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
                   <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
                     <span style={{ fontSize: '32px' }}>💰</span>
                     <div>
                       <h3 style={{ margin: '0 0 4px 0', fontSize: '26px', fontWeight: 850, color: '#d4af37' }}>
                         ${(totalSales / 100).toFixed(2)}
                       </h3>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', fontWeight: 700 }}>Total Revenue Brought In</p>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', fontWeight: 700 }}>Total Revenue Made</p>
+                    </div>
+                  </div>
+                  <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <span style={{ fontSize: '32px' }}>📈</span>
+                    <div>
+                      <h3 style={{ margin: '0 0 4px 0', fontSize: '26px', fontWeight: 850, color: '#10b981' }}>
+                        {conversionRate}%
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', fontWeight: 700 }}>Booked-to-Sold Conversion</p>
                     </div>
                   </div>
                   <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -447,7 +780,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                       <h3 style={{ margin: '0 0 4px 0', fontSize: '26px', fontWeight: 850, color: '#d4af37' }}>
                         {salesCount}
                       </h3>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', fontWeight: 700 }}>Completed Bookings</p>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', fontWeight: 700 }}>Completed Transactions</p>
                     </div>
                   </div>
                 </div>
@@ -491,7 +824,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                   {/* Local services catalog creator */}
                   <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px' }}>
                     <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>Add Studio Service</h4>
-                    <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Publish new treatments and custom price structures instantly.</p>
+                    <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Publish new treatments and custom price/discount structures instantly.</p>
                     
                     <form onSubmit={handleAddService} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       <input
@@ -500,9 +833,9 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                         placeholder="Service Name (e.g. Skin Fade & Wash)"
                         value={newServiceName}
                         onChange={(e) => setNewServiceName(e.target.value)}
-                        style={{ fontFamily: 'var(--md-font-sans)', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                        style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
                       />
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: '10px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px', gap: '10px' }}>
                         <input
                           type="number"
                           required
@@ -510,12 +843,20 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                           placeholder="Price ($)"
                           value={newServicePrice}
                           onChange={(e) => setNewServicePrice(e.target.value)}
-                          style={{ fontFamily: 'var(--md-font-sans)', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Discount ($)"
+                          value={newServiceDiscount}
+                          onChange={(e) => setNewServiceDiscount(e.target.value)}
+                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
                         />
                         <select
                           value={newServiceDuration}
                           onChange={(e) => setNewServiceDuration(e.target.value)}
-                          style={{ fontFamily: 'var(--md-font-sans)', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
                         >
                           <option value="15">15 Min</option>
                           <option value="30">30 Min</option>
@@ -531,55 +872,172 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
 
                     <div style={{ marginTop: '24px' }}>
                       <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 800, color: '#ffffff' }}>Published Catalog</h5>
-                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {services.map((s) => (
-                          <li key={s.id} style={{ background: '#090d16', border: '1px solid rgba(212,175,55,0.1)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>{s.name} ({s.duration}m)</span>
-                            <strong style={{ color: '#d4af37' }}>${(s.price / 100).toFixed(2)}</strong>
+                          <li key={s.id} style={{ background: '#090d16', border: '1px solid rgba(212,175,55,0.1)', borderRadius: '8px', padding: '12px 14px', fontSize: '13px' }}>
+                            {editingServiceId === s.id ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <input
+                                  type="text"
+                                  value={editServiceName}
+                                  onChange={(e) => setEditServiceName(e.target.value)}
+                                  style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '8px', background: '#111625', border: '1px solid #d4af37', borderRadius: '6px', color: '#ffffff' }}
+                                />
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 90px', gap: '8px' }}>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={editServicePrice}
+                                    onChange={(e) => setEditServicePrice(e.target.value)}
+                                    placeholder="Price"
+                                    style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '8px', background: '#111625', border: '1px solid #d4af37', borderRadius: '6px', color: '#ffffff' }}
+                                  />
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={editServiceDiscount}
+                                    onChange={(e) => setEditServiceDiscount(e.target.value)}
+                                    placeholder="Discount"
+                                    style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '8px', background: '#111625', border: '1px solid #d4af37', borderRadius: '6px', color: '#ffffff' }}
+                                  />
+                                  <select
+                                    value={editServiceDuration}
+                                    onChange={(e) => setEditServiceDuration(e.target.value)}
+                                    style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '8px', background: '#111625', border: '1px solid #d4af37', borderRadius: '6px', color: '#ffffff' }}
+                                  >
+                                    <option value="15">15m</option>
+                                    <option value="30">30m</option>
+                                    <option value="45">45m</option>
+                                    <option value="60">60m</option>
+                                    <option value="90">90m</option>
+                                  </select>
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                  <button onClick={() => handleUpdateService(s.id)} disabled={isSaving} style={{ flex: 1, background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                                    Save
+                                  </button>
+                                  <button onClick={() => setEditingServiceId(null)} style={{ flex: 1, background: '#475569', color: 'white', border: 'none', borderRadius: '4px', padding: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                  <span style={{ fontWeight: 600, color: '#ffffff' }}>{s.name}</span>
+                                  <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '6px' }}>({s.duration} min)</span>
+                                  {s.discount > 0 && (
+                                    <span style={{ display: 'block', fontSize: '11px', color: '#ef4444', marginTop: '2px', fontWeight: 'bold' }}>
+                                      🏷️ discount applied: -${(s.discount / 100).toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <div style={{ textAlign: 'right' }}>
+                                    {s.discount > 0 ? (
+                                      <>
+                                        <s style={{ fontSize: '11px', color: '#64748b', marginRight: '6px' }}>${(s.price / 100).toFixed(2)}</s>
+                                        <strong style={{ color: '#d4af37' }}>${((s.price - s.discount) / 100).toFixed(2)}</strong>
+                                      </>
+                                    ) : (
+                                      <strong style={{ color: '#d4af37' }}>${(s.price / 100).toFixed(2)}</strong>
+                                    )}
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '4px' }}>
+                                    <button onClick={() => handleStartEditService(s)} style={{ background: 'rgba(212,175,55,0.15)', color: '#d4af37', border: 'none', borderRadius: '4px', padding: '5px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                                      Edit
+                                    </button>
+                                    <button onClick={() => handleDeleteService(s.id)} style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '5px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                                      Remove
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </li>
                         ))}
                       </ul>
                     </div>
                   </div>
 
-                  {/* Local staff registry creator */}
-                  <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px' }}>
-                    <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>Register Stylist</h4>
-                    <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Register team members and allocate default work hour blocks.</p>
+                  {/* Right hand forms: Register Stylist AND Change Password Settings */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                     
-                    <form onSubmit={handleAddStaff} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Stylist Name"
-                        value={newStaffName}
-                        onChange={(e) => setNewStaffName(e.target.value)}
-                        style={{ fontFamily: 'var(--md-font-sans)', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
-                      />
-                      <input
-                        type="email"
-                        required
-                        placeholder="Stylist Email"
-                        value={newStaffEmail}
-                        onChange={(e) => setNewStaffEmail(e.target.value)}
-                        style={{ fontFamily: 'var(--md-font-sans)', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
-                      />
-                      <button type="submit" disabled={isSaving} style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '11px', fontWeight: 800, cursor: 'pointer', fontSize: '13px' }}>
-                        {isSaving ? 'Registering...' : 'Register Stylist'}
-                      </button>
-                    </form>
+                    {/* Change Password settings form */}
+                    <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px' }}>
+                      <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>Update Password</h4>
+                      <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Securely change your dashboard owner account credentials.</p>
+                      
+                      {passwordChangeError && (
+                        <div style={{ color: '#ef4444', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>⚠️ {passwordChangeError}</div>
+                      )}
+                      {passwordChangeSuccess && (
+                        <div style={{ color: '#10b981', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>✅ Password updated successfully!</div>
+                      )}
 
-                    <div style={{ marginTop: '24px' }}>
-                      <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 800, color: '#ffffff' }}>Active Team Directory</h5>
-                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {staff.map((st) => (
-                          <li key={st.id} style={{ background: '#090d16', border: '1px solid rgba(212,175,55,0.1)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <strong style={{ color: '#ffffff' }}>{st.name}</strong>
-                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>{st.email}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <input
+                          type="password"
+                          required
+                          placeholder="New password (min. 8 chars)"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                        />
+                        <input
+                          type="password"
+                          required
+                          placeholder="Confirm new password"
+                          value={confirmNewPassword}
+                          onChange={(e) => setConfirmNewPassword(e.target.value)}
+                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                        />
+                        <button type="submit" disabled={isChangingPassword} style={{ background: '#475569', color: 'white', border: 'none', borderRadius: '99px', padding: '11px', fontWeight: 800, cursor: 'pointer', fontSize: '13px' }}>
+                          {isChangingPassword ? 'Updating...' : 'Update Password'}
+                        </button>
+                      </form>
                     </div>
+
+                    {/* Local staff registry creator */}
+                    <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px' }}>
+                      <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>Register Stylist</h4>
+                      <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Register team members and allocate default work hour blocks.</p>
+                      
+                      <form onSubmit={handleAddStaff} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Stylist Name"
+                          value={newStaffName}
+                          onChange={(e) => setNewStaffName(e.target.value)}
+                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                        />
+                        <input
+                          type="email"
+                          required
+                          placeholder="Stylist Email"
+                          value={newStaffEmail}
+                          onChange={(e) => setNewStaffEmail(e.target.value)}
+                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                        />
+                        <button type="submit" disabled={isSaving} style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '11px', fontWeight: 800, cursor: 'pointer', fontSize: '13px' }}>
+                          {isSaving ? 'Registering...' : 'Register Stylist'}
+                        </button>
+                      </form>
+
+                      <div style={{ marginTop: '24px' }}>
+                        <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 800, color: '#ffffff' }}>Active Team Directory</h5>
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {staff.map((st) => (
+                            <li key={st.id} style={{ background: '#090d16', border: '1px solid rgba(212,175,55,0.1)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <strong style={{ color: '#ffffff' }}>{st.name}</strong>
+                              <span style={{ fontSize: '11px', color: '#94a3b8' }}>{st.email}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
                   </div>
 
                 </div>

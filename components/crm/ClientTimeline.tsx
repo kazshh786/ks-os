@@ -179,7 +179,7 @@ export default function ClientTimeline({ clientId, tenantId }: ClientTimelinePro
                     {event.details && (
                       <div className={styles.cardExpandedDetails}>
                         {isAppt ? (
-                          <p className={styles.notesText}>"{event.details}"</p>
+                          <p className={styles.notesText}>"{event.details as string}"</p>
                         ) : (
                           <div className={styles.answersGrid}>
                             {Object.entries(event.details as Record<string, any>).map(([label, val]) => (
