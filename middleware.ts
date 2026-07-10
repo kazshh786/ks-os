@@ -90,8 +90,8 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // If there is no subdomain resolved, or if it resolves to 'www' or 'app', route to primary root landing/admin portal
-  if (!subdomain || subdomain === 'www' || subdomain === 'app') {
+  // If there is no subdomain resolved, or if it resolves to 'www', 'app', or 'stagingapp', route to primary root landing/admin portal
+  if (!subdomain || subdomain === 'www' || subdomain === 'app' || subdomain === 'stagingapp') {
     return NextResponse.next();
   }
 
