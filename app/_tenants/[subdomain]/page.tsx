@@ -8,6 +8,58 @@ import WeeklyCalendar from '@/components/calendar/WeeklyCalendar';
 import TimeSlotPicker from '@/components/calendar/TimeSlotPicker';
 import ClientTimeline from '@/components/crm/ClientTimeline';
 import CheckoutDrawer from '@/components/pos/CheckoutDrawer';
+import styles from './tenant.module.css';
+
+// SVG Icon Library for Salon Tenant Dashboard
+const CalendarIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+    <line x1="16" y1="2" x2="16" y2="6"></line>
+    <line x1="8" y1="2" x2="8" y2="6"></line>
+    <line x1="3" y1="10" x2="21" y2="10"></line>
+  </svg>
+);
+
+const GlobeIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="2" y1="12" x2="22" y2="12"></line>
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+  </svg>
+);
+
+const UsersIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+    <circle cx="9" cy="7" r="4"></circle>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+  </svg>
+);
+
+const SettingsIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <circle cx="12" cy="12" r="3"></circle>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+  </svg>
+);
+
+const PlusCircleIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="12" y1="8" x2="12" y2="16"></line>
+    <line x1="8" y1="12" x2="16" y2="12"></line>
+  </svg>
+);
+
+const LogOutIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+    <polyline points="16 17 21 12 16 7"></polyline>
+    <line x1="21" y1="12" x2="9" y2="12"></line>
+  </svg>
+);
+
 
 // Fallback listings to ensure compile safety if database is empty
 const MOCK_STAFF = [
@@ -633,7 +685,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   // UI GATE A: Checking session loading state
   if (checkingAuth) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090d16', color: '#94a3b8', fontSize: '14px', fontWeight: 700 }}>
+      <div className={styles.loadingScreen}>
         Resolving owner credentials and workspace settings...
       </div>
     );
@@ -642,26 +694,29 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   // UI GATE B: Login Screen
   if (!currentUser) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090d16', fontFamily: 'sans-serif', padding: '16px', boxSizing: 'border-box' }}>
-        <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+      <div className={styles.authPageWrapper}>
+        <div className={styles.authCard}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <span style={{ fontSize: '40px' }}>🔒</span>
-            <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#ffffff', margin: '12px 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              {subdomain.toUpperCase()} Workspace
-            </h2>
+            <span className={styles.authIcon}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--md-sys-color-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto' }}>
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </span>
+            <h2>{subdomain.toUpperCase()} Workspace</h2>
             <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>Sign in to access your administrative control panel.</p>
           </div>
 
           {authError && (
-            <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444', borderRadius: '8px', padding: '12px', fontSize: '12px', marginBottom: '16px', fontWeight: 600 }}>
+            <div className={styles.authError}>
               ⚠️ {authError}
             </div>
           )}
 
           {showForgot ? (
-            <form onSubmit={handleForgotPassword} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={handleForgotPassword} className={styles.authForm}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label htmlFor="forgotEmail" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Email Address</label>
+                <label htmlFor="forgotEmail" className={styles.authLabel}>Email Address</label>
                 <input
                   id="forgotEmail"
                   type="email"
@@ -669,13 +724,13 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
                   placeholder="owner@yourstudio.com"
-                  style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                  className={styles.authInput}
                 />
               </div>
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '12px', fontWeight: 800, cursor: 'pointer', fontSize: '13px', marginTop: '8px', boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)' }}
+                className={styles.authBtn}
               >
                 {isLoggingIn ? 'Sending link...' : 'Send Recovery Email'}
               </button>
@@ -685,15 +740,16 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                   setShowForgot(false);
                   setAuthError(null);
                 }}
-                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '12px', cursor: 'pointer', marginTop: '8px' }}
+                className={styles.forgotBtn}
+                style={{ marginTop: '8px' }}
               >
                 ← Back to Sign In
               </button>
             </form>
           ) : (
-            <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={handleLogin} className={styles.authForm}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label htmlFor="loginEmail" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Email Address</label>
+                <label htmlFor="loginEmail" className={styles.authLabel}>Email Address</label>
                 <input
                   id="loginEmail"
                   type="email"
@@ -701,19 +757,19 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
                   placeholder="owner@yourstudio.com"
-                  style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                  className={styles.authInput}
                 />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label htmlFor="loginPassword" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Password</label>
+                  <label htmlFor="loginPassword" className={styles.authLabel}>Password</label>
                   <button
                     type="button"
                     onClick={() => {
                       setShowForgot(true);
                       setAuthError(null);
                     }}
-                    style={{ background: 'transparent', border: 'none', color: '#d4af37', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}
+                    className={styles.forgotBtn}
                   >
                     Forgot Password?
                   </button>
@@ -725,13 +781,13 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   placeholder="••••••••"
-                  style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                  className={styles.authInput}
                 />
               </div>
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '12px', fontWeight: 800, cursor: 'pointer', fontSize: '13px', marginTop: '8px', boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)' }}
+                className={styles.authBtn}
               >
                 {isLoggingIn ? 'Authenticating...' : 'Sign In'}
               </button>
@@ -745,25 +801,27 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   // UI GATE C: Force Password Reset view (for requires_password_change = true)
   if (mustChangePassword) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090d16', fontFamily: 'sans-serif', padding: '16px', boxSizing: 'border-box' }}>
-        <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+      <div className={styles.authPageWrapper}>
+        <div className={styles.authCard}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <span style={{ fontSize: '40px' }}>🔑</span>
-            <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#ffffff', margin: '12px 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Set New Password
-            </h2>
+            <span className={styles.authIcon}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--md-sys-color-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto' }}>
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+              </svg>
+            </span>
+            <h2>Set New Password</h2>
             <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>For security, please change the temporary password provided by your agency admin.</p>
           </div>
 
           {passwordChangeError && (
-            <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444', borderRadius: '8px', padding: '12px', fontSize: '12px', marginBottom: '16px', fontWeight: 600 }}>
+            <div className={styles.authError}>
               ⚠️ {passwordChangeError}
             </div>
           )}
 
-          <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <form onSubmit={handleChangePassword} className={styles.authForm}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label htmlFor="newPassword" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>New Password</label>
+              <label htmlFor="newPassword" className={styles.authLabel}>New Password</label>
               <input
                 id="newPassword"
                 type="password"
@@ -771,11 +829,11 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Min. 8 characters"
-                style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                className={styles.authInput}
               />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label htmlFor="confirmNewPassword" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Confirm Password</label>
+              <label htmlFor="confirmNewPassword" className={styles.authLabel}>Confirm Password</label>
               <input
                 id="confirmNewPassword"
                 type="password"
@@ -783,13 +841,13 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                 value={confirmNewPassword}
                 onChange={(e) => setConfirmNewPassword(e.target.value)}
                 placeholder="Confirm password"
-                style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                className={styles.authInput}
               />
             </div>
             <button
               type="submit"
               disabled={isChangingPassword}
-              style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '12px', fontWeight: 800, cursor: 'pointer', fontSize: '13px', marginTop: '8px', boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)' }}
+              className={styles.authBtn}
             >
               {isChangingPassword ? 'Saving Password...' : 'Save & Enter Dashboard'}
             </button>
@@ -801,146 +859,109 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
 
   // Dashboard Frame (Authenticated and Verified)
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#090d16', color: '#cbd5e1', fontFamily: 'sans-serif' }}>
-      <header style={{
-        background: '#111625',
-        color: '#ffffff',
-        padding: '18px 24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderBottom: '1px solid rgba(212, 175, 55, 0.15)',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '22px' }}>🏢</span>
-          <h1 style={{ fontSize: '18px', fontWeight: 800, margin: 0, background: 'linear-gradient(135deg, #ffffff 0%, #d4af37 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+    <div className={styles.dashboardContainer}>
+      <header className={styles.header}>
+        <div className={styles.headerLogo}>
+          <svg className={styles.logoIcon} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d4af37" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <h1>
             {tenantName ? tenantName.toUpperCase() : subdomain.toUpperCase()} Studio
           </h1>
-          <span style={{ fontSize: '10px', background: '#3c2a00', color: '#d4af37', border: '1px solid rgba(212,175,55,0.3)', padding: '2px 10px', borderRadius: '99px', fontWeight: 700 }}>
+          <span className={styles.ownerBadge}>
             Owner Control Panel
           </span>
         </div>
         
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div className={styles.headerActions}>
           <button
             onClick={() => router.push('/book-manual')}
-            style={{ background: 'rgba(212, 175, 55, 0.12)', color: '#d4af37', border: '1px solid rgba(212, 175, 55, 0.25)', borderRadius: '99px', padding: '8px 18px', fontWeight: 700, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', marginRight: '8px' }}
+            className={styles.specialBtn}
           >
-            ➕ Manual Booking Desk
+            <PlusCircleIcon />
+            Manual Booking Desk
           </button>
           <button
             onClick={() => setActiveTab('calendar')}
-            style={{ background: activeTab === 'calendar' ? '#d4af37' : 'transparent', color: activeTab === 'calendar' ? '#1e1400' : '#94a3b8', border: 'none', borderRadius: '99px', padding: '8px 18px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+            className={`${styles.sidebarBtn} ${activeTab === 'calendar' ? styles.sidebarBtnActive : ''}`}
           >
+            <CalendarIcon />
             Schedules Calendar
           </button>
           <button
             onClick={() => setActiveTab('booking')}
-            style={{ background: activeTab === 'booking' ? '#d4af37' : 'transparent', color: activeTab === 'booking' ? '#1e1400' : '#94a3b8', border: 'none', borderRadius: '99px', padding: '8px 18px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+            className={`${styles.sidebarBtn} ${activeTab === 'booking' ? styles.sidebarBtnActive : ''}`}
           >
+            <GlobeIcon />
             Live Booking Page
           </button>
           <button
             onClick={() => setActiveTab('crm')}
-            style={{ background: activeTab === 'crm' ? '#d4af37' : 'transparent', color: activeTab === 'crm' ? '#1e1400' : '#94a3b8', border: 'none', borderRadius: '99px', padding: '8px 18px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+            className={`${styles.sidebarBtn} ${activeTab === 'crm' ? styles.sidebarBtnActive : ''}`}
           >
+            <UsersIcon />
             Client CRM
           </button>
           <button
             onClick={() => setActiveTab('manage')}
-            style={{ background: activeTab === 'manage' ? '#d4af37' : 'transparent', color: activeTab === 'manage' ? '#1e1400' : '#94a3b8', border: 'none', borderRadius: '99px', padding: '8px 18px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+            className={`${styles.sidebarBtn} ${activeTab === 'manage' ? styles.sidebarBtnActive : ''}`}
           >
+            <SettingsIcon />
             Manage Studio
           </button>
           
           <button
             onClick={handleLogout}
-            style={{ background: '#3b0712', color: '#fca5a5', border: '1px solid #7f1d1d', borderRadius: '99px', padding: '8px 14px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', marginLeft: '12px' }}
+            className={styles.logoutBtn}
           >
-            Logout ➡️
+            <LogOutIcon />
+            Logout
           </button>
         </div>
       </header>
 
-      <main style={{ flex: 1, padding: '32px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '1200px', margin: '0 auto', boxSizing: 'border-box' }}>
+      <main className={styles.main}>
         {loading ? (
-          <div style={{ padding: '60px', fontWeight: 'bold', color: '#94a3b8', fontSize: '14px' }}>Loading workspace analytics and configurations...</div>
+          <div className={styles.loadingScreen}>Loading workspace analytics and configurations...</div>
         ) : (
           <>
             {/* STUDIO QUICK ACCESS DOCK (ONE-STOP SHOP) */}
-            <div style={{
-              width: '100%',
-              background: 'linear-gradient(135deg, #111625 0%, #171d31 100%)',
-              border: '1.5px solid rgba(212, 175, 55, 0.2)',
-              borderRadius: '16px',
-              padding: '18px 24px',
-              marginBottom: '28px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '16px',
-              boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
-              boxSizing: 'border-box'
-            }}>
-              <div>
-                <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>
+            <div className={styles.quickAccessPanel}>
+              <div className={styles.quickAccessText}>
+                <h3>
                   ⚡ Studio Quick Access Control
                 </h3>
-                <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
+                <p>
                   Manage external links, contact support, and share your web booking address.
                 </p>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <div className={styles.quickAccessActions}>
                 <a
                   href={`mailto:${currentUser?.email}?subject=KS%20OS%20Mailbox`}
                   target="_blank"
                   rel="noreferrer"
-                  style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    color: '#ffffff',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '8px',
-                    padding: '8px 16px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    textDecoration: 'none',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-                  onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                  className={styles.pillLinkOutlined}
                 >
-                  📧 Access Webmail
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                    <polyline points="22,6 12,13 2,6"></polyline>
+                  </svg>
+                  Access Webmail
                 </a>
                 <a
                   href={`http://${subdomain}.localhost:3000/book`}
                   target="_blank"
                   rel="noreferrer"
-                  style={{
-                    background: 'rgba(212,175,55,0.12)',
-                    color: '#d4af37',
-                    border: '1px solid rgba(212, 175, 55, 0.25)',
-                    borderRadius: '8px',
-                    padding: '8px 16px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    textDecoration: 'none',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(212,175,55,0.2)'}
-                  onMouseOut={(e) => e.currentTarget.style.background = 'rgba(212,175,55,0.12)'}
+                  className={styles.pillLinkFilled}
                 >
-                  🌐 Visit Booking Site
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                  </svg>
+                  Visit Booking Site
                 </a>
                 <button
                   onClick={() => {
@@ -951,25 +972,13 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                     navigator.clipboard.writeText(link);
                     alert('Public Booking Web Address copied to clipboard!');
                   }}
-                  style={{
-                    background: '#10b981',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '9px 16px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.2s',
-                    boxShadow: '0 4px 10px rgba(16, 185, 129, 0.15)'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
-                  onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
+                  className={styles.actionBtnSuccess}
                 >
-                  📋 Copy Web Address
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  Copy Web Address
                 </button>
               </div>
             </div>
@@ -984,17 +993,17 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                     setIsCheckoutOpen(true);
                   }}
                 />
-                <div style={{ marginTop: '24px', background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
-                  <div>
-                    <h4 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: 800, color: '#ffffff' }}>POS Checkout Terminal</h4>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>Checkout completed bookings, calculate loyalty rewards, and record checkout sales totals.</p>
+                <div className={styles.posRibbon}>
+                  <div className={styles.posText}>
+                    <h4>POS Checkout Terminal</h4>
+                    <p>Checkout completed bookings, calculate loyalty rewards, and record checkout sales totals.</p>
                   </div>
                   <button
                     onClick={() => {
                       setCheckoutApptId('88888888-8888-8888-8888-888888888888');
                       setIsCheckoutOpen(true);
                     }}
-                    style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '99px', padding: '10px 22px', fontWeight: 800, fontSize: '13px', cursor: 'pointer', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.25)' }}
+                    className={styles.posLaunchBtn}
                   >
                     Launch Checkout Terminal
                   </button>
@@ -1028,60 +1037,72 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '28px' }}>
                 
                 {/* Section A: Revenue Metrics for this salon */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
-                  <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <span style={{ fontSize: '32px' }}>💰</span>
+                <div className={styles.analyticsSummaryCards}>
+                  <div className={styles.summaryCard}>
+                    <span className={styles.cardIndicator}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--md-sys-color-primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="1" x2="12" y2="23"></line>
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                      </svg>
+                    </span>
                     <div>
-                      <h3 style={{ margin: '0 0 4px 0', fontSize: '26px', fontWeight: 850, color: '#d4af37' }}>
-                        ${(totalSales / 100).toFixed(2)}
-                      </h3>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', fontWeight: 700 }}>Total Revenue Made</p>
+                      <h3>${(totalSales / 100).toFixed(2)}</h3>
+                      <p>Total Revenue Made</p>
                     </div>
                   </div>
-                  <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <span style={{ fontSize: '32px' }}>📈</span>
+                  <div className={styles.summaryCard}>
+                    <span className={styles.cardIndicator}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--md-sys-color-tertiary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                        <polyline points="17 6 23 6 23 12"></polyline>
+                      </svg>
+                    </span>
                     <div>
-                      <h3 style={{ margin: '0 0 4px 0', fontSize: '26px', fontWeight: 850, color: '#10b981' }}>
-                        {conversionRate}%
-                      </h3>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', fontWeight: 700 }}>Booked-to-Sold Conversion</p>
+                      <h3>{conversionRate}%</h3>
+                      <p>Booked-to-Sold Conversion</p>
                     </div>
                   </div>
-                  <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <span style={{ fontSize: '32px' }}>📅</span>
+                  <div className={styles.summaryCard}>
+                    <span className={styles.cardIndicator}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--md-sys-color-secondary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                      </svg>
+                    </span>
                     <div>
-                      <h3 style={{ margin: '0 0 4px 0', fontSize: '26px', fontWeight: 850, color: '#d4af37' }}>
-                        {salesCount}
-                      </h3>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', fontWeight: 700 }}>Completed Transactions</p>
+                      <h3>{salesCount}</h3>
+                      <p>Completed Transactions</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Section B: Staff Revenue Breakdown Table */}
-                <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px' }}>
-                  <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>Stylist Performance Breakdown</h4>
-                  <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Total bookings completed and revenue contribution generated by each provider.</p>
+                <div className={styles.performanceBox}>
+                  <h4>Stylist Performance Breakdown</h4>
+                  <p>Total bookings completed and revenue contribution generated by each provider.</p>
                   
-                  <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '12px' }}>
+                  <table className={styles.perfTable}>
                     <thead>
-                      <tr style={{ borderBottom: '2px solid rgba(212, 175, 55, 0.15)' }}>
-                        <th style={{ textAlign: 'left', padding: '12px', fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Provider</th>
-                        <th style={{ textAlign: 'left', padding: '12px', fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Bookings</th>
-                        <th style={{ textAlign: 'right', padding: '12px', fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Revenue Generated</th>
+                      <tr>
+                        <th>Provider</th>
+                        <th>Bookings</th>
+                        <th style={{ textAlign: 'right' }}>Revenue Generated</th>
                       </tr>
                     </thead>
                     <tbody>
                       {staffRevenues.length === 0 ? (
                         <tr>
-                          <td colSpan={3} style={{ textAlign: 'center', padding: '32px', color: '#64748b', fontSize: '12px' }}>No completed payments recorded.</td>
+                          <td colSpan={3} className={styles.tableEmpty}>No completed payments recorded.</td>
                         </tr>
                       ) : (
                         staffRevenues.map((s, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid rgba(212, 175, 55, 0.1)' }}>
-                            <td style={{ padding: '12px', fontSize: '13px', color: '#ffffff', fontWeight: 700 }}>{s.staffName}</td>
-                            <td style={{ padding: '12px', fontSize: '13px', color: '#cbd5e1' }}>{s.bookings}</td>
-                            <td style={{ padding: '12px', fontSize: '13px', color: '#d4af37', fontWeight: 700, textAlign: 'right' }}>
+                          <tr key={idx}>
+                            <td><strong>{s.staffName}</strong></td>
+                            <td>{s.bookings}</td>
+                            <td style={{ fontWeight: 700, textAlign: 'right', color: 'var(--md-sys-color-primary)' }}>
                               ${(s.revenue / 100).toFixed(2)}
                             </td>
                           </tr>
@@ -1092,21 +1113,21 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                 </div>
 
                 {/* Section C: Services catalog and staff registry forms */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
+                <div className={styles.gridSplit}>
                   
                   {/* Local services catalog creator */}
-                  <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px' }}>
-                    <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>Add Studio Service</h4>
-                    <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Publish new treatments and custom price/discount structures instantly.</p>
+                  <div className={styles.formBox}>
+                    <h4>Add Studio Service</h4>
+                    <p>Publish new treatments and custom price/discount structures instantly.</p>
                     
-                    <form onSubmit={handleAddService} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <form onSubmit={handleAddService} className={styles.formGroup}>
                       <input
                         type="text"
                         required
                         placeholder="Service Name (e.g. Skin Fade & Wash)"
                         value={newServiceName}
                         onChange={(e) => setNewServiceName(e.target.value)}
-                        style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                        className={styles.formInput}
                       />
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px', gap: '10px' }}>
                         <input
@@ -1116,7 +1137,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                           placeholder="Price ($)"
                           value={newServicePrice}
                           onChange={(e) => setNewServicePrice(e.target.value)}
-                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                          className={styles.formInput}
                         />
                         <input
                           type="number"
@@ -1124,12 +1145,12 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                           placeholder="Discount ($)"
                           value={newServiceDiscount}
                           onChange={(e) => setNewServiceDiscount(e.target.value)}
-                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                          className={styles.formInput}
                         />
                         <select
                           value={newServiceDuration}
                           onChange={(e) => setNewServiceDuration(e.target.value)}
-                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                          className={styles.formSelect}
                         >
                           <option value="15">15 Min</option>
                           <option value="30">30 Min</option>
@@ -1138,23 +1159,23 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                           <option value="90">90 Min</option>
                         </select>
                       </div>
-                      <button type="submit" disabled={isSaving} style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '11px', fontWeight: 800, cursor: 'pointer', fontSize: '13px' }}>
+                      <button type="submit" disabled={isSaving} className={styles.submitBtn}>
                         {isSaving ? 'Publishing...' : 'Add Service'}
                       </button>
                     </form>
 
-                    <div style={{ marginTop: '24px' }}>
-                      <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 800, color: '#ffffff' }}>Published Catalog</h5>
-                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div className={styles.catalogBox}>
+                      <h5>Published Catalog</h5>
+                      <ul className={styles.catalogList}>
                         {services.map((s) => (
-                          <li key={s.id} style={{ background: '#090d16', border: '1px solid rgba(212,175,55,0.1)', borderRadius: '8px', padding: '12px 14px', fontSize: '13px' }}>
+                          <li key={s.id} className={styles.catalogItem}>
                             {editingServiceId === s.id ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 <input
                                   type="text"
                                   value={editServiceName}
                                   onChange={(e) => setEditServiceName(e.target.value)}
-                                  style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '8px', background: '#111625', border: '1px solid #d4af37', borderRadius: '6px', color: '#ffffff' }}
+                                  className={styles.formInput}
                                 />
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 90px', gap: '8px' }}>
                                   <input
@@ -1163,7 +1184,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                                     value={editServicePrice}
                                     onChange={(e) => setEditServicePrice(e.target.value)}
                                     placeholder="Price"
-                                    style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '8px', background: '#111625', border: '1px solid #d4af37', borderRadius: '6px', color: '#ffffff' }}
+                                    className={styles.formInput}
                                   />
                                   <input
                                     type="number"
@@ -1171,12 +1192,12 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                                     value={editServiceDiscount}
                                     onChange={(e) => setEditServiceDiscount(e.target.value)}
                                     placeholder="Discount"
-                                    style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '8px', background: '#111625', border: '1px solid #d4af37', borderRadius: '6px', color: '#ffffff' }}
+                                    className={styles.formInput}
                                   />
                                   <select
                                     value={editServiceDuration}
                                     onChange={(e) => setEditServiceDuration(e.target.value)}
-                                    style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '8px', background: '#111625', border: '1px solid #d4af37', borderRadius: '6px', color: '#ffffff' }}
+                                    className={styles.formSelect}
                                   >
                                     <option value="15">15m</option>
                                     <option value="30">30m</option>
@@ -1210,10 +1231,10 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                                     {s.discount > 0 ? (
                                       <>
                                         <s style={{ fontSize: '11px', color: '#64748b', marginRight: '6px' }}>${(s.price / 100).toFixed(2)}</s>
-                                        <strong style={{ color: '#d4af37' }}>${((s.price - s.discount) / 100).toFixed(2)}</strong>
+                                        <strong style={{ color: 'var(--md-sys-color-primary)' }}>${((s.price - s.discount) / 100).toFixed(2)}</strong>
                                       </>
                                     ) : (
-                                      <strong style={{ color: '#d4af37' }}>${(s.price / 100).toFixed(2)}</strong>
+                                      <strong style={{ color: 'var(--md-sys-color-primary)' }}>${(s.price / 100).toFixed(2)}</strong>
                                     )}
                                   </div>
                                   <div style={{ display: 'flex', gap: '4px' }}>
@@ -1237,9 +1258,9 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                     
                     {/* Change Password settings form */}
-                    <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px' }}>
-                      <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>Update Password</h4>
-                      <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Securely change your dashboard owner account credentials.</p>
+                    <div className={styles.formBox}>
+                      <h4>Update Password</h4>
+                      <p>Securely change your dashboard owner account credentials.</p>
                       
                       {passwordChangeError && (
                         <div style={{ color: '#ef4444', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>⚠️ {passwordChangeError}</div>
@@ -1248,14 +1269,14 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                         <div style={{ color: '#10b981', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>✅ Password updated successfully!</div>
                       )}
 
-                      <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <form onSubmit={handleChangePassword} className={styles.formGroup}>
                         <input
                           type="password"
                           required
                           placeholder="New password (min. 8 chars)"
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                          className={styles.formInput}
                         />
                         <input
                           type="password"
@@ -1263,27 +1284,27 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                           placeholder="Confirm new password"
                           value={confirmNewPassword}
                           onChange={(e) => setConfirmNewPassword(e.target.value)}
-                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                          className={styles.formInput}
                         />
-                        <button type="submit" disabled={isChangingPassword} style={{ background: '#475569', color: 'white', border: 'none', borderRadius: '99px', padding: '11px', fontWeight: 800, cursor: 'pointer', fontSize: '13px' }}>
+                        <button type="submit" disabled={isChangingPassword} className={styles.submitBtn} style={{ background: '#475569', color: 'white' }}>
                           {isChangingPassword ? 'Updating...' : 'Update Password'}
                         </button>
                       </form>
                     </div>
 
                     {/* Local staff registry creator */}
-                    <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px' }}>
-                      <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>Register Stylist</h4>
-                      <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Register team members and allocate default work hour blocks.</p>
+                    <div className={styles.formBox}>
+                      <h4>Register Stylist</h4>
+                      <p>Register team members and allocate default work hour blocks.</p>
                       
-                      <form onSubmit={handleAddStaff} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <form onSubmit={handleAddStaff} className={styles.formGroup}>
                         <input
                           type="text"
                           required
                           placeholder="Stylist Name"
                           value={newStaffName}
                           onChange={(e) => setNewStaffName(e.target.value)}
-                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                          className={styles.formInput}
                         />
                         <input
                           type="email"
@@ -1291,18 +1312,18 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                           placeholder="Stylist Email"
                           value={newStaffEmail}
                           onChange={(e) => setNewStaffEmail(e.target.value)}
-                          style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                          className={styles.formInput}
                         />
-                        <button type="submit" disabled={isSaving} style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '11px', fontWeight: 800, cursor: 'pointer', fontSize: '13px' }}>
+                        <button type="submit" disabled={isSaving} className={styles.submitBtn}>
                           {isSaving ? 'Registering...' : 'Register Stylist'}
                         </button>
                       </form>
 
-                      <div style={{ marginTop: '24px' }}>
-                        <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 800, color: '#ffffff' }}>Active Team Directory</h5>
-                        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div className={styles.catalogBox}>
+                        <h5>Active Team Directory</h5>
+                        <ul className={styles.catalogList}>
                           {staff.map((st) => (
-                            <li key={st.id} style={{ background: '#090d16', border: '1px solid rgba(212,175,55,0.1)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <li key={st.id} className={styles.catalogItem} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                               <strong style={{ color: '#ffffff' }}>{st.name}</strong>
                               <span style={{ fontSize: '11px', color: '#94a3b8' }}>{st.email}</span>
                             </li>
@@ -1312,13 +1333,13 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                     </div>
 
                     {/* Customizable Consent Form Builder Panel */}
-                    <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px' }}>
-                      <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>Custom Consent Form Builder</h4>
-                      <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Create bespoke medical intake questions, dropdown lists, and electronic signature pads.</p>
+                    <div className={styles.formBox}>
+                      <h4>Custom Consent Form Builder</h4>
+                      <p>Create bespoke medical intake questions, dropdown lists, and electronic signature pads.</p>
                       
-                      <form onSubmit={handleSaveConsentForm} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <form onSubmit={handleSaveConsentForm} className={styles.formGroup}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <label htmlFor="form-title" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Form Title</label>
+                          <label htmlFor="form-title" className={styles.authLabel}>Form Title</label>
                           <input
                             id="form-title"
                             type="text"
@@ -1326,19 +1347,19 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                             placeholder="e.g. Laser Consultation Waiver"
                             value={consentFormTitle}
                             onChange={(e) => setConsentFormTitle(e.target.value)}
-                            style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                            className={styles.formInput}
                           />
                         </div>
 
                         {/* Current fields preview list */}
-                        <div style={{ marginTop: '8px' }}>
-                          <h5 style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#ffffff', fontWeight: 800 }}>Active Form Fields Check</h5>
-                          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div className={styles.catalogBox}>
+                          <h5>Active Form Fields Check</h5>
+                          <ul className={styles.catalogList}>
                             {consentFormFields.length === 0 ? (
                               <li style={{ color: '#64748b', fontSize: '12px', fontStyle: 'italic' }}>No fields configured yet. Add fields below.</li>
                             ) : (
                               consentFormFields.map((field, idx) => (
-                                <li key={idx} style={{ background: '#090d16', border: '1px solid rgba(212,175,55,0.1)', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <li key={idx} className={styles.formBuilderItem}>
                                   <div>
                                     <span style={{ fontWeight: 600, color: '#ffffff' }}>{field.label}</span>
                                     <span style={{ fontSize: '10px', background: '#1e293b', color: '#94a3b8', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px', textTransform: 'uppercase' }}>
@@ -1367,20 +1388,20 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                         </div>
 
                         {/* Add Field Box */}
-                        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div className={styles.formBuilderAddBox}>
                           <h5 style={{ margin: 0, fontSize: '12px', color: '#ffffff', fontWeight: 800 }}>Add New Input Field</h5>
                           <input
                             type="text"
                             placeholder="Field Label (e.g. Skin Tone Option)"
                             value={newFieldLabel}
                             onChange={(e) => setNewFieldLabel(e.target.value)}
-                            style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '10px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#ffffff' }}
+                            className={styles.formInput}
                           />
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '8px' }}>
                             <select
                               value={newFieldType}
                               onChange={(e) => setNewFieldType(e.target.value as any)}
-                              style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '10px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#ffffff' }}
+                              className={styles.formSelect}
                             >
                               <option value="text">Single Line Text</option>
                               <option value="textarea">Multi-line Description</option>
@@ -1405,14 +1426,15 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                               placeholder="Comma separated choices: e.g. Fair, Medium, Dark"
                               value={newFieldOptions}
                               onChange={(e) => setNewFieldOptions(e.target.value)}
-                              style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '10px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#ffffff' }}
+                              className={styles.formInput}
                             />
                           )}
 
                           <button
                             type="button"
                             onClick={handleAddField}
-                            style={{ background: '#334155', color: '#ffffff', border: 'none', borderRadius: '6px', padding: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                            className={styles.submitBtn}
+                            style={{ background: '#334155', color: '#ffffff' }}
                           >
                             ➕ Insert Field into Schema
                           </button>
@@ -1421,13 +1443,11 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                         <button
                           type="submit"
                           disabled={isSaving}
-                          style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '12px', fontWeight: 800, cursor: 'pointer', fontSize: '13px', boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)' }}
+                          className={styles.submitBtn}
                         >
                           {isSaving ? 'Saving form layout...' : 'Publish Consent Form'}
                         </button>
                       </form>
-                    </div>
-
                     </div>
 
                   </div>
@@ -1435,9 +1455,9 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                 </div>
 
                 {/* Section D: Website Widget Embed Iframe snippet */}
-                <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px' }}>
-                  <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>Integrate Booking Page into Your Website</h4>
-                  <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Showcase real-time slot availability on your own custom site using this copyable iframe embed code.</p>
+                <div className={styles.formBox} style={{ marginTop: '24px' }}>
+                  <h4>Integrate Booking Page into Your Website</h4>
+                  <p>Showcase real-time slot availability on your own custom site using this copyable iframe embed code.</p>
                   
                   <textarea
                     readOnly
@@ -1447,17 +1467,11 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                       navigator.clipboard.writeText(iframeEmbedCode);
                       alert('Widget embed code copied to clipboard!');
                     }}
+                    className={styles.formTextarea}
                     style={{
-                      width: '100%',
                       fontFamily: 'monospace',
-                      fontSize: '12px',
-                      background: '#090d16',
-                      color: '#d4af37',
-                      border: '1px solid rgba(212, 175, 55, 0.15)',
-                      borderRadius: '8px',
-                      padding: '12px 14px',
+                      color: 'var(--md-sys-color-primary)',
                       resize: 'none',
-                      boxSizing: 'border-box',
                       cursor: 'copy'
                     }}
                     rows={3}
@@ -1466,7 +1480,6 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                     💡 Tip: Click inside the code box to copy the snippet instantly!
                   </span>
                 </div>
-
               </div>
             )}
           </>

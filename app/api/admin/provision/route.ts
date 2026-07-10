@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { addDomainToVercel, removeDomainFromVercel, addCloudflareCname } from '@/utils/domain-service';
 
 export async function POST(req: Request) {
   try {
@@ -88,6 +89,46 @@ export async function POST(req: Request) {
 
     if (profileUpdateErr) {
       console.warn('Warning: Could not set force password change flag on owner profile:', profileUpdateErr.message);
+    }
+
+    // 6. Domain Automation Integration
+    const testDomain = `${subdomain.toLowerCase()}.kasimshah.com`;
+    console.log(`Configuring test domain: ${testDomain}`);
+    
+    let domainAddedToVercel = false;
+    try {
+      // Step A: Add domain to Vercel
+      await addDomainToVercel(testDomain);
+      domainAddedToVercel = true;
+      
+      // Step B: Add CNAME to Cloudflare DNS
+      await addCloudflareCname(subdomain);
+      console.log(`Successfully configured domain routing for ${testDomain}`);
+    } catch (domainErr: any) {
+      console.error(`Domain provisioning failed for ${testDomain}:`, domainErr);
+      
+      // Safety rollback: if Vercel addition succeeded but Cloudflare record failed, remove from Vercel
+      if (domainAddedToVercel) {
+        console.log(`Rolling back Vercel domain mapping for ${testDomain}...`);
+        try {
+          await removeDomainFromVercel(testDomain);
+          console.log(`Vercel domain rollback successful.`);
+        } catch (rollbackErr: any) {
+          console.error(`Rollback of Vercel domain ${testDomain} failed:`, rollbackErr);
+        }
+      }
+      
+      // Database rollback
+      console.log(`Rolling back database tenant ${tenantId} and Auth User ${ownerId}...`);
+      try {
+        await supabaseAdmin.from('tenants').delete().eq('id', tenantId);
+        await supabaseAdmin.auth.admin.deleteUser(ownerId);
+        console.log(`Database and Auth rollback successful.`);
+      } catch (dbRollbackErr: any) {
+        console.error(`Rollback of database/auth failed:`, dbRollbackErr);
+      }
+
+      throw new Error(`Domain provisioning failure: ${domainErr.message}`);
     }
 
     console.log(`Provisioning completed successfully. Tenant ID: ${tenantId}`);
