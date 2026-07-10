@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/utils/supabase/client';
 import styles from './TimeSlotPicker.module.css';
+import FormRenderer from '../forms/FormRenderer';
 
 interface Service {
   id: string;
@@ -80,6 +81,11 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
   const [hasSignature, setHasSignature] = useState(false);
   const [signatureDataUrl, setSignatureDataUrl] = useState('');
 
+  // Customizable form states
+  const [customForm, setCustomForm] = useState<any>(null);
+  const [customFields, setCustomFields] = useState<any[]>([]);
+  const [formResponses, setFormResponses] = useState<Record<string, any>>({});
+
   // 1. Subscribe to appointments Real-time channels to auto-recalculate
   useEffect(() => {
     const channel = supabase
@@ -113,6 +119,35 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
     };
     loadPricing();
   }, [selectedServiceId]);
+
+  // 2. Fetch Dynamic Consent Form Template
+  useEffect(() => {
+    if (!tenantId || tenantId === '00000000-0000-0000-0000-000000000000') return;
+    const fetchFormTemplate = async () => {
+      try {
+        const { data } = await supabase
+          .from('forms')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .limit(1)
+          .maybeSingle();
+
+        if (data) {
+          setCustomForm(data);
+          setCustomFields(data.fields_json || []);
+        } else {
+          setCustomFields([
+            { label: 'Allergies or Skin conditions?', type: 'textarea', required: false },
+            { label: 'I consent to the treatment', type: 'checkbox', required: true },
+            { label: 'Client Signature', type: 'signature', required: true }
+          ]);
+        }
+      } catch (err) {
+        console.error('Error fetching consent form details:', err);
+      }
+    };
+    fetchFormTemplate();
+  }, [tenantId]);
 
   // 3. Calculate Availability slots
   useEffect(() => {
@@ -409,12 +444,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
         tenant_id: tenantId,
         client_id: clientId,
         form_id: formId,
-        response_json: {
-          allergy_notes: allergyNotes,
-          patch_test_done: patchTestConfirmed,
-          consent_given: consentConfirmed,
-          signature_image: signatureDataUrl,
-        },
+        response_json: formResponses,
       });
 
       // 3. Create appointment
@@ -707,84 +737,14 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
             {/* STEP 2: Compliance Forms & Signature Canvas */}
             {modalStep === 'intake' && (
               <div className={styles.stepBody}>
-                <div className={styles.inputGroup}>
-                  <label className={styles.label}>Allergies or Sensitive Skin notes</label>
-                  <textarea
-                    placeholder="List dye allergies, chemical sensitivities..."
-                    className={styles.formInputText}
-                    rows={2}
-                    value={allergyNotes}
-                    onChange={(e) => setAllergyNotes(e.target.value)}
-                  />
-                </div>
-
-                <div className={styles.formCheckboxRow}>
-                  <input
-                    id="patch-check"
-                    type="checkbox"
-                    checked={patchTestConfirmed}
-                    onChange={(e) => setPatchTestConfirmed(e.target.checked)}
-                  />
-                  <label htmlFor="patch-check" className={styles.checkboxLabel}>
-                    I confirm I have had a hair patch test done at least 48 hours prior, or choose to proceed without one at my own risk.
-                  </label>
-                </div>
-
-                <div className={styles.formCheckboxRow}>
-                  <input
-                    id="consent-check"
-                    type="checkbox"
-                    checked={consentConfirmed}
-                    onChange={(e) => setConsentConfirmed(e.target.checked)}
-                  />
-                  <label htmlFor="consent-check" className={styles.checkboxLabel}>
-                    I consent to the treatment formulas and release the stylist from liability. *
-                  </label>
-                </div>
-
-                <div className={styles.inputGroup} style={{ marginTop: '8px' }}>
-                  <label className={styles.signaturePadLabel}>Draw Signature Consent Below: *</label>
-                  <div className={styles.canvasContainer}>
-                    <canvas
-                      ref={canvasRef}
-                      width={430}
-                      height={120}
-                      className={styles.signatureCanvas}
-                      onMouseDown={startDrawing}
-                      onMouseMove={draw}
-                      onMouseUp={stopDrawing}
-                      onMouseLeave={stopDrawing}
-                      onTouchStart={startDrawing}
-                      onTouchMove={draw}
-                      onTouchEnd={stopDrawing}
-                    />
-                    <button type="button" className={styles.clearSignButton} onClick={clearSignature}>
-                      Clear
-                    </button>
-                  </div>
-                </div>
-
-                <div className={styles.stepFooter}>
-                  <button className={styles.secondaryBtn} onClick={() => setModalStep('info')}>
-                    Back
-                  </button>
-                  <button
-                    className={styles.primaryBtn}
-                    onClick={() => {
-                      if (!consentConfirmed) {
-                        alert('You must check the consent checkbox.');
-                        return;
-                      }
-                      if (!hasSignature) {
-                        alert('Signature consent is required.');
-                        return;
-                      }
-                      setModalStep('deposit');
-                    }}
-                  >
-                    Next: Secure Slot
-                  </button>
-                </div>
+                <FormRenderer
+                  title={customForm?.title || 'Compliance Intake & Consent'}
+                  fields={customFields}
+                  onSubmit={(responses) => {
+                    setFormResponses(responses);
+                    setModalStep('deposit');
+                  }}
+                />
               </div>
             )}
 

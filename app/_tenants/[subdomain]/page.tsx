@@ -48,6 +48,19 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordChangeSuccess, setPasswordChangeSuccess] = useState(false);
 
+  // Forgotten password states
+  const [showForgot, setShowForgot] = useState(false);
+
+  // Customizable Consent Form Builder states
+  const [consentFormId, setConsentFormId] = useState<string | null>(null);
+  const [consentFormTitle, setConsentFormTitle] = useState('Medical Consent Form');
+  const [consentFormFields, setConsentFormFields] = useState<any[]>([]);
+  
+  const [newFieldLabel, setNewFieldLabel] = useState('');
+  const [newFieldType, setNewFieldType] = useState<'text' | 'textarea' | 'checkbox' | 'select' | 'radio' | 'signature'>('text');
+  const [newFieldRequired, setNewFieldRequired] = useState(false);
+  const [newFieldOptions, setNewFieldOptions] = useState('');
+
   // Workspace settings tab and metadata
   const [activeTab, setActiveTab] = useState<'calendar' | 'booking' | 'crm' | 'manage'>('calendar');
   const [tenantId, setTenantId] = useState<string>('00000000-0000-0000-0000-000000000000');
@@ -218,6 +231,27 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
         setConversionRate(0);
       }
 
+      // 5. Fetch dynamic consent form template
+      const { data: formTemplate } = await supabase
+        .from('forms')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .limit(1)
+        .maybeSingle();
+
+      if (formTemplate) {
+        setConsentFormId(formTemplate.id);
+        setConsentFormTitle(formTemplate.title);
+        setConsentFormFields(formTemplate.fields_json || []);
+      } else {
+        // Seed default template fields in state
+        setConsentFormFields([
+          { label: 'Do you have skin allergies?', type: 'textarea', required: false },
+          { label: 'I consent to the treatment', type: 'checkbox', required: true },
+          { label: 'Client Signature', type: 'signature', required: true }
+        ]);
+      }
+
     } catch (err) {
       console.error('Failed to load workspace parameters:', err);
       setServices(MOCK_SERVICES);
@@ -232,6 +266,94 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
       loadWorkspaceData();
     }
   }, [currentUser, tenantId]);
+
+  // Forgot Password email request
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setIsLoggingIn(true);
+    try {
+      const isLocal = window.location.host.includes('localhost');
+      const redirectUrl = isLocal 
+        ? `http://localhost:3000/auth/reset-password` 
+        : `https://kasimshah.com/auth/reset-password`; // Recovery points back to root domain recovery router
+        
+      const { error } = await supabase.auth.resetPasswordForEmail(loginEmail, {
+        redirectTo: redirectUrl
+      });
+      if (error) throw error;
+      alert(`Reset password email sent! Check your inbox for recovery link.`);
+      setShowForgot(false);
+    } catch (err: any) {
+      setAuthError(err.message || 'Failed to trigger password recovery.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // Form customizer handlers
+  const handleSaveConsentForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (tenantId === '00000000-0000-0000-0000-000000000000') {
+      alert('Mock environment: changes will not save.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const payload = {
+        tenant_id: tenantId,
+        title: consentFormTitle,
+        fields_json: consentFormFields
+      };
+
+      let error;
+      if (consentFormId) {
+        const { error: err } = await supabase
+          .from('forms')
+          .update(payload)
+          .eq('id', consentFormId);
+        error = err;
+      } else {
+        const { data, error: err } = await supabase
+          .from('forms')
+          .insert(payload)
+          .select('id')
+          .single();
+        error = err;
+        if (data) setConsentFormId(data.id);
+      }
+
+      if (error) throw error;
+      alert('Consent Form layout configurations saved successfully!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to save consent form layout.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddField = () => {
+    if (!newFieldLabel.trim()) return;
+    const optionsArray = newFieldOptions
+      ? newFieldOptions.split(',').map((o) => o.trim()).filter(Boolean)
+      : undefined;
+
+    const newField = {
+      label: newFieldLabel,
+      type: newFieldType,
+      required: newFieldRequired,
+      ...(optionsArray && { options: optionsArray })
+    };
+
+    setConsentFormFields((prev) => [...prev, newField]);
+    setNewFieldLabel('');
+    setNewFieldRequired(false);
+    setNewFieldOptions('');
+  };
+
+  const handleRemoveField = (idx: number) => {
+    setConsentFormFields((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   // Login handler
   const handleLogin = async (e: React.FormEvent) => {
@@ -536,39 +658,85 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
             </div>
           )}
 
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label htmlFor="loginEmail" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Email Address</label>
-              <input
-                id="loginEmail"
-                type="email"
-                required
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="owner@yourstudio.com"
-                style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label htmlFor="loginPassword" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Password</label>
-              <input
-                id="loginPassword"
-                type="password"
-                required
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="••••••••"
-                style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={isLoggingIn}
-              style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '12px', fontWeight: 800, cursor: 'pointer', fontSize: '13px', marginTop: '8px', boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)' }}
-            >
-              {isLoggingIn ? 'Authenticating...' : 'Sign In'}
-            </button>
-          </form>
+          {showForgot ? (
+            <form onSubmit={handleForgotPassword} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label htmlFor="forgotEmail" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Email Address</label>
+                <input
+                  id="forgotEmail"
+                  type="email"
+                  required
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="owner@yourstudio.com"
+                  style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '12px', fontWeight: 800, cursor: 'pointer', fontSize: '13px', marginTop: '8px', boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)' }}
+              >
+                {isLoggingIn ? 'Sending link...' : 'Send Recovery Email'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgot(false);
+                  setAuthError(null);
+                }}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '12px', cursor: 'pointer', marginTop: '8px' }}
+              >
+                ← Back to Sign In
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label htmlFor="loginEmail" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Email Address</label>
+                <input
+                  id="loginEmail"
+                  type="email"
+                  required
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="owner@yourstudio.com"
+                  style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label htmlFor="loginPassword" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Password</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowForgot(true);
+                      setAuthError(null);
+                    }}
+                    style={{ background: 'transparent', border: 'none', color: '#d4af37', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+                <input
+                  id="loginPassword"
+                  type="password"
+                  required
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="••••••••"
+                  style={{ fontSize: '14px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '12px', fontWeight: 800, cursor: 'pointer', fontSize: '13px', marginTop: '8px', boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)' }}
+              >
+                {isLoggingIn ? 'Authenticating...' : 'Sign In'}
+              </button>
+            </form>
+          )}
         </div>
       </div>
     );
@@ -700,6 +868,111 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
           <div style={{ padding: '60px', fontWeight: 'bold', color: '#94a3b8', fontSize: '14px' }}>Loading workspace analytics and configurations...</div>
         ) : (
           <>
+            {/* STUDIO QUICK ACCESS DOCK (ONE-STOP SHOP) */}
+            <div style={{
+              width: '100%',
+              background: 'linear-gradient(135deg, #111625 0%, #171d31 100%)',
+              border: '1.5px solid rgba(212, 175, 55, 0.2)',
+              borderRadius: '16px',
+              padding: '18px 24px',
+              marginBottom: '28px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '16px',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+              boxSizing: 'border-box'
+            }}>
+              <div>
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>
+                  ⚡ Studio Quick Access Control
+                </h3>
+                <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
+                  Manage external links, contact support, and share your web booking address.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <a
+                  href={`mailto:${currentUser?.email}?subject=KS%20OS%20Mailbox`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    color: '#ffffff',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '8px',
+                    padding: '8px 16px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                >
+                  📧 Access Webmail
+                </a>
+                <a
+                  href={`http://${subdomain}.localhost:3000/book`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    background: 'rgba(212,175,55,0.12)',
+                    color: '#d4af37',
+                    border: '1px solid rgba(212, 175, 55, 0.25)',
+                    borderRadius: '8px',
+                    padding: '8px 16px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(212,175,55,0.2)'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'rgba(212,175,55,0.12)'}
+                >
+                  🌐 Visit Booking Site
+                </a>
+                <button
+                  onClick={() => {
+                    const isLocal = window.location.host.includes('localhost');
+                    const link = isLocal 
+                      ? `http://${subdomain}.localhost:3000/book` 
+                      : `https://${subdomain}.kasimshah.com/book`;
+                    navigator.clipboard.writeText(link);
+                    alert('Public Booking Web Address copied to clipboard!');
+                  }}
+                  style={{
+                    background: '#10b981',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '9px 16px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s',
+                    boxShadow: '0 4px 10px rgba(16, 185, 129, 0.15)'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
+                  onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
+                >
+                  📋 Copy Web Address
+                </button>
+              </div>
+            </div>
             {activeTab === 'calendar' && (
               <div style={{ width: '100%' }}>
                 <WeeklyCalendar 
@@ -1036,6 +1309,125 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                           ))}
                         </ul>
                       </div>
+                    </div>
+
+                    {/* Customizable Consent Form Builder Panel */}
+                    <div style={{ background: '#111625', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '24px' }}>
+                      <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>Custom Consent Form Builder</h4>
+                      <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>Create bespoke medical intake questions, dropdown lists, and electronic signature pads.</p>
+                      
+                      <form onSubmit={handleSaveConsentForm} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label htmlFor="form-title" style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Form Title</label>
+                          <input
+                            id="form-title"
+                            type="text"
+                            required
+                            placeholder="e.g. Laser Consultation Waiver"
+                            value={consentFormTitle}
+                            onChange={(e) => setConsentFormTitle(e.target.value)}
+                            style={{ fontFamily: 'sans-serif', fontSize: '13px', padding: '12px', background: '#090d16', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                          />
+                        </div>
+
+                        {/* Current fields preview list */}
+                        <div style={{ marginTop: '8px' }}>
+                          <h5 style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#ffffff', fontWeight: 800 }}>Active Form Fields Check</h5>
+                          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {consentFormFields.length === 0 ? (
+                              <li style={{ color: '#64748b', fontSize: '12px', fontStyle: 'italic' }}>No fields configured yet. Add fields below.</li>
+                            ) : (
+                              consentFormFields.map((field, idx) => (
+                                <li key={idx} style={{ background: '#090d16', border: '1px solid rgba(212,175,55,0.1)', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div>
+                                    <span style={{ fontWeight: 600, color: '#ffffff' }}>{field.label}</span>
+                                    <span style={{ fontSize: '10px', background: '#1e293b', color: '#94a3b8', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px', textTransform: 'uppercase' }}>
+                                      {field.type}
+                                    </span>
+                                    {field.required && (
+                                      <span style={{ color: '#ef4444', marginLeft: '6px', fontSize: '10px', fontWeight: 'bold' }}>REQUIRED</span>
+                                    )}
+                                    {field.options && field.options.length > 0 && (
+                                      <div style={{ fontSize: '10px', color: '#d4af37', marginTop: '2px' }}>
+                                        Options: {field.options.join(', ')}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveField(idx)}
+                                    style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '13px' }}
+                                  >
+                                    ✕
+                                  </button>
+                                </li>
+                              ))
+                            )}
+                          </ul>
+                        </div>
+
+                        {/* Add Field Box */}
+                        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          <h5 style={{ margin: 0, fontSize: '12px', color: '#ffffff', fontWeight: 800 }}>Add New Input Field</h5>
+                          <input
+                            type="text"
+                            placeholder="Field Label (e.g. Skin Tone Option)"
+                            value={newFieldLabel}
+                            onChange={(e) => setNewFieldLabel(e.target.value)}
+                            style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '10px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#ffffff' }}
+                          />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '8px' }}>
+                            <select
+                              value={newFieldType}
+                              onChange={(e) => setNewFieldType(e.target.value as any)}
+                              style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '10px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#ffffff' }}
+                            >
+                              <option value="text">Single Line Text</option>
+                              <option value="textarea">Multi-line Description</option>
+                              <option value="checkbox">Single Agreement Checkbox</option>
+                              <option value="select">Dropdown Options list</option>
+                              <option value="radio">Radio Buttons select</option>
+                              <option value="signature">Canvas Signature Pad</option>
+                            </select>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={newFieldRequired}
+                                onChange={(e) => setNewFieldRequired(e.target.checked)}
+                              />
+                              Required
+                            </label>
+                          </div>
+
+                          {(newFieldType === 'select' || newFieldType === 'radio') && (
+                            <input
+                              type="text"
+                              placeholder="Comma separated choices: e.g. Fair, Medium, Dark"
+                              value={newFieldOptions}
+                              onChange={(e) => setNewFieldOptions(e.target.value)}
+                              style={{ fontFamily: 'sans-serif', fontSize: '12px', padding: '10px', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#ffffff' }}
+                            />
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={handleAddField}
+                            style={{ background: '#334155', color: '#ffffff', border: 'none', borderRadius: '6px', padding: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            ➕ Insert Field into Schema
+                          </button>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isSaving}
+                          style={{ background: '#d4af37', color: '#1e1400', border: 'none', borderRadius: '99px', padding: '12px', fontWeight: 800, cursor: 'pointer', fontSize: '13px', boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)' }}
+                        >
+                          {isSaving ? 'Saving form layout...' : 'Publish Consent Form'}
+                        </button>
+                      </form>
+                    </div>
+
                     </div>
 
                   </div>

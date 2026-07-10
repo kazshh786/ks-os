@@ -6,8 +6,9 @@ import styles from './FormRenderer.module.css';
 
 export interface FormField {
   label: string;
-  type: 'text' | 'textarea' | 'checkbox' | 'signature';
+  type: 'text' | 'textarea' | 'checkbox' | 'signature' | 'select' | 'radio';
   required: boolean;
+  options?: string[];
 }
 
 interface FormRendererProps {
@@ -207,6 +208,37 @@ export default function FormRenderer({ title, fields, onSubmit }: FormRendererPr
                 <label className={styles.checkboxLabel} htmlFor={`field-${idx}`}>
                   {field.label} {field.required && <span className={styles.requiredAsterisk}>*</span>}
                 </label>
+              </div>
+            )}
+
+            {field.type === 'select' && (
+              <select
+                className={`${styles.textInput} ${hasError ? styles.inputErrorBorder : ''}`}
+                value={formData[field.label] || ''}
+                onChange={(e) => handleInputChange(field.label, e.target.value)}
+              >
+                <option value="">-- Choose Option --</option>
+                {field.options?.map((opt, oIdx) => (
+                  <option key={oIdx} value={opt}>{opt}</option>
+                ))}
+              </select>
+            )}
+
+            {field.type === 'radio' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '4px 0' }}>
+                {field.options?.map((opt, oIdx) => (
+                  <label key={oIdx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', color: 'var(--text-main)' }}>
+                    <input
+                      type="radio"
+                      name={`radio-group-${idx}`}
+                      value={opt}
+                      checked={formData[field.label] === opt}
+                      onChange={(e) => handleInputChange(field.label, e.target.value)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    {opt}
+                  </label>
+                ))}
               </div>
             )}
 
