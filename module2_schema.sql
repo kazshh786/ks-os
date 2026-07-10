@@ -69,52 +69,75 @@ ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
 
 -- --- SERVICES POLICIES ---
 
--- Authenticated Users (Staff/Owner) and public widgets can select active services
+-- Authenticated Users (Staff/Owner) and public widgets can select active services, and Master Admin can view all
 CREATE POLICY select_services_policy ON public.services
     FOR SELECT
     USING (
         tenant_id = public.get_auth_tenant_id() 
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
         OR (is_active = true) -- Allow public booking widget queries
     );
 
--- Only Owners can manage (insert/update/delete) services
+-- Only Owners and Master Admin can manage (insert/update/delete) services
 CREATE POLICY manage_services_policy ON public.services
     FOR ALL
-    USING (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
-    WITH CHECK (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner');
+    USING (
+        (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    )
+    WITH CHECK (
+        (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
 
 -- --- STAFF SCHEDULES POLICIES ---
 
--- Staff schedules are viewable by anyone in the tenant or the public booking widget
+-- Staff schedules are viewable by anyone in the tenant, the Master Admin, or the public booking widget
 CREATE POLICY select_schedules_policy ON public.staff_schedules
     FOR SELECT
     USING (
         tenant_id = public.get_auth_tenant_id() 
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
         OR true -- Public booking widget reads schedules to check availability
     );
 
--- Only Owners can modify schedules
+-- Only Owners and Master Admin can modify schedules
 CREATE POLICY manage_schedules_policy ON public.staff_schedules
     FOR ALL
-    USING (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
-    WITH CHECK (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner');
+    USING (
+        (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    )
+    WITH CHECK (
+        (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
 
 -- --- APPOINTMENTS POLICIES ---
 
--- Staff & Owners can view all appointments under their tenant
+-- Staff, Owners, and Master Admin can view all appointments under their tenant
 CREATE POLICY select_appointments_policy ON public.appointments
     FOR SELECT
-    USING (tenant_id = public.get_auth_tenant_id());
+    USING (
+        tenant_id = public.get_auth_tenant_id()
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
 -- Allow public booking flow to insert new appointments (anonymous bookings)
 CREATE POLICY insert_appointments_policy ON public.appointments
     FOR INSERT
     WITH CHECK (true); -- Validated via server-side checks or client logic
 
--- Staff & Owners can manage updates/deletions of appointments
+-- Staff, Owners, and Master Admin can manage updates/deletions of appointments
 CREATE POLICY manage_appointments_policy ON public.appointments
     FOR ALL
-    USING (tenant_id = public.get_auth_tenant_id())
-    WITH CHECK (tenant_id = public.get_auth_tenant_id());
+    USING (
+        tenant_id = public.get_auth_tenant_id()
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    )
+    WITH CHECK (
+        tenant_id = public.get_auth_tenant_id()
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );

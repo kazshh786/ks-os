@@ -80,26 +80,38 @@ ALTER TABLE public.off_peak_rules ENABLE ROW LEVEL SECURITY;
 
 -- Enable Tenant isolation policies
 CREATE POLICY tenant_isolation_resources ON public.resources 
-    FOR ALL USING (tenant_id = get_auth_tenant_id());
+    FOR ALL USING (
+        tenant_id = get_auth_tenant_id()
+        OR get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
 CREATE POLICY tenant_isolation_service_resources ON public.service_resources 
     FOR ALL USING (
         EXISTS (
             SELECT 1 FROM public.services 
             WHERE services.id = service_resources.service_id 
-              AND services.tenant_id = get_auth_tenant_id()
+              AND (
+                services.tenant_id = get_auth_tenant_id()
+                OR get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+              )
         )
     );
 
 CREATE POLICY tenant_isolation_waitlist ON public.waitlist 
-    FOR ALL USING (tenant_id = get_auth_tenant_id());
+    FOR ALL USING (
+        tenant_id = get_auth_tenant_id()
+        OR get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
 CREATE POLICY tenant_isolation_client_wallets ON public.client_wallets 
     FOR ALL USING (
         EXISTS (
             SELECT 1 FROM public.clients 
             WHERE clients.id = client_wallets.client_id 
-              AND clients.tenant_id = get_auth_tenant_id()
+              AND (
+                clients.tenant_id = get_auth_tenant_id()
+                OR get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+              )
         )
     );
 
@@ -108,15 +120,24 @@ CREATE POLICY tenant_isolation_staff_pricing ON public.staff_pricing
         EXISTS (
             SELECT 1 FROM public.users 
             WHERE users.id = staff_pricing.user_id 
-              AND users.tenant_id = get_auth_tenant_id()
+              AND (
+                users.tenant_id = get_auth_tenant_id()
+                OR get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+              )
         )
     );
 
 CREATE POLICY tenant_isolation_automation_rules ON public.automation_rules 
-    FOR ALL USING (tenant_id = get_auth_tenant_id());
+    FOR ALL USING (
+        tenant_id = get_auth_tenant_id()
+        OR get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
 CREATE POLICY tenant_isolation_off_peak_rules ON public.off_peak_rules 
-    FOR ALL USING (tenant_id = get_auth_tenant_id());
+    FOR ALL USING (
+        tenant_id = get_auth_tenant_id()
+        OR get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
 -- =========================================================================
 -- 3. Automation Triggers: Auto-Notify Waitlist

@@ -89,32 +89,53 @@ ALTER TABLE public.checkout_transactions ENABLE ROW LEVEL SECURITY;
 
 -- --- PRODUCTS POLICIES ---
 
--- Staff & Owners can view products under their tenant
+-- Staff, Owners, and Master Admin can view products under their tenant
 CREATE POLICY select_products_policy ON public.products
     FOR SELECT
-    USING (tenant_id = public.get_auth_tenant_id());
+    USING (
+        tenant_id = public.get_auth_tenant_id()
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
--- Only Owners can manage (insert/update/delete) products
+-- Only Owners and Master Admin can manage (insert/update/delete) products
 CREATE POLICY manage_products_policy ON public.products
     FOR ALL
-    USING (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
-    WITH CHECK (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner');
+    USING (
+        (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    )
+    WITH CHECK (
+        (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
 
 -- --- CHECKOUT TRANSACTIONS POLICIES ---
 
--- Staff & Owners can view checkout transactions under their tenant
+-- Staff, Owners, and Master Admin can view checkout transactions under their tenant
 CREATE POLICY select_transactions_policy ON public.checkout_transactions
     FOR SELECT
-    USING (tenant_id = public.get_auth_tenant_id());
+    USING (
+        tenant_id = public.get_auth_tenant_id()
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
--- Staff & Owners can insert transactions to process checkouts
+-- Staff, Owners, and Master Admin can insert transactions to process checkouts
 CREATE POLICY insert_transactions_policy ON public.checkout_transactions
     FOR INSERT
-    WITH CHECK (tenant_id = public.get_auth_tenant_id());
+    WITH CHECK (
+        tenant_id = public.get_auth_tenant_id()
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
 -- Allow updates only for payment processing roles
 CREATE POLICY update_transactions_policy ON public.checkout_transactions
     FOR UPDATE
-    USING (tenant_id = public.get_auth_tenant_id())
-    WITH CHECK (tenant_id = public.get_auth_tenant_id());
+    USING (
+        tenant_id = public.get_auth_tenant_id()
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    )
+    WITH CHECK (
+        tenant_id = public.get_auth_tenant_id()
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );

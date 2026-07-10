@@ -50,10 +50,13 @@ CREATE POLICY insert_tenant_policy ON public.tenants
   FOR INSERT
   WITH CHECK (true);
 
--- Only Owners can update their tenant's settings
+-- Only Owners and Master Admin can update their tenant's settings
 CREATE POLICY update_tenant_policy ON public.tenants
   FOR UPDATE
-  USING (id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner');
+  USING (
+    (id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
+    OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+  );
 
 
 -- =========================================================================
@@ -62,28 +65,43 @@ CREATE POLICY update_tenant_policy ON public.tenants
 
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
--- Allow users to read other users/staff members under the same tenant
+-- Allow users to read other users/staff members under the same tenant, allow Master Admin, and allow public read of staff members
 CREATE POLICY select_users_policy ON public.users
   FOR SELECT
-  USING (tenant_id = public.get_auth_tenant_id());
-
--- Only Owners can invite/create new users under their tenant
-CREATE POLICY insert_users_policy ON public.users
-  FOR INSERT
-  WITH CHECK (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner');
-
--- Owners can edit any user; Staff can only edit their own name/avatar (but not roles or permissions)
-CREATE POLICY update_users_policy ON public.users
-  FOR UPDATE
-  USING (tenant_id = public.get_auth_tenant_id())
-  WITH CHECK (
-    public.get_auth_user_role() = 'owner' OR (id = auth.uid() AND role = 'staff')
+  USING (
+    tenant_id = public.get_auth_tenant_id()
+    OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    OR role = 'staff'
   );
 
--- Only Owners can delete users from their tenant
+-- Only Owners and Master Admin can invite/create new users under their tenant
+CREATE POLICY insert_users_policy ON public.users
+  FOR INSERT
+  WITH CHECK (
+    (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
+    OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+  );
+
+-- Owners and Master Admin can edit any user; Staff can only edit their own name/avatar (but not roles or permissions)
+CREATE POLICY update_users_policy ON public.users
+  FOR UPDATE
+  USING (
+    tenant_id = public.get_auth_tenant_id()
+    OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+  )
+  WITH CHECK (
+    public.get_auth_user_role() = 'owner'
+    OR (id = auth.uid() AND role = 'staff')
+    OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+  );
+
+-- Only Owners and Master Admin can delete users from their tenant
 CREATE POLICY delete_users_policy ON public.users
   FOR DELETE
-  USING (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner');
+  USING (
+    (tenant_id = public.get_auth_tenant_id() AND public.get_auth_user_role() = 'owner')
+    OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+  );
 
 
 -- =========================================================================

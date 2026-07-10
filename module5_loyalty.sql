@@ -29,10 +29,13 @@ CREATE TABLE IF NOT EXISTS "loyalty_ledger" (
 -- Enable RLS on loyalty ledger
 ALTER TABLE public.loyalty_ledger ENABLE ROW LEVEL SECURITY;
 
--- Allow Staff & Owners to read the ledger
+-- Allow Staff, Owners, and Master Admin to read the ledger
 CREATE POLICY select_ledger_policy ON public.loyalty_ledger
     FOR SELECT
-    USING (tenant_id = public.get_auth_tenant_id());
+    USING (
+        tenant_id = public.get_auth_tenant_id()
+        OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
+    );
 
 
 -- =========================================================================
