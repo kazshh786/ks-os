@@ -36,7 +36,7 @@ export default function AdminLoginPage() {
           setUserId(user.id);
           setMustReset(true);
         } else {
-          router.push('/admin/onboard');
+          router.push('/admin');
         }
       }
     };
@@ -71,7 +71,7 @@ export default function AdminLoginPage() {
           setUserId(user.id);
           setMustReset(true);
         } else {
-          router.push('/admin/onboard');
+          router.push('/admin');
         }
       } else {
         // Sign out if unauthorized account
@@ -129,7 +129,7 @@ export default function AdminLoginPage() {
       }
 
       // Successful password change - route to dashboard
-      router.push('/admin/onboard');
+      router.push('/admin');
     } catch (err: any) {
       setError(err.message || 'Failed to update secure password.');
     } finally {
