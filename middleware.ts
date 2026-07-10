@@ -80,7 +80,7 @@ export async function middleware(req: NextRequest) {
           // Otherwise, if they visit admin.salonname.com, route them to the dashboard portal.
           if (!hostname.toLowerCase().startsWith('admin.') && url.pathname === '/') {
             // Rewrite root visits on their custom website mapping to book directly
-            const rewritePath = `/_tenants/${subdomain}/book`;
+            const rewritePath = `/${subdomain}/book`;
             return NextResponse.rewrite(new URL(rewritePath, req.url));
           }
         }
@@ -98,7 +98,7 @@ export async function middleware(req: NextRequest) {
   // Rewrite the request to the dynamic tenant folder
   const path = url.pathname;
   const searchParams = url.searchParams.toString();
-  const rewritePath = `/_tenants/${subdomain}${path}${searchParams ? `?${searchParams}` : ''}`;
+  const rewritePath = `/${subdomain}${path}${searchParams ? `?${searchParams}` : ''}`;
 
   return NextResponse.rewrite(new URL(rewritePath, req.url));
 }
