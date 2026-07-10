@@ -71,3 +71,33 @@ To verify the real-time calendar syncing and the POS trigger decrements:
    * Search for a product (ensure product has `stock_quantity > 0` in the database).
    * Click **Pay Now** to process the mock checkout.
    * Check your `products` table in Supabase. The product's `stock_quantity` will have decremented by 1, and the corresponding appointment status will have updated to `COMPLETED` automatically via the database trigger.
+
+---
+
+## Professional Staging & Deployment Workflow
+
+We utilize **Vercel Preview Deployments** to safely test and rehearse changes before merging to production.
+
+### 1. Git Branch Structure
+- **`staging` Branch**: Used as our rehearsal sandbox. Push code changes here to generate preview deployments.
+- **`main` Branch**: Production branch. Merging staging into main triggers a live build routed to your custom domain (`app.kasimshah.com`).
+
+### 2. Deployment Steps
+1. **Push to Staging**:
+   ```bash
+   git checkout staging
+   # Make changes and commit...
+   git push origin staging
+   ```
+2. **Review Preview URL**: Vercel automatically generates a unique live staging URL (e.g., `ks-os-git-staging-xxx.vercel.app`).
+3. **Merge to Production**: Once verified, open a Pull Request to merge `staging` into `main`, or merge directly:
+   ```bash
+   git checkout main
+   git merge staging
+   git push origin main
+   ```
+
+### 3. Database Isolation (Supabase)
+To prevent staging tests from modifying live customer data, we recommend setting up a secondary staging database:
+- Create a duplicate free Supabase project named `KS OS - Staging`.
+- In Vercel Project Settings, map the environment variables (`DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) for **Preview** environments to target the staging database credentials, while keeping **Production** variables pointing to the live database.
