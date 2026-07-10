@@ -344,7 +344,7 @@ export default function ManualBookingPage({ params }: { params: Promise<{ subdom
       if (apptErr) throw apptErr;
 
       // Direct back to main subdomain portal page
-      router.push('/');
+      window.location.href = '/';
     } catch (err: any) {
       setError(err.message || 'Failed to record manual booking.');
     } finally {
@@ -367,7 +367,7 @@ export default function ManualBookingPage({ params }: { params: Promise<{ subdom
           🏢 {tenantName.toUpperCase()} Manual Booking Desk
         </h1>
         <button
-          onClick={() => router.push('/')}
+          onClick={() => { window.location.href = '/'; }}
           style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', borderRadius: '99px', padding: '8px 18px', cursor: 'pointer', fontWeight: 700 }}
         >
           ← Return to Board

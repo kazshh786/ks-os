@@ -876,7 +876,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
         
         <div className={styles.headerActions}>
           <button
-            onClick={() => router.push('/book-manual')}
+            onClick={() => { window.location.href = '/book-manual'; }}
             className={styles.specialBtn}
           >
             <PlusCircleIcon />
