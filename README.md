@@ -28,6 +28,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 # PostgreSQL direct database connection string (used by Drizzle ORM)
 # Find this under Project Settings -> Database -> Connection Strings (URI) inside Supabase
 DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.your-project-id.supabase.co:6543/postgres
+
+# Vercel API Domain Provisioning Keys (Staging & Production)
+VERCEL_AUTH_TOKEN=your_vercel_api_token
+VERCEL_PROJECT_ID=prj_vVxi53tF9BkyBeb7iYYiBdy6UW2B
+VERCEL_TEAM_ID=team_KvtNAa8QG2pV8ZpwanQG6wkt
+
+# Cloudflare API DNS Configuration Keys (Staging & Production)
+CLOUDFLARE_API_TOKEN=your_cloudflare_dns_edit_token
+CLOUDFLARE_ZONE_ID=your_cloudflare_domain_zone_id
 ```
 
 ### 3. Install Dependencies
