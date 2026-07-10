@@ -233,6 +233,49 @@ export default function MasterAdminDashboard() {
     }
   };
 
+  const handleDeleteTenant = async (tenant: Tenant) => {
+    const confirmation = prompt(
+      `⚠️ WARNING: Deleting "${tenant.name}" will permanently destroy all salon records (appointments, services, clients, staff) and delete all associated user profiles from Auth.\n\nType the subdomain "${tenant.subdomain}" to confirm deletion:`
+    );
+
+    if (confirmation !== tenant.subdomain) {
+      if (confirmation !== null) {
+        alert('Deletion cancelled: The typed subdomain did not match.');
+      }
+      return;
+    }
+
+    setLoadingList(true);
+    setError(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('You must be logged in as Master Admin.');
+      }
+
+      const response = await fetch('/api/admin/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ tenantId: tenant.id }),
+      });
+
+      const resJson = await response.json();
+      if (!response.ok) {
+        throw new Error(resJson.error || 'Failed to delete tenant.');
+      }
+
+      alert(`Successfully deleted salon "${tenant.name}" and removed all cloud configurations.`);
+      fetchTenants();
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete tenant.');
+      setLoadingList(false);
+    }
+  };
+
   const handleSelectTenant = async (tenant: Tenant) => {
     setSelectedTenant(tenant);
     setCustomDomainInput(tenant.custom_domain || '');
@@ -716,6 +759,33 @@ export default function MasterAdminDashboard() {
                         </button>
                       )}
                     </div>
+                    <button
+                      onClick={() => handleDeleteTenant(t)}
+                      style={{
+                        width: '100%',
+                        marginTop: '8px',
+                        background: 'rgba(239, 68, 68, 0.05)',
+                        color: '#f87171',
+                        border: '1.5px dashed rgba(239, 68, 68, 0.2)',
+                        borderRadius: '8px',
+                        padding: '9px 12px',
+                        fontWeight: 700,
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        fontFamily: 'sans-serif'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.05)';
+                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+                      }}
+                    >
+                      🗑️ Delete Workspace
+                    </button>
                   </div>
                 ))}
               </div>
