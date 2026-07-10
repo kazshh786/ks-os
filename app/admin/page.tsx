@@ -608,7 +608,7 @@ export default function MasterAdminDashboard() {
           <svg className={styles.logoIcon} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d4af37" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
           </svg>
-          <h2>KS Control Panel</h2>
+          <h2>KS Control Panel (Staging)</h2>
           <span className={styles.adminBadge}>Master Admin</span>
         </div>
         
