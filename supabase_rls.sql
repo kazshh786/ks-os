@@ -40,10 +40,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public;
 
 ALTER TABLE public.tenants ENABLE ROW LEVEL SECURITY;
 
--- Allow users to read their own tenant's details
+-- Allow anyone to read tenant configuration settings (styling, subdomain mapping)
 CREATE POLICY select_tenant_policy ON public.tenants
   FOR SELECT
-  USING (id = public.get_auth_tenant_id());
+  USING (true);
 
 -- Allow tenant creation during signup (can be restricted to admin roles if signup is handled via custom API)
 CREATE POLICY insert_tenant_policy ON public.tenants

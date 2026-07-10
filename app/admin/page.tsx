@@ -15,6 +15,8 @@ interface Tenant {
   primary_color: string;
   secondary_color: string;
   accent_color: string;
+  ownerName?: string;
+  ownerEmail?: string;
 }
 
 interface Service {
@@ -135,10 +137,19 @@ export default function MasterAdminDashboard() {
     try {
       const { data, error: dbErr } = await supabase
         .from('tenants')
-        .select('*')
+        .select('*, users(name, email, role)')
         .order('name');
       if (dbErr) throw dbErr;
-      setTenants(data || []);
+      
+      const mapped = (data || []).map((t: any) => {
+        const owner = t.users?.find((u: any) => u.role === 'owner');
+        return {
+          ...t,
+          ownerName: owner?.name,
+          ownerEmail: owner?.email
+        };
+      });
+      setTenants(mapped);
     } catch (err: any) {
       setError(err.message || 'Failed to load salon tenants.');
     } finally {
@@ -554,6 +565,13 @@ export default function MasterAdminDashboard() {
                       {t.custom_domain && (
                         <div style={{ fontSize: '11px', color: '#10b981', marginTop: '4px', fontWeight: 'bold' }}>
                           🔗 {t.custom_domain}
+                        </div>
+                      )}
+                      {t.ownerEmail && (
+                        <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>
+                          👤 <strong>{t.ownerName || 'Salon Owner'}</strong>
+                          <br />
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>{t.ownerEmail}</span>
                         </div>
                       )}
                     </div>
