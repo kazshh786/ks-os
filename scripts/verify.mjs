@@ -1,13 +1,15 @@
 import fs from 'node:fs';
 
 const required=[
-  'module10_booking_service_api.sql','module11_booking_channels.sql','lib/booking-contract.ts','lib/service-api.ts',
+  'module10_booking_service_api.sql','module11_booking_channels.sql','module12_automation_event_outbox.sql','lib/booking-contract.ts','lib/service-api.ts',
   'app/api/v1/service/health/route.ts',
   'app/api/v1/service/tenants/[tenantId]/status/route.ts',
   'app/api/v1/service/tenants/[tenantId]/catalog/route.ts',
   'app/api/v1/service/tenants/[tenantId]/availability/route.ts',
   'app/api/v1/service/tenants/[tenantId]/bookings/route.ts',
   'app/api/v1/service/tenants/[tenantId]/bookings/[reference]/route.ts',
+  'app/api/v1/service/tenants/[tenantId]/automation-link/route.ts',
+  'app/api/v1/service/automation-events/dispatch/route.ts',
   'app/api/v1/webhooks/stripe/route.ts',
   'app/api/v1/public/[subdomain]/booking/route.ts',
   'components/booking/PublicBookingWidget.tsx',
