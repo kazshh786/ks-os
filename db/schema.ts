@@ -63,6 +63,18 @@ export const staffSchedules = pgTable('staff_schedules', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+export const bookingChannelSchedules = pgTable('booking_channel_schedules', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  bookingChannel: text('booking_channel', { enum: ['in_shop', 'mobile'] }).notNull(),
+  dayOfWeek: integer('day_of_week').notNull(),
+  startTime: time('start_time').notNull(),
+  endTime: time('end_time').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const clients = pgTable('clients', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id')
@@ -104,6 +116,8 @@ export const appointments = pgTable('appointments', {
   paymentStatus: varchar('payment_status', { length: 30 }).default('NOT_REQUIRED').notNull(),
   quotedAmount: integer('quoted_amount').default(0).notNull(),
   holdExpiresAt: timestamp('hold_expires_at', { withTimezone: true }),
+  bookingChannel: text('booking_channel', { enum: ['in_shop', 'mobile'] }).default('in_shop').notNull(),
+  mobileAddress: jsonb('mobile_address'),
   resourceId: uuid('resource_id')
     .references(() => resources.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),

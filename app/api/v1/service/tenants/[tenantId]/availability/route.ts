@@ -5,8 +5,8 @@ export const runtime='nodejs';
 export async function GET(request:Request,{params}:{params:Promise<{tenantId:string}>}){
   const denied=authorizeService(request);if(denied)return denied;
   const {tenantId}=await params;const url=new URL(request.url);
-  const serviceId=url.searchParams.get('serviceId');const staffId=url.searchParams.get('staffId');const date=url.searchParams.get('date');
-  if(!isUuid(tenantId)||!isUuid(serviceId)||!isDateOnly(date)||staffId&&staffId!=='any'&&!isUuid(staffId))return publicError(400,'INVALID_REQUEST','Valid tenant, service and date are required');
+  const serviceId=url.searchParams.get('serviceId');const staffId=url.searchParams.get('staffId');const date=url.searchParams.get('date');const bookingChannel=url.searchParams.get('bookingChannel');
+  if(!isUuid(tenantId)||!isUuid(serviceId)||!isDateOnly(date)||staffId&&staffId!=='any'&&!isUuid(staffId)||!['in_shop','mobile'].includes(bookingChannel||''))return publicError(400,'INVALID_REQUEST','Valid tenant, service, booking type and date are required');
   try{
     const db=serviceClient();
     const [{data:tenant,error:tenantError},{data:service,error:serviceError}]=await Promise.all([
@@ -15,7 +15,7 @@ export async function GET(request:Request,{params}:{params:Promise<{tenantId:str
     ]);
     if(tenantError||serviceError||!tenant||!service)return publicError(404,'BOOKING_RESOURCE_NOT_FOUND','Tenant or service not found');
     const dayOfWeek=new Date(`${date}T00:00:00Z`).getUTCDay();
-    let scheduleQuery=db.from('staff_schedules').select('user_id,start_time,end_time,users(name)').eq('tenant_id',tenantId).eq('day_of_week',dayOfWeek);
+    let scheduleQuery=db.from('booking_channel_schedules').select('user_id,start_time,end_time,users(name)').eq('tenant_id',tenantId).eq('booking_channel',bookingChannel).eq('day_of_week',dayOfWeek);
     if(staffId&&staffId!=='any')scheduleQuery=scheduleQuery.eq('user_id',staffId);
     const dayStart=zonedDateTimeToUtc(date,'00:00',tenant.timezone);const dayEnd=new Date(dayStart);dayEnd.setUTCDate(dayEnd.getUTCDate()+1);
     const [{data:schedules,error:scheduleError},{data:appointments,error:appointmentError},{data:pricing}]=await Promise.all([
@@ -43,6 +43,6 @@ export async function GET(request:Request,{params}:{params:Promise<{tenantId:str
       }
     }
     slots.sort((a,b)=>a.start.localeCompare(b.start));
-    return Response.json({date,timezone:tenant.timezone,currency:tenant.currency,slots},{headers:{'Cache-Control':'no-store'}});
+    return Response.json({date,timezone:tenant.timezone,currency:tenant.currency,bookingChannel,slots},{headers:{'Cache-Control':'no-store'}});
   }catch{return publicError(500,'INTERNAL_ERROR','Unable to calculate availability');}
 }

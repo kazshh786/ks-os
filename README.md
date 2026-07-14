@@ -62,7 +62,9 @@ npm run db:generate
 # 2. Push tables directly to Supabase
 npm run db:push
 ```
-*Note: Alternatively, you can paste the SQL scripts (`moduleX_schema.sql` files) directly into your Supabase SQL Editor dashboard.*
+*Note: Alternatively, apply the numbered SQL scripts in order in the Supabase SQL Editor. Phase 6 requires `module10_booking_service_api.sql` followed by `module11_booking_channels.sql`.*
+
+Owners can configure separate **Visit the shop** and **Mobile appointment** hours from the Manage screen. Mobile hours are opt-in: the public booking journey only offers mobile appointments after at least one mobile schedule has been saved. Customer addresses are stored only with the KS OS appointment.
 
 ### 5. Launch the Local Server
 Run the Next.js development server:

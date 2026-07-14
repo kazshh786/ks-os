@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
 const required=[
-  'module10_booking_service_api.sql','lib/booking-contract.ts','lib/service-api.ts',
+  'module10_booking_service_api.sql','module11_booking_channels.sql','lib/booking-contract.ts','lib/service-api.ts',
   'app/api/v1/service/health/route.ts',
   'app/api/v1/service/tenants/[tenantId]/status/route.ts',
   'app/api/v1/service/tenants/[tenantId]/catalog/route.ts',
@@ -11,6 +11,7 @@ const required=[
   'app/api/v1/webhooks/stripe/route.ts',
   'app/api/v1/public/[subdomain]/booking/route.ts',
   'components/booking/PublicBookingWidget.tsx',
+  'components/booking/BookingScheduleManager.tsx',
   'app/(tenants)/[subdomain]/book/page.tsx'
 ];
 let errors=0;

@@ -40,10 +40,14 @@ test('Stripe signatures are timestamped and authenticated',()=>{
 
 test('migration revokes anonymous writes and serializes slot creation',()=>{
   const sql=fs.readFileSync(path.join(process.cwd(),'module10_booking_service_api.sql'),'utf8');
+  const channels=fs.readFileSync(path.join(process.cwd(),'module11_booking_channels.sql'),'utf8');
   assert.match(sql,/DROP POLICY IF EXISTS insert_appointments_policy/);
   assert.match(sql,/pg_advisory_xact_lock/);
   assert.match(sql,/GRANT EXECUTE ON FUNCTION public\.create_public_booking[\s\S]*TO service_role/);
   assert.doesNotMatch(sql,/insert_appointments_policy[\s\S]{0,200}WITH CHECK \(true\)/);
+  assert.match(channels,/booking_channel_schedules/);
+  assert.match(channels,/booking_channel='mobile'/);
+  assert.match(channels,/appointments_mobile_address_required/);
 });
 
 test('database creates one idempotent booking, rejects overlap, and confirms a real payment',async()=>{
@@ -69,17 +73,24 @@ test('database creates one idempotent booking, rejects overlap, and confirms a r
     CREATE TRIGGER trg_decrement_stock_on_transaction AFTER INSERT OR UPDATE OF payment_status ON checkout_transactions FOR EACH ROW WHEN (NEW.payment_status='SUCCEEDED') EXECUTE FUNCTION decrement_stock_on_transaction();
   `);
   await db.exec(fs.readFileSync(path.join(process.cwd(),'module10_booking_service_api.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(process.cwd(),'module11_booking_channels.sql'),'utf8'));
   const tenant='10000000-0000-0000-0000-000000000001',staff='10000000-0000-0000-0000-000000000002',service='10000000-0000-0000-0000-000000000003',idem='10000000-0000-0000-0000-000000000004';
   const future=new Date(Date.now()+7*86400000);const day=future.getUTCDay();future.setUTCHours(10,0,0,0);
-  await db.exec(`GRANT USAGE ON SCHEMA public TO service_role,authenticated;GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO service_role,authenticated;INSERT INTO tenants(id,name,subdomain,timezone,currency)VALUES('${tenant}','Test','test','UTC','GBP');INSERT INTO users(id,tenant_id,email,name,role)VALUES('${staff}','${tenant}','staff@test.dev','Staff','staff');INSERT INTO services(id,tenant_id,name,duration,price,discount,is_active)VALUES('${service}','${tenant}','Service',60,10000,0,true);INSERT INTO staff_schedules(tenant_id,user_id,day_of_week,start_time,end_time)VALUES('${tenant}','${staff}',${day},'09:00','17:00');`);
-  const call=(key:string,start:Date)=>`SELECT * FROM create_public_booking('${tenant}'::uuid,'${service}'::uuid,'${staff}'::uuid,'${start.toISOString()}'::timestamptz,'Jane Client','jane@example.com','07123456789','full_payment',true,'${key}'::uuid)`;
+  await db.exec(`GRANT USAGE ON SCHEMA public TO service_role,authenticated;GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO service_role;GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated;INSERT INTO tenants(id,name,subdomain,timezone,currency)VALUES('${tenant}','Test','test','UTC','GBP');INSERT INTO users(id,tenant_id,email,name,role)VALUES('${staff}','${tenant}','staff@test.dev','Staff','staff');INSERT INTO services(id,tenant_id,name,duration,price,discount,is_active)VALUES('${service}','${tenant}','Service',60,10000,0,true);INSERT INTO staff_schedules(tenant_id,user_id,day_of_week,start_time,end_time)VALUES('${tenant}','${staff}',${day},'09:00','17:00');INSERT INTO booking_channel_schedules(tenant_id,user_id,booking_channel,day_of_week,start_time,end_time)VALUES('${tenant}','${staff}','in_shop',${day},'09:00','17:00');`);
+  const call=(key:string,start:Date,channel='in_shop',address='NULL')=>`SELECT * FROM create_public_booking('${tenant}'::uuid,'${service}'::uuid,'${staff}'::uuid,'${start.toISOString()}'::timestamptz,'Jane Client','jane@example.com','07123456789','full_payment',true,'${key}'::uuid,'${channel}',${address})`;
   await db.exec('SET ROLE service_role');await db.exec(call(idem,future));await db.exec(call(idem,future));
   await db.exec('RESET ROLE');assert.equal((await db.query('SELECT id FROM appointments')).rows.length,1);
+  await db.exec('SET ROLE authenticated');await assert.rejects(db.exec(`INSERT INTO booking_channel_schedules(tenant_id,user_id,booking_channel,day_of_week,start_time,end_time)VALUES('${tenant}','${staff}','mobile',${day},'08:00','09:00')`));await db.exec('RESET ROLE');
   const overlap='10000000-0000-0000-0000-000000000005';await db.exec('SET ROLE service_role');await assert.rejects(db.exec(call(overlap,future)),/no longer available/);
+  const mobileKey='10000000-0000-0000-0000-000000000006',mobileStart=new Date(future.getTime()+2*3600000);
+  await assert.rejects(db.exec(call(mobileKey,mobileStart,'mobile',`'{"line1":"1 High Street","city":"London","postcode":"SW1A 1AA"}'::jsonb`)),/outside booking channel schedule/);
+  await db.exec(`RESET ROLE;INSERT INTO booking_channel_schedules(tenant_id,user_id,booking_channel,day_of_week,start_time,end_time)VALUES('${tenant}','${staff}','mobile',${day},'12:00','17:00');SET ROLE service_role;`);
+  await db.exec(call(mobileKey,mobileStart,'mobile',`'{"line1":"1 High Street","city":"London","postcode":"SW1A 1AA"}'::jsonb`));
   await db.exec('RESET ROLE');const reference=(await db.query<{public_reference:string}>('SELECT public_reference FROM appointments')).rows[0].public_reference;
   await db.exec('SET ROLE authenticated');await assert.rejects(db.exec(call(overlap,new Date(future.getTime()+7200000))));
   await db.exec('RESET ROLE;SET ROLE service_role');await db.exec(`SELECT confirm_public_booking_payment('${reference}'::uuid,'pi_test',10000)`);await db.exec('RESET ROLE');
-  assert.deepEqual((await db.query('SELECT status,payment_status FROM appointments')).rows[0],{status:'CONFIRMED',payment_status:'SUCCEEDED'});
+  assert.deepEqual((await db.query("SELECT status,payment_status FROM appointments WHERE booking_channel='in_shop'")).rows[0],{status:'CONFIRMED',payment_status:'SUCCEEDED'});
+  assert.equal((await db.query<{mobile_address:any}>("SELECT mobile_address FROM appointments WHERE booking_channel='mobile'")).rows[0].mobile_address.postcode,'SW1A 1AA');
   assert.equal((await db.query<{purpose:string}>('SELECT purpose FROM checkout_transactions')).rows[0].purpose,'booking_payment');
   const rateKey='b'.repeat(64);await db.exec('SET ROLE authenticated');await assert.rejects(db.exec(`SELECT consume_public_booking_rate_limit('${rateKey}',1,60)`));
   await db.exec('RESET ROLE;SET ROLE service_role');const allowed=await db.query<{allowed:boolean}>(`SELECT consume_public_booking_rate_limit('${rateKey}',1,60) AS allowed`);const blocked=await db.query<{allowed:boolean}>(`SELECT consume_public_booking_rate_limit('${rateKey}',1,60) AS allowed`);
