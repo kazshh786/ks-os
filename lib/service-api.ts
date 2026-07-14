@@ -48,6 +48,20 @@ export function verifyStripeSignature(payload:string,header:string) {
   return a.length===b.length&&crypto.timingSafeEqual(a,b);
 }
 
+export function signAutomationEvent(rawBody:string,timestamp:number) {
+  const secret=process.env.AUTOMATION_EVENT_SECRET||'';
+  if(secret.length<32)throw Object.assign(new Error('Automation event signing is not configured'),{code:'AUTOMATION_SECURITY_NOT_CONFIGURED'});
+  return crypto.createHmac('sha256',secret).update(`${timestamp}.${rawBody}`).digest('hex');
+}
+
+export function authorizeAutomationWorker(request:Request):Response|null{
+  const expected=Buffer.from(process.env.AUTOMATION_OUTBOX_WORKER_SECRET||process.env.CRON_SECRET||'');
+  const supplied=Buffer.from((request.headers.get('authorization')||'').replace(/^Bearer\s+/i,''));
+  if(expected.length<32)return publicError(503,'AUTOMATION_SECURITY_NOT_CONFIGURED','Automation outbox worker is not configured');
+  if(supplied.length!==expected.length||!crypto.timingSafeEqual(supplied,expected))return publicError(401,'UNAUTHORIZED','Invalid automation worker credential');
+  return null;
+}
+
 export async function enforcePublicRateLimit(request:Request,tenantId:string,limit:number){
   const salt=process.env.BOOKING_RATE_LIMIT_SALT||'';
   if(salt.length<32)return {allowed:false,status:503,code:'BOOKING_SECURITY_NOT_CONFIGURED'};
