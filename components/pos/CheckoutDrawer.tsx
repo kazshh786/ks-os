@@ -43,7 +43,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<'CARD' | 'CASH' | 'SPLIT'>('CARD');
+  const [paymentMethod, setPaymentMethod] = useState<'CARD' | 'CASH' | 'SPLIT'>('CASH');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -189,18 +189,9 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
     setError(null);
 
     try {
-      // Validate Split Payment inputs
-      if (paymentMethod === 'SPLIT') {
-        const cashVal = parseFloat(cashSplitAmount);
-        const cashCents = isNaN(cashVal) ? 0 : Math.round(cashVal * 100);
-        if (cashCents <= 0 || cashCents >= grandTotal) {
-          throw new Error('Please enter a valid Cash Split amount (must be less than the total).');
-        }
+      if (paymentMethod !== 'CASH') {
+        throw new Error('Card and split POS payments are disabled until a terminal-backed Stripe flow is configured.');
       }
-
-      await new Promise((resolve) => setTimeout(resolve, 1200)); // Simulate Stripe processing delay
-
-      const mockStripeId = 'pi_' + Math.random().toString(36).substr(2, 9);
       const purchasedProducts = cart.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -217,7 +208,8 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
         payment_status: 'SUCCEEDED',
         payment_method: paymentMethod,
         purchased_products: purchasedProducts,
-        stripe_payment_intent_id: mockStripeId,
+        stripe_payment_intent_id: null,
+        purpose: 'point_of_sale',
       });
 
       if (txErr) throw txErr;
@@ -231,8 +223,8 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
         tip: tipCents,
         grandTotal: grandTotal,
         method: paymentMethod,
-        cashPaid: paymentMethod === 'SPLIT' ? Math.round(parseFloat(cashSplitAmount) * 100) : paymentMethod === 'CASH' ? grandTotal : 0,
-        cardPaid: paymentMethod === 'SPLIT' ? cardSplitAmount : paymentMethod === 'CARD' ? grandTotal : 0,
+        cashPaid: grandTotal,
+        cardPaid: 0,
         pointsEarned: Math.round(grandTotal / 100),
       });
 
@@ -401,7 +393,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
               <div className={styles.sectionCard}>
                 <h4 className={styles.sectionTitle}>4. Payment Method</h4>
                 <div className={styles.paymentButtonGroup}>
-                  {(['CARD', 'CASH', 'SPLIT'] as const).map((method) => (
+                  {(['CASH'] as const).map((method) => (
                     <button
                       key={method}
                       className={`${styles.paymentMethodButton} ${

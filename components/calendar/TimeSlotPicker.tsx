@@ -67,12 +67,6 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
   const [patchTestConfirmed, setPatchTestConfirmed] = useState(false);
   const [consentConfirmed, setConsentConfirmed] = useState(false);
 
-  // Credit Card checkout values
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
-  const [cardZip, setCardZip] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'deposit' | 'card_on_file'>('deposit');
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
 
   // Signature canvas pad references
@@ -469,21 +463,8 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
 
       if (apptErr) throw apptErr;
 
-      // 4. Create deposit checkout transaction if deposit selected
-      if (paymentMethod === 'deposit') {
-        const depositAmount = Math.round(selectedSlot.price * 0.3); // 30% deposit in cents
-        await supabase.from('checkout_transactions').insert({
-          tenant_id: tenantId,
-          appointment_id: appt.id,
-          total_amount: depositAmount,
-          payment_status: 'SUCCEEDED',
-          payment_method: 'CARD',
-          purchased_products: [],
-          stripe_payment_intent_id: 'dep_pi_' + Math.random().toString(36).substr(2, 9),
-        });
-      }
-
-      // Proceed to SMS mockup screen
+      // Staff-side scheduling never handles card data or fabricates a payment.
+      // Online deposits/full payments go through the public Stripe booking flow.
       setModalStep('confirm');
     } catch (err: any) {
       alert(err.message || 'Failed to complete checkout booking.');
@@ -748,7 +729,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
               </div>
             )}
 
-            {/* STEP 3: Upfront Deposit Securement */}
+            {/* STEP 3: Staff-side confirmation (payment remains pay-later) */}
             {modalStep === 'deposit' && (
               <div className={styles.stepBody}>
                 <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#cbd5e1' }}>Receipt Summary</h5>
@@ -757,61 +738,11 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
                   <strong>${(selectedSlot.price / 100).toFixed(2)}</strong>
                 </div>
                 <div className={styles.summaryTotalRow}>
-                  <span>30% Deposit Due Now:</span>
-                  <strong>${((selectedSlot.price * 0.3) / 100).toFixed(2)}</strong>
+                  <span>Payment:</span>
+                  <strong>Pay later</strong>
                 </div>
 
-                <div className={styles.inputGroup} style={{ marginTop: '10px' }}>
-                  <label className={styles.label}>Choose Payment Method</label>
-                  <select
-                    className={styles.select}
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  >
-                    <option value="deposit">Pay 30% Upfront Deposit Now</option>
-                    <option value="card_on_file">Capture Card (Protect from No-Shows, $0 today)</option>
-                  </select>
-                </div>
-
-                <div className={styles.inputGroup}>
-                  <label className={styles.label}>Cardholder Name</label>
-                  <input
-                    type="text"
-                    placeholder="Jane Doe"
-                    className={styles.formInputText}
-                    required
-                  />
-                </div>
-
-                <div className={styles.inputGroup}>
-                  <label className={styles.label}>Card Details</label>
-                  <input
-                    type="text"
-                    placeholder="1111 2222 3333 4444"
-                    className={styles.formInputText}
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(e.target.value.replace(/\s?/g, '').replace(/(\d{4})/g, '$1 ').trim())}
-                    maxLength={19}
-                  />
-                  <div className={styles.cardFormGrid}>
-                    <input
-                      type="text"
-                      placeholder="MM / YY"
-                      className={styles.formInputText}
-                      value={cardExpiry}
-                      onChange={(e) => setCardExpiry(e.target.value)}
-                      maxLength={7}
-                    />
-                    <input
-                      type="password"
-                      placeholder="CVC"
-                      className={styles.formInputText}
-                      value={cardCvc}
-                      onChange={(e) => setCardCvc(e.target.value)}
-                      maxLength={4}
-                    />
-                  </div>
-                </div>
+                <p className={styles.statusMessage}>Card details are never collected in the staff scheduler. Send the customer to the public booking page when an online deposit or full payment is required.</p>
 
                 <div className={styles.stepFooter}>
                   <button className={styles.secondaryBtn} onClick={() => setModalStep('intake')}>
@@ -822,17 +753,13 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
                     disabled={isSubmittingBooking}
                     onClick={handleFinalBooking}
                   >
-                    {isSubmittingBooking
-                      ? 'Securing Slot...'
-                      : paymentMethod === 'deposit'
-                      ? `Pay $${((selectedSlot.price * 0.3) / 100).toFixed(2)} Deposit`
-                      : 'Confirm Slot Security'}
+                    {isSubmittingBooking ? 'Securing Slot...' : 'Create Pay-Later Appointment'}
                   </button>
                 </div>
               </div>
             )}
 
-            {/* STEP 4: Automated Reassurance Notification Mock */}
+            {/* STEP 4: Confirmation */}
             {modalStep === 'confirm' && (
               <div className={styles.stepBody}>
                 <div style={{ textAlign: 'center', margin: '10px 0' }}>
@@ -862,10 +789,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
                             minute: '2-digit',
                           })}
                           .{' '}
-                          {paymentMethod === 'deposit'
-                            ? `Deposit of $${((selectedSlot.price * 0.3) / 100).toFixed(2)} paid.`
-                            : 'Card saved on file.'}{' '}
-                          Manage: booking.link
+                          Payment is due later. Use the public booking page for secure online payment.
                         </p>
                         <span className={styles.smsTime}>Just now</span>
                       </div>

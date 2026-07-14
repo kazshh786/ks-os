@@ -61,18 +61,6 @@ const LogOutIcon = () => (
 );
 
 
-// Fallback listings to ensure compile safety if database is empty
-const MOCK_STAFF = [
-  { id: '11111111-1111-1111-1111-111111111111', name: 'Alex Stylist' },
-  { id: '22222222-2222-2222-2222-222222222222', name: 'Jordan Barber' }
-];
-
-const MOCK_SERVICES = [
-  { id: '33333333-3333-3333-3333-333333333333', name: 'Skin Fade', price: 3500, duration: 45 },
-  { id: '44444444-4444-4444-4444-444444444444', name: 'Gel Manicure', price: 4500, duration: 45 },
-  { id: '55555555-5555-5555-5555-555555555555', name: 'Laser Resurfacing', price: 12000, duration: 60 }
-];
-
 interface StaffRevenue {
   staffName: string;
   revenue: number;
@@ -221,8 +209,8 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
         .select('id, name, email')
         .eq('tenant_id', tenantId);
 
-      const activeSvcList = svcData && svcData.length > 0 ? svcData : MOCK_SERVICES;
-      const activeStaffList = staffData && staffData.length > 0 ? staffData : MOCK_STAFF;
+      const activeSvcList = svcData || [];
+      const activeStaffList = staffData || [];
       setServices(activeSvcList);
       setStaff(activeStaffList);
 
@@ -306,8 +294,8 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
 
     } catch (err) {
       console.error('Failed to load workspace parameters:', err);
-      setServices(MOCK_SERVICES);
-      setStaff(MOCK_STAFF);
+      setServices([]);
+      setStaff([]);
     } finally {
       setLoading(false);
     }

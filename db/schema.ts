@@ -9,6 +9,9 @@ export const tenants = pgTable('tenants', {
   primaryColor: varchar('primary_color', { length: 7 }).default('#0f172a').notNull(), // Slate 900
   secondaryColor: varchar('secondary_color', { length: 7 }).default('#475569').notNull(), // Slate 600
   accentColor: varchar('accent_color', { length: 7 }).default('#10b981').notNull(), // Emerald 500
+  timezone: varchar('timezone', { length: 100 }).default('Europe/London').notNull(),
+  currency: varchar('currency', { length: 3 }).default('GBP').notNull(),
+  defaultPaymentMode: varchar('default_payment_mode', { length: 30 }).default('customer_choice').notNull(),
   // Loyalty settings
   enableLoyalty: boolean('enable_loyalty').default(false).notNull(),
   loyaltyPointsPerDollar: integer('loyalty_points_per_dollar').default(1).notNull(),
@@ -95,6 +98,12 @@ export const appointments = pgTable('appointments', {
     .default('PENDING')
     .notNull(),
   notes: text('notes'),
+  publicReference: uuid('public_reference').defaultRandom().notNull(),
+  idempotencyKey: uuid('idempotency_key'),
+  paymentMode: varchar('payment_mode', { length: 30 }).default('pay_later').notNull(),
+  paymentStatus: varchar('payment_status', { length: 30 }).default('NOT_REQUIRED').notNull(),
+  quotedAmount: integer('quoted_amount').default(0).notNull(),
+  holdExpiresAt: timestamp('hold_expires_at', { withTimezone: true }),
   resourceId: uuid('resource_id')
     .references(() => resources.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -157,6 +166,7 @@ export const checkoutTransactions = pgTable('checkout_transactions', {
     .notNull(),
   purchasedProducts: jsonb('purchased_products').default([]).notNull(), // Array of: { productId: uuid, quantity: number }
   stripePaymentIntentId: varchar('stripe_payment_intent_id', { length: 255 }),
+  purpose: text('purpose', { enum: ['point_of_sale', 'booking_payment'] }).default('point_of_sale').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

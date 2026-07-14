@@ -37,6 +37,13 @@ VERCEL_TEAM_ID=team_KvtNAa8QG2pV8ZpwanQG6wkt
 # Cloudflare API DNS Configuration Keys (Staging & Production)
 CLOUDFLARE_API_TOKEN=your_cloudflare_dns_edit_token
 CLOUDFLARE_ZONE_ID=your_cloudflare_domain_zone_id
+
+# Phase 6 private booking service and real Stripe payments
+KS_OS_SERVICE_TOKEN=generate-a-long-random-service-token
+STRIPE_SECRET_KEY=sk_test_or_live_key
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_or_live_key
+STRIPE_WEBHOOK_SECRET=whsec_from_the_stripe_endpoint
+BOOKING_RATE_LIMIT_SALT=generate-another-random-secret-at-least-32-characters
 ```
 
 ### 3. Install Dependencies
