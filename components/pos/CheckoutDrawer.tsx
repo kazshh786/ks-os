@@ -205,7 +205,6 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
       if (paymentMethod !== 'CASH') {
         throw new Error('Card payments are coming soon. Select cash to record this checkout.');
       }
-
       const purchasedProducts = cart.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -223,6 +222,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
         payment_method: paymentMethod,
         purchased_products: purchasedProducts,
         stripe_payment_intent_id: null,
+        purpose: 'point_of_sale',
       });
 
       if (txErr) throw txErr;
@@ -406,7 +406,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
               <div className={styles.sectionCard}>
                 <h4 className={styles.sectionTitle}>4. Payment Method</h4>
                 <div className={styles.paymentButtonGroup}>
-                  {(['CARD', 'CASH', 'SPLIT'] as const).map((method) => (
+                  {(['CASH'] as const).map((method) => (
                     <button
                       key={method}
                       className={`${styles.paymentMethodButton} ${

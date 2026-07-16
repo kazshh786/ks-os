@@ -24,6 +24,7 @@ Create a file named `.env.local` in the root of the project folder:
 # Supabase Project Client Keys (Public API)
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
 
 # PostgreSQL direct database connection string (used by Drizzle ORM)
 # Find this under Project Settings -> Database -> Connection Strings (URI) inside Supabase
@@ -37,6 +38,21 @@ VERCEL_TEAM_ID=team_KvtNAa8QG2pV8ZpwanQG6wkt
 # Cloudflare API DNS Configuration Keys (Staging & Production)
 CLOUDFLARE_API_TOKEN=your_cloudflare_dns_edit_token
 CLOUDFLARE_ZONE_ID=your_cloudflare_domain_zone_id
+
+# Phase 6 private booking service and real Stripe payments
+KS_OS_SERVICE_TOKEN=generate-a-long-random-service-token
+STRIPE_SECRET_KEY=sk_test_or_live_key
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_or_live_key
+STRIPE_WEBHOOK_SECRET=whsec_from_the_stripe_endpoint
+BOOKING_RATE_LIMIT_SALT=generate-another-random-secret-at-least-32-characters
+
+# Prompt 9 transactional automation outbox
+# Must exactly match the dashboard AUTOMATION_EVENT_SECRET.
+AUTOMATION_EVENT_SECRET=generate-a-shared-secret-at-least-32-characters
+AUTOMATION_EVENT_INGEST_URL=https://dashboard.kasimshah.com/api/automations/events
+# Used by the outbox cron; Vercel CRON_SECRET may be used instead.
+AUTOMATION_OUTBOX_WORKER_SECRET=generate-a-worker-secret-at-least-32-characters
+CRON_SECRET=generate-a-vercel-cron-secret-at-least-32-characters
 ```
 
 ### 3. Install Dependencies
@@ -54,7 +70,11 @@ npm run db:generate
 # 2. Push tables directly to Supabase
 npm run db:push
 ```
-*Note: Alternatively, you can paste the SQL scripts (`moduleX_schema.sql` files) directly into your Supabase SQL Editor dashboard.*
+*Note: Alternatively, apply the numbered SQL scripts in order in the Supabase SQL Editor. Phase 6 requires `module10_booking_service_api.sql` followed by `module11_booking_channels.sql`; Prompt 9 then requires `module12_automation_event_outbox.sql`.*
+
+Owners can configure separate **Visit the shop** and **Mobile appointment** hours from the Manage screen. Mobile hours are opt-in: the public booking journey only offers mobile appointments after at least one mobile schedule has been saved. Customer addresses are stored only with the KS OS appointment.
+
+Booking creation, cancellation, and completion now write a safe event into a transactional outbox. The minute worker delivers only opaque IDs, timestamps, booking channel/status, and amount/currency to the Agency automation API. It never sends customer names, emails, phone numbers, mobile addresses, or payment credentials. Re-test the KS OS integration from the Agency dashboard after applying Module 12 so the KS OS tenant is linked to its Agency workspace.
 
 ### 5. Launch the Local Server
 Run the Next.js development server:

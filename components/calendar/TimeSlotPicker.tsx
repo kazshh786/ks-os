@@ -463,7 +463,8 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
 
       if (apptErr) throw apptErr;
 
-      // Payment is collected at the appointment until a live provider is connected.
+      // Staff-side scheduling never handles card data or fabricates a payment.
+      // Online deposits/full payments go through the public Stripe booking flow.
       setModalStep('confirm');
     } catch (err: any) {
       alert(err.message || 'Failed to complete checkout booking.');
@@ -728,7 +729,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
               </div>
             )}
 
-            {/* STEP 3: Booking review */}
+            {/* STEP 3: Staff-side booking review */}
             {modalStep === 'deposit' && (
               <div className={styles.stepBody}>
                 <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#cbd5e1' }}>Review your booking</h5>

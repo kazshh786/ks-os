@@ -10,6 +10,7 @@ import ClientTimeline from '@/components/crm/ClientTimeline';
 import CheckoutDrawer from '@/components/pos/CheckoutDrawer';
 import FormBuilder from '@/components/forms/FormBuilder';
 import type { FormField } from '@/components/forms/FormRenderer';
+import BookingScheduleManager from '@/components/booking/BookingScheduleManager';
 import styles from './tenant.module.css';
 
 // SVG Icon Library for Salon Tenant Dashboard
@@ -77,7 +78,6 @@ const FormIcon = () => (
     <path d="M8 13h8M8 17h6"></path>
   </svg>
 );
-
 
 interface StaffRevenue {
   staffName: string;
@@ -674,6 +674,10 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
         end_time: '17:00:00'
       }));
       await supabase.from('staff_schedules').insert(scheduleInserts);
+      await supabase.rpc('replace_staff_booking_channel_schedule',{
+        p_tenant_id:tenantId,p_staff_id:newUserId,p_booking_channel:'in_shop',
+        p_hours:[0,1,2,3,4,5,6].map(dayOfWeek=>({dayOfWeek,enabled:days.includes(dayOfWeek),startTime:'09:00',endTime:'17:00'})),
+      });
 
       setStaff((prev) => [...prev, data]);
       setNewStaffName('');
@@ -1177,6 +1181,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
 
             {activeTab === 'manage' && (
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+                <BookingScheduleManager tenantId={tenantId} staff={staff}/>
                 
                 {/* Section A: Revenue Metrics for this salon */}
                 <div className={styles.analyticsSummaryCards}>
