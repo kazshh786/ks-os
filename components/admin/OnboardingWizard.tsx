@@ -7,6 +7,7 @@ import styles from './OnboardingWizard.module.css';
 interface ProvisionFormData {
   salonName: string;
   subdomain: string;
+  packageTier: 'core' | 'growth' | 'scale';
   industry: 'barber' | 'nails' | 'aesthetics' | '';
   ownerEmail: string;
   ownerPassword: string; // Captured to automatically generate Auth user on server
@@ -23,6 +24,7 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
   const [formData, setFormData] = useState<ProvisionFormData>({
     salonName: '',
     subdomain: '',
+    packageTier: 'core',
     industry: '',
     ownerEmail: '',
     ownerPassword: '',
@@ -74,11 +76,11 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
         return;
       }
     }
-    if (step === 2 && !formData.industry) {
+    if (step === 3 && !formData.industry) {
       setError('Please select an industry vertical.');
       return;
     }
-    if (step === 3) {
+    if (step === 4) {
       if (!formData.ownerEmail.trim() || !formData.ownerPassword.trim()) {
         setError('Owner email and temporary password are required.');
         return;
@@ -121,6 +123,7 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
         body: JSON.stringify({
           salonName: formData.salonName,
           subdomain: formData.subdomain.toLowerCase(),
+          packageTier: formData.packageTier,
           industry: formData.industry,
           ownerEmail: formData.ownerEmail,
           ownerPassword: formData.ownerPassword
@@ -133,9 +136,9 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
       }
 
       setSuccessTenantId(resData.tenantId);
-      setStep(5); // Success step
-    } catch (err: any) {
-      setError(err.message || 'Tenant provisioning execution failed.');
+      setStep(6); // Success step
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Tenant provisioning execution failed.');
     } finally {
       setIsProcessing(false);
     }
@@ -178,17 +181,18 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
   return (
     <div className={styles.wizardContainer}>
       <div className={styles.wizardHeader}>
-        <h2>Agency Onboarding Dashboard</h2>
-        <span className={styles.headerSubtitle}>KS Studio Salon Tenant Provisioning</span>
+        <h2>Provision a client workspace</h2>
+        <span className={styles.headerSubtitle}>Create access, apply a plan and seed the right business setup.</span>
       </div>
 
       {/* Steps Progress Indicators */}
-      {step <= 4 && (
+      {step <= 5 && (
         <div className={styles.progressBar}>
           <div className={`${styles.progressStep} ${step >= 1 ? styles.stepActive : ''}`}>1. Identity</div>
-          <div className={`${styles.progressStep} ${step >= 2 ? styles.stepActive : ''}`}>2. Vertical</div>
-          <div className={`${styles.progressStep} ${step >= 3 ? styles.stepActive : ''}`}>3. Owner</div>
-          <div className={`${styles.progressStep} ${step >= 4 ? styles.stepActive : ''}`}>4. Confirm</div>
+          <div className={`${styles.progressStep} ${step >= 2 ? styles.stepActive : ''}`}>2. Plan</div>
+          <div className={`${styles.progressStep} ${step >= 3 ? styles.stepActive : ''}`}>3. Setup</div>
+          <div className={`${styles.progressStep} ${step >= 4 ? styles.stepActive : ''}`}>4. Owner</div>
+          <div className={`${styles.progressStep} ${step >= 5 ? styles.stepActive : ''}`}>5. Review</div>
         </div>
       )}
 
@@ -198,8 +202,8 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
         {/* STEP 1: Basic Identity */}
         {step === 1 && (
           <div className={styles.stepContainer}>
-            <h3>Step 1: Salon Identity</h3>
-            <p className={styles.stepDesc}>Enter the basic trading name and choose their unique tenant URL subdomain.</p>
+            <h3>Client identity</h3>
+            <p className={styles.stepDesc}>Enter the trading name and choose a unique workspace address.</p>
             
             <div className={styles.inputGroup}>
               <label htmlFor="salonName" className={styles.label}>Salon Name</label>
@@ -230,10 +234,48 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
           </div>
         )}
 
-        {/* STEP 2: Industry Vertical */}
+        {/* STEP 2: Package tier */}
         {step === 2 && (
           <div className={styles.stepContainer}>
-            <h3>Step 2: Choose Industry Starter Pack</h3>
+            <h3>Choose workspace plan</h3>
+            <p className={styles.stepDesc}>Set the client package now so availability and upgrade states are consistent from day one.</p>
+
+            <div className={styles.planGrid}>
+              <button
+                type="button"
+                className={`${styles.planCard} ${formData.packageTier === 'core' ? styles.planCardSelected : ''}`}
+                onClick={() => handleInputChange('packageTier', 'core')}
+              >
+                <span className={styles.planName}>Core</span>
+                <strong>Essential workspace</strong>
+                <span>Website, bookings, customers and intake forms.</span>
+              </button>
+              <button
+                type="button"
+                className={`${styles.planCard} ${formData.packageTier === 'growth' ? styles.planCardSelected : ''}`}
+                onClick={() => handleInputChange('packageTier', 'growth')}
+              >
+                <span className={styles.planName}>Growth</span>
+                <strong>Performance toolkit</strong>
+                <span>Core tools plus advanced analytics and automations.</span>
+              </button>
+              <button
+                type="button"
+                className={`${styles.planCard} ${formData.packageTier === 'scale' ? styles.planCardSelected : ''}`}
+                onClick={() => handleInputChange('packageTier', 'scale')}
+              >
+                <span className={styles.planName}>Scale</span>
+                <strong>Agency-managed growth</strong>
+                <span>Full toolkit with priority management and future channels.</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: Industry Vertical */}
+        {step === 3 && (
+          <div className={styles.stepContainer}>
+            <h3>Choose starter setup</h3>
             <p className={styles.stepDesc}>This configures the default intake forms and service directories for the salon type.</p>
 
             <div className={styles.cardsGrid}>
@@ -270,10 +312,10 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
           </div>
         )}
 
-        {/* STEP 3: Owner Details */}
-        {step === 3 && (
+        {/* STEP 4: Owner Details */}
+        {step === 4 && (
           <div className={styles.stepContainer}>
-            <h3>Step 3: Salon Owner Profile</h3>
+            <h3>Create owner access</h3>
             <p className={styles.stepDesc}>Register the owner's credential details. A Supabase Auth account will be created automatically with the temporary password provided.</p>
 
             <div className={styles.inputGroup}>
@@ -302,11 +344,11 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
           </div>
         )}
 
-        {/* STEP 4: Confirmation & Trigger */}
-        {step === 4 && (
+        {/* STEP 5: Confirmation & Trigger */}
+        {step === 5 && (
           <div className={styles.stepContainer}>
-            <h3>Step 4: Confirm Workspace Setup</h3>
-            <p className={styles.stepDesc}>Double check the configuration profiles before triggering the database provision actions.</p>
+            <h3>Review workspace setup</h3>
+            <p className={styles.stepDesc}>Confirm the plan, access and starter setup before provisioning.</p>
 
             <div className={styles.confirmationTable}>
               <div className={styles.confirmRow}>
@@ -316,6 +358,10 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
               <div className={styles.confirmRow}>
                 <span>URL Domain:</span>
                 <strong>{formData.subdomain}.kasimshah.com</strong>
+              </div>
+              <div className={styles.confirmRow}>
+                <span>Workspace Plan:</span>
+                <strong style={{ textTransform: 'capitalize' }}>{formData.packageTier}</strong>
               </div>
               <div className={styles.confirmRow}>
                 <span>Industry Vertical:</span>
@@ -337,8 +383,8 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
           </div>
         )}
 
-        {/* STEP 5: Success Output */}
-        {step === 5 && (
+        {/* STEP 6: Success Output */}
+        {step === 6 && (
           <div className={styles.successScreen}>
             <span className={styles.successIcon}>🎉</span>
             <h3>Workspace Provisioned!</h3>
@@ -346,6 +392,7 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
             <div className={styles.successDetails}>
               <div>Tenant ID: <span className={styles.monoUuid}>{successTenantId}</span></div>
               <div>Subdomain: <span>{formData.subdomain}.kasimshah.com</span></div>
+              <div>Workspace Plan: <span style={{ textTransform: 'capitalize' }}>{formData.packageTier}</span></div>
               <div>Starter Pack Installed: <span style={{ textTransform: 'capitalize' }}>{formData.industry}</span></div>
             </div>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '8px' }}>
@@ -356,6 +403,7 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
                   setFormData({
                     salonName: '',
                     subdomain: '',
+                    packageTier: 'core',
                     industry: '',
                     ownerEmail: '',
                     ownerPassword: '',
@@ -364,7 +412,7 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
                   setSuccessTenantId(null);
                 }}
               >
-                Onboard Another Salon
+                Provision another client
               </button>
               {onSuccessComplete && (
                 <button
@@ -373,7 +421,7 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
                   style={{ background: '#0f172a', color: '#ffffff' }}
                   onClick={onSuccessComplete}
                 >
-                  View Salons List
+                  View client list
                 </button>
               )}
             </div>
@@ -382,14 +430,14 @@ export default function OnboardingWizard({ onSuccessComplete }: OnboardingWizard
       </div>
 
       {/* Footer Nav Controls */}
-      {step <= 4 && (
+      {step <= 5 && (
         <div className={styles.wizardFooter}>
           {step > 1 && (
             <button type="button" className={styles.backButton} onClick={prevStep} disabled={isProcessing}>
               Back
             </button>
           )}
-          {step < 4 ? (
+          {step < 5 ? (
             <button type="button" className={styles.nextButton} onClick={nextStep}>
               Next Step
             </button>

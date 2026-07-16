@@ -8,6 +8,8 @@ import WeeklyCalendar from '@/components/calendar/WeeklyCalendar';
 import TimeSlotPicker from '@/components/calendar/TimeSlotPicker';
 import ClientTimeline from '@/components/crm/ClientTimeline';
 import CheckoutDrawer from '@/components/pos/CheckoutDrawer';
+import FormBuilder from '@/components/forms/FormBuilder';
+import type { FormField } from '@/components/forms/FormRenderer';
 import styles from './tenant.module.css';
 
 // SVG Icon Library for Salon Tenant Dashboard
@@ -60,23 +62,36 @@ const LogOutIcon = () => (
   </svg>
 );
 
+const HomeIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <path d="M3 10.5 12 3l9 7.5"></path>
+    <path d="M5 9.5V21h14V9.5"></path>
+    <path d="M9 21v-7h6v7"></path>
+  </svg>
+);
 
-// Fallback listings to ensure compile safety if database is empty
-const MOCK_STAFF = [
-  { id: '11111111-1111-1111-1111-111111111111', name: 'Alex Stylist' },
-  { id: '22222222-2222-2222-2222-222222222222', name: 'Jordan Barber' }
-];
+const FormIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+    <path d="M14 2v6h6"></path>
+    <path d="M8 13h8M8 17h6"></path>
+  </svg>
+);
 
-const MOCK_SERVICES = [
-  { id: '33333333-3333-3333-3333-333333333333', name: 'Skin Fade', price: 3500, duration: 45 },
-  { id: '44444444-4444-4444-4444-444444444444', name: 'Gel Manicure', price: 4500, duration: 45 },
-  { id: '55555555-5555-5555-5555-555555555555', name: 'Laser Resurfacing', price: 12000, duration: 60 }
-];
 
 interface StaffRevenue {
   staffName: string;
   revenue: number;
   bookings: number;
+}
+
+function normalizeFormFields(fields: FormField[]): FormField[] {
+  return fields.map((field, index) => ({
+    ...field,
+    id: field.id || (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `field-${Date.now()}-${index}`),
+  }));
 }
 
 export default function TenantDashboard({ params }: { params: Promise<{ subdomain: string }> }) {
@@ -87,6 +102,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   // Auth and Login States
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [isAgencyPreview, setIsAgencyPreview] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
@@ -106,18 +122,14 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   // Customizable Consent Form Builder states
   const [consentFormId, setConsentFormId] = useState<string | null>(null);
   const [consentFormTitle, setConsentFormTitle] = useState('Medical Consent Form');
-  const [consentFormFields, setConsentFormFields] = useState<any[]>([]);
-  
-  const [newFieldLabel, setNewFieldLabel] = useState('');
-  const [newFieldType, setNewFieldType] = useState<'text' | 'textarea' | 'checkbox' | 'select' | 'radio' | 'signature'>('text');
-  const [newFieldRequired, setNewFieldRequired] = useState(false);
-  const [newFieldOptions, setNewFieldOptions] = useState('');
+  const [consentFormFields, setConsentFormFields] = useState<FormField[]>([]);
 
   // Workspace settings tab and metadata
-  const [activeTab, setActiveTab] = useState<'calendar' | 'booking' | 'crm' | 'manage'>('calendar');
+  const [activeTab, setActiveTab] = useState<'overview' | 'calendar' | 'booking' | 'crm' | 'forms' | 'manage'>('overview');
   const [tenantId, setTenantId] = useState<string>('00000000-0000-0000-0000-000000000000');
   const [tenantName, setTenantName] = useState<string>('');
   const [customDomain, setCustomDomain] = useState<string | null>(null);
+  const [packageTier, setPackageTier] = useState<string>('Core');
   
   // Dynamic collections loaded from DB
   const [services, setServices] = useState<any[]>([]);
@@ -159,15 +171,29 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
       setCheckingAuth(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        const previewRequested = typeof window !== 'undefined'
+          && new URLSearchParams(window.location.search).get('agencyPreview') === '1'
+          && user.email === 'kasimashah@gmail.com';
+        setIsAgencyPreview(previewRequested);
+
         // Fetch current tenant configuration to match
         const { data: tenant, error: tErr } = await supabase
           .from('tenants')
-          .select('id, name, custom_domain')
+          .select('*')
           .eq('subdomain', subdomain.toLowerCase())
           .single();
 
         if (tErr || !tenant) {
           setCurrentUser(null);
+          return;
+        }
+
+        if (previewRequested) {
+          setCurrentUser(user);
+          setTenantId(tenant.id);
+          setTenantName(tenant.name);
+          setCustomDomain(tenant.custom_domain);
+          setPackageTier(tenant.package_tier || 'Core');
           return;
         }
 
@@ -186,12 +212,14 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
           setTenantId(tenant.id);
           setTenantName(tenant.name);
           setCustomDomain(tenant.custom_domain);
+          setPackageTier(tenant.package_tier || 'Core');
           if (profile.permissions?.requires_password_change === true) {
             setMustChangePassword(true);
           }
         }
       } else {
         setCurrentUser(null);
+        setIsAgencyPreview(false);
       }
     } catch (err) {
       console.error('Session validation error:', err);
@@ -221,8 +249,8 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
         .select('id, name, email')
         .eq('tenant_id', tenantId);
 
-      const activeSvcList = svcData && svcData.length > 0 ? svcData : MOCK_SERVICES;
-      const activeStaffList = staffData && staffData.length > 0 ? staffData : MOCK_STAFF;
+      const activeSvcList = svcData || [];
+      const activeStaffList = staffData || [];
       setServices(activeSvcList);
       setStaff(activeStaffList);
 
@@ -294,20 +322,20 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
       if (formTemplate) {
         setConsentFormId(formTemplate.id);
         setConsentFormTitle(formTemplate.title);
-        setConsentFormFields(formTemplate.fields_json || []);
+        setConsentFormFields(normalizeFormFields(formTemplate.fields_json || []));
       } else {
         // Seed default template fields in state
-        setConsentFormFields([
-          { label: 'Do you have skin allergies?', type: 'textarea', required: false },
-          { label: 'I consent to the treatment', type: 'checkbox', required: true },
-          { label: 'Client Signature', type: 'signature', required: true }
-        ]);
+        setConsentFormFields(normalizeFormFields([
+          { label: 'Do you have any allergies or medical considerations?', type: 'textarea', required: false, placeholder: 'Add anything your provider should know' },
+          { label: 'I confirm the information provided is accurate', type: 'checkbox', required: true },
+          { label: 'Customer signature', type: 'signature', required: true },
+        ]));
       }
 
     } catch (err) {
       console.error('Failed to load workspace parameters:', err);
-      setServices(MOCK_SERVICES);
-      setStaff(MOCK_STAFF);
+      setServices([]);
+      setStaff([]);
     } finally {
       setLoading(false);
     }
@@ -344,10 +372,9 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   };
 
   // Form customizer handlers
-  const handleSaveConsentForm = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveConsentForm = async () => {
     if (tenantId === '00000000-0000-0000-0000-000000000000') {
-      alert('Mock environment: changes will not save.');
+      alert('The workspace is not ready yet. Refresh the page and try again.');
       return;
     }
     setIsSaving(true);
@@ -376,35 +403,12 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
       }
 
       if (error) throw error;
-      alert('Consent Form layout configurations saved successfully!');
+      alert('Your intake form has been published successfully.');
     } catch (err: any) {
-      alert(err.message || 'Failed to save consent form layout.');
+      alert(err.message || 'Failed to publish the intake form.');
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleAddField = () => {
-    if (!newFieldLabel.trim()) return;
-    const optionsArray = newFieldOptions
-      ? newFieldOptions.split(',').map((o) => o.trim()).filter(Boolean)
-      : undefined;
-
-    const newField = {
-      label: newFieldLabel,
-      type: newFieldType,
-      required: newFieldRequired,
-      ...(optionsArray && { options: optionsArray })
-    };
-
-    setConsentFormFields((prev) => [...prev, newField]);
-    setNewFieldLabel('');
-    setNewFieldRequired(false);
-    setNewFieldOptions('');
-  };
-
-  const handleRemoveField = (idx: number) => {
-    setConsentFormFields((prev) => prev.filter((_, i) => i !== idx));
   };
 
   // Login handler
@@ -416,7 +420,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
     try {
       const { data: tenant, error: tErr } = await supabase
         .from('tenants')
-        .select('id, name, custom_domain')
+        .select('*')
         .eq('subdomain', subdomain.toLowerCase())
         .single();
 
@@ -452,6 +456,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
       setTenantId(tenant.id);
       setTenantName(tenant.name);
       setCustomDomain(tenant.custom_domain);
+      setPackageTier(tenant.package_tier || 'Core');
       setCurrentUser(authData.user);
       
       if (profile.permissions?.requires_password_change === true) {
@@ -466,11 +471,15 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
 
   // Logout handler
   const handleLogout = async () => {
+    if (isAgencyPreview) {
+      router.push('/admin');
+      return;
+    }
     await supabase.auth.signOut();
     setCurrentUser(null);
     setMustChangePassword(false);
     setTenantId('00000000-0000-0000-0000-000000000000');
-    setActiveTab('calendar');
+    setActiveTab('overview');
   };
 
   // Change password handler (handles both forced and manual resets)
@@ -530,7 +539,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   const handleAddService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (tenantId === '00000000-0000-0000-0000-000000000000') {
-      alert('Mock environment: changes will not save to database.');
+      alert('The workspace is not ready yet. Refresh the page and try again.');
       return;
     }
     setIsSaving(true);
@@ -633,7 +642,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     if (tenantId === '00000000-0000-0000-0000-000000000000') {
-      alert('Mock environment: changes will not save to database.');
+      alert('The workspace is not ready yet. Refresh the page and try again.');
       return;
     }
     setIsSaving(true);
@@ -677,10 +686,14 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
     }
   };
 
-  const embedUrl = customDomain 
-    ? `admin.${customDomain}` 
-    : (typeof window !== 'undefined' ? window.location.host : `${subdomain}.kasimshah.com`);
-  const iframeEmbedCode = `<iframe src="https://${embedUrl}/book" width="100%" height="700px" style="border:none; border-radius:12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"></iframe>`;
+  const isLocalWorkspace = typeof window !== 'undefined' && window.location.host.includes('localhost');
+  const publicWorkspaceOrigin = customDomain
+    ? `https://${customDomain}`
+    : isLocalWorkspace
+      ? `http://${subdomain}.localhost:3000`
+      : `https://${subdomain}.kasimshah.com`;
+  const bookingPageUrl = `${publicWorkspaceOrigin}/book`;
+  const iframeEmbedCode = `<iframe src="${bookingPageUrl}" title="${tenantName || 'Customer'} booking page" width="100%" height="700" style="border:0; border-radius:12px;"></iframe>`;
 
   // UI GATE A: Checking session loading state
   if (checkingAuth) {
@@ -859,7 +872,16 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
 
   // Dashboard Frame (Authenticated and Verified)
   return (
-    <div className={styles.dashboardContainer}>
+    <div className={`${styles.dashboardContainer} ${isAgencyPreview ? styles.previewMode : ''}`}>
+      {isAgencyPreview && (
+        <div className={styles.impersonationBanner} role="status">
+          <div>
+            <span className={styles.impersonationIcon} aria-hidden="true">↳</span>
+            <span>You are viewing <strong>{tenantName}</strong> as agency admin. Changes affect this client workspace.</span>
+          </div>
+          <button type="button" onClick={() => router.push('/admin')}>Exit client view</button>
+        </div>
+      )}
       <header className={styles.header}>
         <div className={styles.headerLogo}>
           <svg className={styles.logoIcon} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d4af37" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -867,14 +889,22 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
             <circle cx="12" cy="7" r="4"></circle>
           </svg>
           <h1>
-            {tenantName ? tenantName.toUpperCase() : subdomain.toUpperCase()} Studio
+            {tenantName || subdomain} Workspace
           </h1>
           <span className={styles.ownerBadge}>
-            Owner Control Panel
+            {packageTier} plan
           </span>
         </div>
         
         <div className={styles.headerActions}>
+          <span className={styles.navSectionLabel}>Workspace</span>
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`${styles.sidebarBtn} ${activeTab === 'overview' ? styles.sidebarBtnActive : ''}`}
+          >
+            <HomeIcon />
+            Overview
+          </button>
           <button
             onClick={() => { window.location.href = '/book-manual'; }}
             className={styles.specialBtn}
@@ -887,28 +917,35 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
             className={`${styles.sidebarBtn} ${activeTab === 'calendar' ? styles.sidebarBtnActive : ''}`}
           >
             <CalendarIcon />
-            Schedules Calendar
+            Calendar
           </button>
           <button
             onClick={() => setActiveTab('booking')}
             className={`${styles.sidebarBtn} ${activeTab === 'booking' ? styles.sidebarBtnActive : ''}`}
           >
             <GlobeIcon />
-            Live Booking Page
+            Booking page
           </button>
           <button
             onClick={() => setActiveTab('crm')}
             className={`${styles.sidebarBtn} ${activeTab === 'crm' ? styles.sidebarBtnActive : ''}`}
           >
             <UsersIcon />
-            Client CRM
+            Customers
+          </button>
+          <button
+            onClick={() => setActiveTab('forms')}
+            className={`${styles.sidebarBtn} ${activeTab === 'forms' ? styles.sidebarBtnActive : ''}`}
+          >
+            <FormIcon />
+            Intake forms
           </button>
           <button
             onClick={() => setActiveTab('manage')}
             className={`${styles.sidebarBtn} ${activeTab === 'manage' ? styles.sidebarBtnActive : ''}`}
           >
             <SettingsIcon />
-            Manage Studio
+            Settings & analytics
           </button>
           
           <button
@@ -916,7 +953,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
             className={styles.logoutBtn}
           >
             <LogOutIcon />
-            Logout
+            {isAgencyPreview ? 'Exit client view' : 'Sign out'}
           </button>
         </div>
       </header>
@@ -926,6 +963,8 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
           <div className={styles.loadingScreen}>Loading workspace analytics and configurations...</div>
         ) : (
           <>
+            {activeTab === 'overview' && (
+              <div className={styles.overviewPage}>
             {/* STUDIO QUICK ACCESS DOCK (ONE-STOP SHOP) */}
             <div className={styles.quickAccessPanel}>
               <div className={styles.quickAccessText}>
@@ -951,7 +990,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                   Access Webmail
                 </a>
                 <a
-                  href={`http://${subdomain}.localhost:3000/book`}
+                  href={bookingPageUrl}
                   target="_blank"
                   rel="noreferrer"
                   className={styles.pillLinkFilled}
@@ -965,11 +1004,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                 </a>
                 <button
                   onClick={() => {
-                    const isLocal = window.location.host.includes('localhost');
-                    const link = isLocal 
-                      ? `http://${subdomain}.localhost:3000/book` 
-                      : `https://${subdomain}.kasimshah.com/book`;
-                    navigator.clipboard.writeText(link);
+                    navigator.clipboard.writeText(bookingPageUrl);
                     alert('Public Booking Web Address copied to clipboard!');
                   }}
                   className={styles.actionBtnSuccess}
@@ -982,6 +1017,101 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                 </button>
               </div>
             </div>
+                <div className={styles.pageHeading}>
+                  <div>
+                    <span className={styles.pageEyebrow}>Workspace overview</span>
+                    <h2>Good to see you, {tenantName || 'there'}.</h2>
+                    <p>Monitor the essentials, open a tool, or continue setting up your customer journey.</p>
+                  </div>
+                  <button type="button" className={styles.primaryAction} onClick={() => setActiveTab('calendar')}>
+                    View calendar
+                  </button>
+                </div>
+
+                <div className={styles.overviewMetrics}>
+                  <article className={styles.overviewMetric}>
+                    <span>Revenue</span>
+                    <strong>£{(totalSales / 100).toFixed(2)}</strong>
+                    <small>Recorded checkout revenue</small>
+                  </article>
+                  <article className={styles.overviewMetric}>
+                    <span>Completed sales</span>
+                    <strong>{salesCount}</strong>
+                    <small>All recorded transactions</small>
+                  </article>
+                  <article className={styles.overviewMetric}>
+                    <span>Booking conversion</span>
+                    <strong>{conversionRate}%</strong>
+                    <small>Completed appointments</small>
+                  </article>
+                  <article className={styles.overviewMetric}>
+                    <span>Active tools</span>
+                    <strong>5</strong>
+                    <small>Included in your {packageTier} plan</small>
+                  </article>
+                </div>
+
+                <section className={styles.modulesSection} aria-labelledby="workspace-tools-title">
+                  <div className={styles.sectionTitleRow}>
+                    <div>
+                      <h3 id="workspace-tools-title">Your tools</h3>
+                      <p>Everything available in this workspace, with clear live and roadmap states.</p>
+                    </div>
+                    <span className={styles.planPill}>{packageTier} plan</span>
+                  </div>
+
+                  <div className={styles.moduleGrid}>
+                    <article className={styles.moduleCard}>
+                      <div className={styles.moduleCardTop}><span className={styles.moduleIcon}>W</span><span className={styles.liveStatus}><i /> Live</span></div>
+                      <h4>Website</h4>
+                      <p>Open your live site and customer-facing pages.</p>
+                      <a href={publicWorkspaceOrigin} target="_blank" rel="noreferrer">Open website <span>↗</span></a>
+                    </article>
+                    <article className={styles.moduleCard}>
+                      <div className={styles.moduleCardTop}><span className={styles.moduleIcon}>B</span><span className={styles.liveStatus}><i /> Live</span></div>
+                      <h4>Bookings</h4>
+                      <p>Manage availability and test your booking journey.</p>
+                      <button type="button" onClick={() => setActiveTab('booking')}>Open bookings <span>→</span></button>
+                    </article>
+                    <article className={styles.moduleCard}>
+                      <div className={styles.moduleCardTop}><span className={styles.moduleIcon}>C</span><span className={styles.liveStatus}><i /> Live</span></div>
+                      <h4>Customers</h4>
+                      <p>Review customer profiles, history and loyalty activity.</p>
+                      <button type="button" onClick={() => setActiveTab('crm')}>Open customers <span>→</span></button>
+                    </article>
+                    <article className={styles.moduleCard}>
+                      <div className={styles.moduleCardTop}><span className={styles.moduleIcon}>F</span><span className={styles.liveStatus}><i /> Live</span></div>
+                      <h4>Intake forms</h4>
+                      <p>Create consent and consultation forms with a live preview.</p>
+                      <button type="button" onClick={() => setActiveTab('forms')}>Build a form <span>→</span></button>
+                    </article>
+                    <article className={`${styles.moduleCard} ${styles.moduleCardMuted}`} aria-disabled="true">
+                      <div className={styles.moduleCardTop}><span className={styles.moduleIcon}>E</span><span className={styles.comingSoonStatus}>Coming soon</span></div>
+                      <h4>Email marketing</h4>
+                      <p>Campaigns, customer segments and automated follow-ups.</p>
+                      <span className={styles.unavailableText}>Not available yet</span>
+                    </article>
+                    <article className={`${styles.moduleCard} ${styles.moduleCardMuted}`} aria-disabled="true">
+                      <div className={styles.moduleCardTop}><span className={styles.moduleIcon}>S</span><span className={styles.comingSoonStatus}>Coming soon</span></div>
+                      <h4>Social marketing</h4>
+                      <p>Plan content, publish posts and manage conversations.</p>
+                      <span className={styles.unavailableText}>Not available yet</span>
+                    </article>
+                  </div>
+                </section>
+
+                <aside className={styles.setupPanel}>
+                  <div>
+                    <span className={styles.setupIcon} aria-hidden="true">✓</span>
+                    <div>
+                      <strong>Keep your workspace ready for customers</strong>
+                      <p>{services.length} services and {staff.length} team members are currently configured.</p>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setActiveTab('manage')}>Review settings</button>
+                </aside>
+              </div>
+            )}
             {activeTab === 'calendar' && (
               <div style={{ width: '100%' }}>
                 <WeeklyCalendar 
@@ -1033,6 +1163,18 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
               </div>
             )}
 
+            {activeTab === 'forms' && (
+              <FormBuilder
+                title={consentFormTitle}
+                fields={consentFormFields}
+                onTitleChange={setConsentFormTitle}
+                onFieldsChange={setConsentFormFields}
+                onSave={handleSaveConsentForm}
+                isSaving={isSaving}
+                isPublished={Boolean(consentFormId)}
+              />
+            )}
+
             {activeTab === 'manage' && (
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '28px' }}>
                 
@@ -1046,7 +1188,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                       </svg>
                     </span>
                     <div>
-                      <h3>${(totalSales / 100).toFixed(2)}</h3>
+                      <h3>£{(totalSales / 100).toFixed(2)}</h3>
                       <p>Total Revenue Made</p>
                     </div>
                   </div>
@@ -1098,12 +1240,12 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                           <td colSpan={3} className={styles.tableEmpty}>No completed payments recorded.</td>
                         </tr>
                       ) : (
-                        staffRevenues.map((s, idx) => (
-                          <tr key={idx}>
+                        staffRevenues.map((s) => (
+                          <tr key={s.staffName}>
                             <td><strong>{s.staffName}</strong></td>
                             <td>{s.bookings}</td>
                             <td style={{ fontWeight: 700, textAlign: 'right', color: 'var(--md-sys-color-primary)' }}>
-                              ${(s.revenue / 100).toFixed(2)}
+                              £{(s.revenue / 100).toFixed(2)}
                             </td>
                           </tr>
                         ))
@@ -1134,7 +1276,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                           type="number"
                           required
                           step="0.01"
-                          placeholder="Price ($)"
+                          placeholder="Price (£)"
                           value={newServicePrice}
                           onChange={(e) => setNewServicePrice(e.target.value)}
                           className={styles.formInput}
@@ -1142,7 +1284,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                         <input
                           type="number"
                           step="0.01"
-                          placeholder="Discount ($)"
+                          placeholder="Discount (£)"
                           value={newServiceDiscount}
                           onChange={(e) => setNewServiceDiscount(e.target.value)}
                           className={styles.formInput}
@@ -1222,7 +1364,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                                   <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '6px' }}>({s.duration} min)</span>
                                   {s.discount > 0 && (
                                     <span style={{ display: 'block', fontSize: '11px', color: '#ef4444', marginTop: '2px', fontWeight: 'bold' }}>
-                                      🏷️ discount applied: -${(s.discount / 100).toFixed(2)}
+                                      Discount applied: −£{(s.discount / 100).toFixed(2)}
                                     </span>
                                   )}
                                 </div>
@@ -1230,11 +1372,11 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                                   <div style={{ textAlign: 'right' }}>
                                     {s.discount > 0 ? (
                                       <>
-                                        <s style={{ fontSize: '11px', color: '#64748b', marginRight: '6px' }}>${(s.price / 100).toFixed(2)}</s>
-                                        <strong style={{ color: 'var(--md-sys-color-primary)' }}>${((s.price - s.discount) / 100).toFixed(2)}</strong>
+                                        <s style={{ fontSize: '11px', color: '#64748b', marginRight: '6px' }}>£{(s.price / 100).toFixed(2)}</s>
+                                        <strong style={{ color: 'var(--md-sys-color-primary)' }}>£{((s.price - s.discount) / 100).toFixed(2)}</strong>
                                       </>
                                     ) : (
-                                      <strong style={{ color: 'var(--md-sys-color-primary)' }}>${(s.price / 100).toFixed(2)}</strong>
+                                      <strong style={{ color: 'var(--md-sys-color-primary)' }}>£{(s.price / 100).toFixed(2)}</strong>
                                     )}
                                   </div>
                                   <div style={{ display: 'flex', gap: '4px' }}>
@@ -1330,124 +1472,6 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                           ))}
                         </ul>
                       </div>
-                    </div>
-
-                    {/* Customizable Consent Form Builder Panel */}
-                    <div className={styles.formBox}>
-                      <h4>Custom Consent Form Builder</h4>
-                      <p>Create bespoke medical intake questions, dropdown lists, and electronic signature pads.</p>
-                      
-                      <form onSubmit={handleSaveConsentForm} className={styles.formGroup}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <label htmlFor="form-title" className={styles.authLabel}>Form Title</label>
-                          <input
-                            id="form-title"
-                            type="text"
-                            required
-                            placeholder="e.g. Laser Consultation Waiver"
-                            value={consentFormTitle}
-                            onChange={(e) => setConsentFormTitle(e.target.value)}
-                            className={styles.formInput}
-                          />
-                        </div>
-
-                        {/* Current fields preview list */}
-                        <div className={styles.catalogBox}>
-                          <h5>Active Form Fields Check</h5>
-                          <ul className={styles.catalogList}>
-                            {consentFormFields.length === 0 ? (
-                              <li style={{ color: '#64748b', fontSize: '12px', fontStyle: 'italic' }}>No fields configured yet. Add fields below.</li>
-                            ) : (
-                              consentFormFields.map((field, idx) => (
-                                <li key={idx} className={styles.formBuilderItem}>
-                                  <div>
-                                    <span style={{ fontWeight: 600, color: '#ffffff' }}>{field.label}</span>
-                                    <span style={{ fontSize: '10px', background: '#1e293b', color: '#94a3b8', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px', textTransform: 'uppercase' }}>
-                                      {field.type}
-                                    </span>
-                                    {field.required && (
-                                      <span style={{ color: '#ef4444', marginLeft: '6px', fontSize: '10px', fontWeight: 'bold' }}>REQUIRED</span>
-                                    )}
-                                    {field.options && field.options.length > 0 && (
-                                      <div style={{ fontSize: '10px', color: '#d4af37', marginTop: '2px' }}>
-                                        Options: {field.options.join(', ')}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveField(idx)}
-                                    style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '13px' }}
-                                  >
-                                    ✕
-                                  </button>
-                                </li>
-                              ))
-                            )}
-                          </ul>
-                        </div>
-
-                        {/* Add Field Box */}
-                        <div className={styles.formBuilderAddBox}>
-                          <h5 style={{ margin: 0, fontSize: '12px', color: '#ffffff', fontWeight: 800 }}>Add New Input Field</h5>
-                          <input
-                            type="text"
-                            placeholder="Field Label (e.g. Skin Tone Option)"
-                            value={newFieldLabel}
-                            onChange={(e) => setNewFieldLabel(e.target.value)}
-                            className={styles.formInput}
-                          />
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '8px' }}>
-                            <select
-                              value={newFieldType}
-                              onChange={(e) => setNewFieldType(e.target.value as any)}
-                              className={styles.formSelect}
-                            >
-                              <option value="text">Single Line Text</option>
-                              <option value="textarea">Multi-line Description</option>
-                              <option value="checkbox">Single Agreement Checkbox</option>
-                              <option value="select">Dropdown Options list</option>
-                              <option value="radio">Radio Buttons select</option>
-                              <option value="signature">Canvas Signature Pad</option>
-                            </select>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8', cursor: 'pointer' }}>
-                              <input
-                                type="checkbox"
-                                checked={newFieldRequired}
-                                onChange={(e) => setNewFieldRequired(e.target.checked)}
-                              />
-                              Required
-                            </label>
-                          </div>
-
-                          {(newFieldType === 'select' || newFieldType === 'radio') && (
-                            <input
-                              type="text"
-                              placeholder="Comma separated choices: e.g. Fair, Medium, Dark"
-                              value={newFieldOptions}
-                              onChange={(e) => setNewFieldOptions(e.target.value)}
-                              className={styles.formInput}
-                            />
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={handleAddField}
-                            className={styles.submitBtn}
-                            style={{ background: '#334155', color: '#ffffff' }}
-                          >
-                            ➕ Insert Field into Schema
-                          </button>
-                        </div>
-
-                        <button
-                          type="submit"
-                          disabled={isSaving}
-                          className={styles.submitBtn}
-                        >
-                          {isSaving ? 'Saving form layout...' : 'Publish Consent Form'}
-                        </button>
-                      </form>
                     </div>
 
                   </div>

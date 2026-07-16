@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS "tenants" (
 	"primary_color" varchar(7) DEFAULT '#0f172a' NOT NULL,
 	"secondary_color" varchar(7) DEFAULT '#475569' NOT NULL,
 	"accent_color" varchar(7) DEFAULT '#10b981' NOT NULL,
+	"package_tier" text DEFAULT 'core' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "tenants_subdomain_unique" UNIQUE("subdomain"),

@@ -4,61 +4,67 @@ import React, { useState, useEffect, use } from 'react';
 import { supabase } from '@/utils/supabase/client';
 import TimeSlotPicker from '@/components/calendar/TimeSlotPicker';
 
-// Mocks to avoid crashes if DB is completely empty
-const MOCK_STAFF = [
-  { id: '11111111-1111-1111-1111-111111111111', name: 'Alex Stylist' },
-  { id: '22222222-2222-2222-2222-222222222222', name: 'Jordan Barber' }
-];
+interface BookingService {
+  id: string;
+  name: string;
+  price: number;
+  duration: number;
+}
 
-const MOCK_SERVICES = [
-  { id: '33333333-3333-3333-3333-333333333333', name: 'Skin Fade', price: 3500, duration: 45 },
-  { id: '44444444-4444-4444-4444-444444444444', name: 'Gel Manicure', price: 4500, duration: 45 },
-  { id: '55555555-5555-5555-5555-555555555555', name: 'Laser Resurfacing', price: 12000, duration: 60 }
-];
+interface BookingStaffMember {
+  id: string;
+  name: string;
+}
 
 export default function BookingEmbedPage({ params }: { params: Promise<{ subdomain: string }> }) {
   const resolvedParams = use(params);
   const subdomain = resolvedParams.subdomain;
 
   const [tenantId, setTenantId] = useState<string>('00000000-0000-0000-0000-000000000000');
-  const [services, setServices] = useState<any[]>([]);
-  const [staff, setStaff] = useState<any[]>([]);
+  const [services, setServices] = useState<BookingService[]>([]);
+  const [staff, setStaff] = useState<BookingStaffMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadBookingData = async () => {
       try {
         setLoading(true);
+        setBookingError(null);
         // Query tenant matching subdomain
-        const { data: tenant } = await supabase
+        const { data: tenant, error: tenantError } = await supabase
           .from('tenants')
           .select('id')
           .eq('subdomain', subdomain.toLowerCase())
           .single();
 
-        if (tenant) {
-          setTenantId(tenant.id);
-
-          const { data: svcData } = await supabase
-            .from('services')
-            .select('id, name, price, duration')
-            .eq('tenant_id', tenant.id);
-          
-          const { data: staffData } = await supabase
-            .from('users')
-            .select('id, name')
-            .eq('tenant_id', tenant.id);
-
-          setServices(svcData && svcData.length > 0 ? svcData : MOCK_SERVICES);
-          setStaff(staffData && staffData.length > 0 ? staffData : MOCK_STAFF);
-        } else {
-          setServices(MOCK_SERVICES);
-          setStaff(MOCK_STAFF);
+        if (tenantError || !tenant) {
+          throw new Error('This booking page is not available.');
         }
-      } catch (err) {
+
+        setTenantId(tenant.id);
+
+        const { data: svcData, error: serviceError } = await supabase
+          .from('services')
+          .select('id, name, price, duration')
+          .eq('tenant_id', tenant.id);
+
+        const { data: staffData, error: staffError } = await supabase
+          .from('users')
+          .select('id, name')
+          .eq('tenant_id', tenant.id);
+
+        if (serviceError || staffError) {
+          throw new Error('Booking availability could not be loaded.');
+        }
+
+        setServices(svcData || []);
+        setStaff(staffData || []);
+      } catch (err: unknown) {
         console.error('Failed to load embed booking picker:', err);
-        setServices(MOCK_SERVICES);
-        setStaff(MOCK_STAFF);
+        setServices([]);
+        setStaff([]);
+        setBookingError(err instanceof Error ? err.message : 'Booking availability could not be loaded.');
       } finally {
         setLoading(false);
       }
@@ -84,6 +90,29 @@ export default function BookingEmbedPage({ params }: { params: Promise<{ subdoma
     );
   }
 
+  if (bookingError || services.length === 0 || staff.length === 0) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        background: '#090d16',
+        color: '#f8fafc',
+        fontFamily: 'system-ui, sans-serif'
+      }}>
+        <div style={{ maxWidth: '440px', padding: '28px', border: '1px solid rgba(212,175,55,0.16)', borderRadius: '16px', background: '#111625', textAlign: 'center' }}>
+          <span style={{ display: 'inline-flex', marginBottom: '12px', color: '#d4af37', fontSize: '12px', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Booking page</span>
+          <h1 style={{ margin: '0 0 10px', fontSize: '24px' }}>Bookings aren’t available yet</h1>
+          <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px', lineHeight: 1.6 }}>
+            {bookingError || 'This business is still setting up its services and team. Please check back soon.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -98,9 +127,7 @@ export default function BookingEmbedPage({ params }: { params: Promise<{ subdoma
         tenantId={tenantId}
         services={services}
         staffMembers={staff}
-        onSlotSelected={(slot) => {
-          alert(`Booking Confirmed!\nTime: ${slot.date.toLocaleTimeString()}\nStylist: ${slot.staffId}`);
-        }}
+        onSlotSelected={() => undefined}
       />
     </div>
   );

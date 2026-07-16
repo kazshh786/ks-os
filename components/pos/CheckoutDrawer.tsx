@@ -38,12 +38,25 @@ interface CartItem {
   quantity: number;
 }
 
+interface ReceiptData {
+  clientName: string;
+  serviceName?: string;
+  serviceCost: number;
+  products: Array<{ id: string; name: string; price: number; qty: number }>;
+  tip: number;
+  grandTotal: number;
+  method: 'CARD' | 'CASH' | 'SPLIT';
+  cashPaid: number;
+  cardPaid: number;
+  pointsEarned: number;
+}
+
 export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSuccess }: CheckoutDrawerProps) {
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<'CARD' | 'CASH' | 'SPLIT'>('CARD');
+  const [paymentMethod, setPaymentMethod] = useState<'CARD' | 'CASH' | 'SPLIT'>('CASH');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,7 +75,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
 
   // Receipt popup state
   const [showReceipt, setShowReceipt] = useState(false);
-  const [receiptData, setReceiptData] = useState<any>(null);
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
 
   // Load the target appointment & products list
   useEffect(() => {
@@ -189,18 +202,10 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
     setError(null);
 
     try {
-      // Validate Split Payment inputs
-      if (paymentMethod === 'SPLIT') {
-        const cashVal = parseFloat(cashSplitAmount);
-        const cashCents = isNaN(cashVal) ? 0 : Math.round(cashVal * 100);
-        if (cashCents <= 0 || cashCents >= grandTotal) {
-          throw new Error('Please enter a valid Cash Split amount (must be less than the total).');
-        }
+      if (paymentMethod !== 'CASH') {
+        throw new Error('Card payments are coming soon. Select cash to record this checkout.');
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1200)); // Simulate Stripe processing delay
-
-      const mockStripeId = 'pi_' + Math.random().toString(36).substr(2, 9);
       const purchasedProducts = cart.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -209,7 +214,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
       // Insert transaction record on DB
       // PostgreSQL trigger trg_decrement_stock_on_transaction will fire on INSERT
       // to decrement stock counts, update appointment status to 'COMPLETED',
-      // and credit customer loyalty points (e.g. 1 point per $1 spent).
+      // and credit customer loyalty points (e.g. 1 point per £1 spent).
       const { error: txErr } = await supabase.from('checkout_transactions').insert({
         tenant_id: tenantId,
         appointment_id: appointment.id,
@@ -217,7 +222,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
         payment_status: 'SUCCEEDED',
         payment_method: paymentMethod,
         purchased_products: purchasedProducts,
-        stripe_payment_intent_id: mockStripeId,
+        stripe_payment_intent_id: null,
       });
 
       if (txErr) throw txErr;
@@ -227,12 +232,12 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
         clientName: appointment.clientName,
         serviceName: appointment.services?.name,
         serviceCost: serviceTotal,
-        products: cart.map((i) => ({ name: i.product.name, price: i.product.priceInCents, qty: i.quantity })),
+        products: cart.map((i) => ({ id: i.product.id, name: i.product.name, price: i.product.priceInCents, qty: i.quantity })),
         tip: tipCents,
         grandTotal: grandTotal,
         method: paymentMethod,
-        cashPaid: paymentMethod === 'SPLIT' ? Math.round(parseFloat(cashSplitAmount) * 100) : paymentMethod === 'CASH' ? grandTotal : 0,
-        cardPaid: paymentMethod === 'SPLIT' ? cardSplitAmount : paymentMethod === 'CARD' ? grandTotal : 0,
+        cashPaid: grandTotal,
+        cardPaid: 0,
         pointsEarned: Math.round(grandTotal / 100),
       });
 
@@ -276,7 +281,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
                 <div className={styles.detailRow}>
                   <span>Service treatment:</span>
                   <span>
-                    {appointment.services?.name} (${(serviceTotal / 100).toFixed(2)})
+                    {appointment.services?.name} (£{(serviceTotal / 100).toFixed(2)})
                   </span>
                 </div>
               </div>
@@ -305,7 +310,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
                           <span className={styles.resultSku}>SKU: {prod.sku} • Stock: {prod.stockQuantity}</span>
                         </div>
                         <span className={styles.resultPrice}>
-                          ${(prod.priceInCents / 100).toFixed(2)}
+                          £{(prod.priceInCents / 100).toFixed(2)}
                         </span>
                       </button>
                     ))}
@@ -324,7 +329,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
                           onClick={() => addToCart(prod)}
                         >
                           <span className={styles.recommendName}>{prod.name}</span>
-                          <span className={styles.recommendPrice}>${(prod.priceInCents / 100).toFixed(2)}</span>
+                          <span className={styles.recommendPrice}>£{(prod.priceInCents / 100).toFixed(2)}</span>
                         </button>
                       ))}
                     </div>
@@ -342,7 +347,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
                         </div>
                         <div className={styles.cartItemActions}>
                           <span className={styles.cartItemPrice}>
-                            ${((item.product.priceInCents * item.quantity) / 100).toFixed(2)}
+                            £{((item.product.priceInCents * item.quantity) / 100).toFixed(2)}
                           </span>
                           <button className={styles.removeCartItem} onClick={() => removeFromCart(item.product.id)}>
                             ✕
@@ -362,19 +367,19 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
                     className={`${styles.tipButton} ${selectedTipPercent === 15 ? styles.tipButtonActive : ''}`}
                     onClick={() => setSelectedTipPercent(15)}
                   >
-                    15% (${(Math.round(subtotal * 0.15) / 100).toFixed(2)})
+                    15% (£{(Math.round(subtotal * 0.15) / 100).toFixed(2)})
                   </button>
                   <button
                     className={`${styles.tipButton} ${selectedTipPercent === 20 ? styles.tipButtonActive : ''}`}
                     onClick={() => setSelectedTipPercent(20)}
                   >
-                    20% (${(Math.round(subtotal * 0.20) / 100).toFixed(2)})
+                    20% (£{(Math.round(subtotal * 0.20) / 100).toFixed(2)})
                   </button>
                   <button
                     className={`${styles.tipButton} ${selectedTipPercent === 25 ? styles.tipButtonActive : ''}`}
                     onClick={() => setSelectedTipPercent(25)}
                   >
-                    25% (${(Math.round(subtotal * 0.25) / 100).toFixed(2)})
+                    25% (£{(Math.round(subtotal * 0.25) / 100).toFixed(2)})
                   </button>
                   <button
                     className={`${styles.tipButton} ${selectedTipPercent === 'custom' ? styles.tipButtonActive : ''}`}
@@ -388,7 +393,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
                   <input
                     type="number"
                     step="0.01"
-                    placeholder="Enter tip amount ($)"
+                    placeholder="Enter tip amount (£)"
                     className={styles.searchInput}
                     style={{ marginTop: '10px', marginBottom: 0 }}
                     value={customTipCents}
@@ -407,9 +412,11 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
                       className={`${styles.paymentMethodButton} ${
                         paymentMethod === method ? styles.paymentMethodButtonActive : ''
                       }`}
+                      disabled={method !== 'CASH'}
+                      title={method !== 'CASH' ? 'Card payments are coming soon' : 'Record a cash payment'}
                       onClick={() => setPaymentMethod(method)}
                     >
-                      {method}
+                      {method}{method !== 'CASH' ? ' · Soon' : ''}
                     </button>
                   ))}
                 </div>
@@ -417,7 +424,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
                 {paymentMethod === 'SPLIT' && (
                   <div className={styles.splitInputs}>
                     <div className={styles.formGroup}>
-                      <label style={{ fontSize: '10px', fontWeight: 800, color: '#94a3b8' }}>Cash Portion ($):</label>
+                      <label style={{ fontSize: '10px', fontWeight: 800, color: '#94a3b8' }}>Cash Portion (£):</label>
                       <input
                         type="number"
                         step="0.01"
@@ -430,7 +437,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
                     <div className={styles.formGroup}>
                       <label style={{ fontSize: '10px', fontWeight: 800, color: '#94a3b8' }}>Card Balance (Auto):</label>
                       <div className={styles.searchInput} style={{ background: 'rgba(255,255,255,0.02)', color: 'var(--accent-color, #d4af37)', fontWeight: 'bold' }}>
-                        ${(cardSplitAmount / 100).toFixed(2)}
+                        £{(cardSplitAmount / 100).toFixed(2)}
                       </div>
                     </div>
                   </div>
@@ -441,12 +448,12 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
               <div className={styles.billingSection}>
                 <div className={styles.billingRow}>
                   <span>Subtotal (Service + Retail):</span>
-                  <span>${(subtotal / 100).toFixed(2)}</span>
+                  <span>£{(subtotal / 100).toFixed(2)}</span>
                 </div>
                 {tipCents > 0 && (
                   <div className={styles.billingRow}>
                     <span>Gratuity Tip:</span>
-                    <span>${(tipCents / 100).toFixed(2)}</span>
+                    <span>£{(tipCents / 100).toFixed(2)}</span>
                   </div>
                 )}
                 
@@ -458,7 +465,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
 
                 <div className={`${styles.billingRow} ${styles.grandTotalRow}`}>
                   <span>Grand Total:</span>
-                  <span>${(grandTotal / 100).toFixed(2)}</span>
+                  <span>£{(grandTotal / 100).toFixed(2)}</span>
                 </div>
 
                 <button
@@ -466,7 +473,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
                   onClick={handlePayNow}
                   disabled={isProcessing}
                 >
-                  {isProcessing ? 'Simulating Card Swipe...' : `Charge Terminal $${(grandTotal / 100).toFixed(2)}`}
+                  {isProcessing ? 'Recording payment…' : `Record cash payment £${(grandTotal / 100).toFixed(2)}`}
                 </button>
               </div>
             </div>
@@ -495,28 +502,28 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
             {/* Service item */}
             <div className={styles.receiptItemRow}>
               <span>{receiptData.serviceName}</span>
-              <span>${(receiptData.serviceCost / 100).toFixed(2)}</span>
+              <span>£{(receiptData.serviceCost / 100).toFixed(2)}</span>
             </div>
 
             {/* Products items */}
-            {receiptData.products.map((item: any, idx: number) => (
-              <div key={idx} className={styles.receiptItemRow}>
+            {receiptData.products.map((item) => (
+              <div key={item.id} className={styles.receiptItemRow}>
                 <span>{item.name} (x{item.qty})</span>
-                <span>${((item.price * item.qty) / 100).toFixed(2)}</span>
+                <span>£{((item.price * item.qty) / 100).toFixed(2)}</span>
               </div>
             ))}
 
             {receiptData.tip > 0 && (
               <div className={styles.receiptItemRow} style={{ marginTop: '8px' }}>
                 <span>Stylist Tip:</span>
-                <span>${(receiptData.tip / 100).toFixed(2)}</span>
+                <span>£{(receiptData.tip / 100).toFixed(2)}</span>
               </div>
             )}
 
             <div className={styles.receiptDivider} />
             <div className={styles.receiptTotalRow}>
               <span>TOTAL PAID</span>
-              <span>${(receiptData.grandTotal / 100).toFixed(2)}</span>
+              <span>£{(receiptData.grandTotal / 100).toFixed(2)}</span>
             </div>
             <div className={styles.receiptDivider} />
 
@@ -529,11 +536,11 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
               <>
                 <div className={styles.receiptItemRow} style={{ fontSize: '10px', color: '#555' }}>
                   <span>- Cash:</span>
-                  <span>${(receiptData.cashPaid / 100).toFixed(2)}</span>
+                  <span>£{(receiptData.cashPaid / 100).toFixed(2)}</span>
                 </div>
                 <div className={styles.receiptItemRow} style={{ fontSize: '10px', color: '#555' }}>
                   <span>- Card:</span>
-                  <span>${(receiptData.cardPaid / 100).toFixed(2)}</span>
+                  <span>£{(receiptData.cardPaid / 100).toFixed(2)}</span>
                 </div>
               </>
             )}

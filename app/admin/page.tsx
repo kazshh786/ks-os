@@ -5,7 +5,15 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/utils/supabase/client';
 import OnboardingWizard from '@/components/admin/OnboardingWizard';
 import WeeklyCalendar from '@/components/calendar/WeeklyCalendar';
-import styles from './admin.module.css';
+import baseStyles from './admin.module.css';
+import experienceStyles from './admin-experience.module.css';
+
+const styles = Object.fromEntries(
+  [...new Set([...Object.keys(baseStyles), ...Object.keys(experienceStyles)])].map((key) => [
+    key,
+    [baseStyles[key], experienceStyles[key]].filter(Boolean).join(' '),
+  ]),
+) as typeof baseStyles & typeof experienceStyles;
 
 const DirectoryIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -33,6 +41,13 @@ const LogOutIcon = () => (
   </svg>
 );
 
+const WebsiteIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <circle cx="12" cy="12" r="10"></circle>
+    <path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"></path>
+  </svg>
+);
+
 
 interface Tenant {
   id: string;
@@ -45,6 +60,8 @@ interface Tenant {
   ownerId?: string;
   ownerName?: string;
   ownerEmail?: string;
+  package_tier?: string;
+  created_at?: string;
 }
 
 interface Service {
@@ -83,6 +100,12 @@ interface StaffRevenue {
   bookings: number;
 }
 
+interface DomainVerificationRecord {
+  type: string;
+  domain: string;
+  value: string;
+}
+
 interface OffPeakRule {
   id: string;
   dayOfWeek: number;
@@ -114,7 +137,7 @@ export default function MasterAdminDashboard() {
 
   // Form states
   const [customDomainInput, setCustomDomainInput] = useState('');
-  const [verificationData, setVerificationData] = useState<any[] | null>(null);
+  const [verificationData, setVerificationData] = useState<DomainVerificationRecord[] | null>(null);
   
   const [newServiceName, setNewServiceName] = useState('');
   const [newServicePrice, setNewServicePrice] = useState('');
@@ -142,6 +165,8 @@ export default function MasterAdminDashboard() {
   const [loadingList, setLoadingList] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clientSearch, setClientSearch] = useState('');
+  const [packageFilter, setPackageFilter] = useState('all');
   const router = useRouter();
 
   const AUTHORIZED_AGENCY_EMAIL = 'kasimashah@gmail.com';
@@ -642,7 +667,20 @@ export default function MasterAdminDashboard() {
     }
   };
 
-  if (checkingAuth) return <div className={styles.loadingScreen}>Loading Master CP Portal...</div>;
+  const normalizedSearch = clientSearch.trim().toLowerCase();
+  const filteredTenants = tenants.filter((tenant) => {
+    const tier = (tenant.package_tier || 'Core').toLowerCase();
+    const matchesTier = packageFilter === 'all' || tier === packageFilter;
+    const matchesSearch = !normalizedSearch || [tenant.name, tenant.subdomain, tenant.ownerName, tenant.ownerEmail]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(normalizedSearch));
+    return matchesTier && matchesSearch;
+  });
+  const activeWorkspaceCount = tenants.filter((tenant) => Boolean(tenant.ownerEmail)).length;
+  const needsAttentionCount = tenants.length - activeWorkspaceCount;
+  const tiersInUse = new Set(tenants.map((tenant) => tenant.package_tier || 'Core')).size;
+
+  if (checkingAuth) return <div className={styles.loadingScreen}>Loading agency workspace…</div>;
 
   return (
     <div className={styles.dashboardContainer}>
@@ -651,7 +689,7 @@ export default function MasterAdminDashboard() {
           <svg className={styles.logoIcon} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d4af37" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
           </svg>
-          <h2>KS Control Panel</h2>
+          <h2>KS Agency OS</h2>
           <span className={styles.adminBadge}>Master Admin</span>
         </div>
         
@@ -665,7 +703,7 @@ export default function MasterAdminDashboard() {
             className={`${styles.navButton} ${activeView === 'list' ? styles.navButtonActive : ''}`}
           >
             <DirectoryIcon />
-            Client Directory
+            Clients
           </button>
           <button
             onClick={() => {
@@ -675,8 +713,12 @@ export default function MasterAdminDashboard() {
             className={`${styles.navButton} ${activeView === 'onboard' ? styles.navButtonActive : ''}`}
           >
             <UserAddIcon />
-            Add New Client
+            Provision client
           </button>
+          <a href="https://dashboard.kasimshah.com" target="_blank" rel="noreferrer" className={styles.navButton}>
+            <WebsiteIcon />
+            Website builder
+          </a>
           <button onClick={() => supabase.auth.signOut().then(() => router.push('/admin/login'))} className={styles.logoutBtn}>
             <LogOutIcon />
             Sign Out
@@ -687,108 +729,125 @@ export default function MasterAdminDashboard() {
       <main className={styles.main}>
         {error && <div className={styles.errorBanner}>{error}</div>}
 
-        {/* VIEW 1: Salon Client Directory */}
+        {/* VIEW 1: Agency client directory */}
         {activeView === 'list' && (
           <div className={styles.viewSection}>
-            <div className={styles.sectionHeader}>
-              <h3>Onboarded Salon Clients</h3>
-              <p>Configure custom domains, check real-time resource allocations, or review staff performance analytics.</p>
+            <div className={styles.directoryHeading}>
+              <div>
+                <span className={styles.pageEyebrow}>Agency control centre</span>
+                <h3>Client workspaces</h3>
+                <p>Track every client, confirm their access, and enter the right workspace with context.</p>
+              </div>
+              <button type="button" onClick={() => setActiveView('onboard')} className={styles.primaryActionBtn}>
+                <UserAddIcon />
+                Provision client
+              </button>
             </div>
 
             {loadingList ? (
-              <div className={styles.listLoading}>Loading active directory...</div>
+              <div className={styles.listLoading}>Loading client workspaces…</div>
             ) : tenants.length === 0 ? (
               <div className={styles.emptyState}>
-                <span className={styles.emptyIcon}>🏢</span>
-                <h4>No salons onboarded yet</h4>
+                <span className={styles.emptyIcon}>＋</span>
+                <h4>No client workspaces yet</h4>
+                <p>Provision the first workspace to connect its website, bookings, customers and analytics.</p>
                 <button onClick={() => setActiveView('onboard')} className={styles.primaryActionBtn}>
-                  Onboard Your First Client
+                  Provision first client
                 </button>
               </div>
             ) : (
-              <div className={styles.salonGrid}>
-                {tenants.map((t) => (
-                  <div key={t.id} className={styles.salonCard}>
-                    <div className={styles.salonBadge} style={{ backgroundColor: t.accent_color || '#10b981' }}>
-                      {t.name.substring(0, 2).toUpperCase()}
-                    </div>
-                    <div className={styles.salonDetails}>
-                      <h4>{t.name}</h4>
-                      <code>{t.subdomain}.kasimshah.com</code>
-                      {t.custom_domain && (
-                        <div style={{ fontSize: '11px', color: '#10b981', marginTop: '4px', fontWeight: 'bold' }}>
-                          🔗 {t.custom_domain}
-                        </div>
-                      )}
-                      {t.ownerEmail && (
-                        <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>
-                          👤 <strong>{t.ownerName || 'Salon Owner'}</strong>
-                          <br />
-                          <span style={{ fontSize: '11px', color: '#64748b' }}>{t.ownerEmail}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px', width: '100%' }}>
-                      <button
-                        onClick={() => handleSelectTenant(t)}
-                        className={styles.manageBtn}
-                        style={{ flex: 2, margin: 0 }}
-                      >
-                        Configure Workspace
-                      </button>
-                      {t.ownerId && (
-                        <button
-                          onClick={() => {
-                            setResetPasswordTenant(t);
-                            setResetPasswordInput('');
-                          }}
-                          style={{
-                            flex: 1,
-                            background: 'rgba(239, 68, 68, 0.12)',
-                            color: '#f87171',
-                            border: '1.5px solid rgba(239, 68, 68, 0.25)',
-                            borderRadius: '8px',
-                            padding: '9px 12px',
-                            fontWeight: 700,
-                            fontSize: '11px',
-                            cursor: 'pointer',
-                            fontFamily: 'sans-serif'
-                          }}
-                        >
-                          Reset PW
-                        </button>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleDeleteTenant(t)}
-                      style={{
-                        width: '100%',
-                        marginTop: '8px',
-                        background: 'rgba(239, 68, 68, 0.05)',
-                        color: '#f87171',
-                        border: '1.5px dashed rgba(239, 68, 68, 0.2)',
-                        borderRadius: '8px',
-                        padding: '9px 12px',
-                        fontWeight: 700,
-                        fontSize: '11px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        fontFamily: 'sans-serif'
-                      }}
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
-                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.05)';
-                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.2)';
-                      }}
-                    >
-                      🗑️ Delete Workspace
-                    </button>
-                  </div>
-                ))}
-              </div>
+              <>
+                <div className={styles.directoryMetrics}>
+                  <article><span>Total clients</span><strong>{tenants.length}</strong><small>Provisioned workspaces</small></article>
+                  <article><span>Active</span><strong>{activeWorkspaceCount}</strong><small>Owner access configured</small></article>
+                  <article><span>Needs attention</span><strong>{needsAttentionCount}</strong><small>Missing owner access</small></article>
+                  <article><span>Plans in use</span><strong>{tiersInUse}</strong><small>Across the client base</small></article>
+                </div>
+
+                <div className={styles.directoryToolbar}>
+                  <label className={styles.searchField}>
+                    <span className={styles.visuallyHidden}>Search clients</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    <input
+                      type="search"
+                      value={clientSearch}
+                      onChange={(event) => setClientSearch(event.target.value)}
+                      placeholder="Search client, owner or workspace"
+                    />
+                  </label>
+                  <label className={styles.filterField}>
+                    <span>Plan</span>
+                    <select value={packageFilter} onChange={(event) => setPackageFilter(event.target.value)}>
+                      <option value="all">All plans</option>
+                      <option value="core">Core</option>
+                      <option value="growth">Growth</option>
+                      <option value="scale">Scale</option>
+                    </select>
+                  </label>
+                  <span className={styles.resultCount}>{filteredTenants.length} of {tenants.length} clients</span>
+                </div>
+
+                <div className={styles.clientTableShell}>
+                  <table className={styles.clientTable}>
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th>Plan</th>
+                        <th>Status</th>
+                        <th>Workspace</th>
+                        <th>Onboarded</th>
+                        <th><span className={styles.visuallyHidden}>Actions</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredTenants.length === 0 ? (
+                        <tr><td colSpan={6} className={styles.tableEmpty}>No clients match those filters.</td></tr>
+                      ) : filteredTenants.map((tenant) => {
+                        const isActive = Boolean(tenant.ownerEmail);
+                        return (
+                          <tr key={tenant.id}>
+                            <td>
+                              <div className={styles.clientIdentity}>
+                                <span className={styles.clientAvatar} style={{ '--client-accent': tenant.accent_color || '#d4af37' } as React.CSSProperties}>
+                                  {tenant.name.substring(0, 2).toUpperCase()}
+                                </span>
+                                <div>
+                                  <strong>{tenant.name}</strong>
+                                  <small>{tenant.ownerEmail || 'Owner access not configured'}</small>
+                                </div>
+                              </div>
+                            </td>
+                            <td><span className={styles.packageBadge}>{tenant.package_tier || 'Core'}</span></td>
+                            <td><span className={`${styles.workspaceStatus} ${isActive ? styles.statusActive : styles.statusAttention}`}><i />{isActive ? 'Active' : 'Needs attention'}</span></td>
+                            <td>
+                              <div className={styles.workspaceUrl}>
+                                <code>{tenant.subdomain}.kasimshah.com</code>
+                                {tenant.custom_domain && <small>{tenant.custom_domain}</small>}
+                              </div>
+                            </td>
+                            <td className={styles.dateCell}>{tenant.created_at ? new Date(tenant.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
+                            <td>
+                              <div className={styles.rowActions}>
+                                <a href={`/${tenant.subdomain}?agencyPreview=1`} className={styles.viewWorkspaceBtn}>View as client</a>
+                                <button type="button" onClick={() => handleSelectTenant(tenant)} className={styles.configureBtn}>Configure</button>
+                                <details className={styles.moreActions}>
+                                  <summary aria-label={`More actions for ${tenant.name}`}>•••</summary>
+                                  <div>
+                                    {tenant.ownerId && (
+                                      <button type="button" onClick={() => { setResetPasswordTenant(tenant); setResetPasswordInput(''); }}>Reset owner password</button>
+                                    )}
+                                    <button type="button" className={styles.dangerAction} onClick={() => handleDeleteTenant(tenant)}>Delete workspace</button>
+                                  </div>
+                                </details>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         )}
@@ -811,8 +870,13 @@ export default function MasterAdminDashboard() {
                 ← Back
               </button>
               <div className={styles.tenantTitleGroup}>
-                <h3>{selectedTenant.name} Config Workspace</h3>
-                <code>Default URL: {selectedTenant.subdomain}.kasimshah.com</code>
+                <span className={styles.pageEyebrow}>Client configuration</span>
+                <h3>{selectedTenant.name}</h3>
+                <code>{selectedTenant.subdomain}.kasimshah.com</code>
+              </div>
+              <div className={styles.tenantHeaderActions}>
+                <span className={styles.packageBadge}>{selectedTenant.package_tier || 'Core'} plan</span>
+                <a href={`/${selectedTenant.subdomain}?agencyPreview=1`} className={styles.viewWorkspaceBtn}>View as client ↗</a>
               </div>
             </div>
 
@@ -842,8 +906,8 @@ export default function MasterAdminDashboard() {
                     To complete linking your custom domain, please add the following DNS record(s) at your domain registrar:
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {verificationData.map((record: any, idx: number) => (
-                      <div key={idx} style={{ fontSize: '12px', backgroundColor: '#0f172a', padding: '12px', borderRadius: '6px', border: '1px solid #1e293b' }}>
+                    {verificationData.map((record) => (
+                      <div key={`${record.type}-${record.domain}-${record.value}`} style={{ fontSize: '12px', backgroundColor: '#0f172a', padding: '12px', borderRadius: '6px', border: '1px solid #1e293b' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '4px', marginBottom: '4px' }}>
                           <span style={{ color: '#64748b' }}>Type:</span>
                           <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>{record.type}</span>
@@ -918,7 +982,7 @@ export default function MasterAdminDashboard() {
                         <line x1="12" y1="20" x2="12" y2="4"></line>
                         <line x1="6" y1="20" x2="6" y2="14"></line>
                       </svg>
-                      Generate Growth Performance Report
+                      Open workspace report
                     </button>
                   </div>
 
@@ -931,8 +995,8 @@ export default function MasterAdminDashboard() {
                         </svg>
                       </span>
                       <div>
-                        <h3>${(totalSales / 100).toFixed(2)}</h3>
-                        <p>Total Revenue Brought In</p>
+                        <h3>£{(totalSales / 100).toFixed(2)}</h3>
+                        <p>Recorded revenue</p>
                       </div>
                     </div>
                     <div className={styles.summaryCard}>
@@ -959,8 +1023,8 @@ export default function MasterAdminDashboard() {
                         </svg>
                       </span>
                       <div>
-                        <h3>{salesCount * 18 + 145}</h3>
-                        <p>Total Website Visits</p>
+                        <h3>{services.length}</h3>
+                        <p>Active services</p>
                       </div>
                     </div>
                     <div className={styles.summaryCard}>
@@ -971,8 +1035,8 @@ export default function MasterAdminDashboard() {
                         </svg>
                       </span>
                       <div>
-                        <h3>{salesCount > 0 ? Math.round((salesCount / (salesCount * 18 + 145)) * 100) : 0}%</h3>
-                        <p>Booking Conversion Rate</p>
+                        <h3>{staff.length}</h3>
+                        <p>Team members</p>
                       </div>
                     </div>
                   </div>
@@ -995,11 +1059,11 @@ export default function MasterAdminDashboard() {
                               <td colSpan={3} className={styles.tableEmpty}>No sales transactions logged for this salon yet.</td>
                             </tr>
                           ) : (
-                            staffRevenues.map((s, idx) => (
-                              <tr key={idx}>
+                            staffRevenues.map((s) => (
+                              <tr key={s.staffName}>
                                 <td><strong>{s.staffName}</strong></td>
                                 <td>{s.bookings}</td>
-                                <td style={{ color: '#10b981', fontWeight: 700 }}>${(s.revenue / 100).toFixed(2)}</td>
+                                <td style={{ color: '#10b981', fontWeight: 700 }}>£{(s.revenue / 100).toFixed(2)}</td>
                               </tr>
                             ))
                           )}
@@ -1023,8 +1087,8 @@ export default function MasterAdminDashboard() {
                               <td colSpan={2} className={styles.tableEmpty}>No service bookings completed yet.</td>
                             </tr>
                           ) : (
-                            topServicesList.map((svc, idx) => (
-                              <tr key={idx}>
+                            topServicesList.map((svc) => (
+                              <tr key={svc.name}>
                                 <td>{svc.name}</td>
                                 <td>{svc.count} sales</td>
                               </tr>
@@ -1067,7 +1131,7 @@ export default function MasterAdminDashboard() {
                           type="number"
                           required
                           step="0.01"
-                          placeholder="Price ($)"
+                          placeholder="Price (£)"
                           value={newServicePrice}
                           onChange={(e) => setNewServicePrice(e.target.value)}
                           className={styles.formInput}
@@ -1103,7 +1167,7 @@ export default function MasterAdminDashboard() {
                               <strong>{s.name}</strong>
                               <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '10px' }}>({s.duration} min)</span>
                             </div>
-                            <span style={{ color: '#10b981', fontWeight: 700 }}>${(s.price / 100).toFixed(2)}</span>
+                            <span style={{ color: '#10b981', fontWeight: 700 }}>£{(s.price / 100).toFixed(2)}</span>
                           </li>
                         ))
                       )}
@@ -1424,7 +1488,7 @@ export default function MasterAdminDashboard() {
                     KS Growth Engine
                   </span>
                   <h2 style={{ margin: '6px 0 0 0', fontSize: '24px', fontWeight: 800, color: '#ffffff' }}>
-                    Studio Performance Growth Report
+                    Workspace performance report
                   </h2>
                 </div>
                 <button
@@ -1450,34 +1514,32 @@ export default function MasterAdminDashboard() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '16px', marginBottom: '24px' }}>
                   <div style={{ background: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.1)' }}>
                     <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Sales Revenue</span>
-                    <h3 style={{ margin: '4px 0 0 0', color: '#10b981', fontSize: '20px' }}>${(totalSales / 100).toFixed(2)}</h3>
+                    <h3 style={{ margin: '4px 0 0 0', color: '#10b981', fontSize: '20px' }}>£{(totalSales / 100).toFixed(2)}</h3>
                   </div>
                   <div style={{ background: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.1)' }}>
                     <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Checkouts</span>
                     <h3 style={{ margin: '4px 0 0 0', color: '#ffffff', fontSize: '20px' }}>{salesCount} sales</h3>
                   </div>
                   <div style={{ background: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.1)' }}>
-                    <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Website Views</span>
-                    <h3 style={{ margin: '4px 0 0 0', color: '#ffffff', fontSize: '20px' }}>{salesCount * 18 + 145}</h3>
+                    <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Active services</span>
+                    <h3 style={{ margin: '4px 0 0 0', color: '#ffffff', fontSize: '20px' }}>{services.length}</h3>
                   </div>
                   <div style={{ background: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid rgba(212,175,55,0.1)' }}>
-                    <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Conversion</span>
-                    <h3 style={{ margin: '4px 0 0 0', color: '#d4af37', fontSize: '20px' }}>
-                      {salesCount > 0 ? Math.round((salesCount / (salesCount * 18 + 145)) * 100) : 0}%
-                    </h3>
+                    <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Team members</span>
+                    <h3 style={{ margin: '4px 0 0 0', color: '#d4af37', fontSize: '20px' }}>{staff.length}</h3>
                   </div>
                 </div>
 
                 <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#ffffff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>
-                  Growth Improvement Summary
+                  Recorded workspace summary
                 </h4>
                 <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: 1.5, margin: '0 0 12px 0' }}>
-                  Since onboarding on the <strong>KS OS</strong> booking engine, client booking flows have streamlined, improving client acquisition rates. Checkout transactions completed stands at <strong>{salesCount}</strong>, representing a growth trajectory of <strong>+18%</strong> month-over-month.
+                  This report reflects the live records currently available in <strong>KS OS</strong>: <strong>{salesCount}</strong> completed checkouts and <strong>£{(totalSales / 100).toFixed(2)}</strong> in recorded revenue. Website traffic and conversion are intentionally omitted until an analytics source is connected.
                 </p>
                 <ul style={{ paddingLeft: '18px', fontSize: '12px', color: '#94a3b8', lineHeight: 1.6, margin: 0 }}>
-                  <li>✨ <strong>Calendar Sync</strong> has eliminated double-booking and schedule friction.</li>
-                  <li>📈 <strong>Web Widget Integration</strong> captured direct browser traffic without customer drop-off.</li>
-                  <li>🤖 <strong>Off-Peak Discount Incentives</strong> successfully filled slow schedule hours by 12%.</li>
+                  <li><strong>{services.length}</strong> services configured in this workspace.</li>
+                  <li><strong>{staff.length}</strong> team members configured in this workspace.</li>
+                  <li><strong>{waitlistList.length}</strong> current waitlist records.</li>
                 </ul>
               </div>
 

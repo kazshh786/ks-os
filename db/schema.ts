@@ -9,6 +9,7 @@ export const tenants = pgTable('tenants', {
   primaryColor: varchar('primary_color', { length: 7 }).default('#0f172a').notNull(), // Slate 900
   secondaryColor: varchar('secondary_color', { length: 7 }).default('#475569').notNull(), // Slate 600
   accentColor: varchar('accent_color', { length: 7 }).default('#10b981').notNull(), // Emerald 500
+  packageTier: text('package_tier', { enum: ['core', 'growth', 'scale'] }).default('core').notNull(),
   // Loyalty settings
   enableLoyalty: boolean('enable_loyalty').default(false).notNull(),
   loyaltyPointsPerDollar: integer('loyalty_points_per_dollar').default(1).notNull(),

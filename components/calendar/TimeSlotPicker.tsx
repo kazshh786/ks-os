@@ -67,12 +67,6 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
   const [patchTestConfirmed, setPatchTestConfirmed] = useState(false);
   const [consentConfirmed, setConsentConfirmed] = useState(false);
 
-  // Credit Card checkout values
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
-  const [cardZip, setCardZip] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'deposit' | 'card_on_file'>('deposit');
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
 
   // Signature canvas pad references
@@ -469,21 +463,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
 
       if (apptErr) throw apptErr;
 
-      // 4. Create deposit checkout transaction if deposit selected
-      if (paymentMethod === 'deposit') {
-        const depositAmount = Math.round(selectedSlot.price * 0.3); // 30% deposit in cents
-        await supabase.from('checkout_transactions').insert({
-          tenant_id: tenantId,
-          appointment_id: appt.id,
-          total_amount: depositAmount,
-          payment_status: 'SUCCEEDED',
-          payment_method: 'CARD',
-          purchased_products: [],
-          stripe_payment_intent_id: 'dep_pi_' + Math.random().toString(36).substr(2, 9),
-        });
-      }
-
-      // Proceed to SMS mockup screen
+      // Payment is collected at the appointment until a live provider is connected.
       setModalStep('confirm');
     } catch (err: any) {
       alert(err.message || 'Failed to complete checkout booking.');
@@ -527,7 +507,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
             const finalPrice = hasDiscount ? Math.max(0, s.price - s.discount) : s.price;
             return (
               <option key={s.id} value={s.id}>
-                {s.name} ({s.duration} min) - {hasDiscount ? `Discounted: $${(finalPrice / 100).toFixed(2)} (Was $${(s.price / 100).toFixed(2)})` : `$${(s.price / 100).toFixed(2)}`}
+                {s.name} ({s.duration} min) — {hasDiscount ? `Discounted: £${(finalPrice / 100).toFixed(2)} (was £${(s.price / 100).toFixed(2)})` : `£${(s.price / 100).toFixed(2)}`}
               </option>
             );
           })}
@@ -573,7 +553,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
             <div className={styles.inputGroup}>
               <label className={styles.label}>2. Choose Booking Date</label>
               <div className={styles.dateRibbon}>
-                {getNext7Days().map((d, i) => {
+                {getNext7Days().map((d) => {
                   const dateStr = d.toISOString().split('T')[0];
                   const dayName = d.toLocaleDateString(undefined, { weekday: 'short' });
                   const dateNum = d.getDate();
@@ -581,7 +561,7 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
 
                   return (
                     <button
-                      key={i}
+                      key={dateStr}
                       onClick={() => setSelectedDate(dateStr)}
                       className={`${styles.ribbonItem} ${isActive ? styles.ribbonItemActive : ''}`}
                     >
@@ -612,15 +592,15 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
             <>
               {viewMode === 'list' ? (
                 <div className={styles.slotsGrid}>
-                  {availableSlots.map((slot, idx) => (
+                  {availableSlots.map((slot) => (
                     <button
-                      key={idx}
+                      key={`${slot.staffId}-${slot.dateTime.toISOString()}`}
                       className={styles.slotButton}
                       onClick={() => handleSlotClick(slot)}
                     >
                       <span className={styles.slotTime}>{slot.timeStr}</span>
                       <span className={styles.slotStaff}>w/ {slot.staffName}</span>
-                      <span className={styles.slotPrice}>${(slot.price / 100).toFixed(2)}</span>
+                      <span className={styles.slotPrice}>£{(slot.price / 100).toFixed(2)}</span>
                     </button>
                   ))}
                 </div>
@@ -635,14 +615,14 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
                         {staffSlots.length === 0 ? (
                           <span style={{ fontSize: '11px', color: '#64748b', marginTop: '12px' }}>Fully Booked</span>
                         ) : (
-                          staffSlots.map((slot, idx) => (
+                          staffSlots.map((slot) => (
                             <button
-                              key={idx}
+                              key={`${slot.staffId}-${slot.dateTime.toISOString()}`}
                               className={styles.slotButton}
                               onClick={() => handleSlotClick(slot)}
                             >
                               <span className={styles.slotTime}>{slot.timeStr}</span>
-                              <span className={styles.slotPrice}>${(slot.price / 100).toFixed(2)}</span>
+                              <span className={styles.slotPrice}>£{(slot.price / 100).toFixed(2)}</span>
                             </button>
                           ))
                         )}
@@ -748,69 +728,22 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
               </div>
             )}
 
-            {/* STEP 3: Upfront Deposit Securement */}
+            {/* STEP 3: Booking review */}
             {modalStep === 'deposit' && (
               <div className={styles.stepBody}>
-                <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#cbd5e1' }}>Receipt Summary</h5>
+                <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#cbd5e1' }}>Review your booking</h5>
                 <div className={styles.summaryRow}>
                   <span>Service Total:</span>
-                  <strong>${(selectedSlot.price / 100).toFixed(2)}</strong>
+                  <strong>£{(selectedSlot.price / 100).toFixed(2)}</strong>
                 </div>
                 <div className={styles.summaryTotalRow}>
-                  <span>30% Deposit Due Now:</span>
-                  <strong>${((selectedSlot.price * 0.3) / 100).toFixed(2)}</strong>
+                  <span>Payment:</span>
+                  <strong>Pay at appointment</strong>
                 </div>
 
-                <div className={styles.inputGroup} style={{ marginTop: '10px' }}>
-                  <label className={styles.label}>Choose Payment Method</label>
-                  <select
-                    className={styles.select}
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  >
-                    <option value="deposit">Pay 30% Upfront Deposit Now</option>
-                    <option value="card_on_file">Capture Card (Protect from No-Shows, $0 today)</option>
-                  </select>
-                </div>
-
-                <div className={styles.inputGroup}>
-                  <label className={styles.label}>Cardholder Name</label>
-                  <input
-                    type="text"
-                    placeholder="Jane Doe"
-                    className={styles.formInputText}
-                    required
-                  />
-                </div>
-
-                <div className={styles.inputGroup}>
-                  <label className={styles.label}>Card Details</label>
-                  <input
-                    type="text"
-                    placeholder="1111 2222 3333 4444"
-                    className={styles.formInputText}
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(e.target.value.replace(/\s?/g, '').replace(/(\d{4})/g, '$1 ').trim())}
-                    maxLength={19}
-                  />
-                  <div className={styles.cardFormGrid}>
-                    <input
-                      type="text"
-                      placeholder="MM / YY"
-                      className={styles.formInputText}
-                      value={cardExpiry}
-                      onChange={(e) => setCardExpiry(e.target.value)}
-                      maxLength={7}
-                    />
-                    <input
-                      type="password"
-                      placeholder="CVC"
-                      className={styles.formInputText}
-                      value={cardCvc}
-                      onChange={(e) => setCardCvc(e.target.value)}
-                      maxLength={4}
-                    />
-                  </div>
+                <div className={styles.infoBanner} style={{ marginTop: '14px' }}>
+                  <strong>Online payments are coming soon.</strong>
+                  <span>No card details are collected today. Your provider will take payment at the appointment.</span>
                 </div>
 
                 <div className={styles.stepFooter}>
@@ -822,17 +755,13 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
                     disabled={isSubmittingBooking}
                     onClick={handleFinalBooking}
                   >
-                    {isSubmittingBooking
-                      ? 'Securing Slot...'
-                      : paymentMethod === 'deposit'
-                      ? `Pay $${((selectedSlot.price * 0.3) / 100).toFixed(2)} Deposit`
-                      : 'Confirm Slot Security'}
+                    {isSubmittingBooking ? 'Confirming booking…' : 'Confirm booking'}
                   </button>
                 </div>
               </div>
             )}
 
-            {/* STEP 4: Automated Reassurance Notification Mock */}
+            {/* STEP 4: Booking confirmation */}
             {modalStep === 'confirm' && (
               <div className={styles.stepBody}>
                 <div style={{ textAlign: 'center', margin: '10px 0' }}>
@@ -843,34 +772,14 @@ export default function TimeSlotPicker({ tenantId, services, staffMembers, onSlo
                   </p>
                 </div>
 
-                <div className={styles.phoneWrapper}>
-                  <div className={styles.phoneContainer}>
-                    <div className={styles.phoneSpeaker} />
-                    <div className={styles.phoneScreen}>
-                      <div className={styles.phoneHeader}>
-                        <span>12:00</span>
-                        <span>📶 🔋</span>
-                      </div>
-                      <div className={styles.smsBubble}>
-                        <span className={styles.smsSender}>💬 Studio Alert</span>
-                        <p className={styles.smsBody}>
-                          Hi {clientName}! Your appointment for{' '}
-                          {services.find((s) => s.id === selectedServiceId)?.name} w/ {selectedSlot.staffName} is
-                          confirmed for {new Date(selectedSlot.dateTime).toLocaleDateString()} at{' '}
-                          {new Date(selectedSlot.dateTime).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                          .{' '}
-                          {paymentMethod === 'deposit'
-                            ? `Deposit of $${((selectedSlot.price * 0.3) / 100).toFixed(2)} paid.`
-                            : 'Card saved on file.'}{' '}
-                          Manage: booking.link
-                        </p>
-                        <span className={styles.smsTime}>Just now</span>
-                      </div>
-                    </div>
-                  </div>
+                <div className={styles.infoBanner}>
+                  <strong>Booking details</strong>
+                  <span>
+                    {services.find((s) => s.id === selectedServiceId)?.name} with {selectedSlot.staffName} on{' '}
+                    {new Date(selectedSlot.dateTime).toLocaleDateString()} at{' '}
+                    {new Date(selectedSlot.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.
+                    Payment of £{(selectedSlot.price / 100).toFixed(2)} is due at the appointment.
+                  </span>
                 </div>
 
                 <div className={styles.stepFooter}>

@@ -37,10 +37,13 @@ export async function POST(req: Request) {
     }
 
     // 2. Parse request body parameters
-    const { salonName, subdomain, industry, ownerEmail, ownerPassword } = await req.json();
+    const { salonName, subdomain, packageTier = 'core', industry, ownerEmail, ownerPassword } = await req.json();
 
     if (!salonName || !subdomain || !industry || !ownerEmail || !ownerPassword) {
       return NextResponse.json({ error: 'Missing required configuration parameters.' }, { status: 400 });
+    }
+    if (!['core', 'growth', 'scale'].includes(packageTier)) {
+      return NextResponse.json({ error: 'Invalid workspace package tier.' }, { status: 400 });
     }
 
     console.log(`Starting automated provisioning for tenant: ${subdomain}`);
@@ -77,6 +80,17 @@ export async function POST(req: Request) {
       // Clean up newly created user on failure
       await supabaseAdmin.auth.admin.deleteUser(ownerId);
       throw rpcErr;
+    }
+
+    const { error: packageUpdateErr } = await supabaseAdmin
+      .from('tenants')
+      .update({ package_tier: packageTier })
+      .eq('id', tenantId);
+
+    if (packageUpdateErr) {
+      await supabaseAdmin.from('tenants').delete().eq('id', tenantId);
+      await supabaseAdmin.auth.admin.deleteUser(ownerId);
+      throw new Error(`Failed to assign workspace package: ${packageUpdateErr.message}`);
     }
 
     // 5. Update public.users record for the newly created salon owner to force a password change
