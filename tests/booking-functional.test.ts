@@ -217,7 +217,7 @@ test('Functional Verification: Public Booking Channels & Address constraints', a
   `);
   
   await db.exec('RESET ROLE');
-  const appts = await db.query('SELECT status, booking_channel FROM appointments');
+  const appts = await db.query<{ status: string; booking_channel: string }>('SELECT status, booking_channel FROM appointments');
   assert.equal(appts.rows.length, 1);
   assert.equal(appts.rows[0].booking_channel, 'in_shop');
   assert.equal(appts.rows[0].status, 'CONFIRMED');
@@ -274,7 +274,7 @@ test('Functional Verification: Public Booking Channels & Address constraints', a
   `);
 
   await db.exec('RESET ROLE');
-  const mobileAppt = await db.query<{ mobile_address: any }>('SELECT status, booking_channel, mobile_address FROM appointments WHERE booking_channel = \'mobile\'');
+  const mobileAppt = await db.query<{ status: string; booking_channel: string; mobile_address: any }>('SELECT status, booking_channel, mobile_address FROM appointments WHERE booking_channel = \'mobile\'');
   assert.equal(mobileAppt.rows.length, 1);
   assert.equal(mobileAppt.rows[0].status, 'CONFIRMED');
   assert.equal(mobileAppt.rows[0].mobile_address.line1, '2 High St');

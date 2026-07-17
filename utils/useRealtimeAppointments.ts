@@ -18,6 +18,23 @@ export interface Appointment {
   clientId?: string;
 }
 
+function mapDbToAppointment(row: any): Appointment {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    userId: row.user_id,
+    clientName: row.client_name,
+    serviceId: row.service_id,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    notes: row.notes,
+    clientId: row.client_id,
+  };
+}
+
 /**
  * Custom React Hook that loads initial appointments for a tenant
  * and listens for live inserts, updates, and deletes from Supabase Realtime.
@@ -46,7 +63,7 @@ export function useRealtimeAppointments(tenantId: string | null) {
           .order('start_time', { ascending: true });
 
         if (fetchErr) throw fetchErr;
-        setAppointments(data as Appointment[]);
+        setAppointments((data || []).map(mapDbToAppointment));
       } catch (err: any) {
         setError(err.message || 'Failed to fetch appointments');
       } finally {
@@ -78,14 +95,14 @@ export function useRealtimeAppointments(tenantId: string | null) {
           setAppointments((prev) => {
             switch (eventType) {
               case 'INSERT': {
-                const inserted = newRecord as Appointment;
+                const inserted = mapDbToAppointment(newRecord);
                 const filtered = prev.filter((appt) => appt.id !== inserted.id); // Guard duplicates
                 return [...filtered, inserted].sort(
                   (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
                 );
               }
               case 'UPDATE': {
-                const updated = newRecord as Appointment;
+                const updated = mapDbToAppointment(newRecord);
                 return prev.map((appt) => (appt.id === updated.id ? updated : appt));
               }
               case 'DELETE': {

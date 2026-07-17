@@ -38,7 +38,7 @@ BEGIN
   VALUES(NEW.tenant_id,NEW.id,v_type,NEW.public_reference::text,jsonb_strip_nulls(jsonb_build_object(
     'bookingReference',NEW.public_reference::text,'status',NEW.status,'startTime',NEW.start_time,
     'endTime',NEW.end_time,'bookingChannel',NEW.booking_channel,'amountMinor',NEW.quoted_amount,
-    'currency',v_currency,'contactId',NEW.client_id::text,'mobileAddress',NEW.mobile_address,'notes',NEW.notes
+    'currency',v_currency,'contactId',NEW.client_id::text
   )),now()) ON CONFLICT(appointment_id,event_type)DO NOTHING;
   RETURN NEW;
 END;$$;

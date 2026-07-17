@@ -95,6 +95,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE
   v_service public.services;v_tenant public.tenants;v_client_id uuid;v_appointment public.appointments;
   v_end_time timestamptz;v_amount integer;v_local_start timestamp;v_day integer;v_address jsonb;
+  v_custom_duration integer;v_custom_price integer;v_duration integer;v_price integer;
 BEGIN
   IF p_idempotency_key IS NULL THEN RAISE EXCEPTION 'Idempotency key required'; END IF;
   IF p_booking_channel NOT IN ('in_shop','mobile') THEN RAISE EXCEPTION 'Invalid booking channel'; END IF;
@@ -126,7 +127,15 @@ BEGIN
   IF v_tenant.id IS NULL OR v_service.id IS NULL THEN RAISE EXCEPTION 'Tenant or service not found'; END IF;
   IF NOT EXISTS(SELECT 1 FROM public.users WHERE id=p_staff_id AND tenant_id=p_tenant_id) THEN RAISE EXCEPTION 'Staff member not found'; END IF;
   IF p_start_time<now()+interval '5 minutes' OR p_start_time>now()+interval '180 days' THEN RAISE EXCEPTION 'Invalid booking time'; END IF;
-  v_end_time:=p_start_time+make_interval(mins=>v_service.duration+v_service.buffer_time);v_local_start:=p_start_time AT TIME ZONE v_tenant.timezone;v_day:=extract(dow from v_local_start)::integer;
+
+  v_duration:=v_service.duration;
+  v_price:=v_service.price;
+  SELECT custom_duration_minutes, custom_price_in_cents INTO v_custom_duration, v_custom_price
+  FROM public.staff_pricing WHERE user_id = p_staff_id AND service_id = p_service_id;
+  IF v_custom_duration IS NOT NULL THEN v_duration:=v_custom_duration; END IF;
+  IF v_custom_price IS NOT NULL THEN v_price:=v_custom_price; END IF;
+
+  v_end_time:=p_start_time+make_interval(mins=>v_duration+v_service.buffer_time);v_local_start:=p_start_time AT TIME ZONE v_tenant.timezone;v_day:=extract(dow from v_local_start)::integer;
   IF NOT EXISTS(
     SELECT 1 FROM public.booking_channel_schedules s WHERE s.tenant_id=p_tenant_id AND s.user_id=p_staff_id
       AND s.booking_channel=p_booking_channel AND s.day_of_week=v_day AND v_local_start::time>=s.start_time
@@ -157,9 +166,9 @@ BEGIN
     INSERT INTO public.clients(tenant_id,name,email,phone) VALUES(p_tenant_id,trim(p_client_name),lower(trim(p_client_email)),trim(p_client_phone)) RETURNING id INTO v_client_id;
   ELSE UPDATE public.clients SET name=trim(p_client_name),phone=trim(p_client_phone),updated_at=now() WHERE id=v_client_id; END IF;
 
-  v_amount:=CASE WHEN p_payment_mode='deposit' THEN greatest(1,round(greatest(0,v_service.price-v_service.discount)*0.30)::integer)
-    WHEN p_payment_mode='full_payment' THEN greatest(0,v_service.price-v_service.discount)
-    WHEN p_payment_mode='customer_choice' AND p_pay_now THEN greatest(0,v_service.price-v_service.discount) ELSE 0 END;
+  v_amount:=CASE WHEN p_payment_mode='deposit' THEN greatest(1,round(greatest(0,v_price-v_service.discount)*0.30)::integer)
+    WHEN p_payment_mode='full_payment' THEN greatest(0,v_price-v_service.discount)
+    WHEN p_payment_mode='customer_choice' AND p_pay_now THEN greatest(0,v_price-v_service.discount) ELSE 0 END;
   INSERT INTO public.appointments(
     tenant_id,user_id,client_id,client_name,service_id,start_time,end_time,status,public_reference,idempotency_key,
     payment_mode,payment_status,quoted_amount,hold_expires_at,booking_channel,mobile_address,resource_id

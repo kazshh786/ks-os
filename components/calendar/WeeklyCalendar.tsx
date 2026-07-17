@@ -463,6 +463,9 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
         return;
       }
 
+      const selectedResourceObj = resources.find((r) => r.name === editResource);
+      const resourceIdVal = selectedResourceObj?.id || null;
+
       const finalFormattedNotes = formatNotes(editResource, editNotes);
 
       const { error: updateErr } = await supabase
@@ -472,7 +475,8 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
           start_time: startDateTime.toISOString(),
           end_time: endDateTime.toISOString(),
           status: editStatus,
-          notes: finalFormattedNotes
+          notes: finalFormattedNotes,
+          resource_id: resourceIdVal
         })
         .eq('id', activeAppointment.id);
 
@@ -512,6 +516,9 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
         return;
       }
 
+      const selectedResourceObj = resources.find((r) => r.name === blockResource);
+      const resourceIdVal = selectedResourceObj?.id || null;
+
       const finalBlockNotes = formatNotes(blockResource, blockReason || 'Busy block');
 
       if (bookingType === 'CLIENT') {
@@ -519,16 +526,8 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
         let finalClientId = blockClientId;
         if (!finalClientId) {
           if (!blockClientName) throw new Error('Client name is required.');
-          const { data: existing } = await supabase
-            .from('clients')
-            .select('id')
-            .eq('tenant_id', tenantId)
-            .eq('email', blockClientEmail.trim().toLowerCase())
-            .maybeSingle();
-
-          if (existing) {
-            finalClientId = existing.id;
-          } else {
+          
+          if (blockClientEmail.trim()) {
             const { data: newCl, error: clErr } = await supabase
               .from('clients')
               .insert({
@@ -567,7 +566,8 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
             start_time: startDateTime.toISOString(),
             end_time: endDateTime.toISOString(),
             status: 'CONFIRMED',
-            notes: finalBlockNotes
+            notes: finalBlockNotes,
+            resource_id: resourceIdVal
           });
 
         if (insertErr) throw insertErr;
@@ -583,7 +583,8 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
               end_time: endDateTime.toISOString(),
               status: 'CONFIRMED',
               client_name: guestName,
-              notes: `[Group Appointment w/ ${guests.join(', ')}] ${finalBlockNotes}`
+              notes: `[Group Appointment w/ ${guests.join(', ')}] ${finalBlockNotes}`,
+              resource_id: resourceIdVal
             });
           });
 
@@ -598,7 +599,8 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
               end_time: endDateTime.toISOString(),
               status: 'BLOCKED',
               client_name: 'Blocked Time',
-              notes: finalBlockNotes
+              notes: finalBlockNotes,
+              resource_id: resourceIdVal
             });
 
           if (insertErr) throw insertErr;

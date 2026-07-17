@@ -51,6 +51,16 @@ interface ReceiptData {
   pointsEarned: number;
 }
 
+function mapDbToProduct(row: any): Product {
+  return {
+    id: row.id,
+    name: row.name,
+    sku: row.sku,
+    priceInCents: row.price_in_cents,
+    stockQuantity: row.stock_quantity
+  };
+}
+
 export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSuccess }: CheckoutDrawerProps) {
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -90,7 +100,16 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
           .single();
 
         if (apptErr) throw apptErr;
-        setAppointment(apptData as unknown as Appointment);
+        
+        if (apptData) {
+          setAppointment({
+            id: apptData.id,
+            clientName: apptData.client_name,
+            status: apptData.status,
+            serviceId: apptData.service_id,
+            services: apptData.services as unknown as Service
+          });
+        }
 
         // Fetch products list
         const { data: prodData } = await supabase
@@ -99,7 +118,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
           .eq('tenant_id', tenantId)
           .gt('stock_quantity', 0);
         
-        const products = (prodData || []) as Product[];
+        const products = (prodData || []).map(mapDbToProduct);
         setAllProducts(products);
 
         // Seed 2 quick additions as recommendations
@@ -132,7 +151,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
           .limit(5);
 
         if (err) throw err;
-        setSearchResults(data as Product[]);
+        setSearchResults((data || []).map(mapDbToProduct));
       } catch (err: any) {
         console.error('Error searching products:', err);
       }
