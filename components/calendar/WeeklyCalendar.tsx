@@ -537,11 +537,22 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
                 email: blockClientEmail.trim().toLowerCase() || null,
                 phone: blockClientPhone || null
               })
-              .select('id')
-              .single();
+              .select('id');
 
             if (clErr) throw clErr;
-            finalClientId = newCl.id;
+            if (newCl && newCl.length > 0) {
+              finalClientId = newCl[0].id;
+            } else {
+              // Fallback if RLS blocks insert returning
+              const { data: fetchCl } = await supabase
+                .from('clients')
+                .select('id')
+                .eq('tenant_id', tenantId)
+                .eq('email', blockClientEmail.trim().toLowerCase())
+                .maybeSingle();
+              if (fetchCl) finalClientId = fetchCl.id;
+              else throw new Error('Client creation failed or blocked.');
+            }
           }
         }
 
@@ -723,8 +734,10 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
   if (error) return <div className={styles.errorContainer}>Error: {error}</div>;
 
   return (
-    <div className={styles.calendarContainer}>
-      {/* Calendar Header Control Bar */}
+    <div className={styles.calendarLayout}>
+      <div className={styles.calendarMainColumn}>
+        <div className={styles.calendarContainer}>
+          {/* Calendar Header Control Bar */}
       <div className={styles.calendarHeader}>
         <div className={styles.brandTitle}>
           <h2>Studio Operations Scheduler</h2>
@@ -747,264 +760,19 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
             ➕ Manual Book Desk
           </button>
 
-          <Dialog.Root open={isBlockOpen} onOpenChange={setIsBlockOpen}>
-            <Dialog.Trigger asChild>
-              <button 
-                onClick={() => {
-                  if (staffMembers.length > 0) setBlockStaffId(staffMembers[0].id);
-                  setBlockDate(new Date().toISOString().split('T')[0]);
-                  setBookingType('BLOCKED');
-                }}
-                className={styles.blockBtn}
-              >
-                🔒 Block / Group Booking
-              </button>
-            </Dialog.Trigger>
-            <Dialog.Portal>
-              <Dialog.Overlay className={styles.modalOverlay} />
-              <Dialog.Content className={styles.modalContent} style={{ overflowY: 'auto' }}>
-                <Dialog.Title className={styles.modalTitle}>Internal Studio Scheduler</Dialog.Title>
-                <p className={styles.modalDesc}>Quickly reserve salon capacity or book clients manually.</p>
-                
-                <form onSubmit={handleSaveBlock} className={styles.blockForm}>
-                  
-                  {/* Selector of Booking Type */}
-                  <div className={styles.formGroup}>
-                    <label>Action Mode:</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        type="button"
-                        onClick={() => setBookingType('CLIENT')}
-                        style={{
-                          flex: 1,
-                          padding: '10px',
-                          background: bookingType === 'CLIENT' ? 'var(--accent-color, #d4af37)' : 'rgba(255,255,255,0.03)',
-                          color: bookingType === 'CLIENT' ? '#1e1400' : '#ffffff',
-                          border: '1px solid rgba(255,255,255,0.05)',
-                          borderRadius: '8px',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Client Booking
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBookingType('BLOCKED')}
-                        style={{
-                          flex: 1,
-                          padding: '10px',
-                          background: bookingType === 'BLOCKED' ? 'var(--accent-color, #d4af37)' : 'rgba(255,255,255,0.03)',
-                          color: bookingType === 'BLOCKED' ? '#1e1400' : '#ffffff',
-                          border: '1px solid rgba(255,255,255,0.05)',
-                          borderRadius: '8px',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        🔒 Busy Block
-                      </button>
-                    </div>
-                  </div>
-
-                  {bookingType === 'CLIENT' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', background: 'rgba(0,0,0,0.2)' }}>
-                      <div className={styles.formGroup} style={{ position: 'relative' }}>
-                        <label>Search Client Directory:</label>
-                        <input
-                          type="text"
-                          placeholder="Search directory..."
-                          className={styles.formInput}
-                          value={blockClientSearch}
-                          onChange={(e) => setBlockClientSearch(e.target.value)}
-                        />
-                        {blockClientResults.length > 0 && (
-                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#0b101d', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', zIndex: 10, overflow: 'hidden' }}>
-                            {blockClientResults.map((cl) => (
-                              <button
-                                key={cl.id}
-                                type="button"
-                                onClick={() => {
-                                  setBlockClientId(cl.id);
-                                  setBlockClientName(cl.name);
-                                  setBlockClientEmail(cl.email || '');
-                                  setBlockClientPhone(cl.phone || '');
-                                  setBlockClientResults([]);
-                                  setBlockClientSearch('');
-                                }}
-                                style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '8px 12px', color: '#fff', textAlign: 'left', cursor: 'pointer' }}
-                              >
-                                <strong>{cl.name}</strong> - {cl.email || 'No email'}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className={styles.formGroup}>
-                        <label>Client Name: *</label>
-                        <input
-                          type="text"
-                          required
-                          className={styles.formInput}
-                          placeholder="Jane Doe"
-                          value={blockClientName}
-                          onChange={(e) => { setBlockClientName(e.target.value); setBlockClientId(null); }}
-                        />
-                      </div>
-
-                      <div className={styles.formRow}>
-                        <div className={styles.formGroup}>
-                          <label>Email:</label>
-                          <input
-                            type="email"
-                            className={styles.formInput}
-                            placeholder="jane@gmail.com"
-                            value={blockClientEmail}
-                            onChange={(e) => { setBlockClientEmail(e.target.value); setBlockClientId(null); }}
-                          />
-                        </div>
-                        <div className={styles.formGroup}>
-                          <label>Phone:</label>
-                          <input
-                            type="tel"
-                            className={styles.formInput}
-                            placeholder="+4477..."
-                            value={blockClientPhone}
-                            onChange={(e) => { setBlockClientPhone(e.target.value); setBlockClientId(null); }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className={styles.formGroup}>
-                        <label>Service Treatment: *</label>
-                        <select
-                          className={styles.formSelect}
-                          value={blockServiceId}
-                          onChange={(e) => setBlockServiceId(e.target.value)}
-                          required
-                        >
-                          <option value="">-- Select Service --</option>
-                          {services.map((s) => (
-                            <option key={s.id} value={s.id}>{s.name} (${(s.price / 100).toFixed(2)})</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className={styles.formGroup}>
-                    <label>Select Stylist:</label>
-                    <select 
-                      value={blockStaffId} 
-                      onChange={(e) => setBlockStaffId(e.target.value)}
-                      className={styles.formSelect}
-                      required
-                    >
-                      <option value="">-- Choose Stylist --</option>
-                      {staffMembers.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className={styles.formGroup}>
-                    <label>Resource / Room Reservation:</label>
-                    <select
-                      value={blockResource}
-                      onChange={(e) => setBlockResource(e.target.value)}
-                      className={styles.formSelect}
-                    >
-                      <option value="">-- None (No Room Reservation) --</option>
-                      {resources.map((r) => (
-                        <option key={r.id} value={r.name}>{r.name} ({r.type})</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className={styles.formGroup}>
-                    <label>Date:</label>
-                    <input 
-                      type="date" 
-                      value={blockDate} 
-                      onChange={(e) => setBlockDate(e.target.value)}
-                      className={styles.formInput}
-                      required
-                    />
-                  </div>
-
-                  <div className={styles.formRow}>
-                    <div className={styles.formGroup}>
-                      <label>Start Time:</label>
-                      <input 
-                        type="time" 
-                        value={blockStart} 
-                        onChange={(e) => setBlockStart(e.target.value)}
-                        className={styles.formInput}
-                        required
-                      />
-                    </div>
-                    <div className={styles.formGroup}>
-                      <label>End Time:</label>
-                      <input 
-                        type="time" 
-                        value={blockEnd} 
-                        onChange={(e) => setBlockEnd(e.target.value)}
-                        className={styles.formInput}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Group Booking Section */}
-                  {bookingType === 'BLOCKED' && (
-                    <div className={styles.formGroup}>
-                      <div className={{ display: 'flex', alignItems: 'center', gap: '8px' } as any}>
-                        <input
-                          type="checkbox"
-                          id="group-toggle"
-                          checked={isGroupBooking}
-                          onChange={(e) => setIsGroupBooking(e.target.checked)}
-                        />
-                        <label htmlFor="group-toggle" style={{ fontWeight: 800, cursor: 'pointer' }}>Group Appointment (Multiple Guests)</label>
-                      </div>
-                      {isGroupBooking && (
-                        <input
-                          type="text"
-                          placeholder="Guest names separated by commas (e.g. Alice, Bob, Charlie)"
-                          value={groupGuests}
-                          onChange={(e) => setGroupGuests(e.target.value)}
-                          className={styles.formInput}
-                          style={{ marginTop: '6px' }}
-                          required
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  <div className={styles.formGroup}>
-                    <label>Notes / Reason:</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Lunch Break, Group Session"
-                      value={blockReason} 
-                      onChange={(e) => setBlockReason(e.target.value)}
-                      className={styles.formInput}
-                    />
-                  </div>
-
-                  <div className={styles.modalActions}>
-                    <button type="submit" className={styles.saveBtn} disabled={isSavingBlock}>
-                      {isSavingBlock ? 'Saving...' : 'Save booking'}
-                    </button>
-                    <Dialog.Close asChild>
-                      <button type="button" className={styles.cancelBtn}>Cancel</button>
-                    </Dialog.Close>
-                  </div>
-                </form>
-              </Dialog.Content>
-            </Dialog.Portal>
-          </Dialog.Root>
+          <button 
+            onClick={() => {
+              if (staffMembers.length > 0) setBlockStaffId(staffMembers[0].id);
+              setBlockDate(new Date().toISOString().split('T')[0]);
+              setBookingType('BLOCKED');
+              setIsBlockOpen(true);
+              setActiveAppointment(null);
+              setCrmDrawerOpen(false);
+            }}
+            className={styles.blockBtn}
+          >
+            🔒 Block / Group Booking
+          </button>
         </div>
       </div>
 
@@ -1069,6 +837,7 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
                       key={colIdx} 
                       data-col-id={viewMode === 'WEEKLY' ? '' : (viewMode === 'RESOURCE' ? colItem.name : colItem.id)}
                       className={`${styles.dayColumn} ${dragOverDayIdx === colIdx ? styles.dayColumnDragOver : ''}`}
+                      onDragEnter={(e) => e.preventDefault()}
                       onDragOver={(e) => handleDragOver(e, colIdx)}
                       onDragLeave={handleDragLeave}
                       onDrop={(e) => handleDrop(e, targetDate)}
@@ -1521,6 +1290,251 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
           </div>
         </div>
       )}
+      </div>
+      </div>
+      <div className={styles.calendarSidePanel}>
+        {isBlockOpen && (
+          <div className={styles.sidePanelContent}>
+            <h3 className={styles.modalTitle}>Internal Studio Scheduler</h3>
+            <p className={styles.modalDesc}>Quickly reserve salon capacity or book clients manually.</p>
+            <p style={{fontSize:'12px', color:'#94a3b8'}}>Please click a slot on the calendar or fill out the form below.</p>
+            {/* The form will be injected here next */}
+            <form onSubmit={handleSaveBlock} className={styles.blockForm}>
+              {/* Selector of Booking Type */}
+              <div className={styles.formGroup}>
+                <label>Action Mode:</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setBookingType('CLIENT')}
+                    style={{
+                      flex: 1,
+                      padding: '10px',
+                      background: bookingType === 'CLIENT' ? 'var(--accent-color, #d4af37)' : 'rgba(255,255,255,0.03)',
+                      color: bookingType === 'CLIENT' ? '#1e1400' : '#ffffff',
+                      border: '1px solid rgba(255,255,255,0.05)',
+                      borderRadius: '8px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Client Booking
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBookingType('BLOCKED')}
+                    style={{
+                      flex: 1,
+                      padding: '10px',
+                      background: bookingType === 'BLOCKED' ? 'var(--accent-color, #d4af37)' : 'rgba(255,255,255,0.03)',
+                      color: bookingType === 'BLOCKED' ? '#1e1400' : '#ffffff',
+                      border: '1px solid rgba(255,255,255,0.05)',
+                      borderRadius: '8px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🔒 Busy Block
+                  </button>
+                </div>
+              </div>
+
+              {bookingType === 'CLIENT' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', background: 'rgba(0,0,0,0.2)' }}>
+                  <div className={styles.formGroup} style={{ position: 'relative' }}>
+                    <label>Search Client Directory:</label>
+                    <input
+                      type="text"
+                      placeholder="Search directory..."
+                      className={styles.formInput}
+                      value={blockClientSearch}
+                      onChange={(e) => setBlockClientSearch(e.target.value)}
+                    />
+                    {blockClientResults.length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#0b101d', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', zIndex: 10, overflow: 'hidden' }}>
+                        {blockClientResults.map((cl) => (
+                          <button
+                            key={cl.id}
+                            type="button"
+                            onClick={() => {
+                              setBlockClientId(cl.id);
+                              setBlockClientName(cl.name);
+                              setBlockClientEmail(cl.email || '');
+                              setBlockClientPhone(cl.phone || '');
+                              setBlockClientResults([]);
+                              setBlockClientSearch('');
+                            }}
+                            style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '8px 12px', color: '#fff', textAlign: 'left', cursor: 'pointer' }}
+                          >
+                            <strong>{cl.name}</strong> - {cl.email || 'No email'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={styles.formGroup}>
+                    <label>Client Name: *</label>
+                    <input
+                      type="text"
+                      required
+                      className={styles.formInput}
+                      placeholder="Jane Doe"
+                      value={blockClientName}
+                      onChange={(e) => { setBlockClientName(e.target.value); setBlockClientId(null); }}
+                    />
+                  </div>
+
+                  <div className={styles.formRow}>
+                    <div className={styles.formGroup}>
+                      <label>Email:</label>
+                      <input
+                        type="email"
+                        className={styles.formInput}
+                        placeholder="jane@gmail.com"
+                        value={blockClientEmail}
+                        onChange={(e) => { setBlockClientEmail(e.target.value); setBlockClientId(null); }}
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>Phone:</label>
+                      <input
+                        type="tel"
+                        className={styles.formInput}
+                        placeholder="+4477..."
+                        value={blockClientPhone}
+                        onChange={(e) => { setBlockClientPhone(e.target.value); setBlockClientId(null); }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className={styles.formGroup}>
+                    <label>Service Treatment: *</label>
+                    <select
+                      className={styles.formSelect}
+                      value={blockServiceId}
+                      onChange={(e) => setBlockServiceId(e.target.value)}
+                      required
+                    >
+                      <option value="">-- Select Service --</option>
+                      {services.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name} (${(s.price / 100).toFixed(2)})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div className={styles.formGroup}>
+                <label>Select Stylist:</label>
+                <select 
+                  value={blockStaffId} 
+                  onChange={(e) => setBlockStaffId(e.target.value)}
+                  className={styles.formSelect}
+                  required
+                >
+                  <option value="">-- Choose Stylist --</option>
+                  {staffMembers.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>Resource / Room Reservation:</label>
+                <select
+                  value={blockResource}
+                  onChange={(e) => setBlockResource(e.target.value)}
+                  className={styles.formSelect}
+                >
+                  <option value="">-- None (No Room Reservation) --</option>
+                  {resources.map((r) => (
+                    <option key={r.id} value={r.name}>{r.name} ({r.type})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>Date:</label>
+                <input 
+                  type="date" 
+                  value={blockDate} 
+                  onChange={(e) => setBlockDate(e.target.value)}
+                  className={styles.formInput}
+                  required
+                />
+              </div>
+
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label>Start Time:</label>
+                  <input 
+                    type="time" 
+                    value={blockStart} 
+                    onChange={(e) => setBlockStart(e.target.value)}
+                    className={styles.formInput}
+                    required
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>End Time:</label>
+                  <input 
+                    type="time" 
+                    value={blockEnd} 
+                    onChange={(e) => setBlockEnd(e.target.value)}
+                    className={styles.formInput}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Group Booking Section */}
+              {bookingType === 'BLOCKED' && (
+                <div className={styles.formGroup}>
+                  <div className={{ display: 'flex', alignItems: 'center', gap: '8px' } as any}>
+                    <input
+                      type="checkbox"
+                      id="group-toggle"
+                      checked={isGroupBooking}
+                      onChange={(e) => setIsGroupBooking(e.target.checked)}
+                    />
+                    <label htmlFor="group-toggle" style={{ fontWeight: 800, cursor: 'pointer' }}>Group Appointment (Multiple Guests)</label>
+                  </div>
+                  {isGroupBooking && (
+                    <input
+                      type="text"
+                      placeholder="Guest names separated by commas (e.g. Alice, Bob, Charlie)"
+                      value={groupGuests}
+                      onChange={(e) => setGroupGuests(e.target.value)}
+                      className={styles.formInput}
+                      style={{ marginTop: '6px' }}
+                      required
+                    />
+                  )}
+                </div>
+              )}
+
+              <div className={styles.formGroup}>
+                <label>Notes / Reason:</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Lunch Break, Group Session"
+                  value={blockReason} 
+                  onChange={(e) => setBlockReason(e.target.value)}
+                  className={styles.formInput}
+                />
+              </div>
+
+              <div className={styles.modalActions}>
+                <button type="submit" className={styles.saveBtn} disabled={isSavingBlock}>
+                  {isSavingBlock ? 'Saving...' : 'Save booking'}
+                </button>
+                <button type="button" className={styles.cancelBtn} onClick={() => setIsBlockOpen(false)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

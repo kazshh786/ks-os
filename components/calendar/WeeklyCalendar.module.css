@@ -1,3 +1,52 @@
+/* Two-column layout wrapper */
+.calendarLayout {
+  display: flex;
+  gap: 24px;
+  width: 100%;
+  height: calc(100vh - 120px);
+  align-items: stretch;
+}
+
+.calendarMainColumn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Redesigned persistent right-hand side panel */
+.calendarSidePanel {
+  width: 380px;
+  flex-shrink: 0;
+  background: rgba(17, 22, 39, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  padding: 24px;
+  overflow-y: auto;
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidePanelPlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  height: 100%;
+  color: #94a3b8;
+  gap: 16px;
+}
+
+.sidePanelPlaceholder svg {
+  color: rgba(255, 255, 255, 0.1);
+  width: 64px;
+  height: 64px;
+}
+
+/* Original main calendar container */
 .calendarContainer {
   --hour-height: 60px;
   
@@ -11,6 +60,7 @@
   display: flex;
   flex-direction: column;
   backdrop-filter: blur(20px);
+  flex: 1;
 }
 
 .calendarHeader {
