@@ -273,6 +273,9 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
     const start = new Date(startStr);
     const end = new Date(endStr);
 
+    const targetResource = resources.find((r) => r.name.toLowerCase() === resourceName.toLowerCase());
+    if (!targetResource) return false;
+
     const concurrent = appointments.filter((appt) => {
       if (appt.id === excludeApptId || appt.status === 'CANCELLED') return false;
       
@@ -281,12 +284,16 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
       const isConcurrent = start < apptEnd && end > apptStart;
       
       if (!isConcurrent) return false;
+      
+      if (appt.resourceId) {
+        return appt.resourceId === targetResource.id;
+      }
+      
       const { resource } = parseNotes(appt.notes);
       return resource.toLowerCase() === resourceName.toLowerCase();
     });
 
-    const resourceLimit = resources.find((r) => r.name.toLowerCase() === resourceName.toLowerCase())?.capacity || 1;
-    return concurrent.length >= resourceLimit;
+    return concurrent.length >= targetResource.capacity;
   };
 
   // Handle Drag & Drop Rescheduling
@@ -342,24 +349,77 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
   };
 
   const executeDrop = async (apptId: string, startIso: string, endIso: string) => {
-    const { error: dropErr } = await supabase
-      .from('appointments')
-      .update({
-        start_time: startIso,
-        end_time: endIso,
-      })
-      .eq('id', apptId);
+    const appt = appointments.find((a) => a.id === apptId);
+    if (!appt) return;
 
-    if (dropErr) alert('Rescheduling failed: ' + dropErr.message);
-    setCollisionWarning(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const res = await fetch('/api/internal/bookings', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          tenantId,
+          appointmentId: apptId,
+          staffId: appt.userId,
+          startTime: startIso,
+          endTime: endIso,
+          status: appt.status,
+          notes: appt.notes || '',
+          resourceId: appt.resourceId || null
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error);
+      }
+      setCollisionWarning(null);
+    } catch (err: any) {
+      alert('Rescheduling failed: ' + err.message);
+    }
   };
 
   const handleStatusChange = async (apptId: string, newStatus: string) => {
-    const { error } = await supabase.from('appointments').update({ status: newStatus }).eq('id', apptId);
-    if (error) {
-      alert('Failed to update status: ' + error.message);
-    } else if (activeAppointment?.id === apptId) {
-      setActiveAppointment({ ...activeAppointment, status: newStatus } as any);
+    const appt = appointments.find((a) => a.id === apptId);
+    if (!appt) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const res = await fetch('/api/internal/bookings', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          tenantId,
+          appointmentId: apptId,
+          staffId: appt.userId,
+          startTime: appt.startTime,
+          endTime: appt.endTime,
+          status: newStatus,
+          notes: appt.notes || '',
+          resourceId: appt.resourceId || null
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error);
+      }
+
+      if (activeAppointment?.id === apptId) {
+        setActiveAppointment({ ...activeAppointment, status: newStatus } as any);
+      }
+    } catch (err: any) {
+      alert('Failed to update status: ' + err.message);
     }
   };
 
@@ -468,19 +528,31 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
 
       const finalFormattedNotes = formatNotes(editResource, editNotes);
 
-      const { error: updateErr } = await supabase
-        .from('appointments')
-        .update({
-          user_id: editStaffId,
-          start_time: startDateTime.toISOString(),
-          end_time: endDateTime.toISOString(),
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const res = await fetch('/api/internal/bookings', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          tenantId,
+          appointmentId: activeAppointment.id,
+          staffId: editStaffId,
+          startTime: startDateTime.toISOString(),
+          endTime: endDateTime.toISOString(),
           status: editStatus,
           notes: finalFormattedNotes,
-          resource_id: resourceIdVal
+          resourceId: resourceIdVal
         })
-        .eq('id', activeAppointment.id);
+      });
 
-      if (updateErr) throw updateErr;
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to update appointment.');
+      }
 
       // Trigger Waitlist Scan if appointment is CANCELLED
       if (editStatus === 'CANCELLED') {
@@ -521,89 +593,90 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
 
       const finalBlockNotes = formatNotes(blockResource, blockReason || 'Busy block');
 
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
       if (bookingType === 'CLIENT') {
-        // Register Client lookup or create new client profile
-        let finalClientId = blockClientId;
-        if (!finalClientId) {
-          if (!blockClientName) throw new Error('Client name is required.');
-          
-          if (blockClientEmail.trim()) {
-            const { data: newCl, error: clErr } = await supabase
-              .from('clients')
-              .insert({
-                tenant_id: tenantId,
-                name: blockClientName,
-                email: blockClientEmail.trim().toLowerCase() || null,
-                phone: blockClientPhone || null
-              })
-              .select('id');
-
-            if (clErr) throw clErr;
-            if (newCl && newCl.length > 0) {
-              finalClientId = newCl[0].id;
-            } else {
-              // Fallback if RLS blocks insert returning
-              const { data: fetchCl } = await supabase
-                .from('clients')
-                .select('id')
-                .eq('tenant_id', tenantId)
-                .eq('email', blockClientEmail.trim().toLowerCase())
-                .maybeSingle();
-              if (fetchCl) finalClientId = fetchCl.id;
-              else throw new Error('Client creation failed or blocked.');
-            }
-          }
-        }
-
-        const { error: insertErr } = await supabase
-          .from('appointments')
-          .insert({
-            tenant_id: tenantId,
-            user_id: blockStaffId,
-            client_id: finalClientId,
-            client_name: blockClientName,
-            service_id: blockServiceId || null,
-            start_time: startDateTime.toISOString(),
-            end_time: endDateTime.toISOString(),
+        const res = await fetch('/api/internal/bookings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            tenantId,
+            serviceId: blockServiceId || null,
+            staffId: blockStaffId,
+            startTime: startDateTime.toISOString(),
+            endTime: endDateTime.toISOString(),
+            clientName: blockClientName,
+            clientEmail: blockClientEmail.trim().toLowerCase() || null,
+            clientPhone: blockClientPhone || null,
             status: 'CONFIRMED',
             notes: finalBlockNotes,
-            resource_id: resourceIdVal
-          });
+            resourceId: resourceIdVal,
+            clientId: blockClientId || null,
+            idempotencyKey: crypto.randomUUID()
+          })
+        });
 
-        if (insertErr) throw insertErr;
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Failed to create booking.');
+        }
       } else {
         // Group Bookings or normal Busy block
         if (isGroupBooking && groupGuests.trim() !== '') {
           const guests = groupGuests.split(',').map((g) => g.trim());
-          const bookingPromises = guests.map((guestName) => {
-            return supabase.from('appointments').insert({
-              tenant_id: tenantId,
-              user_id: blockStaffId,
-              start_time: startDateTime.toISOString(),
-              end_time: endDateTime.toISOString(),
-              status: 'CONFIRMED',
-              client_name: guestName,
-              notes: `[Group Appointment w/ ${guests.join(', ')}] ${finalBlockNotes}`,
-              resource_id: resourceIdVal
+          for (const guestName of guests) {
+            const res = await fetch('/api/internal/bookings', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                tenantId,
+                staffId: blockStaffId,
+                startTime: startDateTime.toISOString(),
+                endTime: endDateTime.toISOString(),
+                clientName: guestName,
+                status: 'CONFIRMED',
+                notes: `[Group Appointment w/ ${guests.join(', ')}] ${finalBlockNotes}`,
+                resourceId: resourceIdVal,
+                idempotencyKey: crypto.randomUUID()
+              })
             });
+
+            if (!res.ok) {
+              const errData = await res.json();
+              throw new Error(`Group guest ${guestName} booking failed: ${errData.error}`);
+            }
+          }
+        } else {
+          const res = await fetch('/api/internal/bookings', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              tenantId,
+              staffId: blockStaffId,
+              startTime: startDateTime.toISOString(),
+              endTime: endDateTime.toISOString(),
+              status: 'BLOCKED',
+              clientName: 'Blocked Time',
+              notes: finalBlockNotes,
+              resourceId: resourceIdVal,
+              idempotencyKey: crypto.randomUUID()
+            })
           });
 
-          await Promise.all(bookingPromises);
-        } else {
-          const { error: insertErr } = await supabase
-            .from('appointments')
-            .insert({
-              tenant_id: tenantId,
-              user_id: blockStaffId,
-              start_time: startDateTime.toISOString(),
-              end_time: endDateTime.toISOString(),
-              status: 'BLOCKED',
-              client_name: 'Blocked Time',
-              notes: finalBlockNotes,
-              resource_id: resourceIdVal
-            });
-
-          if (insertErr) throw insertErr;
+          if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.error || 'Failed to block time.');
+          }
         }
       }
 

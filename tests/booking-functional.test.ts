@@ -169,6 +169,7 @@ async function setupDb() {
   await db.exec(fs.readFileSync(path.join(process.cwd(), 'module10_booking_service_api.sql'), 'utf8'));
   await db.exec(fs.readFileSync(path.join(process.cwd(), 'module11_booking_channels.sql'), 'utf8'));
   await db.exec(fs.readFileSync(path.join(process.cwd(), 'module12_automation_event_outbox.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.join(process.cwd(), 'module13_status_lifecycle.sql'), 'utf8'));
 
   return db;
 }

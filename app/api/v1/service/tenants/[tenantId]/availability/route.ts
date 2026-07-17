@@ -11,7 +11,7 @@ export async function GET(request:Request,{params}:{params:Promise<{tenantId:str
     const db=serviceClient();
     const [{data:tenant,error:tenantError},{data:service,error:serviceError}]=await Promise.all([
       db.from('tenants').select('id,timezone,currency').eq('id',tenantId).single(),
-      db.from('services').select('id,duration,price,discount').eq('id',serviceId).eq('tenant_id',tenantId).eq('is_active',true).single(),
+      db.from('services').select('id,duration,buffer_time,price,discount').eq('id',serviceId).eq('tenant_id',tenantId).eq('is_active',true).single(),
     ]);
     if(tenantError||serviceError||!tenant||!service)return publicError(404,'BOOKING_RESOURCE_NOT_FOUND','Tenant or service not found');
     const dayOfWeek=new Date(`${date}T00:00:00Z`).getUTCDay();
@@ -28,18 +28,20 @@ export async function GET(request:Request,{params}:{params:Promise<{tenantId:str
     for(const schedule of schedules||[]){
       const override=(pricing||[]).find((item:any)=>item.user_id===schedule.user_id);
       const duration=override?.custom_duration_minutes||service.duration;
+      const buffer=service.buffer_time||0;
+      const totalDurationWithBuffer=duration+buffer;
       const price=Math.max(0,(override?.custom_price_in_cents??service.price)-(service.discount||0));
       const [startHour,startMinute]=schedule.start_time.split(':').map(Number);const [endHour,endMinute]=schedule.end_time.split(':').map(Number);
-      for(let minute=startHour*60+startMinute;minute+duration<=endHour*60+endMinute;minute+=30){
+      for(let minute=startHour*60+startMinute;minute+totalDurationWithBuffer<=endHour*60+endMinute;minute+=30){
         const time=`${String(Math.floor(minute/60)).padStart(2,'0')}:${String(minute%60).padStart(2,'0')}`;
-        const start=zonedDateTimeToUtc(date,time,tenant.timezone);const end=new Date(start.getTime()+duration*60000);
+        const start=zonedDateTimeToUtc(date,time,tenant.timezone);const end=new Date(start.getTime()+totalDurationWithBuffer*60000);
         if(start.getTime()<now+5*60000)continue;
         const overlaps=(appointments||[]).some((appt:any)=>{
           if(appt.user_id!==schedule.user_id)return false;
           if(appt.status==='PENDING'&&appt.payment_status==='PENDING'&&appt.hold_expires_at&&new Date(appt.hold_expires_at).getTime()<now)return false;
           return start<new Date(appt.end_time)&&end>new Date(appt.start_time);
         });
-        if(!overlaps)slots.push({start:start.toISOString(),end:end.toISOString(),staffId:schedule.user_id,staffName:(schedule.users as any)?.name||'Team member',price,duration});
+        if(!overlaps)slots.push({start:start.toISOString(),end:new Date(start.getTime()+duration*60000).toISOString(),staffId:schedule.user_id,staffName:(schedule.users as any)?.name||'Team member',price,duration});
       }
     }
     slots.sort((a,b)=>a.start.localeCompare(b.start));

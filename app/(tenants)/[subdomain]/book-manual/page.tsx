@@ -255,93 +255,40 @@ export default function ManualBookingPage({ params }: { params: Promise<{ subdom
     setError(null);
 
     try {
-      // 1. Upsert Client Profile if new client details are entered
-      let finalClientId = selectedClientId;
-      
-      if (!finalClientId) {
-        if (!clientName) throw new Error('Client name is required.');
-        const { data: existing } = await supabase
-          .from('clients')
-          .select('id')
-          .eq('tenant_id', tenantId)
-          .eq('email', clientEmail.trim().toLowerCase())
-          .maybeSingle();
-
-        if (existing) {
-          finalClientId = existing.id;
-        } else {
-          const { data: newClient, error: clientErr } = await supabase
-            .from('clients')
-            .insert({
-              tenant_id: tenantId,
-              name: clientName,
-              email: clientEmail.trim().toLowerCase() || null,
-              phone: clientPhone || null
-            })
-            .select('id')
-            .single();
-
-          if (clientErr) throw clientErr;
-          finalClientId = newClient.id;
-        }
-      }
-
-      // 2. Validate Resource overlap
-      if (selectedResourceId) {
-        const startDateTime = new Date(`${selectedDate}T${selectedTime}:00`);
-        const service = services.find((s) => s.id === selectedServiceId);
-        const staffOverride = staffPricingRules.find((p) => p.user_id === selectedStaffId);
-        const serviceDuration = staffOverride ? staffOverride.custom_duration_minutes : service?.duration || 30;
-
-        const endDateTime = new Date(startDateTime);
-        endDateTime.setMinutes(endDateTime.getMinutes() + serviceDuration);
-
-        // Check conflicts in the appointments list using note prefix search
-        const resourceName = resources.find((r) => r.id === selectedResourceId)?.name || '';
-        const hasConflict = existingAppointments.some((appt) => {
-          if (appt.status === 'CANCELLED') return false;
-          const apptStart = new Date(appt.start_time);
-          const apptEnd = new Date(appt.end_time);
-          const isConcurrent = startDateTime < apptEnd && endDateTime > apptStart;
-          if (!isConcurrent) return false;
-
-          // parse resource name from notes
-          const match = appt.notes?.match(/^\[Resource:\s*([^\]]+)\]/);
-          return match && match[1].toLowerCase() === resourceName.toLowerCase();
-        });
-
-        if (hasConflict) {
-          throw new Error(`Resource Conflict: ${resourceName} is occupied in this time slot.`);
-        }
-      }
-
-      // 3. Insert Appointment
       const startDateTime = new Date(`${selectedDate}T${selectedTime}:00`);
-      const service = services.find((s) => s.id === selectedServiceId);
-      const staffOverride = staffPricingRules.find((p) => p.user_id === selectedStaffId);
-      const serviceDuration = staffOverride ? staffOverride.custom_duration_minutes : service?.duration || 30;
-
-      const endDateTime = new Date(startDateTime);
-      endDateTime.setMinutes(endDateTime.getMinutes() + serviceDuration);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
       const resourceName = resources.find((r) => r.id === selectedResourceId)?.name || '';
       const notes = resourceName ? `[Resource: ${resourceName}] ${appointmentNotes}` : appointmentNotes;
 
-      const { error: apptErr } = await supabase
-        .from('appointments')
-        .insert({
-          tenant_id: tenantId,
-          user_id: selectedStaffId,
-          client_id: finalClientId,
-          client_name: clientName,
-          service_id: selectedServiceId,
-          start_time: startDateTime.toISOString(),
-          end_time: endDateTime.toISOString(),
+      const res = await fetch('/api/internal/bookings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          tenantId,
+          serviceId: selectedServiceId,
+          staffId: selectedStaffId,
+          startTime: startDateTime.toISOString(),
+          clientName: clientName || null,
+          clientEmail: clientEmail.trim().toLowerCase() || null,
+          clientPhone: clientPhone || null,
           status: 'CONFIRMED',
-          notes: notes || null
-        });
+          notes: notes,
+          resourceId: selectedResourceId || null,
+          clientId: selectedClientId || null,
+          idempotencyKey: crypto.randomUUID()
+        })
+      });
 
-      if (apptErr) throw apptErr;
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to create booking.');
+      }
 
       // Direct back to main subdomain portal page
       window.location.href = '/';

@@ -49,8 +49,10 @@ interface ReceiptData {
   cashPaid: number;
   cardPaid: number;
   pointsEarned: number;
+  previousPayments?: number;
 }
 
+// Convert DB columns to Product properties
 function mapDbToProduct(row: any): Product {
   return {
     id: row.id,
@@ -86,6 +88,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
   // Receipt popup state
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [previousPayments, setPreviousPayments] = useState<number>(0);
 
   // Load the target appointment & products list
   useEffect(() => {
@@ -110,6 +113,16 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
             services: apptData.services as unknown as Service
           });
         }
+
+        // Fetch previous successful transactions
+        const { data: txs } = await supabase
+          .from('checkout_transactions')
+          .select('total_amount')
+          .eq('appointment_id', appointmentId)
+          .eq('payment_status', 'SUCCEEDED');
+        
+        const prevPaid = (txs || []).reduce((acc: number, cur: any) => acc + (cur.total_amount || 0), 0);
+        setPreviousPayments(prevPaid);
 
         // Fetch products list
         const { data: prodData } = await supabase
@@ -189,7 +202,8 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
   };
 
   // Math calculations
-  const serviceTotal = appointment?.services?.price || 0;
+  const rawServicePrice = appointment?.services?.price || 0;
+  const serviceTotal = Math.max(0, rawServicePrice - previousPayments);
   const productsTotal = cart.reduce((acc, item) => acc + item.product.priceInCents * item.quantity, 0);
   const subtotal = serviceTotal + productsTotal;
   const grandTotal = subtotal + tipCents;
@@ -250,7 +264,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
       setReceiptData({
         clientName: appointment.clientName,
         serviceName: appointment.services?.name,
-        serviceCost: serviceTotal,
+        serviceCost: rawServicePrice,
         products: cart.map((i) => ({ id: i.product.id, name: i.product.name, price: i.product.priceInCents, qty: i.quantity })),
         tip: tipCents,
         grandTotal: grandTotal,
@@ -258,6 +272,7 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
         cashPaid: grandTotal,
         cardPaid: 0,
         pointsEarned: Math.round(grandTotal / 100),
+        previousPayments: previousPayments
       });
 
       setCart([]);
@@ -523,6 +538,13 @@ export default function CheckoutDrawer({ tenantId, appointmentId, onCheckoutSucc
               <span>{receiptData.serviceName}</span>
               <span>£{(receiptData.serviceCost / 100).toFixed(2)}</span>
             </div>
+
+            {receiptData.previousPayments !== undefined && receiptData.previousPayments > 0 && (
+              <div className={styles.receiptItemRow} style={{ color: 'var(--md-sys-color-primary)', fontSize: 13 }}>
+                <span>Pre-payments / Deposit Deducted</span>
+                <span>-£{(receiptData.previousPayments / 100).toFixed(2)}</span>
+              </div>
+            )}
 
             {/* Products items */}
             {receiptData.products.map((item) => (

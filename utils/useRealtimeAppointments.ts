@@ -11,11 +11,12 @@ export interface Appointment {
   serviceId: string;
   startTime: string; // ISO String
   endTime: string; // ISO String
-  status: 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW' | 'BLOCKED';
+  status: 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'IN_SERVICE' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW' | 'BLOCKED';
   createdAt: string;
   updatedAt: string;
   notes?: string;
   clientId?: string;
+  resourceId?: string;
 }
 
 function mapDbToAppointment(row: any): Appointment {
@@ -32,6 +33,7 @@ function mapDbToAppointment(row: any): Appointment {
     updatedAt: row.updated_at,
     notes: row.notes,
     clientId: row.client_id,
+    resourceId: row.resource_id,
   };
 }
 

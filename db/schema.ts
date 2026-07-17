@@ -108,7 +108,7 @@ export const appointments = pgTable('appointments', {
     .references(() => services.id, { onDelete: 'cascade' }),
   startTime: timestamp('start_time', { withTimezone: true }).notNull(),
   endTime: timestamp('end_time', { withTimezone: true }).notNull(),
-  status: text('status', { enum: ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'BLOCKED'] })
+  status: text('status', { enum: ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'IN_SERVICE', 'AWAITING_PAYMENT', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'BLOCKED'] })
     .default('PENDING')
     .notNull(),
   notes: text('notes'),
