@@ -79,10 +79,14 @@ ALTER TABLE public.appointments ADD CONSTRAINT appointments_mobile_address_requi
 );
 
 DROP FUNCTION IF EXISTS public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid);
+DROP FUNCTION IF EXISTS public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid,uuid);
+DROP FUNCTION IF EXISTS public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid,text,jsonb);
+
 CREATE OR REPLACE FUNCTION public.create_public_booking(
   p_tenant_id uuid,p_service_id uuid,p_staff_id uuid,p_start_time timestamptz,
   p_client_name text,p_client_email text,p_client_phone text,p_payment_mode text,
-  p_pay_now boolean,p_idempotency_key uuid,p_booking_channel text,p_mobile_address jsonb DEFAULT NULL
+  p_pay_now boolean,p_idempotency_key uuid,p_booking_channel text,p_mobile_address jsonb DEFAULT NULL,
+  p_resource_id uuid DEFAULT NULL
 ) RETURNS TABLE(
   appointment_id uuid,booking_reference uuid,appointment_status text,amount_due integer,
   currency text,start_time timestamptz,end_time timestamptz,booking_channel text
@@ -122,7 +126,7 @@ BEGIN
   IF v_tenant.id IS NULL OR v_service.id IS NULL THEN RAISE EXCEPTION 'Tenant or service not found'; END IF;
   IF NOT EXISTS(SELECT 1 FROM public.users WHERE id=p_staff_id AND tenant_id=p_tenant_id) THEN RAISE EXCEPTION 'Staff member not found'; END IF;
   IF p_start_time<now()+interval '5 minutes' OR p_start_time>now()+interval '180 days' THEN RAISE EXCEPTION 'Invalid booking time'; END IF;
-  v_end_time:=p_start_time+make_interval(mins=>v_service.duration);v_local_start:=p_start_time AT TIME ZONE v_tenant.timezone;v_day:=extract(dow from v_local_start)::integer;
+  v_end_time:=p_start_time+make_interval(mins=>v_service.duration+v_service.buffer_time);v_local_start:=p_start_time AT TIME ZONE v_tenant.timezone;v_day:=extract(dow from v_local_start)::integer;
   IF NOT EXISTS(
     SELECT 1 FROM public.booking_channel_schedules s WHERE s.tenant_id=p_tenant_id AND s.user_id=p_staff_id
       AND s.booking_channel=p_booking_channel AND s.day_of_week=v_day AND v_local_start::time>=s.start_time
@@ -130,12 +134,23 @@ BEGIN
   ) THEN RAISE EXCEPTION 'Slot outside booking channel schedule'; END IF;
 
   PERFORM pg_advisory_xact_lock(hashtextextended(p_staff_id::text||p_start_time::date::text,0));
+  IF p_resource_id IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended(p_resource_id::text||p_start_time::date::text,0));
+  END IF;
+
   IF EXISTS(
     SELECT 1 FROM public.appointments a WHERE a.tenant_id=p_tenant_id AND a.user_id=p_staff_id
       AND a.status NOT IN ('CANCELLED','NO_SHOW')
       AND NOT(a.status='PENDING' AND a.payment_status='PENDING' AND a.hold_expires_at<now())
       AND p_start_time<a.end_time AND v_end_time>a.start_time
   ) THEN RAISE EXCEPTION 'Slot is no longer available'; END IF;
+  
+  IF p_resource_id IS NOT NULL AND EXISTS(
+    SELECT 1 FROM public.appointments a WHERE a.tenant_id=p_tenant_id AND a.resource_id=p_resource_id
+      AND a.status NOT IN ('CANCELLED','NO_SHOW')
+      AND NOT(a.status='PENDING' AND a.payment_status='PENDING' AND a.hold_expires_at<now())
+      AND p_start_time<a.end_time AND v_end_time>a.start_time
+  ) THEN RAISE EXCEPTION 'Booking resource not found'; END IF;
 
   SELECT id INTO v_client_id FROM public.clients WHERE tenant_id=p_tenant_id AND lower(email)=lower(trim(p_client_email)) ORDER BY created_at LIMIT 1;
   IF v_client_id IS NULL THEN
@@ -147,16 +162,16 @@ BEGIN
     WHEN p_payment_mode='customer_choice' AND p_pay_now THEN greatest(0,v_service.price-v_service.discount) ELSE 0 END;
   INSERT INTO public.appointments(
     tenant_id,user_id,client_id,client_name,service_id,start_time,end_time,status,public_reference,idempotency_key,
-    payment_mode,payment_status,quoted_amount,hold_expires_at,booking_channel,mobile_address
+    payment_mode,payment_status,quoted_amount,hold_expires_at,booking_channel,mobile_address,resource_id
   ) VALUES(
     p_tenant_id,p_staff_id,v_client_id,trim(p_client_name),p_service_id,p_start_time,v_end_time,
     CASE WHEN v_amount>0 THEN 'PENDING' ELSE 'CONFIRMED' END,gen_random_uuid(),p_idempotency_key,p_payment_mode,
     CASE WHEN v_amount>0 THEN 'PENDING' ELSE 'NOT_REQUIRED' END,v_amount,
-    CASE WHEN v_amount>0 THEN now()+interval '15 minutes' ELSE NULL END,p_booking_channel,v_address
+    CASE WHEN v_amount>0 THEN now()+interval '15 minutes' ELSE NULL END,p_booking_channel,v_address,p_resource_id
   ) RETURNING * INTO v_appointment;
   RETURN QUERY SELECT v_appointment.id,v_appointment.public_reference,v_appointment.status,v_amount,v_tenant.currency::text,
     v_appointment.start_time,v_appointment.end_time,v_appointment.booking_channel;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid,text,jsonb) FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid,text,jsonb) TO service_role;
+REVOKE ALL ON FUNCTION public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid,text,jsonb,uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid,text,jsonb,uuid) TO service_role;

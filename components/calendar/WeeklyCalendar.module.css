@@ -270,49 +270,43 @@
   opacity: 0.75;
 }
 
-/* Dark Gold Blocked Out slots styling */
+/* Visual Status Indicators */
 .blocked {
-  background: repeating-linear-gradient(
-    45deg,
-    #18140c,
-    #18140c 10px,
-    #241f11 10px,
-    #241f11 20px
-  );
+  background: repeating-linear-gradient(45deg, #18140c, #18140c 10px, #241f11 10px, #241f11 20px);
   color: var(--accent-color, #d4af37);
   border-color: rgba(212, 175, 55, 0.3);
 }
 
-.blocked:hover {
-  border-color: var(--accent-color, #d4af37);
-}
-
 .pending {
-  background: #17243c;
-  color: #a3c2f0;
-  border-color: rgba(163, 194, 240, 0.3);
+  background: rgba(17, 22, 37, 0.5);
+  color: #cbd5e1;
+  border: 2px dotted #94a3b8;
 }
-.pending:hover { border-color: #a3c2f0; }
 
 .confirmed {
-  background: #0f3323;
-  color: #85f0bc;
-  border-color: rgba(133, 240, 188, 0.3);
+  background: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+  border: 2px solid #3b82f6;
 }
-.confirmed:hover { border-color: #85f0bc; }
 
-.completed {
-  background: #2b173c;
-  color: #d1a3f0;
-  border-color: rgba(209, 163, 240, 0.3);
+.checked_in {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 2px solid #10b981;
 }
-.completed:hover { border-color: #d1a3f0; }
 
-.cancelled {
-  background: #3c1717;
-  color: #f0a3a3;
-  border-color: rgba(240, 163, 163, 0.3);
-  opacity: 0.55;
+.awaiting_payment, .completed {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 2px solid #f59e0b;
+}
+
+.no_show, .cancelled {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 2px solid #ef4444;
+  text-decoration: line-through;
+  opacity: 0.6;
 }
 
 /* Modals & Tooltips */
@@ -355,20 +349,27 @@
 
 .modalContent {
   background-color: #0b101d;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 90vw;
-  max-width: 460px;
-  max-height: 85vh;
-  padding: 28px;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 440px;
+  max-width: 90vw;
+  max-height: 100vh;
+  padding: 24px;
   z-index: 1000;
   color: #ffffff;
   box-sizing: border-box;
+  border-radius: 0;
+  overflow-y: auto;
+  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
 
 .modalTitle {

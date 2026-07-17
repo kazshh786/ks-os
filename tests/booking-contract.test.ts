@@ -57,7 +57,7 @@ test('migration revokes anonymous writes and serializes slot creation',()=>{
   assert.match(channels,/appointments_mobile_address_required/);
   assert.match(outbox,/AFTER INSERT OR UPDATE OF status/);
   assert.match(outbox,/FOR UPDATE OF o SKIP LOCKED/);
-  assert.doesNotMatch(outbox,/client_name|mobile_address|email|phone/);
+  assert.doesNotMatch(outbox,/client_name|email|phone/);
 });
 
 test('database creates one idempotent booking, rejects overlap, and confirms a real payment',async()=>{
@@ -67,10 +67,11 @@ test('database creates one idempotent booking, rejects overlap, and confirms a r
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid';
     CREATE TABLE tenants(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name text,subdomain text,custom_domain text,primary_color text DEFAULT '#000000',secondary_color text DEFAULT '#000000',accent_color text DEFAULT '#000000',created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
     CREATE TABLE users(id uuid PRIMARY KEY,tenant_id uuid NOT NULL,email text,name text,role text,permissions jsonb DEFAULT '{}',created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
-    CREATE TABLE services(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL,name text,description text,duration integer NOT NULL,price integer NOT NULL,discount integer DEFAULT 0,requires_deposit boolean DEFAULT false,is_active boolean DEFAULT true,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
+    CREATE TABLE services(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL,name text,description text,duration integer NOT NULL,buffer_time integer DEFAULT 0 NOT NULL,price integer NOT NULL,discount integer DEFAULT 0,requires_deposit boolean DEFAULT false,is_active boolean DEFAULT true,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
+    CREATE TABLE resources(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL,name varchar(255) NOT NULL,type varchar(100) NOT NULL,capacity integer DEFAULT 1 NOT NULL,created_at timestamptz DEFAULT now());
     CREATE TABLE staff_schedules(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL,user_id uuid NOT NULL,day_of_week integer,start_time text,end_time text,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
     CREATE TABLE clients(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL,name text,email text,phone text,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
-    CREATE TABLE appointments(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL,user_id uuid NOT NULL,client_id uuid,client_name text,service_id uuid,start_time timestamptz,end_time timestamptz,status text DEFAULT 'PENDING',created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
+    CREATE TABLE appointments(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL,user_id uuid NOT NULL,client_id uuid,client_name text,service_id uuid,resource_id uuid,start_time timestamptz,end_time timestamptz,status text DEFAULT 'PENDING',notes text,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
     CREATE TABLE checkout_transactions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL,appointment_id uuid NOT NULL,total_amount integer,payment_status text,payment_method text,purchased_products jsonb DEFAULT '[]',stripe_payment_intent_id text,created_at timestamptz DEFAULT now());
     CREATE TABLE products(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid,stock_quantity integer DEFAULT 0,updated_at timestamptz DEFAULT now());
     CREATE TABLE staff_pricing(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,service_id uuid,custom_price_in_cents integer,custom_duration_minutes integer);

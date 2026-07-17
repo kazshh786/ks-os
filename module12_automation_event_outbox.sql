@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS public.automation_event_outbox(
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
   appointment_id uuid NOT NULL REFERENCES public.appointments(id) ON DELETE CASCADE,
-  event_type text NOT NULL CHECK(event_type IN('booking.created','booking.cancelled','appointment.completed')),
+  event_type text NOT NULL CHECK(event_type IN('booking.created','booking.cancelled','appointment.completed','booking.rescheduled','booking.no_show')),
   subject_id text NOT NULL CHECK(length(subject_id) BETWEEN 1 AND 200),
   safe_payload jsonb NOT NULL CHECK(jsonb_typeof(safe_payload)='object' AND octet_length(safe_payload::text)<=8192),
   occurred_at timestamptz NOT NULL DEFAULT now(),
@@ -30,18 +30,20 @@ BEGIN
   IF TG_OP='INSERT' THEN v_type:='booking.created';
   ELSIF NEW.status IS DISTINCT FROM OLD.status AND NEW.status='CANCELLED' THEN v_type:='booking.cancelled';
   ELSIF NEW.status IS DISTINCT FROM OLD.status AND NEW.status='COMPLETED' THEN v_type:='appointment.completed';
+  ELSIF NEW.status IS DISTINCT FROM OLD.status AND NEW.status='NO_SHOW' THEN v_type:='booking.no_show';
+  ELSIF TG_OP='UPDATE' AND NEW.start_time IS DISTINCT FROM OLD.start_time THEN v_type:='booking.rescheduled';
   ELSE RETURN NEW;END IF;
   SELECT currency::text INTO v_currency FROM public.tenants WHERE id=NEW.tenant_id;
   INSERT INTO public.automation_event_outbox(tenant_id,appointment_id,event_type,subject_id,safe_payload,occurred_at)
   VALUES(NEW.tenant_id,NEW.id,v_type,NEW.public_reference::text,jsonb_strip_nulls(jsonb_build_object(
     'bookingReference',NEW.public_reference::text,'status',NEW.status,'startTime',NEW.start_time,
     'endTime',NEW.end_time,'bookingChannel',NEW.booking_channel,'amountMinor',NEW.quoted_amount,
-    'currency',v_currency,'contactId',NEW.client_id::text
+    'currency',v_currency,'contactId',NEW.client_id::text,'mobileAddress',NEW.mobile_address,'notes',NEW.notes
   )),now()) ON CONFLICT(appointment_id,event_type)DO NOTHING;
   RETURN NEW;
 END;$$;
 DROP TRIGGER IF EXISTS trg_enqueue_booking_automation_event ON public.appointments;
-CREATE TRIGGER trg_enqueue_booking_automation_event AFTER INSERT OR UPDATE OF status ON public.appointments
+CREATE TRIGGER trg_enqueue_booking_automation_event AFTER INSERT OR UPDATE OF status, start_time ON public.appointments
 FOR EACH ROW EXECUTE FUNCTION public.enqueue_booking_automation_event();
 
 CREATE OR REPLACE FUNCTION public.claim_automation_outbox_events(p_limit integer DEFAULT 20,p_lease_seconds integer DEFAULT 60)

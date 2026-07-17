@@ -41,6 +41,7 @@ export const services = pgTable('services', {
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
   duration: integer('duration').notNull(), // in minutes
+  bufferTime: integer('buffer_time').default(0).notNull(), // padding added after the service
   price: integer('price').notNull(), // in cents
   discount: integer('discount').default(0).notNull(), // discount in cents
   requiresDeposit: boolean('requires_deposit').default(false).notNull(),

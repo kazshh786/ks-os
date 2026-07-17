@@ -90,6 +90,10 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
     currentEnd: string;
   } | null>(null);
 
+  // Grid View Mode
+  const [viewMode, setViewMode] = useState<'WEEKLY' | 'STAFF' | 'RESOURCE'>('WEEKLY');
+  const [collisionWarning, setCollisionWarning] = useState<{apptId: string, targetStart: string, targetEnd: string, message: string} | null>(null);
+
   // Hour limits for the salon day
   const startHour = 8; // 8:00 AM
   const endHour = 20;  // 8:00 PM
@@ -325,20 +329,37 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
     // Validate resource availability
     const { resource, actualNotes } = parseNotes(appt.notes);
     if (resource && hasResourceConflict(resource, targetStart.toISOString(), targetEnd.toISOString(), apptId)) {
-      alert(`Resource Conflict: ${resource} is occupied at this time!`);
+      setCollisionWarning({
+        apptId,
+        targetStart: targetStart.toISOString(),
+        targetEnd: targetEnd.toISOString(),
+        message: `Resource Conflict: ${resource} is occupied at this time! Are you sure you want to override and double-book?`
+      });
       return;
     }
 
+    executeDrop(apptId, targetStart.toISOString(), targetEnd.toISOString());
+  };
+
+  const executeDrop = async (apptId: string, startIso: string, endIso: string) => {
     const { error: dropErr } = await supabase
       .from('appointments')
       .update({
-        start_time: targetStart.toISOString(),
-        end_time: targetEnd.toISOString(),
+        start_time: startIso,
+        end_time: endIso,
       })
       .eq('id', apptId);
 
-    if (dropErr) {
-      alert('Rescheduling failed: ' + dropErr.message);
+    if (dropErr) alert('Rescheduling failed: ' + dropErr.message);
+    setCollisionWarning(null);
+  };
+
+  const handleStatusChange = async (apptId: string, newStatus: string) => {
+    const { error } = await supabase.from('appointments').update({ status: newStatus }).eq('id', apptId);
+    if (error) {
+      alert('Failed to update status: ' + error.message);
+    } else if (activeAppointment?.id === apptId) {
+      setActiveAppointment({ ...activeAppointment, status: newStatus } as any);
     }
   };
 
@@ -359,7 +380,19 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
     const targetEnd = new Date(targetStart);
     targetEnd.setMinutes(targetStart.getMinutes() + 60); // default 60 min
 
-    if (staffMembers.length > 0) setBlockStaffId(staffMembers[0].id);
+    // If we clicked a specific staff column in Staff view mode
+    const colId = (e.currentTarget as any).dataset.colId;
+    if (viewMode === 'STAFF' && colId) {
+      setBlockStaffId(colId);
+    } else if (staffMembers.length > 0) {
+      setBlockStaffId(staffMembers[0].id);
+    }
+
+    if (viewMode === 'RESOURCE' && colId) {
+      setBlockResource(colId);
+    } else {
+      setBlockResource('');
+    }
     
     setBlockDate(targetStart.toISOString().split('T')[0]);
     setBlockStart(targetStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
@@ -701,9 +734,15 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
         </div>
 
         <div className={styles.navigationControls}>
-          <button className={styles.navButton} onClick={() => changeWeek(-1)}>Previous Week</button>
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '4px', marginRight: '8px' }}>
+            <button className={styles.navButton} style={{ background: viewMode === 'WEEKLY' ? 'var(--accent-color, #d4af37)' : 'transparent', color: viewMode === 'WEEKLY' ? '#000' : '#fff', border: 'none' }} onClick={() => setViewMode('WEEKLY')}>Weekly</button>
+            <button className={styles.navButton} style={{ background: viewMode === 'STAFF' ? 'var(--accent-color, #d4af37)' : 'transparent', color: viewMode === 'STAFF' ? '#000' : '#fff', border: 'none' }} onClick={() => setViewMode('STAFF')}>Staff</button>
+            <button className={styles.navButton} style={{ background: viewMode === 'RESOURCE' ? 'var(--accent-color, #d4af37)' : 'transparent', color: viewMode === 'RESOURCE' ? '#000' : '#fff', border: 'none' }} onClick={() => setViewMode('RESOURCE')}>Rooms</button>
+          </div>
+
+          <button className={styles.navButton} onClick={() => changeWeek(-1)}>Prev</button>
           <button className={styles.todayButton} onClick={() => setSelectedDate(new Date())}>Today</button>
-          <button className={styles.navButton} onClick={() => changeWeek(1)}>Next Week</button>
+          <button className={styles.navButton} onClick={() => changeWeek(1)}>Next</button>
           <button className={styles.todayButton} onClick={() => window.location.href = '/book-manual'}>
             ➕ Manual Book Desk
           </button>
@@ -970,12 +1009,22 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
       </div>
 
       {/* Grid Wrapper */}
-      <div className={styles.calendarGrid}>
+      <div className={styles.calendarGrid} style={{ gridTemplateColumns: `80px repeat(${viewMode === 'WEEKLY' ? 7 : (viewMode === 'STAFF' ? Math.max(staffMembers.length, 1) : Math.max(resources.length, 1))}, 1fr)` }}>
         <div className={styles.timeColumnHeader}>Time</div>
-        {weekDates.map((date, idx) => (
+        {viewMode === 'WEEKLY' && weekDates.map((date, idx) => (
           <div key={idx} className={`${styles.dayHeader} ${isToday(date) ? styles.todayHeaderActive : ''}`}>
             <span className={styles.dayOfWeekText}>{DAYS[idx]}</span>
             <span className={styles.dayOfMonthText}>{date.getDate()}</span>
+          </div>
+        ))}
+        {viewMode === 'STAFF' && staffMembers.map((staff) => (
+          <div key={staff.id} className={styles.dayHeader}>
+            <span className={styles.dayOfWeekText}>{staff.name}</span>
+          </div>
+        ))}
+        {viewMode === 'RESOURCE' && resources.map((res) => (
+          <div key={res.id} className={styles.dayHeader}>
+            <span className={styles.dayOfWeekText}>{res.name}</span>
           </div>
         ))}
 
@@ -1001,18 +1050,29 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
             </div>
 
             <Tooltip.Provider delayDuration={150}>
-              <div className={styles.daysColumnsGrid}>
-                {weekDates.map((date, colIdx) => {
-                  const dayAppointments = getAppointmentsForDay(date);
+              <div className={styles.daysColumnsGrid} style={{ gridTemplateColumns: `repeat(${viewMode === 'WEEKLY' ? 7 : (viewMode === 'STAFF' ? Math.max(staffMembers.length, 1) : Math.max(resources.length, 1))}, 1fr)` }}>
+                {(viewMode === 'WEEKLY' ? weekDates : (viewMode === 'STAFF' ? staffMembers : resources)).map((colItem: any, colIdx) => {
+                  let dayAppointments = [];
+                  let targetDate = selectedDate;
+
+                  if (viewMode === 'WEEKLY') {
+                    targetDate = colItem;
+                    dayAppointments = getAppointmentsForDay(targetDate);
+                  } else if (viewMode === 'STAFF') {
+                    dayAppointments = getAppointmentsForDay(targetDate).filter(a => a.userId === colItem.id);
+                  } else if (viewMode === 'RESOURCE') {
+                    dayAppointments = getAppointmentsForDay(targetDate).filter(a => parseNotes(a.notes).resource === colItem.name);
+                  }
 
                   return (
                     <div 
                       key={colIdx} 
+                      data-col-id={viewMode === 'WEEKLY' ? '' : (viewMode === 'RESOURCE' ? colItem.name : colItem.id)}
                       className={`${styles.dayColumn} ${dragOverDayIdx === colIdx ? styles.dayColumnDragOver : ''}`}
                       onDragOver={(e) => handleDragOver(e, colIdx)}
                       onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, date)}
-                      onClick={(e) => handleColumnClick(e, date)}
+                      onDrop={(e) => handleDrop(e, targetDate)}
+                      onClick={(e) => handleColumnClick(e, targetDate)}
                     >
                       {dayAppointments.map((appt) => {
                         let stylePos = getAppointmentPosition(appt.startTime, appt.endTime);
@@ -1197,6 +1257,28 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
                                 ) : (
                                   /* Normal details display mode */
                                   <>
+                                    {!isBlocked && activeAppointment && (
+                                      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                        <h4 style={{ width: '100%', margin: '0 0 12px 0', fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Quick Actions</h4>
+                                        <button className={styles.navButton} onClick={() => handleStatusChange(activeAppointment.id, 'CHECKED_IN')}>[Arrived]</button>
+                                        <button className={styles.navButton} onClick={() => handleStatusChange(activeAppointment.id, 'AWAITING_PAYMENT')}>[Ready to Pay]</button>
+                                        <button className={styles.navButton} onClick={() => handleStatusChange(activeAppointment.id, 'NO_SHOW')} style={{ color: '#ef4444' }}>[No-Show]</button>
+                                        <button className={styles.navButton} onClick={() => setIsEditing(true)}>[Modify]</button>
+                                        {activeAppointment.status !== 'COMPLETED' && activeAppointment.status !== 'CANCELLED' && onCheckoutAppt && (
+                                          <button
+                                            className={styles.saveBtn}
+                                            style={{ background: '#10b981', color: 'white', border: 'none', marginLeft: 'auto' }}
+                                            onClick={() => {
+                                              onCheckoutAppt(activeAppointment.id);
+                                              setActiveAppointment(null);
+                                            }}
+                                          >
+                                            [Go to Checkout]
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+
                                     <div className={styles.detailList}>
                                       {isBlocked ? (
                                         <>
@@ -1390,6 +1472,31 @@ export default function WeeklyCalendar({ tenantId, staffMembers, services, onChe
           <div style={{ fontSize: '12px', color: '#64748b' }}>Loading client file...</div>
         )}
       </div>
+
+      {/* Collision Warning Modal */}
+      <Dialog.Root open={!!collisionWarning} onOpenChange={(open) => !open && setCollisionWarning(null)}>
+        <Dialog.Portal>
+          <Dialog.Overlay className={styles.modalOverlay} />
+          <Dialog.Content className={styles.modalContent}>
+            <Dialog.Title className={styles.modalTitle}>⚠️ Scheduling Collision</Dialog.Title>
+            <p className={styles.modalDesc}>{collisionWarning?.message}</p>
+            <div className={styles.modalActions}>
+              <button 
+                className={styles.saveBtn} 
+                style={{ background: '#ef4444', color: '#fff' }}
+                onClick={() => {
+                  if (collisionWarning) {
+                    executeDrop(collisionWarning.apptId, collisionWarning.targetStart, collisionWarning.targetEnd);
+                  }
+                }}
+              >
+                Override & Double-Book
+              </button>
+              <button className={styles.cancelBtn} onClick={() => setCollisionWarning(null)}>Cancel</button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* Floating Waitlist Automation Toast */}
       {waitlistAlert && (

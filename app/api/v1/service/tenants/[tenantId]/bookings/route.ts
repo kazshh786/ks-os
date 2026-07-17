@@ -2,7 +2,7 @@ import { authorizeService, createPaymentIntent, parseJson, serviceClient } from 
 import { isPaymentMode, isUuid, publicError, requiresPayment } from '@/lib/booking-contract';
 export const runtime='nodejs';
 
-const ALLOWED=new Set(['serviceId','staffId','startTime','client','paymentMode','payNow','idempotencyKey','bookingChannel','mobileAddress']);
+const ALLOWED=new Set(['serviceId','staffId','resourceId','startTime','client','paymentMode','payNow','idempotencyKey','bookingChannel','mobileAddress']);
 
 export async function POST(request:Request,{params}:{params:Promise<{tenantId:string}>}){
   const denied=authorizeService(request);if(denied)return denied;
@@ -11,6 +11,7 @@ export async function POST(request:Request,{params}:{params:Promise<{tenantId:st
     const body=await parseJson(request);
     if(Object.keys(body).some(key=>!ALLOWED.has(key)))return publicError(400,'INVALID_REQUEST','Unknown booking fields');
     if(!isUuid(body.serviceId)||!isUuid(body.staffId)||!isUuid(body.idempotencyKey)||!isPaymentMode(body.paymentMode)||!['in_shop','mobile'].includes(body.bookingChannel))return publicError(400,'INVALID_REQUEST','Invalid booking identifiers, type or payment mode');
+    if(body.resourceId&&!isUuid(body.resourceId))return publicError(400,'INVALID_REQUEST','Invalid resource identifier');
     const start=new Date(body.startTime);if(!Number.isFinite(start.getTime()))return publicError(400,'INVALID_REQUEST','Invalid booking time');
     const client=body.client;
     if(!client||typeof client!=='object'||Array.isArray(client)||Object.keys(client).some(key=>!['name','email','phone'].includes(key)))return publicError(400,'INVALID_CUSTOMER','Invalid customer fields');
@@ -24,6 +25,7 @@ export async function POST(request:Request,{params}:{params:Promise<{tenantId:st
       p_client_name:client.name,p_client_email:client.email,p_client_phone:client.phone,
       p_payment_mode:body.paymentMode,p_pay_now:body.payNow===true,p_idempotency_key:body.idempotencyKey,
       p_booking_channel:body.bookingChannel,p_mobile_address:body.bookingChannel==='mobile'?address:null,
+      p_resource_id:body.resourceId||null,
     });
     if(error){
       const message=error.message||'';
@@ -35,6 +37,10 @@ export async function POST(request:Request,{params}:{params:Promise<{tenantId:st
     }
     const booking=Array.isArray(data)?data[0]:data;
     if(!booking)return publicError(500,'BOOKING_FAILED','The booking could not be created');
+    
+    // TODO: Implement SetupIntent creation for 'no_show_hold' payment mode
+    // if(body.paymentMode === 'no_show_hold') { ... }
+
     if(booking.amount_due>0){
       try{
         const payment=await createPaymentIntent({amount:booking.amount_due,currency:booking.currency,bookingReference:booking.booking_reference,tenantId});

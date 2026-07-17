@@ -44,6 +44,7 @@ async function setupDb() {
       name text NOT NULL,
       description text,
       duration integer NOT NULL,
+      buffer_time integer DEFAULT 0 NOT NULL,
       price integer NOT NULL,
       discount integer DEFAULT 0,
       requires_deposit boolean DEFAULT false,
@@ -74,6 +75,14 @@ async function setupDb() {
       created_at timestamptz DEFAULT now(),
       updated_at timestamptz DEFAULT now()
     );
+    CREATE TABLE resources(
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name varchar(255) NOT NULL,
+      type varchar(100) NOT NULL,
+      capacity integer DEFAULT 1 NOT NULL,
+      created_at timestamptz DEFAULT now()
+    );
     CREATE TABLE appointments(
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -81,6 +90,7 @@ async function setupDb() {
       client_id uuid REFERENCES clients(id) ON DELETE SET NULL,
       client_name text,
       service_id uuid REFERENCES services(id) ON DELETE CASCADE,
+      resource_id uuid REFERENCES resources(id) ON DELETE SET NULL,
       start_time timestamptz NOT NULL,
       end_time timestamptz NOT NULL,
       status text DEFAULT 'PENDING' NOT NULL,

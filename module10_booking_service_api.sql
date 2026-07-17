@@ -1,5 +1,8 @@
 -- Phase 6: private KS OS service API and atomic public booking contract.
 
+ALTER TABLE public.services
+  ADD COLUMN IF NOT EXISTS buffer_time integer NOT NULL DEFAULT 0;
+
 ALTER TABLE public.tenants
   ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'Europe/London',
   ADD COLUMN IF NOT EXISTS currency varchar(3) NOT NULL DEFAULT 'GBP',
@@ -90,6 +93,8 @@ CREATE POLICY select_users_policy ON public.users FOR SELECT USING (
   OR public.get_auth_tenant_id() = '00000000-0000-0000-0000-000000000000'
 );
 
+DROP FUNCTION IF EXISTS public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid);
+
 CREATE OR REPLACE FUNCTION public.create_public_booking(
   p_tenant_id uuid,
   p_service_id uuid,
@@ -100,7 +105,8 @@ CREATE OR REPLACE FUNCTION public.create_public_booking(
   p_client_phone text,
   p_payment_mode text,
   p_pay_now boolean,
-  p_idempotency_key uuid
+  p_idempotency_key uuid,
+  p_resource_id uuid DEFAULT NULL
 ) RETURNS TABLE(
   appointment_id uuid, booking_reference uuid, appointment_status text,
   amount_due integer, currency text, start_time timestamptz, end_time timestamptz
@@ -137,7 +143,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.users WHERE id=p_staff_id AND tenant_id=p_tenant_id) THEN RAISE EXCEPTION 'Staff member not found'; END IF;
   IF p_start_time < now() + interval '5 minutes' OR p_start_time > now() + interval '180 days' THEN RAISE EXCEPTION 'Invalid booking time'; END IF;
 
-  v_end_time := p_start_time + make_interval(mins => v_service.duration);
+  v_end_time := p_start_time + make_interval(mins => v_service.duration + v_service.buffer_time);
   v_local_start := p_start_time AT TIME ZONE v_tenant.timezone;
   v_day := extract(dow from v_local_start)::integer;
   IF NOT EXISTS (
@@ -147,12 +153,23 @@ BEGIN
   ) THEN RAISE EXCEPTION 'Slot outside staff schedule'; END IF;
 
   PERFORM pg_advisory_xact_lock(hashtextextended(p_staff_id::text || p_start_time::date::text, 0));
+  IF p_resource_id IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended(p_resource_id::text || p_start_time::date::text, 0));
+  END IF;
+
   IF EXISTS (
     SELECT 1 FROM public.appointments a WHERE a.tenant_id=p_tenant_id AND a.user_id=p_staff_id
       AND a.status NOT IN ('CANCELLED','NO_SHOW')
       AND NOT (a.status='PENDING' AND a.payment_status='PENDING' AND a.hold_expires_at < now())
       AND p_start_time < a.end_time AND v_end_time > a.start_time
   ) THEN RAISE EXCEPTION 'Slot is no longer available'; END IF;
+
+  IF p_resource_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.appointments a WHERE a.tenant_id=p_tenant_id AND a.resource_id=p_resource_id
+      AND a.status NOT IN ('CANCELLED','NO_SHOW')
+      AND NOT (a.status='PENDING' AND a.payment_status='PENDING' AND a.hold_expires_at < now())
+      AND p_start_time < a.end_time AND v_end_time > a.start_time
+  ) THEN RAISE EXCEPTION 'Booking resource not found'; END IF;
 
   SELECT id INTO v_client_id FROM public.clients
     WHERE tenant_id=p_tenant_id AND lower(email)=lower(trim(p_client_email)) ORDER BY created_at LIMIT 1;
@@ -171,21 +188,21 @@ BEGIN
 
   INSERT INTO public.appointments(
     tenant_id,user_id,client_id,client_name,service_id,start_time,end_time,status,
-    public_reference,idempotency_key,payment_mode,payment_status,quoted_amount,hold_expires_at
+    public_reference,idempotency_key,payment_mode,payment_status,quoted_amount,hold_expires_at,resource_id
   ) VALUES(
     p_tenant_id,p_staff_id,v_client_id,trim(p_client_name),p_service_id,p_start_time,v_end_time,
     CASE WHEN v_amount>0 THEN 'PENDING' ELSE 'CONFIRMED' END,
     gen_random_uuid(),p_idempotency_key,p_payment_mode,
     CASE WHEN v_amount>0 THEN 'PENDING' ELSE 'NOT_REQUIRED' END,v_amount,
-    CASE WHEN v_amount>0 THEN now()+interval '15 minutes' ELSE NULL END
+    CASE WHEN v_amount>0 THEN now()+interval '15 minutes' ELSE NULL END,p_resource_id
   ) RETURNING * INTO v_appointment;
 
   RETURN QUERY SELECT v_appointment.id,v_appointment.public_reference,v_appointment.status,v_amount,
     v_tenant.currency::text,v_appointment.start_time,v_appointment.end_time;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid,uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_public_booking(uuid,uuid,uuid,timestamptz,text,text,text,text,boolean,uuid,uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.confirm_public_booking_payment(
   p_booking_reference uuid, p_payment_intent_id text, p_amount integer

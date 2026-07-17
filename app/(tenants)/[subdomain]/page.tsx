@@ -101,6 +101,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
   
   // Auth and Login States
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string>('owner');
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [isAgencyPreview, setIsAgencyPreview] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
@@ -204,11 +205,12 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
           .eq('id', user.id)
           .single();
 
-        if (pErr || !profile || profile.role !== 'owner' || profile.tenant_id !== tenant.id) {
+        if (pErr || !profile || !['owner', 'staff'].includes(profile.role) || profile.tenant_id !== tenant.id) {
           await supabase.auth.signOut();
           setCurrentUser(null);
         } else {
           setCurrentUser(user);
+          setUserRole(profile.role);
           setTenantId(tenant.id);
           setTenantName(tenant.name);
           setCustomDomain(tenant.custom_domain);
@@ -448,11 +450,12 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
         throw new Error('Owner profile details not found in database.');
       }
 
-      if (profile.role !== 'owner' || profile.tenant_id !== tenant.id) {
+      if (!['owner', 'staff'].includes(profile.role) || profile.tenant_id !== tenant.id) {
         await supabase.auth.signOut();
-        throw new Error('Access denied: You do not have owner administrative rights for this workspace.');
+        throw new Error('Access denied: You do not have access to this workspace.');
       }
 
+      setUserRole(profile.role);
       setTenantId(tenant.id);
       setTenantName(tenant.name);
       setCustomDomain(tenant.custom_domain);
@@ -937,20 +940,24 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
             <UsersIcon />
             Customers
           </button>
-          <button
-            onClick={() => setActiveTab('forms')}
-            className={`${styles.sidebarBtn} ${activeTab === 'forms' ? styles.sidebarBtnActive : ''}`}
-          >
-            <FormIcon />
-            Intake forms
-          </button>
-          <button
-            onClick={() => setActiveTab('manage')}
-            className={`${styles.sidebarBtn} ${activeTab === 'manage' ? styles.sidebarBtnActive : ''}`}
-          >
-            <SettingsIcon />
-            Settings & analytics
-          </button>
+          {userRole === 'owner' && (
+            <>
+              <button
+                onClick={() => setActiveTab('forms')}
+                className={`${styles.sidebarBtn} ${activeTab === 'forms' ? styles.sidebarBtnActive : ''}`}
+              >
+                <FormIcon />
+                Intake forms
+              </button>
+              <button
+                onClick={() => setActiveTab('manage')}
+                className={`${styles.sidebarBtn} ${activeTab === 'manage' ? styles.sidebarBtnActive : ''}`}
+              >
+                <SettingsIcon />
+                Settings & analytics
+              </button>
+            </>
+          )}
           
           <button
             onClick={handleLogout}
@@ -1033,24 +1040,28 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                 </div>
 
                 <div className={styles.overviewMetrics}>
-                  <article className={styles.overviewMetric}>
-                    <span>Revenue</span>
-                    <strong>£{(totalSales / 100).toFixed(2)}</strong>
-                    <small>Recorded checkout revenue</small>
-                  </article>
-                  <article className={styles.overviewMetric}>
-                    <span>Completed sales</span>
-                    <strong>{salesCount}</strong>
-                    <small>All recorded transactions</small>
-                  </article>
-                  <article className={styles.overviewMetric}>
-                    <span>Booking conversion</span>
-                    <strong>{conversionRate}%</strong>
-                    <small>Completed appointments</small>
-                  </article>
+                  {userRole === 'owner' && (
+                    <>
+                      <article className={styles.overviewMetric}>
+                        <span>Revenue</span>
+                        <strong>£{(totalSales / 100).toFixed(2)}</strong>
+                        <small>Recorded checkout revenue</small>
+                      </article>
+                      <article className={styles.overviewMetric}>
+                        <span>Completed sales</span>
+                        <strong>{salesCount}</strong>
+                        <small>All recorded transactions</small>
+                      </article>
+                      <article className={styles.overviewMetric}>
+                        <span>Booking conversion</span>
+                        <strong>{conversionRate}%</strong>
+                        <small>Completed appointments</small>
+                      </article>
+                    </>
+                  )}
                   <article className={styles.overviewMetric}>
                     <span>Active tools</span>
-                    <strong>5</strong>
+                    <strong>{userRole === 'owner' ? '5' : '3'}</strong>
                     <small>Included in your {packageTier} plan</small>
                   </article>
                 </div>
@@ -1083,12 +1094,14 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                       <p>Review customer profiles, history and loyalty activity.</p>
                       <button type="button" onClick={() => setActiveTab('crm')}>Open customers <span>→</span></button>
                     </article>
-                    <article className={styles.moduleCard}>
-                      <div className={styles.moduleCardTop}><span className={styles.moduleIcon}>F</span><span className={styles.liveStatus}><i /> Live</span></div>
-                      <h4>Intake forms</h4>
-                      <p>Create consent and consultation forms with a live preview.</p>
-                      <button type="button" onClick={() => setActiveTab('forms')}>Build a form <span>→</span></button>
-                    </article>
+                    {userRole === 'owner' && (
+                      <article className={styles.moduleCard}>
+                        <div className={styles.moduleCardTop}><span className={styles.moduleIcon}>F</span><span className={styles.liveStatus}><i /> Live</span></div>
+                        <h4>Intake forms</h4>
+                        <p>Create consent and consultation forms with a live preview.</p>
+                        <button type="button" onClick={() => setActiveTab('forms')}>Build a form <span>→</span></button>
+                      </article>
+                    )}
                     <article className={`${styles.moduleCard} ${styles.moduleCardMuted}`} aria-disabled="true">
                       <div className={styles.moduleCardTop}><span className={styles.moduleIcon}>E</span><span className={styles.comingSoonStatus}>Coming soon</span></div>
                       <h4>Email marketing</h4>
@@ -1112,7 +1125,7 @@ export default function TenantDashboard({ params }: { params: Promise<{ subdomai
                       <p>{services.length} services and {staff.length} team members are currently configured.</p>
                     </div>
                   </div>
-                  <button type="button" onClick={() => setActiveTab('manage')}>Review settings</button>
+                  {userRole === 'owner' && <button type="button" onClick={() => setActiveTab('manage')}>Review settings</button>}
                 </aside>
               </div>
             )}
