@@ -31,8 +31,8 @@ importers:
         specifier: 7.4.0
         version: 7.4.0
       '@fastify/helmet':
-        specifier: ^11.1.1
-        version: 11.1.1
+        specifier: ^13.1.0
+        version: 13.1.0
       '@fastify/rate-limit':
         specifier: 9.1.0
         version: 9.1.0
@@ -1067,8 +1067,8 @@ packages:
   '@fastify/formbody@7.4.0':
     resolution: {integrity: sha512-H3C6h1GN56/SMrZS8N2vCT2cZr7mIHzBHzOBa5OPpjfB/D6FzP9mMpE02ZzrFX0ANeh0BAJdoXKOF2e7IbV+Og==}
 
-  '@fastify/helmet@11.1.1':
-    resolution: {integrity: sha512-pjJxjk6SLEimITWadtYIXt6wBMfFC1I6OQyH/jYVCqSAn36sgAIFjeNiibHtifjCd+e25442pObis3Rjtame6A==}
+  '@fastify/helmet@13.1.0':
+    resolution: {integrity: sha512-SvVOU0IrzYJW1BvSkfq9G1WUdW3dnaRUvg6m0BtgGMBmML62No0VmSu087jecH58SFbicbREgZTPJ89mAguupA==}
 
   '@fastify/merge-json-schemas@0.1.1':
     resolution: {integrity: sha512-fERDVz7topgNjtXsJTTW1JKLy0rhuLRcquYqNR9rF7OcVpCa2OVW49ZPDIhaRRCaUuvVxI+N416xUoF76HNSXA==}
@@ -2259,9 +2259,9 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  helmet@7.2.0:
-    resolution: {integrity: sha512-ZRiwvN089JfMXokizgqEPXsl2Guk094yExfoDXR0cBYWxtBbaSww/w+vT4WEJsBW2iTUi1GgZ6swmoug3Oy4Xw==}
-    engines: {node: '>=16.0.0'}
+  helmet@8.3.0:
+    resolution: {integrity: sha512-Qgpiaws3Sm30Av8Eah6sjMCZZwjlBu+E68rhpCWBshY1lb09HtLwj5GviX0OyQIn+ulUS0iX0AxN5n3tLZzz1w==}
+    engines: {node: '>=18.0.0'}
 
   html-encoding-sniffer@6.0.0:
     resolution: {integrity: sha512-CV9TW3Y3f8/wT0BRFc1/KAVQ3TUHiXmaAb6VW9vtiMFf7SLoMd1PdAc4W3KFOFETBJUb90KatHqlsZMWV+R9Gg==}
@@ -3741,10 +3741,10 @@ snapshots:
       fast-querystring: 1.1.2
       fastify-plugin: 4.5.1
 
-  '@fastify/helmet@11.1.1':
+  '@fastify/helmet@13.1.0':
     dependencies:
-      fastify-plugin: 4.5.1
-      helmet: 7.2.0
+      fastify-plugin: 6.0.0
+      helmet: 8.3.0
 
   '@fastify/merge-json-schemas@0.1.1':
     dependencies:
@@ -4842,7 +4842,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  helmet@7.2.0: {}
+  helmet@8.3.0: {}
 
   html-encoding-sniffer@6.0.0:
     dependencies:
