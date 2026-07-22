@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import pg from 'pg';
+import { fileURLToPath } from 'url';
 import { MIGRATION_MANIFEST } from '../../packages/database/dist/manifest.js';
 
 const MIGRATIONS_DIR = path.resolve(process.cwd(), 'packages/database/migrations');
@@ -178,7 +179,7 @@ export async function runPreflight() {
   }
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(process.argv[1]);
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 if (isMain) {
   runPreflight().catch(err => {
     console.error('Unhandled preflight error:', err);

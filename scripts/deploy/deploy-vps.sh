@@ -57,13 +57,14 @@ PREV_COMMIT=$(git rev-parse HEAD)
 echo "Recorded current commit for potential rollback: ${PREV_COMMIT}"
 
 if [ "$DRY_RUN" -eq 1 ]; then
-  echo "\n--- DRY-RUN MODE ACTIVATED ---"
+  echo -e "\n--- DRY-RUN MODE ACTIVATED ---"
   echo "[Dry Run] Would fetch and pull origin/staging --ff-only"
-  echo "[Dry Run] Would run pnpm install --frozen-lockfile"
-  echo "[Dry Run] Would run pnpm build && pnpm test"
-  echo "[Dry Run] Would execute migration preflight script"
-  echo "[Dry Run] Migration plan check:"
-  node scripts/database/migrate.mjs --plan || true
+  echo "[Dry Run] Building database package..."
+  pnpm --filter @ks-os/database build
+  echo "[Dry Run] Executing preflight script..."
+  node --env-file=.env scripts/deploy/preflight.mjs
+  echo "[Dry Run] Executing migration plan check..."
+  node --env-file=.env scripts/database/migrate.mjs --plan
   echo "[Dry Run] Would restart systemd service: sudo systemctl restart ${SERVICE_NAME}"
   echo "[Dry Run] Would test health endpoints at ${LOCAL_HEALTH_URL} and ${PUBLIC_HEALTH_URL}"
   echo "✓ DRY RUN COMPLETED SUCCESSFULLY."
@@ -115,15 +116,15 @@ pnpm test
 
 # 6. Run migration preflight & plan
 echo "Running migration preflight tool..."
-node scripts/deploy/preflight.mjs
+node --env-file=.env scripts/deploy/preflight.mjs
 
 echo "Current database migration plan:"
-node scripts/database/migrate.mjs --plan
+node --env-file=.env scripts/database/migrate.mjs --plan
 
 # 7. Apply migrations if explicitly requested
 if [ "$APPLY_MIGRATIONS" -eq 1 ]; then
   echo "APPLY_MIGRATIONS=1 detected. Applying database migrations..."
-  node scripts/database/migrate.mjs --apply
+  node --env-file=.env scripts/database/migrate.mjs --apply
 else
   echo "APPLY_MIGRATIONS=0. Skipping database migration application step."
 fi

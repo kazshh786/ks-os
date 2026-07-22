@@ -105,4 +105,9 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     order: 20,
     description: 'Provider-neutral checkout payment components',
   },
+  {
+    filename: '20260722130000_production_schema_reconciliation.sql',
+    order: 21,
+    description: 'Production additive schema reconciliation for 13 missing tables',
+  },
 ];
