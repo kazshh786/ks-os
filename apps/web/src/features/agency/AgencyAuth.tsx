@@ -60,7 +60,12 @@ export async function agencyFetch(path: string, options: RequestInit = {}) {
   if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   const response = await fetchWithAuth(`/api/v1/agency${path}`, { ...options, headers, authContext: 'AGENCY' });
   const body = response.status === 204 ? null : await response.json();
-  if (!response.ok) throw new Error(body?.error?.message || 'Agency request failed.');
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || 'Agency request failed.') as Error & { code?: string; details?: unknown };
+    error.code = body?.error?.code;
+    error.details = body?.error?.details ?? body?.details;
+    throw error;
+  }
   return body?.data ?? body;
 }
 

@@ -24,6 +24,9 @@
     "deploy:preflight": "node --env-file=.env scripts/deploy/preflight.mjs",
     "deploy:verify": "pnpm test",
     "deploy:vps:dry-run": "bash scripts/deploy/deploy-vps.sh --dry-run",
+    "deploy": "scripts/deploy/deploy-vps.sh",
+    "deploy:dry": "scripts/deploy/deploy-vps.sh --dry-run",
+    "test:deployment": "jest tests/deployment/**/*.test.ts",
     "seed:auth:dev": "pnpm --filter api exec tsx ../../scripts/seed-auth-development.ts"
   },
   "dependencies": {

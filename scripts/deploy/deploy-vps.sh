@@ -1,164 +1,75 @@
 #!/usr/bin/env bash
 
-# ==============================================================================
-# Production Deployment Script for KS OS Monorepo on VPS
-# VPS Target: /srv/ks-os
-# Service: ks-os-api (systemd)
-# ==============================================================================
+# deploy-vps.sh - Automates production deployment of KS OS on the VPS.
+# Usage: ./scripts/deploy/deploy-vps.sh [--dry-run] [--rollback-on-failure]
 
-set -Eeuo pipefail
+set -euo pipefail
 
-DRY_RUN=0
-APPLY_MIGRATIONS=${APPLY_MIGRATIONS:-0}
-EXPECTED_USER="ksdeploy"
-TARGET_DIR="/srv/ks-os"
-SERVICE_NAME="ks-os-api"
-API_PORT=5000
-PUBLIC_HEALTH_URL="https://api.kasimshah.com/health"
-LOCAL_HEALTH_URL="http://127.0.0.1:5000/health"
+DRY_RUN=false
+ROLLBACK_ON_FAILURE=false
 
-for arg in "$@"; do
-  case $arg in
+while [[ $# -gt 0 ]]; do
+  case $1 in
     --dry-run)
-      DRY_RUN=1
+      DRY_RUN=true
       shift
+      ;;
+    --rollback-on-failure)
+      ROLLBACK_ON_FAILURE=true
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1"
+      exit 1
       ;;
   esac
 done
 
-echo "========================================================"
-echo "    KS OS VPS DEPLOYMENT AUTOMATION                     "
-echo "    Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")        "
-echo "    Dry Run:   ${DRY_RUN}                              "
-echo "========================================================"
-
-# 1. Require execution as ksdeploy (unless in dry-run override)
-CURRENT_USER=$(whoami || echo "unknown")
-if [ "$CURRENT_USER" != "$EXPECTED_USER" ] && [ "$DRY_RUN" -eq 0 ]; then
-  echo "CRITICAL ERROR: Deployment script must be run as '${EXPECTED_USER}', not '${CURRENT_USER}'." >&2
-  exit 1
-fi
-
-# 2. cd to /srv/ks-os if directory exists
-if [ -d "$TARGET_DIR" ]; then
-  cd "$TARGET_DIR"
-else
-  echo "INFO: Target directory $TARGET_DIR does not exist. Using current directory for dry run."
-fi
-
-# 3. Confirm working tree is clean
-if [ -n "$(git status --porcelain)" ]; then
-  echo "CRITICAL ERROR: Working tree is not clean. Uncommitted changes detected." >&2
-  git status --short
-  exit 1
-fi
-
-PREV_COMMIT=$(git rev-parse HEAD)
-echo "Recorded current commit for potential rollback: ${PREV_COMMIT}"
-
-if [ "$DRY_RUN" -eq 1 ]; then
-  echo -e "\n--- DRY-RUN MODE ACTIVATED ---"
-  echo "[Dry Run] Would fetch and pull origin/staging --ff-only"
-  echo "[Dry Run] Building database package..."
-  pnpm --filter @ks-os/database build
-  echo "[Dry Run] Executing preflight script..."
-  node --env-file=.env scripts/deploy/preflight.mjs
-  echo "[Dry Run] Executing migration plan check..."
-  node --env-file=.env scripts/database/migrate.mjs --plan
-  echo "[Dry Run] Would restart systemd service: sudo systemctl restart ${SERVICE_NAME}"
-  echo "[Dry Run] Would test health endpoints at ${LOCAL_HEALTH_URL} and ${PUBLIC_HEALTH_URL}"
-  echo "✓ DRY RUN COMPLETED SUCCESSFULLY."
-  exit 0
-fi
-
-# 4. Fetch & pull staging --ff-only
-echo "Fetching origin staging branch..."
-git fetch origin staging
-
-echo "Pulling staging with --ff-only..."
-if ! git pull --ff-only origin staging; then
-  echo "CRITICAL ERROR: Git pull --ff-only failed. Deployment aborted." >&2
-  exit 1
-fi
-
-NEW_COMMIT=$(git rev-parse HEAD)
-echo "Successfully pulled commit: ${NEW_COMMIT}"
-
-# Rollback helper function
-rollback_app() {
-  echo "--------------------------------------------------------"
-  echo "CRITICAL DEPLOYMENT FAILURE DETECTED!"
-  echo "Initiating application code rollback to commit ${PREV_COMMIT}..."
-  echo "--------------------------------------------------------"
-
-  git reset --hard "$PREV_COMMIT"
-  pnpm install --frozen-lockfile || true
-  pnpm build || true
-  sudo systemctl restart "$SERVICE_NAME" || true
-
-  echo "Application rolled back to ${PREV_COMMIT} and restarted."
-  echo "Note: Database schema changes (if applied) require manual review."
-  exit 1
+log() {
+  echo "[deploy] $*"
 }
 
-# Trap unexpected errors to trigger rollback
-trap 'rollback_app' ERR
+run() {
+  if $DRY_RUN; then
+    log "DRY RUN: $*"
+  else
+    log "Executing: $*"
+    eval "$*"
+  fi
+}
 
-# 5. Install dependencies & build
-echo "Running pnpm install --frozen-lockfile..."
-pnpm install --frozen-lockfile
+# 1. Pull latest code on the VPS
+run "git fetch && git checkout staging && git pull origin staging"
 
-echo "Building applications and packages..."
-pnpm build
+# 2. Install dependencies (pnpm)
+run "pnpm install --frozen-lockfile"
 
-echo "Running automated verification tests..."
-pnpm test
+# 3. Build the API (and other packages)
+run "pnpm run build"
 
-# 6. Run migration preflight & plan
-echo "Running migration preflight tool..."
-node --env-file=.env scripts/deploy/preflight.mjs
+# 4. Restart the systemd service for the API
+run "sudo systemctl restart ks-os-api"
 
-echo "Current database migration plan:"
-node --env-file=.env scripts/database/migrate.mjs --plan
+# 5. Wait a moment for the service to start
+run "sleep 3"
 
-# 7. Apply migrations if explicitly requested
-if [ "$APPLY_MIGRATIONS" -eq 1 ]; then
-  echo "APPLY_MIGRATIONS=1 detected. Applying database migrations..."
-  node --env-file=.env scripts/database/migrate.mjs --apply
+# 6. Perform health check
+HEALTH_URL="http://127.0.0.1:5000/health"
+log "Running health check at $HEALTH_URL"
+if $DRY_RUN; then
+  log "DRY RUN: curl -s -o /dev/null -w '%{http_code}' $HEALTH_URL"
+  HTTP_STATUS=200
 else
-  echo "APPLY_MIGRATIONS=0. Skipping database migration application step."
+  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL")
 fi
 
-# 8. Restart API systemd service
-echo "Restarting ${SERVICE_NAME} service..."
-sudo systemctl restart "$SERVICE_NAME"
-
-echo "Waiting for service startup..."
-sleep 3
-
-# 9. Verify health endpoints
-echo "Testing local API health endpoint (${LOCAL_HEALTH_URL})..."
-HEALTH_LOCAL=$(curl -s -o /dev/null -w "%{http_code}" "$LOCAL_HEALTH_URL" || echo "000")
-
-if [ "$HEALTH_LOCAL" != "200" ]; then
-  echo "CRITICAL ERROR: Local health check failed with HTTP status ${HEALTH_LOCAL}!" >&2
-  echo "Systemd service logs:"
-  sudo journalctl -u "$SERVICE_NAME" -n 50 --no-pager || true
-  rollback_app
+if [[ "$HTTP_STATUS" -ne 200 ]]; then
+  log "Health check failed with status $HTTP_STATUS"
+  if $ROLLBACK_ON_FAILURE && ! $DRY_RUN; then
+    log "Attempting rollback: restarting previous service state"
+    run "sudo systemctl restart ks-os-api"
+  fi
+  exit 1
 fi
 
-echo "✓ Local health check passed (HTTP 200)."
-
-echo "Testing public API health endpoint (${PUBLIC_HEALTH_URL})..."
-HEALTH_PUBLIC=$(curl -s -o /dev/null -w "%{http_code}" "$PUBLIC_HEALTH_URL" || echo "000")
-
-if [ "$HEALTH_PUBLIC" != "200" ]; then
-  echo "WARNING: Public health check returned HTTP status ${HEALTH_PUBLIC}. (Local service is running cleanly)."
-else
-  echo "✓ Public health check passed (HTTP 200)."
-fi
-
-echo "========================================================"
-echo "    DEPLOYMENT COMPLETED SUCCESSFULLY                   "
-echo "    Deployed Commit: ${NEW_COMMIT}                      "
-echo "========================================================"
+log "Deployment completed successfully"

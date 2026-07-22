@@ -76,7 +76,7 @@ import {
 import { ExternalReviewsPage, PublicReviewInvitationPage, ReputationInvitationsPage, ReputationOverviewPage, ReviewConnectionsPage } from './features/reputation/ReputationPages.js';
 import { AgencyAuthProvider, AgencyGuard, AgencyLoginPage, AgencyMfaPage } from './features/agency/AgencyAuth.js';
 import { AccessDeniedPage, AuthCallbackPage, InvitationAcceptancePage, PasswordRecoveryPage, SecuritySettingsPage, SelectBusinessPage, SessionExpiredPage } from './auth/AuthPages.js';
-import { AgencyAnalyticsPage, AgencyAuditPage, AgencyFulfilmentPage, AgencyJobsPage, AgencyOverviewPage, AgencyPlanCreatePage, AgencyPlansPage, AgencySupportPage, AgencyTenantBillingPage, AgencyTenantCreatePage, AgencyTenantDetailPage, AgencyTenantEntitlementsPage, AgencyTenantHealthPage, AgencyTenantsPage, AgencyUserInvitePage, AgencyUsersPage, AgencyWebhooksPage, AgencyWorkQueuePage } from './features/agency/AgencyPages.js';
+import { AgencyAnalyticsPage, AgencyAuditPage, AgencyFulfilmentPage, AgencyJobsPage, AgencyOverviewPage, AgencyPlanCreatePage, AgencyPlansPage, AgencySupportPage, AgencyTenantBillingPage, AgencyTenantCreatePage, AgencyTenantDetailPageFixed as AgencyTenantDetailPage, AgencyTenantEntitlementsPage, AgencyTenantHealthPage, AgencyTenantsPage, AgencyUserInvitePage, AgencyUsersPage, AgencyWebhooksPage, AgencyWorkQueuePage } from './features/agency/AgencyPages.js';
 
 const ReputationRoute: React.FC<{ children: React.ReactNode; ownerOnly?: boolean }> = ({ children, ownerOnly = false }) => {
   const { role, permissions } = useAuth();
