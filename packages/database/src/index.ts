@@ -1,4 +1,5 @@
 export * from './schema.js';
+export * from './manifest.js';
 export * from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';

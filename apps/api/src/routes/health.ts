@@ -1,25 +1,47 @@
 import { FastifyInstance } from 'fastify';
-import { 
-  HealthResponseSchema, 
-  SessionResponseSchema, 
-  ApiErrorSchema 
-} from '@ks-os/contracts';
-import { env } from '../config/env.js';
+import { execSync } from 'child_process';
+import { getDatabase, sql } from '@ks-os/database';
+
+function getGitCommit(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+  } catch {
+    return process.env.GIT_COMMIT || '0.1.0';
+  }
+}
 
 export default async function registerRoutes(fastify: FastifyInstance) {
-  // 1. Health check endpoint
-  fastify.get('/api/health', async (request, reply) => {
-    const health = {
-      status: 'OK' as const,
+  // Safe production health endpoint
+  const healthHandler = async (request: any, reply: any) => {
+    const timestamp = new Date().toISOString();
+    const version = getGitCommit();
+
+    let dbStatus = 'reachable';
+    let isDbHealthy = true;
+
+    try {
+      // Safely ping database with standard query
+      const db = getDatabase();
+      await db.execute(sql`SELECT 1`);
+    } catch (error) {
+      fastify.log.error({ err: error }, 'Health check database ping failed');
+      dbStatus = 'unreachable';
+      isDbHealthy = false;
+    }
+
+    const payload = {
+      status: isDbHealthy ? ('OK' as const) : ('ERROR' as const),
+      service: 'ks-os-api',
       uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-      version: '0.1.0'
+      version,
+      database: dbStatus,
+      timestamp,
     };
-    
-    // Parse using Zod contract schema for verification
-    const parsed = HealthResponseSchema.parse(health);
-    return reply.status(200).send(parsed);
-  });
 
+    return reply.status(isDbHealthy ? 200 : 503).send(payload);
+  };
 
+  // Mount at GET /health and GET /api/health
+  fastify.get('/health', healthHandler);
+  fastify.get('/api/health', healthHandler);
 }
