@@ -14,6 +14,12 @@ const EnvSchema = z.object({
     .default('false')
     .transform((val) => val === 'true'),
   FORM_ASSIGNMENT_EXPIRY_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+  FORM_DRAFT_EXPIRY_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+  FORM_UPLOAD_BUCKET: z.string().regex(/^[a-z0-9-]{3,63}$/).default('form-uploads'),
+  FORM_UPLOAD_MAX_BYTES: z.coerce.number().int().min(1024).max(10_485_760).default(10_485_760),
+  FORM_UPLOAD_SCAN_WEBHOOK: z.string().url().optional(),
+  BOOKING_SLOT_HOLD_MINUTES: z.coerce.number().int().min(2).max(30).default(10),
+  BOOKING_RATE_LIMIT_SALT: z.string().min(32).optional(),
   CUSTOMER_CLAIM_EXPIRY_DAYS: z.coerce.number().int().min(1).max(30).default(7),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
@@ -44,6 +50,23 @@ const EnvSchema = z.object({
   ,TENANT_SESSION_HARD_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24)
   ,CUSTOMER_SESSION_HARD_TTL_HOURS: z.coerce.number().int().min(1).max(2160).default(720)
   ,INTEGRATION_ENCRYPTION_KEY: z.string().optional()
+  ,INTEGRATION_WORKER_SECRET: z.string().min(32).optional()
+  ,GOOGLE_CALENDAR_CLIENT_ID: z.string().optional()
+  ,GOOGLE_CALENDAR_CLIENT_SECRET: z.string().optional()
+  ,GOOGLE_CALENDAR_REDIRECT_URI: z.string().url().optional()
+  ,MICROSOFT_CALENDAR_CLIENT_ID: z.string().optional()
+  ,MICROSOFT_CALENDAR_CLIENT_SECRET: z.string().optional()
+  ,MICROSOFT_CALENDAR_REDIRECT_URI: z.string().url().optional()
+  ,XERO_CLIENT_ID: z.string().optional()
+  ,XERO_CLIENT_SECRET: z.string().optional()
+  ,XERO_REDIRECT_URI: z.string().url().optional()
+  ,QUICKBOOKS_CLIENT_ID: z.string().optional()
+  ,QUICKBOOKS_CLIENT_SECRET: z.string().optional()
+  ,QUICKBOOKS_REDIRECT_URI: z.string().url().optional()
+  ,PUBLIC_API_ENABLED: z.enum(['true','false']).default('true').transform(v=>v==='true')
+  ,WIDGET_PUBLIC_URL: z.string().url().optional()
+  ,WIDGET_ALLOWED_ORIGINS: z.string().default('')
+  ,STRIPE_TERMINAL_ENABLED: z.enum(['true','false']).default('false').transform(v=>v==='true')
   ,REVIEW_INVITATION_TOKEN_SECRET: z.string().min(32).optional()
   ,GOOGLE_BUSINESS_PROFILE_CLIENT_ID: z.string().optional()
   ,GOOGLE_BUSINESS_PROFILE_CLIENT_SECRET: z.string().optional()
@@ -73,7 +96,7 @@ const EnvSchema = z.object({
   }
   if(value.NODE_ENV==='production'){
     if(value.DEV_AUTH_ENABLED)ctx.addIssue({code:z.ZodIssueCode.custom,path:['DEV_AUTH_ENABLED'],message:'Development authentication cannot be enabled in production'});
-    const required=['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SECRET_KEY','AUDIT_IP_HASH_SECRET','PRIVACY_WORKER_SECRET','FRONTEND_ORIGIN','PUBLIC_APP_ORIGIN'] as const;
+    const required=['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SECRET_KEY','AUDIT_IP_HASH_SECRET','PRIVACY_WORKER_SECRET','FRONTEND_ORIGIN','PUBLIC_APP_ORIGIN','INTEGRATION_ENCRYPTION_KEY','BOOKING_RATE_LIMIT_SALT'] as const;
     for(const key of required)if(!value[key])ctx.addIssue({code:z.ZodIssueCode.custom,path:[key],message:`${key} is required in production`});
     for(const key of ['SUPABASE_URL','FRONTEND_ORIGIN','PUBLIC_APP_ORIGIN'] as const){const configured=value[key];if(configured&&!configured.startsWith('https://'))ctx.addIssue({code:z.ZodIssueCode.custom,path:[key],message:`${key} must use HTTPS in production`});}
     const raw=process.env.DATABASE_URL||'';if(!raw)ctx.addIssue({code:z.ZodIssueCode.custom,path:['DATABASE_URL'],message:'DATABASE_URL is required in production'});

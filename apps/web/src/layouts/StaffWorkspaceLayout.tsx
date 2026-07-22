@@ -5,7 +5,7 @@ import { useAuth } from '../auth/useAuth.js';
 import ApiStatusIndicator from '../components/ApiStatusIndicator.js';
 import { 
   Shield, Sparkles, Calendar, Users, ShoppingCart, Settings, 
-  Monitor, Laptop, BarChart3, FileText, Lock, Wallet, Workflow, Bell, ListChecks, MessageSquareText
+  Monitor, Laptop, BarChart3, FileText, Lock, Wallet, Workflow, Bell, ListChecks, MessageSquareText, List, Globe2
 } from 'lucide-react';
 import { useOperationsSummary } from '../features/operations/useOperationsSummary.js';
 import { SupportModeBanner } from '../features/agency/SupportModeBanner.js';
@@ -52,13 +52,13 @@ export const StaffWorkspaceLayout: React.FC = () => {
           {/* Navigation Items (Representing high level Role/Audience Switching) */}
           <nav className="flex flex-col gap-4 w-full px-2">
             <Link
-              to="/book/demo"
+              to={`/book/${activeTenant.subdomain}`}
               title="Client Booking Widget"
               className="p-2.5 rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center w-full relative group text-slate-400 hover:text-white hover:bg-slate-800"
             >
               <Sparkles className="w-5 h-5" />
               <span className="absolute left-20 bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
-                Client Widget
+                Public booking page
               </span>
             </Link>
 
@@ -165,7 +165,13 @@ export const StaffWorkspaceLayout: React.FC = () => {
                 : 'text-slate-600 hover:bg-slate-50 border border-transparent hover:border-slate-200'
             }`}
           >
-            <Calendar className="w-3.5 h-3.5" /> Staff Diary
+            <Calendar className="w-3.5 h-3.5" /> Booking Calendar
+          </Link>
+          <Link
+            to="/app/bookings"
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${location.pathname === '/app/bookings' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50 border border-transparent hover:border-slate-200'}`}
+          >
+            <List className="w-3.5 h-3.5" /> Bookings
           </Link>
           <Link
             to="/app/reception"
@@ -221,7 +227,9 @@ export const StaffWorkspaceLayout: React.FC = () => {
             <Settings className="w-3.5 h-3.5" /> Brand Setup
           </Link>
           {role === 'owner' && <Link to="/app/settings/team" className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${location.pathname.startsWith('/app/settings/team')?'bg-slate-900 text-white shadow-sm':'text-slate-600 hover:bg-slate-50'}`}><Users className="w-3.5 h-3.5"/> Team</Link>}
-          {role === 'owner' && <Link to="/app/settings/booking/customer-management" className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${location.pathname.startsWith('/app/settings/booking')?'bg-slate-900 text-white shadow-sm':'text-slate-600 hover:bg-slate-50'}`}><Calendar className="w-3.5 h-3.5"/> Booking Policies</Link>}
+          {role === 'owner' && <Link to="/app/settings/integrations" className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${location.pathname.startsWith('/app/settings/integrations')?'bg-slate-900 text-white shadow-sm':'text-slate-600 hover:bg-slate-50'}`}>Integrations</Link>}
+          {role === 'owner' && <Link to="/app/settings/booking/customer-management" className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${location.pathname.startsWith('/app/settings/booking/customer')?'bg-slate-900 text-white shadow-sm':'text-slate-600 hover:bg-slate-50'}`}><Calendar className="w-3.5 h-3.5"/> Booking Policies</Link>}
+          {role === 'owner' && <Link to="/app/settings/booking-page" className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${location.pathname==='/app/settings/booking-page'?'bg-slate-900 text-white shadow-sm':'text-slate-600 hover:bg-slate-50'}`}><Globe2 className="w-3.5 h-3.5"/> Booking Page</Link>}
           <Link
             to="/app/payments"
             className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${

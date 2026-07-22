@@ -201,15 +201,12 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
     setCheckoutState('loading');
     
     try {
-      let finalMethod = paymentMode;
-      if (paymentMode === 'ExternalCard') finalMethod = 'EXTERNAL_CARD';
-      if (paymentMode === 'BankTransfer') finalMethod = 'BANK_TRANSFER';
-      if (paymentMode === 'Other') finalMethod = 'OTHER';
+      const finalMethod = ({ Cash: 'CASH', ExternalCard: 'EXTERNAL_CARD', BankTransfer: 'BANK_TRANSFER', Other: 'OTHER', Split: 'SPLIT' } as const)[paymentMode];
 
       const payload: any = {
         idempotencyKey: idempotencyKeyRef.current,
         appointmentId: selectedAppointmentId,
-        paymentMethod: finalMethod.toUpperCase(),
+        paymentMethod: finalMethod,
         tipAmountInCents: serverTotals.tipAmountInCents,
         purchasedProducts: cart.filter(c => c.type === 'Product').map(c => ({
           productId: c.id,

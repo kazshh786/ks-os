@@ -54,6 +54,8 @@ export const AvailabilityQuerySchema = z.object({
   tenantId: z.string().uuid().optional(),
   serviceId: z.string().uuid(),
   staffId: z.string().optional(),
+  locationId: z.string().uuid().optional(),
+  resourceId: z.string().uuid().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)'),
   bookingChannel: z.enum(['in_shop', 'mobile'])
 });
@@ -109,12 +111,25 @@ export const CreateBookingRequestSchema = z.object({
   payNow: z.boolean().default(false),
   idempotencyKey: z.string().uuid(),
   resourceId: z.string().uuid().optional().nullable(),
-}).strict();
+  locationId: z.string().uuid().optional().nullable(),
+  holdId: z.string().uuid().optional(),
+  holdToken: z.string().min(32).max(200).optional(),
+  source: z.enum(['PUBLIC_BOOKING_PAGE', 'EMBEDDED_WIDGET', 'CUSTOMER_PORTAL', 'GOOGLE_BUSINESS_PROFILE', 'INSTAGRAM', 'FACEBOOK', 'TIKTOK', 'WHATSAPP', 'REFERRAL', 'OTHER']).default('PUBLIC_BOOKING_PAGE'),
+  sourceMedium: z.string().trim().max(80).regex(/^[a-zA-Z0-9._-]+$/).optional(),
+  sourceCampaign: z.string().trim().max(120).regex(/^[a-zA-Z0-9._ -]+$/).optional(),
+  intakeSubmissionIds: z.array(z.string().uuid()).max(20).default([]),
+  analyticsSessionId: z.string().uuid().optional(),
+  customerNotes: z.string().trim().max(2_000).optional(),
+}).strict().superRefine((value, context) => {
+  if (value.bookingChannel === 'mobile' && !value.mobileAddress) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['mobileAddress'], message: 'An appointment address is required for mobile bookings.' });
+  }
+});
 export type CreateBookingRequest = z.infer<typeof CreateBookingRequestSchema>;
 
 export const BookingConfirmationSchema = z.object({
   reference: z.string(),
-  status: z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'NO_SHOW', 'CANCELLED']),
+  status: z.enum(['PENDING', 'CONFIRMED', 'CHECKED_IN', 'IN_SERVICE', 'AWAITING_PAYMENT', 'COMPLETED', 'NO_SHOW', 'CANCELLED']),
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
   bookingChannel: z.enum(['in_shop', 'mobile']),
@@ -159,18 +174,28 @@ export const StaffCreateBookingRequestSchema = z.object({
   payNow: z.boolean().default(false),
   resourceId: z.string().uuid().optional().nullable(),
   internalNote: z.string().trim().max(2000).optional().nullable(),
-}).strict();
+  locationId: z.string().uuid().optional().nullable(),
+  intakeFormIds: z.array(z.string().uuid()).max(20).default([]),
+  notifyCustomer: z.boolean().default(true),
+}).strict().superRefine((value, context) => {
+  if (value.bookingChannel === 'mobile' && !value.mobileAddress) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['mobileAddress'], message: 'An appointment address is required for mobile bookings.' });
+  }
+});
 export type StaffCreateBookingRequest = z.infer<typeof StaffCreateBookingRequestSchema>;
 
 export const RescheduleBookingRequestSchema = z.object({
   startTime: z.string().datetime(),
   staffId: z.string().uuid().optional(),
   resourceId: z.string().uuid().optional().nullable(),
+  locationId: z.string().uuid().optional().nullable(),
+  notifyCustomer: z.boolean().default(true),
+  reason: z.string().trim().max(500).optional(),
 }).strict();
 export type RescheduleBookingRequest = z.infer<typeof RescheduleBookingRequestSchema>;
 
 export const UpdateBookingStatusRequestSchema = z.object({
-  status: z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'NO_SHOW', 'CANCELLED']),
+  status: z.enum(['PENDING', 'CONFIRMED', 'CHECKED_IN', 'IN_SERVICE', 'AWAITING_PAYMENT', 'COMPLETED', 'NO_SHOW', 'CANCELLED']),
 }).strict();
 export type UpdateBookingStatusRequest = z.infer<typeof UpdateBookingStatusRequestSchema>;
 

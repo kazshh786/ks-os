@@ -4,19 +4,14 @@ import {
   StaffCreateBookingRequestSchema, 
   UpdateBookingStatusRequestSchema, 
   RescheduleBookingRequestSchema,
+  BookingOperationsQuerySchema,
+  BookingOperationsResponseSchema,
   ERROR_CODES
 } from '@ks-os/contracts';
 import { BookingService } from './booking.service.js';
 import { EntitlementService } from '../agency/agency.service.js';
 
-const bookingQuerySchema = z.object({
-  from: z.string().datetime(),
-  to: z.string().datetime(),
-  limit: z.coerce.number().min(1).max(500).default(100)
-}).refine(data => {
-  const diffDays = (new Date(data.to).getTime() - new Date(data.from).getTime()) / (1000 * 60 * 60 * 24);
-  return diffDays <= 62;
-}, { message: "Date range cannot exceed 62 days" });
+const bookingIdSchema = z.string().uuid();
 
 const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
   const bookingService = new BookingService();
@@ -25,7 +20,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/api/v1/bookings', async (request, reply) => {
     request.requireAuth();
 
-    const parsed = bookingQuerySchema.safeParse(request.query);
+    const parsed = BookingOperationsQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return reply.code(400).send({
         success: false,
@@ -33,15 +28,42 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    const { from, to, limit } = parsed.data;
-    const tenantId = request.auth!.tenantId;
-
     try {
-      const bookings = await bookingService.getBookingsByDateRange(tenantId, new Date(from), new Date(to), limit);
-      return reply.send({ success: true, data: bookings });
+      const bookings = BookingOperationsResponseSchema.parse(await bookingService.getOperationalBookings(request.auth!, parsed.data));
+      return reply.send({ success: true, data: bookings.items, meta: bookings.meta, summary: bookings.summary });
     } catch (err: any) {
       fastify.log.error(err);
+      if (err.statusCode) return reply.code(err.statusCode).send({ success: false, error: { code: err.code || 'BOOKING_ACCESS_DENIED', message: err.message } });
       return reply.code(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Could not fetch bookings' } });
+    }
+  });
+
+  fastify.get('/api/v1/bookings/export.csv', async (request, reply) => {
+    request.requireAuth();
+    if (request.auth!.role !== 'owner' && !request.auth!.permissions.includes('REPORT_EXPORT')) {
+      return reply.code(403).send({ success: false, error: { code: 'BOOKING_EXPORT_ACCESS_DENIED', message: 'Booking export permission is required.' } });
+    }
+    const parsed = BookingOperationsQuerySchema.safeParse(request.query);
+    if (!parsed.success) return reply.code(400).send({ success: false, error: { code: 'INVALID_QUERY', message: parsed.error.message } });
+    const result = await bookingService.getOperationalBookings(request.auth!, { ...parsed.data, page: 1, limit: 250 });
+    const csvValue = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const rows = [
+      ['Reference','Start','End','Customer','Service','Staff','Location','Status','Payment','Intake','Source'],
+      ...result.items.map(item => [item.reference,item.startTime,item.endTime,item.customer.name,item.service.name,item.staff.name,item.location.name || '',item.status,item.paymentStatus,item.intakeStatus,item.source]),
+    ];
+    const lines = rows.map(row => row.map(csvValue).join(','));
+    return reply.header('content-type', 'text/csv; charset=utf-8').header('content-disposition', 'attachment; filename="bookings.csv"').send(lines.join('\r\n'));
+  });
+
+  fastify.get('/api/v1/bookings/:id', async (request, reply) => {
+    request.requireAuth();
+    const parsed = bookingIdSchema.safeParse((request.params as { id: string }).id);
+    if (!parsed.success) return reply.code(400).send({ success: false, error: { code: 'INVALID_BOOKING_ID', message: 'Invalid booking ID.' } });
+    try {
+      return reply.send({ success: true, data: await bookingService.getOperationalBooking(request.auth!, parsed.data) });
+    } catch (error: any) {
+      if (error.statusCode === 404) return reply.code(404).send({ success: false, error: { code: error.code, message: error.message } });
+      throw error;
     }
   });
 
@@ -64,7 +86,14 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
         staffId,
         startTime,
         client,
-        bookingChannel
+        bookingChannel,
+        {
+          locationId: parsed.data.locationId,
+          internalNote: parsed.data.internalNote,
+          intakeFormIds: parsed.data.intakeFormIds,
+          notifyCustomer: parsed.data.notifyCustomer,
+          requestId: request.id,
+        },
       );
       
       return reply.code(201).send({ success: true, bookingId: booking.appointment_id });
@@ -91,7 +120,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      await bookingService.updateBookingStatus(request.auth!, id, parsed.data.status);
+      await bookingService.updateBookingStatus(request.auth!, id, parsed.data.status, request.id);
       return reply.send({ success: true });
     } catch (err: any) {
       if (err.message === 'NOT_FOUND') {
@@ -117,7 +146,13 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     const { startTime, staffId } = parsed.data;
 
     try {
-      await bookingService.rescheduleBooking(request.auth!, id, staffId!, startTime);
+      await bookingService.rescheduleBooking(request.auth!, id, staffId, startTime, {
+        locationId: parsed.data.locationId,
+        resourceId: parsed.data.resourceId,
+        notifyCustomer: parsed.data.notifyCustomer,
+        reason: parsed.data.reason,
+        requestId: request.id,
+      });
       return reply.send({ success: true });
     } catch (err: any) {
       if (err.message === 'NOT_FOUND') {
@@ -141,7 +176,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     request.requireAuth();
     const { id } = request.params as { id: string };
     try {
-      await bookingService.cancelBooking(request.auth!, id);
+      await bookingService.cancelBooking(request.auth!, id, request.id);
       return reply.send({ success: true });
     } catch (err: any) {
       if (err.message === 'NOT_FOUND') {

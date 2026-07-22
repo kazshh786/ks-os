@@ -41,7 +41,8 @@ import {
   EmailHistoryQuery,
   EmailHistoryItem,
   DashboardOverviewQuery,
-  DashboardOverviewResponse
+  DashboardOverviewResponse,
+  BookingOperationsQuery, BookingOperationsResponse, BookingOperationsItem, BookingPageResponse, BookingPageUpdate, CreateBookingHold, BookingHoldResponse
   ,AppointmentsReportQuery, AppointmentsReportResponse, ClientsReportQuery, ClientsReportResponse,
   ServicesReportQuery, ServicesReportResponse, StaffReportQuery, StaffReportResponse,
   ProductsReportQuery, ProductsReportResponse, StockReportQuery, StockReportResponse,
@@ -191,32 +192,48 @@ export class ApiDataProvider implements DataProvider {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const thirtyDaysFuture = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    
-    const res = await fetchWithAuth(`/api/v1/bookings?from=${thirtyDaysAgo}&to=${thirtyDaysFuture}&limit=500`);
-    if (!res.ok) throw new Error('Failed to fetch bookings');
-    const { data } = await res.json();
-    
-    return data.map((b: any) => ({
+    const result = await this.getBookingOperations({ from: thirtyDaysAgo, to: thirtyDaysFuture, page: 1, limit: 250, sort: 'START_ASC' });
+    return result.items.map((b) => ({
       id: b.id,
       tenantId: 'current',
-      reference: b.id.substring(0, 8),
-      clientName: b.clientName,
-      clientEmail: '',
-      clientPhone: '',
-      visitType: 'Shop',
-      serviceId: b.serviceName, 
-      staffId: b.staffName, 
+      reference: b.reference,
+      clientName: b.customer.name,
+      clientEmail: b.customer.email || '',
+      clientPhone: b.customer.phone || '',
+      visitType: b.bookingChannel === 'mobile' ? 'Mobile' : 'Shop',
+      serviceId: b.service.id || '',
+      staffId: b.staff.id,
       date: b.startTime.split('T')[0],
       startTime: new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       endTime: new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      duration: 60,
-      price: 0,
+      duration: b.service.durationMinutes,
+      price: b.quotedAmount / 100,
       paidAmount: 0,
-      paymentStatus: 'Unpaid',
-      status: (['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(b.status) ? 
+      paymentStatus: b.paymentStatus === 'COMPLETED' ? 'FullyPaid' : b.paymentStatus === 'PARTIALLY_PAID' ? 'DepositPaid' : 'Unpaid',
+      status: (['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(b.status) ?
         b.status.charAt(0) + b.status.slice(1).toLowerCase().replace('_', '') : 'Confirmed') as any,
-      createdAt: b.startTime
+      internalNotes: b.notes || undefined,
+      createdAt: b.createdAt,
     }));
+  }
+
+  async getBookingOperations(query: BookingOperationsQuery): Promise<BookingOperationsResponse> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || value === '') continue;
+      params.set(key, Array.isArray(value) ? value.join(',') : String(value));
+    }
+    const res = await fetchWithAuth(`/api/v1/bookings?${params}`);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.message || 'Bookings could not be loaded.');
+    return { items: body.data, meta: body.meta, summary: body.summary };
+  }
+
+  async getBookingDetail(bookingId: string): Promise<BookingOperationsItem> {
+    const res = await fetchWithAuth(`/api/v1/bookings/${encodeURIComponent(bookingId)}`);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.message || 'Booking could not be loaded.');
+    return body.data;
   }
 
   /** @deprecated */
@@ -260,6 +277,22 @@ export class ApiDataProvider implements DataProvider {
     return data;
   }
 
+  async createBookingHold(subdomain: string, input: CreateBookingHold): Promise<BookingHoldResponse> {
+    const res = await fetch(`/api/v1/public/${encodeURIComponent(subdomain)}/holds`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.code || body.error?.message || 'SLOT_UNAVAILABLE');
+    return body.hold;
+  }
+
+  async releaseBookingHold(subdomain: string, holdId: string, token: string): Promise<void> {
+    const res = await fetch(`/api/v1/public/${encodeURIComponent(subdomain)}/holds/${encodeURIComponent(holdId)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
+    if (!res.ok && res.status !== 404) throw new Error('The slot reservation could not be released.');
+  }
+
+  async recordPublicBookingEvent(subdomain: string, input: Record<string, unknown>): Promise<void> {
+    await fetch(`/api/v1/public/${encodeURIComponent(subdomain)}/analytics-events`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), keepalive: true });
+  }
+
   // Staff Booking Methods
   async createStaffBooking(input: StaffCreateBookingRequest): Promise<any> {
     const res = await fetchWithAuth('/api/v1/bookings', {
@@ -298,6 +331,41 @@ export class ApiDataProvider implements DataProvider {
       method: 'POST'
     });
     if (!res.ok) throw new Error('Failed to cancel booking');
+  }
+
+  async getBookingPageSettings(): Promise<BookingPageResponse> {
+    const res = await fetchWithAuth('/api/v1/booking-page');
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.message || 'Booking-page settings could not be loaded.');
+    return body.data;
+  }
+
+  async updateBookingPageSettings(input: BookingPageUpdate): Promise<BookingPageResponse> {
+    const res = await fetchWithAuth('/api/v1/booking-page', { method: 'PATCH', body: JSON.stringify(input) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.message || 'Booking-page settings could not be saved.');
+    return body.data;
+  }
+
+  async setBookingPagePublished(published: boolean): Promise<BookingPageResponse> {
+    const res = await fetchWithAuth(`/api/v1/booking-page/${published ? 'publish' : 'unpublish'}`, { method: 'POST' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.message || 'Booking-page publication status could not be changed.');
+    return body.data;
+  }
+
+  async configureBookingCustomDomain(domain: string | null): Promise<any> {
+    const res = await fetchWithAuth('/api/v1/booking-page/custom-domain', { method: 'PUT', body: JSON.stringify({ domain }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.message || 'Custom domain could not be saved.');
+    return body.data;
+  }
+
+  async getBookingPageAnalytics(days = 30): Promise<any> {
+    const res = await fetchWithAuth(`/api/v1/booking-page/analytics?days=${days}`);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.message || 'Booking analytics could not be loaded.');
+    return body.data;
   }
 
   async getEvents(): Promise<OutboxEvent[]> {

@@ -13,6 +13,7 @@ import AgencyLayout from './layouts/AgencyLayout.js';
 import Login from './pages/Login.js';
 import BookingWizardPage from './pages/BookingWizardPage.js';
 import StaffCalendarPage from './pages/StaffCalendarPage.js';
+import BookingListPage from './pages/BookingListPage.js';
 import ReceptionPage from './pages/ReceptionPage.js';
 import ClientCRMPage from './pages/ClientCRMPage.js';
 import POSCheckoutPage from './pages/POSCheckoutPage.js';
@@ -37,6 +38,8 @@ import { EmailHistory } from './pages/settings/EmailHistory.js';
 import SaaSDashboardPage from './pages/SaaSDashboardPage.js';
 import { SmsSettings } from './pages/settings/SmsSettings.js';
 import CustomerBookingManagementSettings from './pages/settings/CustomerBookingManagementSettings.js';
+import { Integrations } from './pages/settings/Integrations.js';
+import BookingPageSettings from './pages/settings/BookingPageSettings.js';
 import FormEditorPage from './pages/FormEditorPage.js';
 import FormDetailPage from './pages/FormDetailPage.js';
 import FormVersionPage from './pages/FormVersionPage.js';
@@ -157,7 +160,9 @@ const AppContent: React.FC = () => {
           <Route path="reputation/reviews" element={<ReputationRoute><ExternalReviewsPage /></ReputationRoute>} />
           <Route path="reputation/invitations" element={<ReputationRoute><ReputationInvitationsPage /></ReputationRoute>} />
           <Route path="settings/integrations/reviews" element={<ReputationRoute ownerOnly><ReviewConnectionsPage /></ReputationRoute>} />
+          <Route path="settings/integrations" element={<RoleRoute allowedRoles={['owner']}><Integrations /></RoleRoute>} />
           <Route path="calendar" element={<RoleRoute allowedRoles={['owner', 'staff']}><StaffCalendarPage /></RoleRoute>} />
+          <Route path="bookings" element={<RoleRoute allowedRoles={['owner', 'staff']}><BookingListPage /></RoleRoute>} />
           
           {/* Phase 3: Reception Desk is now connected */}
           <Route path="reception" element={<RoleRoute allowedRoles={['owner', 'staff']}><ReceptionPage /></RoleRoute>} />
@@ -188,6 +193,7 @@ const AppContent: React.FC = () => {
           <Route path="settings/email-history" element={<RoleRoute allowedRoles={['owner']}><EmailHistory /></RoleRoute>} />
           <Route path="settings/communications/sms" element={<RoleRoute allowedRoles={['owner']}><SmsSettings /></RoleRoute>} />
           <Route path="settings/booking/customer-management" element={<RoleRoute allowedRoles={['owner']}><CustomerBookingManagementSettings /></RoleRoute>} />
+          <Route path="settings/booking-page" element={<RoleRoute allowedRoles={['owner']}><BookingPageSettings /></RoleRoute>} />
           <Route path="settings/security" element={<SecuritySettingsPage context="TENANT" />} />
           <Route path="automations" element={<RoleRoute allowedRoles={['owner']}><AutomationsPage /></RoleRoute>} />
           <Route path="automations/new" element={<RoleRoute allowedRoles={['owner']}><AutomationBuilderPage /></RoleRoute>} />

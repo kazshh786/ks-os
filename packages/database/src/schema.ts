@@ -272,10 +272,138 @@ export const appointments = pgTable('appointments', {
   isInternal: boolean('is_internal').default(false).notNull(),
   reviewInvitationExcluded: boolean('review_invitation_excluded').default(false).notNull(),
   reviewInvitationExclusionReason: varchar('review_invitation_exclusion_reason', { length: 80 }),
+  bookingSource: varchar('booking_source', { length: 40 }).default('STAFF_CREATED').notNull(),
+  sourceMedium: varchar('source_medium', { length: 80 }),
+  sourceCampaign: varchar('source_campaign', { length: 120 }),
+  sourceReferrerHost: varchar('source_referrer_host', { length: 255 }),
+  bookingPageId: uuid('booking_page_id'),
+  bookingHoldId: uuid('booking_hold_id'),
+  intakeStatus: varchar('intake_status', { length: 20 }).default('NOT_REQUIRED').notNull(),
+  attentionReason: varchar('attention_reason', { length: 120 }),
+  customerNotes: text('customer_notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
   tenantPublicReferenceUnique: uniqueIndex('appointments_tenant_public_reference_unique').on(table.tenantId, table.publicReference),
+}));
+
+export const bookingPages = pgTable('booking_pages', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }).unique(),
+  publicSlug: varchar('public_slug', { length: 63 }).notNull().unique(),
+  title: varchar('title', { length: 160 }).notNull(),
+  description: text('description').default('').notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  published: boolean('published').default(true).notNull(),
+  logoUrl: varchar('logo_url', { length: 1000 }),
+  coverImageUrl: varchar('cover_image_url', { length: 1000 }),
+  layout: varchar('layout', { length: 20 }).default('STANDARD').notNull(),
+  themeJson: jsonb('theme_json').default({}).notNull(),
+  defaultLanguage: varchar('default_language', { length: 12 }).default('en-GB').notNull(),
+  supportedLanguages: text('supported_languages').array().default(['en-GB']).notNull(),
+  defaultLocationId: uuid('default_location_id'),
+  allowedLocationIds: uuid('allowed_location_ids').array().default([]).notNull(),
+  allowedServiceIds: uuid('allowed_service_ids').array().default([]).notNull(),
+  allowedStaffIds: uuid('allowed_staff_ids').array().default([]).notNull(),
+  bookingRules: jsonb('booking_rules').default({}).notNull(),
+  paymentSettings: jsonb('payment_settings').default({}).notNull(),
+  intakeFormSettings: jsonb('intake_form_settings').default({}).notNull(),
+  confirmationSettings: jsonb('confirmation_settings').default({}).notNull(),
+  cancellationSettings: jsonb('cancellation_settings').default({}).notNull(),
+  seoSettings: jsonb('seo_settings').default({}).notNull(),
+  socialSharingSettings: jsonb('social_sharing_settings').default({}).notNull(),
+  analyticsSettings: jsonb('analytics_settings').default({ enabled: true }).notNull(),
+  customDomain: varchar('custom_domain', { length: 255 }),
+  customDomainStatus: varchar('custom_domain_status', { length: 20 }).default('NOT_CONFIGURED').notNull(),
+  customDomainVerificationTokenHash: varchar('custom_domain_verification_token_hash', { length: 64 }),
+  canonicalDomain: varchar('canonical_domain', { length: 255 }),
+  publishedAt: timestamp('published_at', { withTimezone: true }).defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  publicResolutionIdx: index('booking_pages_public_resolution_idx').on(table.publicSlug, table.enabled, table.published),
+}));
+
+export const bookingPageSlugHistory = pgTable('booking_page_slug_history', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  bookingPageId: uuid('booking_page_id').notNull().references(() => bookingPages.id, { onDelete: 'cascade' }),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  previousSlug: varchar('previous_slug', { length: 63 }).notNull().unique(),
+  changedByUserId: uuid('changed_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  redirectUntil: timestamp('redirect_until', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const bookingPageForms = pgTable('booking_page_forms', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  bookingPageId: uuid('booking_page_id').notNull().references(() => bookingPages.id, { onDelete: 'cascade' }),
+  formId: uuid('form_id').notNull().references(() => forms.id, { onDelete: 'restrict' }),
+  serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+  staffUserId: uuid('staff_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  locationId: uuid('location_id'),
+  completionStage: varchar('completion_stage', { length: 30 }).default('AFTER_BOOKING').notNull(),
+  required: boolean('required').default(true).notNull(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const bookingHolds = pgTable('booking_holds', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  bookingPageId: uuid('booking_page_id').notNull().references(() => bookingPages.id, { onDelete: 'cascade' }),
+  serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+  staffUserId: uuid('staff_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  locationId: uuid('location_id'),
+  resourceId: uuid('resource_id'),
+  customerSessionHash: varchar('customer_session_hash', { length: 64 }).notNull(),
+  startTime: timestamp('start_time', { withTimezone: true }).notNull(),
+  endTime: timestamp('end_time', { withTimezone: true }).notNull(),
+  status: varchar('status', { length: 20 }).default('ACTIVE').notNull(),
+  idempotencyKey: uuid('idempotency_key').notNull(),
+  consumedAppointmentId: uuid('consumed_appointment_id').references(() => appointments.id, { onDelete: 'set null' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  releasedAt: timestamp('released_at', { withTimezone: true }),
+}, table => ({
+  idempotencyUnique: uniqueIndex('booking_holds_booking_page_idempotency_unique').on(table.bookingPageId, table.idempotencyKey),
+  expiryIdx: index('booking_holds_expiry_idx').on(table.status, table.expiresAt),
+}));
+
+export const bookingAnalyticsEvents = pgTable('booking_analytics_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  bookingPageId: uuid('booking_page_id').notNull().references(() => bookingPages.id, { onDelete: 'cascade' }),
+  sessionHash: varchar('session_hash', { length: 64 }).notNull(),
+  eventType: varchar('event_type', { length: 40 }).notNull(),
+  serviceId: uuid('service_id').references(() => services.id, { onDelete: 'set null' }),
+  staffUserId: uuid('staff_user_id').references(() => users.id, { onDelete: 'set null' }),
+  locationId: uuid('location_id'),
+  appointmentId: uuid('appointment_id').references(() => appointments.id, { onDelete: 'set null' }),
+  bookingSource: varchar('booking_source', { length: 40 }),
+  sourceMedium: varchar('source_medium', { length: 80 }),
+  sourceCampaign: varchar('source_campaign', { length: 120 }),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  pageEventTimeIdx: index('booking_analytics_page_event_time_idx').on(table.bookingPageId, table.eventType, table.occurredAt),
+}));
+
+export const bookingAuditEvents = pgTable('booking_audit_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  appointmentId: uuid('appointment_id').notNull().references(() => appointments.id, { onDelete: 'cascade' }),
+  actingUserId: uuid('acting_user_id').references(() => users.id, { onDelete: 'set null' }),
+  action: varchar('action', { length: 50 }).notNull(),
+  previousValues: jsonb('previous_values').default({}).notNull(),
+  newValues: jsonb('new_values').default({}).notNull(),
+  reason: text('reason'),
+  requestId: varchar('request_id', { length: 120 }),
+  bookingSource: varchar('booking_source', { length: 40 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  appointmentTimeIdx: index('booking_audit_events_appointment_time_idx').on(table.tenantId, table.appointmentId, table.createdAt),
 }));
 
 export const customerBookingManagementTokens = pgTable('customer_booking_management_tokens', {
@@ -333,10 +461,17 @@ export const forms = pgTable('forms', {
     .references(() => tenants.id, { onDelete: 'cascade' }),
   title: varchar('title', { length: 255 }).notNull(),
   description: text('description').default('').notNull(),
+  internalDescription: text('internal_description').default('').notNull(),
+  formType: varchar('form_type',{length:40}).default('CUSTOM').notNull(),
   fieldsJson: jsonb('fields_json').notNull(),
   acknowledgementText: text('acknowledgement_text').default('').notNull(),
   status: varchar('status', { length: 20 }).default('DRAFT').notNull(),
   createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  updatedByUserId: uuid('updated_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  defaultLanguage:varchar('default_language',{length:12}).default('en-GB').notNull(),
+  supportedLanguages:text('supported_languages').array().default(['en-GB']).notNull(),
+  settings:jsonb('settings').default({}).notNull(),themeJson:jsonb('theme_json').default({}).notNull(),
+  draftRevision:integer('draft_revision').default(1).notNull(),publishedVersionId:uuid('published_version_id'),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -351,6 +486,7 @@ export const formVersions = pgTable('form_versions', {
   descriptionSnapshot: text('description_snapshot').default('').notNull(),
   schemaJson: jsonb('schema_json').notNull(),
   acknowledgementText: text('acknowledgement_text').notNull(),
+  themeSnapshot:jsonb('theme_snapshot').default({}).notNull(),logicSnapshot:jsonb('logic_snapshot').default([]).notNull(),validationSnapshot:jsonb('validation_snapshot').default({}).notNull(),settingsSnapshot:jsonb('settings_snapshot').default({}).notNull(),changeSummary:varchar('change_summary',{length:1000}),previousVersionId:uuid('previous_version_id'),
   createdByUserId: uuid('created_by_user_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   publishedAt: timestamp('published_at', { withTimezone: true }).defaultNow().notNull(),
@@ -394,6 +530,7 @@ export const clientFormSubmissions = pgTable('client_form_submissions', {
   acknowledgementAccepted: boolean('acknowledgement_accepted').default(false).notNull(),
   acknowledgementText: text('acknowledgement_text'),
   submittedFrom: varchar('submitted_from', { length: 30 }).default('PUBLIC_LINK').notNull(),
+  status:varchar('status',{length:30}).default('SUBMITTED').notNull(),reviewedAt:timestamp('reviewed_at',{withTimezone:true}),reviewedByUserId:uuid('reviewed_by_user_id').references(()=>users.id,{onDelete:'set null'}),reviewNotes:text('review_notes'),reviewFlags:jsonb('review_flags').default([]).notNull(),completionPercentage:integer('completion_percentage').default(100).notNull(),language:varchar('language',{length:12}).default('en-GB').notNull(),timezone:varchar('timezone',{length:100}),trackingParameters:jsonb('tracking_parameters').default({}).notNull(),
   idempotencyKey: uuid('idempotency_key'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   submittedAt: timestamp('submitted_at').defaultNow().notNull(),
@@ -1403,3 +1540,41 @@ export const retentionPolicyVersions = pgTable('retention_policy_versions', {
 export const retentionRuns = pgTable('retention_runs', {
   id: uuid('id').defaultRandom().primaryKey(), policyId: uuid('policy_id').notNull().references(() => retentionPolicies.id, { onDelete: 'restrict' }), idempotencyKey: varchar('idempotency_key', { length: 160 }).notNull().unique(), status: varchar('status', { length: 20 }).default('QUEUED').notNull(), dryRun: boolean('dry_run').notNull(), scannedCount: integer('scanned_count').default(0).notNull(), affectedCount: integer('affected_count').default(0).notNull(), skippedLegalHoldCount: integer('skipped_legal_hold_count').default(0).notNull(), report: jsonb('report').default({}).notNull(), failureCode: varchar('failure_code', { length: 100 }), startedAt: timestamp('started_at', { withTimezone: true }), completedAt: timestamp('completed_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, table => ({ queueIdx: index('retention_runs_queue_idx').on(table.status, table.createdAt, table.id) }));
+
+export const integrationConnections=pgTable('integration_connections',{
+ id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),connectedUserId:uuid('connected_user_id').references(()=>users.id,{onDelete:'set null'}),locationId:uuid('location_id').references(()=>locations.id,{onDelete:'set null'}),kind:varchar('kind',{length:30}).notNull(),provider:varchar('provider',{length:40}).notNull(),externalAccountId:varchar('external_account_id',{length:255}),externalResourceId:varchar('external_resource_id',{length:255}),externalResourceName:varchar('external_resource_name',{length:255}),tokenCiphertext:text('token_ciphertext'),tokenExpiresAt:timestamp('token_expires_at',{withTimezone:true}),grantedScopes:text('granted_scopes').array().default([]).notNull(),status:varchar('status',{length:40}).default('NOT_CONNECTED').notNull(),syncDirection:varchar('sync_direction',{length:20}).default('OUTBOUND').notNull(),settings:jsonb('settings').default({}).notNull(),providerMetadata:jsonb('provider_metadata').default({}).notNull(),lastSuccessfulSyncAt:timestamp('last_successful_sync_at',{withTimezone:true}),lastAttemptedSyncAt:timestamp('last_attempted_sync_at',{withTimezone:true}),lastSyncError:varchar('last_sync_error',{length:500}),webhookId:varchar('webhook_id',{length:255}),webhookExpiresAt:timestamp('webhook_expires_at',{withTimezone:true}),connectedByUserId:uuid('connected_by_user_id').notNull().references(()=>users.id,{onDelete:'restrict'}),disconnectedAt:timestamp('disconnected_at',{withTimezone:true}),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>({tenantKindIdx:index('integration_connections_tenant_kind_idx').on(t.tenantId,t.kind,t.provider,t.status)}));
+export const integrationEvents=pgTable('integration_events',{
+ id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),integrationId:uuid('integration_id').references(()=>integrationConnections.id,{onDelete:'set null'}),provider:varchar('provider',{length:40}).notNull(),direction:varchar('direction',{length:20}).notNull(),localEntityType:varchar('local_entity_type',{length:50}).notNull(),localEntityId:varchar('local_entity_id',{length:255}).notNull(),externalEntityType:varchar('external_entity_type',{length:50}),externalEntityId:varchar('external_entity_id',{length:255}),operation:varchar('operation',{length:40}).notNull(),status:varchar('status',{length:25}).default('QUEUED').notNull(),attemptCount:integer('attempt_count').default(0).notNull(),idempotencyKey:varchar('idempotency_key',{length:255}).notNull(),requestId:varchar('request_id',{length:100}),startedAt:timestamp('started_at',{withTimezone:true}),completedAt:timestamp('completed_at',{withTimezone:true}),nextRetryAt:timestamp('next_retry_at',{withTimezone:true}),errorCode:varchar('error_code',{length:100}),safeErrorMessage:varchar('safe_error_message',{length:500}),providerMetadata:jsonb('provider_metadata').default({}).notNull(),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>({providerIdempotencyUnique:uniqueIndex('integration_events_provider_idempotency_unique').on(t.provider,t.idempotencyKey),queueIdx:index('integration_events_queue_idx').on(t.status,t.nextRetryAt,t.createdAt)}));
+export const calendarFeeds=pgTable('calendar_feeds',{
+ id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),scope:varchar('scope',{length:20}).notNull(),staffUserId:uuid('staff_user_id').references(()=>users.id,{onDelete:'cascade'}),locationId:uuid('location_id').references(()=>locations.id,{onDelete:'cascade'}),tokenHash:varchar('token_hash',{length:64}).notNull().unique(),bookingStatuses:text('booking_statuses').array().default([]).notNull(),privacyLevel:varchar('privacy_level',{length:20}).default('BUSY_ONLY').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>users.id,{onDelete:'restrict'}),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),rotatedAt:timestamp('rotated_at',{withTimezone:true}),revokedAt:timestamp('revoked_at',{withTimezone:true}),
+});
+export const accountingMappings=pgTable('accounting_mappings',{
+ id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),integrationId:uuid('integration_id').references(()=>integrationConnections.id,{onDelete:'cascade'}),mappingType:varchar('mapping_type',{length:40}).notNull(),localId:varchar('local_id',{length:255}).notNull(),externalId:varchar('external_id',{length:255}).notNull(),externalCode:varchar('external_code',{length:100}),metadata:jsonb('metadata').default({}).notNull(),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>({mappingUnique:uniqueIndex('accounting_mappings_scope_unique').on(t.tenantId,t.integrationId,t.mappingType,t.localId)}));
+export const webhookSubscriptions=pgTable('webhook_subscriptions',{
+ id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),name:varchar('name',{length:120}).notNull(),targetUrl:varchar('target_url',{length:2048}).notNull(),secretCiphertext:text('secret_ciphertext').notNull(),previousSecretCiphertext:text('previous_secret_ciphertext'),previousSecretValidUntil:timestamp('previous_secret_valid_until',{withTimezone:true}),enabled:boolean('enabled').default(true).notNull(),eventTypes:text('event_types').array().notNull(),apiVersion:varchar('api_version',{length:20}).default('2026-07-01').notNull(),description:varchar('description',{length:500}),customHeadersCiphertext:text('custom_headers_ciphertext'),allowedHost:varchar('allowed_host',{length:255}).notNull(),environment:varchar('environment',{length:20}).default('live').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>users.id,{onDelete:'restrict'}),lastSuccessfulDeliveryAt:timestamp('last_successful_delivery_at',{withTimezone:true}),lastFailedDeliveryAt:timestamp('last_failed_delivery_at',{withTimezone:true}),consecutiveFailureCount:integer('consecutive_failure_count').default(0).notNull(),disabledReason:varchar('disabled_reason',{length:500}),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>({tenantIdx:index('webhook_subscriptions_tenant_idx').on(t.tenantId,t.enabled)}));
+export const apiCredentials=pgTable('api_credentials',{
+ id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),name:varchar('name',{length:120}).notNull(),keyHash:varchar('key_hash',{length:64}).notNull().unique(),keyPrefix:varchar('key_prefix',{length:16}).notNull(),scopes:text('scopes').array().notNull(),environment:varchar('environment',{length:20}).default('live').notNull(),rateLimitTier:varchar('rate_limit_tier',{length:20}).default('STANDARD').notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>users.id,{onDelete:'restrict'}),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),lastUsedAt:timestamp('last_used_at',{withTimezone:true}),expiresAt:timestamp('expires_at',{withTimezone:true}),revokedAt:timestamp('revoked_at',{withTimezone:true}),
+});
+export const hardwareIntegrations=pgTable('hardware_integrations',{
+ id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),locationId:uuid('location_id').notNull().references(()=>locations.id,{onDelete:'restrict'}),provider:varchar('provider',{length:40}).notNull(),deviceType:varchar('device_type',{length:40}).notNull(),externalDeviceId:varchar('external_device_id',{length:255}),deviceLabel:varchar('device_label',{length:120}).notNull(),status:varchar('status',{length:30}).default('OFFLINE').notNull(),connectionType:varchar('connection_type',{length:30}).notNull(),configuration:jsonb('configuration').default({}).notNull(),lastOnlineAt:timestamp('last_online_at',{withTimezone:true}),lastSuccessfulActionAt:timestamp('last_successful_action_at',{withTimezone:true}),lastError:varchar('last_error',{length:500}),enabled:boolean('enabled').default(true).notNull(),createdByUserId:uuid('created_by_user_id').notNull().references(()=>users.id,{onDelete:'restrict'}),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>({deviceUnique:uniqueIndex('hardware_integrations_device_unique').on(t.tenantId,t.provider,t.externalDeviceId)}));
+
+export const formSubmissionDrafts=pgTable('form_submission_drafts',{
+ id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),assignmentId:uuid('assignment_id').notNull().references(()=>formAssignments.id,{onDelete:'cascade'}).unique(),formVersionId:uuid('form_version_id').notNull().references(()=>formVersions.id,{onDelete:'restrict'}),resumeTokenHash:varchar('resume_token_hash',{length:64}).notNull().unique(),answersJson:jsonb('answers_json').default({}).notNull(),currentPage:integer('current_page').default(0).notNull(),completionPercentage:integer('completion_percentage').default(0).notNull(),revision:integer('revision').default(1).notNull(),language:varchar('language',{length:12}).default('en-GB').notNull(),timezone:varchar('timezone',{length:100}),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),lastSavedAt:timestamp('last_saved_at',{withTimezone:true}).defaultNow().notNull(),revokedAt:timestamp('revoked_at',{withTimezone:true}),
+},t=>({expiryIdx:index('form_submission_drafts_expiry_idx').on(t.expiresAt)}));
+export const formSubmissionAnswers=pgTable('form_submission_answers',{
+ id:uuid('id').defaultRandom().primaryKey(),submissionId:uuid('submission_id').notNull().references(()=>clientFormSubmissions.id,{onDelete:'cascade'}),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),fieldId:uuid('field_id').notNull(),fieldKey:varchar('field_key',{length:120}).notNull(),fieldVersion:integer('field_version').default(1).notNull(),answerType:varchar('answer_type',{length:40}).notNull(),valueJson:jsonb('value_json'),displayValue:text('display_value'),validationState:varchar('validation_state',{length:20}).default('VALID').notNull(),sensitiveClassification:varchar('sensitive_classification',{length:30}).default('STANDARD').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>({submissionFieldUnique:uniqueIndex('form_submission_answers_submission_field_unique').on(t.submissionId,t.fieldKey)}));
+export const formSubmissionFiles=pgTable('form_submission_files',{
+ id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),assignmentId:uuid('assignment_id').notNull().references(()=>formAssignments.id,{onDelete:'cascade'}),submissionId:uuid('submission_id').references(()=>clientFormSubmissions.id,{onDelete:'cascade'}),fieldKey:varchar('field_key',{length:120}).notNull(),storagePath:varchar('storage_path',{length:1000}).notNull().unique(),originalName:varchar('original_name',{length:255}).notNull(),safeContentType:varchar('safe_content_type',{length:100}).notNull(),byteSize:integer('byte_size').notNull(),checksumSha256:varchar('checksum_sha256',{length:64}).notNull(),scanStatus:varchar('scan_status',{length:20}).default('PENDING').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),deletedAt:timestamp('deleted_at',{withTimezone:true}),
+});
+export const formTemplates=pgTable('form_templates',{
+ id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').references(()=>tenants.id,{onDelete:'cascade'}),name:varchar('name',{length:160}).notNull(),category:varchar('category',{length:80}).notNull(),description:text('description').default('').notNull(),schemaJson:jsonb('schema_json').notNull(),themeJson:jsonb('theme_json').default({}).notNull(),version:integer('version').default(1).notNull(),isSystem:boolean('is_system').default(false).notNull(),createdByUserId:uuid('created_by_user_id').references(()=>users.id,{onDelete:'set null'}),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>({catalogIdx:index('form_templates_catalog_idx').on(t.tenantId,t.isSystem,t.category,t.name)}));
+export const formAnalyticsEvents=pgTable('form_analytics_events',{
+ id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),formId:uuid('form_id').notNull().references(()=>forms.id,{onDelete:'cascade'}),formVersionId:uuid('form_version_id').references(()=>formVersions.id,{onDelete:'set null'}),assignmentId:uuid('assignment_id').references(()=>formAssignments.id,{onDelete:'set null'}),eventType:varchar('event_type',{length:40}).notNull(),pageId:varchar('page_id',{length:120}),fieldKey:varchar('field_key',{length:120}),deviceType:varchar('device_type',{length:20}),source:varchar('source',{length:100}),campaign:varchar('campaign',{length:100}),language:varchar('language',{length:12}),durationMs:integer('duration_ms'),occurredAt:timestamp('occurred_at',{withTimezone:true}).defaultNow().notNull(),metadata:jsonb('metadata').default({}).notNull(),
+},t=>({rollupIdx:index('form_analytics_rollup_idx').on(t.tenantId,t.formId,t.formVersionId,t.eventType,t.occurredAt)}));

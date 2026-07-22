@@ -1,18 +1,23 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { getDatabase, tenants, services, users, bookingChannelSchedules, appointments, tenantActivationMilestones } from '@ks-os/database';
+import { getDatabase, tenants, services, users, appointments, tenantActivationMilestones, clientFormSubmissions } from '@ks-os/database';
 import { EntitlementService } from '../../modules/agency/agency.service.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { calculateAvailability } from '../../modules/availability/availability.service.js';
 import { BookingService } from '../../modules/bookings/booking.service.js';
 import { CustomerClaimsService } from '../../modules/customer-portal/customer-claims.service.js';
 import { CustomerClaimEmailService } from '../../modules/customer-portal/customer-claim-email.service.js';
 import { CustomerBookingManagementService } from '../../modules/customer-portal/customer-booking-management.service.js';
 import { env } from '../../config/env.js';
+import { BookingPageService } from '../../modules/bookings/booking-page.service.js';
+import { safeReferrerHost } from '../../modules/bookings/booking-page.utils.js';
 
 import { 
   CreateBookingRequestSchema, 
   AvailabilityQuerySchema,
+  BookingPageSlugSchema,
+  CreateBookingHoldSchema,
+  PublicBookingAnalyticsEventSchema,
   ERROR_CODES 
 } from '@ks-os/contracts';
 
@@ -21,6 +26,7 @@ const statusSchema = z.object({
 });
 
 export default async function publicBookingRoutes(fastify: FastifyInstance) {
+  const bookingPageService = new BookingPageService();
   
   // ============================================================================
   // 1. PUBLIC CATALOGUE
@@ -30,69 +36,52 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     const { subdomain } = request.params as { subdomain: string };
     
-    if (!subdomain || !/^[a-z0-9][a-z0-9-]{1,62}$/.test(subdomain)) {
+    if (!BookingPageSlugSchema.safeParse(subdomain).success) {
       return reply.code(400).send({ error: { code: 'INVALID_SUBDOMAIN', message: 'Invalid subdomain' } });
     }
-
-    const db = getDatabase();
-    const [tenant] = await db.select({
-      id: tenants.id,
-      name: tenants.name,
-      timezone: tenants.timezone,
-      currency: tenants.currency,
-      primaryColor: tenants.primaryColor,
-      secondaryColor: tenants.secondaryColor,
-      accentColor: tenants.accentColor,
-      defaultPaymentMode: tenants.defaultPaymentMode
-    }).from(tenants).where(and(eq(tenants.subdomain, subdomain),eq(tenants.isActive,true),eq(tenants.lifecycleStatus,'ACTIVE'))).limit(1);
-
-    if (!tenant) {
+    const catalog = await bookingPageService.publicCatalog(subdomain, request.headers.host);
+    if (!catalog) {
       return reply.code(404).send({ error: { code: ERROR_CODES.BOOKING_SITE_NOT_FOUND, message: 'Booking site not found' } });
     }
+    return reply.header('cache-control', 'public, max-age=60, stale-while-revalidate=300').send(catalog);
+  });
 
-    const activeServices = await db.select({
-      id: services.id,
-      name: services.name,
-      description: services.description,
-      duration: services.duration,
-      price: services.price,
-      discount: services.discount,
-      requiresDeposit: services.requiresDeposit
-    }).from(services)
-      .where(and(eq(services.tenantId, tenant.id), eq(services.isActive, true)));
+  // ============================================================================
+  // 2A. TEMPORARY SLOT HOLDS AND PRIVACY-SAFE CONVERSION EVENTS
+  // ============================================================================
+  fastify.post('/:subdomain/holds', {
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { subdomain } = request.params as { subdomain: string };
+    if (!BookingPageSlugSchema.safeParse(subdomain).success) return reply.code(400).send({ error: { code: 'INVALID_SUBDOMAIN', message: 'Invalid booking-page address.' } });
+    const parsed = CreateBookingHoldSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: { code: 'INVALID_HOLD_REQUEST', message: 'Choose a valid service, team member, date and time.' } });
+    try {
+      return reply.code(201).send({ hold: await bookingPageService.createHold(subdomain, parsed.data, request.headers.host) });
+    } catch (error: any) {
+      if (error.statusCode) return reply.code(error.statusCode).send({ error: { code: error.code || 'HOLD_FAILED', message: error.message } });
+      throw error;
+    }
+  });
 
-    const activeStaff = await db.select({
-      id: users.id,
-      name: users.name
-    }).from(users).where(and(eq(users.tenantId, tenant.id),eq(users.accountStatus,'ACTIVE'),eq(users.bookingEnabled,true),eq(users.role,'staff')));
+  fastify.delete('/:subdomain/holds/:holdId', {
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { subdomain, holdId } = request.params as { subdomain: string; holdId: string };
+    const parsed = z.object({ token: z.string().min(32).max(200) }).safeParse(request.body);
+    if (!parsed.success || !z.string().uuid().safeParse(holdId).success) return reply.code(400).send({ error: { code: 'INVALID_HOLD_REQUEST', message: 'Invalid slot reservation.' } });
+    const released = await bookingPageService.releaseHold(subdomain, holdId, parsed.data.token, request.headers.host);
+    return released ? reply.code(204).send() : reply.code(404).send({ error: { code: 'HOLD_NOT_FOUND', message: 'The slot reservation was not found.' } });
+  });
 
-    const schedules = await db.select({
-      bookingChannel: bookingChannelSchedules.bookingChannel
-    }).from(bookingChannelSchedules).where(eq(bookingChannelSchedules.tenantId, tenant.id));
-
-    const enabledChannels = new Set(schedules.map(s => s.bookingChannel));
-    const bookingChannels = [
-      ...(enabledChannels.has('in_shop') ? [{ id: 'in_shop', label: 'Visit the shop' }] : []),
-      ...(enabledChannels.has('mobile') ? [{ id: 'mobile', label: 'Mobile appointment' }] : []),
-    ];
-
-    return reply.send({
-      tenant: {
-        id: tenant.id, // ID returned as per Phase 3 contract support
-        name: tenant.name,
-        timezone: tenant.timezone,
-        currency: tenant.currency,
-        colors: {
-          primary: tenant.primaryColor,
-          secondary: tenant.secondaryColor,
-          accent: tenant.accentColor
-        }
-      },
-      paymentMode: tenant.defaultPaymentMode,
-      bookingChannels,
-      services: activeServices,
-      staff: activeStaff
-    });
+  fastify.post('/:subdomain/analytics-events', {
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { subdomain } = request.params as { subdomain: string };
+    const parsed = PublicBookingAnalyticsEventSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: { code: 'INVALID_ANALYTICS_EVENT', message: 'Invalid event.' } });
+    await bookingPageService.recordAnalytics(subdomain, parsed.data, request.headers.host);
+    return reply.code(202).send({ accepted: true });
   });
 
   // ============================================================================
@@ -103,29 +92,38 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     const { subdomain } = request.params as { subdomain: string };
     
-    if (!subdomain || !/^[a-z0-9][a-z0-9-]{1,62}$/.test(subdomain)) {
+    if (!BookingPageSlugSchema.safeParse(subdomain).success) {
       return reply.code(400).send({ error: { code: 'INVALID_SUBDOMAIN', message: 'Invalid subdomain' } });
     }
-
-    const db = getDatabase();
-    const [tenant] = await db.select({ id: tenants.id }).from(tenants).where(and(eq(tenants.subdomain, subdomain),eq(tenants.isActive,true),eq(tenants.lifecycleStatus,'ACTIVE'))).limit(1);
-
-    if (!tenant) {
+    const queryResult = AvailabilityQuerySchema.safeParse(request.query);
+    if (!queryResult.success) {
+      return reply.code(400).send({ error: { code: ERROR_CODES.INVALID_BOOKING_REQUEST, message: queryResult.error.message } });
+    }
+    const resolved = await bookingPageService.resolvePublicPage(subdomain, request.headers.host);
+    if (!resolved) {
       return reply.code(404).send({ error: { code: ERROR_CODES.BOOKING_SITE_NOT_FOUND, message: 'Booking site not found' } });
     }
+    const parseResult = { success: true as const, data: { ...queryResult.data, tenantId: resolved.tenant.id } };
 
-    const parseResult = AvailabilityQuerySchema.safeParse({
-      ...request.query as object,
-      tenantId: tenant.id // forcefully inject resolved tenant
-    });
-
-    if (!parseResult.success) {
-      return reply.code(400).send({ error: { code: ERROR_CODES.INVALID_BOOKING_REQUEST, message: parseResult.error.message } });
+    if (resolved.page.allowedServiceIds.length && !resolved.page.allowedServiceIds.includes(parseResult.data.serviceId)) {
+      return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
+    }
+    if (parseResult.data.staffId && parseResult.data.staffId !== 'any' && resolved.page.allowedStaffIds.length && !resolved.page.allowedStaffIds.includes(parseResult.data.staffId)) {
+      return reply.code(404).send({ error: { code: 'STAFF_NOT_AVAILABLE', message: 'This team member is not available for online booking.' } });
+    }
+    if (parseResult.data.locationId && resolved.page.allowedLocationIds.length && !resolved.page.allowedLocationIds.includes(parseResult.data.locationId)) {
+      return reply.code(404).send({ error: { code: 'LOCATION_NOT_AVAILABLE', message: 'This location is not available for online booking.' } });
     }
 
     try {
-      const slots = await calculateAvailability(parseResult.data);
-      return reply.send(slots);
+      const availability = await calculateAvailability(parseResult.data, { locationId: parseResult.data.locationId, resourceId: parseResult.data.resourceId });
+      const rules = resolved.page.bookingRules as { minimumNoticeMinutes?: number; maximumFutureDays?: number };
+      const earliest = Date.now() + Math.max(0, rules.minimumNoticeMinutes || 0) * 60_000;
+      const latest = Date.now() + Math.max(1, rules.maximumFutureDays || 90) * 86_400_000;
+      return reply.header('cache-control', 'private, max-age=15').send({ ...availability, slots: availability.slots.filter(slot => {
+        const start = new Date(slot.start).getTime();
+        return start >= earliest && start <= latest;
+      }) });
     } catch (err: any) {
       fastify.log.error(err);
       return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'Unable to calculate availability' } });
@@ -140,7 +138,7 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     const { subdomain, reference } = request.params as { subdomain: string, reference: string };
     
-    if (!subdomain || !/^[a-z0-9][a-z0-9-]{1,62}$/.test(subdomain)) {
+    if (!BookingPageSlugSchema.safeParse(subdomain).success) {
       return reply.code(400).send({ error: { code: 'INVALID_SUBDOMAIN', message: 'Invalid subdomain' } });
     }
 
@@ -149,12 +147,12 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: { code: ERROR_CODES.INVALID_BOOKING_REQUEST, message: 'Invalid reference' } });
     }
 
-    const db = getDatabase();
-    const [tenant] = await db.select({ id: tenants.id, currency: tenants.currency, name: tenants.name, primaryColor: tenants.primaryColor, senderDisplayName: tenants.senderDisplayName, replyToEmail: tenants.replyToEmail }).from(tenants).where(and(eq(tenants.subdomain, subdomain),eq(tenants.isActive,true),eq(tenants.lifecycleStatus,'ACTIVE'))).limit(1);
-
-    if (!tenant) {
+    const resolved = await bookingPageService.resolvePublicPage(subdomain, request.headers.host);
+    if (!resolved) {
       return reply.code(404).send({ error: { code: ERROR_CODES.BOOKING_SITE_NOT_FOUND, message: 'Booking site not found' } });
     }
+    const tenant = resolved.tenant;
+    const db = getDatabase();
     
     // Look up the booking by reference and tenant ID
     const [booking] = await db.select({
@@ -204,42 +202,75 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     const { subdomain } = request.params as { subdomain: string };
 
-    if (!subdomain || !/^[a-z0-9][a-z0-9-]{1,62}$/.test(subdomain)) {
+    if (!BookingPageSlugSchema.safeParse(subdomain).success) {
       return reply.code(400).send({ error: { code: 'INVALID_SUBDOMAIN', message: 'Invalid subdomain' } });
-    }
-
-    const db = getDatabase();
-    const [tenant] = await db.select({ id: tenants.id, currency: tenants.currency, name: tenants.name, primaryColor: tenants.primaryColor, senderDisplayName: tenants.senderDisplayName, replyToEmail: tenants.replyToEmail }).from(tenants).where(and(eq(tenants.subdomain, subdomain),eq(tenants.isActive,true),eq(tenants.lifecycleStatus,'ACTIVE'))).limit(1);
-
-    if (!tenant) {
-      return reply.code(404).send({ error: { code: ERROR_CODES.BOOKING_SITE_NOT_FOUND, message: 'Booking site not found' } });
     }
 
     const parseResult = CreateBookingRequestSchema.safeParse(request.body);
     if (!parseResult.success) {
-      console.error('ZOD ERROR:', parseResult.error.format());
       return reply.code(400).send({ error: { code: ERROR_CODES.INVALID_BOOKING_REQUEST, message: 'Invalid booking fields' } });
     }
+    const resolved = await bookingPageService.resolvePublicPage(subdomain, request.headers.host);
+    if (!resolved) {
+      return reply.code(404).send({ error: { code: ERROR_CODES.BOOKING_SITE_NOT_FOUND, message: 'Booking site not found' } });
+    }
+    const { tenant, page } = resolved;
+    const db = getDatabase();
 
     const data = parseResult.data;
+
+    if (page.allowedServiceIds.length && !page.allowedServiceIds.includes(data.serviceId)) return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
+    if (page.allowedStaffIds.length && !page.allowedStaffIds.includes(data.staffId)) return reply.code(404).send({ error: { code: 'STAFF_NOT_AVAILABLE', message: 'This team member is not available for online booking.' } });
+    if (data.locationId && page.allowedLocationIds.length && !page.allowedLocationIds.includes(data.locationId)) return reply.code(404).send({ error: { code: 'LOCATION_NOT_AVAILABLE', message: 'This location is not available for online booking.' } });
 
     try {
       const bookingService = new BookingService();
       await new EntitlementService().assertUsageAvailable(tenant.id, 'bookings.monthly');
-      const booking = await bookingService.createPublicBooking(
-        tenant.id,
-        data.serviceId,
-        data.staffId,
-        data.startTime,
-        data.client,
-        data.paymentMode,
-        data.payNow,
-        data.idempotencyKey,
-        data.bookingChannel,
-        data.mobileAddress,
-        data.resourceId
-      );
+      const paymentSettings = page.paymentSettings as { mode?: string };
+      const verifiedPaymentMode = paymentSettings.mode === 'FULL' ? 'pay_now'
+        : paymentSettings.mode === 'DEPOSIT' ? 'deposit_required'
+          : paymentSettings.mode === 'CUSTOMER_CHOICE' ? data.paymentMode
+            : 'pay_later';
+      const booking = await db.transaction(async tx => {
+        const hold = await bookingPageService.validateHoldForBooking(tx, page.id, data);
+        const created = await bookingService.createPublicBooking(
+          tenant.id,
+          data.serviceId,
+          data.staffId,
+          data.startTime,
+          data.client,
+          verifiedPaymentMode,
+          verifiedPaymentMode !== 'pay_later',
+          data.idempotencyKey,
+          data.bookingChannel,
+          data.mobileAddress,
+          data.resourceId,
+          tx,
+        );
+        const appointmentId = created.appointment_id || created.id;
+        if (data.intakeSubmissionIds.length) {
+          const submissions = await tx.select({ id: clientFormSubmissions.id }).from(clientFormSubmissions).where(and(eq(clientFormSubmissions.tenantId, tenant.id), inArray(clientFormSubmissions.id, data.intakeSubmissionIds)));
+          if (submissions.length !== new Set(data.intakeSubmissionIds).size) throw Object.assign(new Error('One or more intake submissions are invalid.'), { code: 'INVALID_INTAKE_SUBMISSION', statusCode: 400 });
+          await tx.update(clientFormSubmissions).set({ appointmentId }).where(and(eq(clientFormSubmissions.tenantId, tenant.id), inArray(clientFormSubmissions.id, data.intakeSubmissionIds)));
+        }
+        const intakeRequired = Boolean((page.intakeFormSettings as { requiredBeforeConfirmation?: boolean }).requiredBeforeConfirmation);
+        await tx.update(appointments).set({
+          locationId: data.locationId || null,
+          bookingSource: data.source,
+          sourceMedium: data.sourceMedium,
+          sourceCampaign: data.sourceCampaign,
+          sourceReferrerHost: safeReferrerHost(request.headers.referer),
+          bookingPageId: page.id,
+          bookingHoldId: hold?.id || null,
+          intakeStatus: data.intakeSubmissionIds.length ? 'COMPLETED' : intakeRequired ? 'PENDING' : 'NOT_REQUIRED',
+          customerNotes: data.customerNotes || null,
+          updatedAt: new Date(),
+        }).where(and(eq(appointments.id, appointmentId), eq(appointments.tenantId, tenant.id)));
+        if (hold) await bookingPageService.consumeHold(tx, hold.id, appointmentId);
+        return created;
+      });
       await db.insert(tenantActivationMilestones).values({ tenantId: tenant.id, milestoneKey: 'FIRST_REAL_BOOKING', sourceType: 'APPOINTMENT', sourceId: booking.appointment_id || booking.id }).onConflictDoNothing({ target: [tenantActivationMilestones.tenantId, tenantActivationMilestones.milestoneKey] });
+      if (data.analyticsSessionId) await bookingPageService.recordAnalytics(subdomain, { event: 'BOOKING_COMPLETED', sessionId: data.analyticsSessionId, serviceId: data.serviceId, staffId: data.staffId, locationId: data.locationId || undefined, source: data.source, medium: data.sourceMedium, campaign: data.sourceCampaign }, request.headers.host, booking.appointment_id || booking.id);
 
       // The claim token is generated after the booking transaction commits and is
       // sent directly to email. It is never put in the email outbox or another
@@ -278,7 +309,7 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       let checkoutUrl = undefined;
       const amountDue = booking.quoted_amount || 0;
       
-      if (amountDue > 0 && data.paymentMode !== 'pay_later') {
+      if (amountDue > 0 && verifiedPaymentMode !== 'pay_later') {
         const { StripeService } = await import('../../modules/integrations/stripe/stripe.service.js');
         const stripeService = new StripeService();
         const paymentResult = await stripeService.createBookingPaymentSession(
@@ -315,6 +346,9 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       if (err.code === 'ENTITLEMENT_USAGE_EXCEEDED') {
         return reply.code(409).send({ error: { code: err.code, message: err.message } });
       }
+      if (err.statusCode && err.statusCode < 500) {
+        return reply.code(err.statusCode).send({ error: { code: err.code || 'BOOKING_CONFLICT', message: err.message } });
+      }
       const message = err.message || '';
       if (message === 'STRIPE_ACCOUNT_NOT_READY') {
         return reply.code(402).send({ error: { code: 'PAYMENTS_NOT_AVAILABLE', message: 'Payments are not currently available for this shop.' } });
@@ -334,12 +368,11 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     const { subdomain, reference } = request.params as { subdomain: string, reference: string };
 
-    const db = getDatabase();
-    const [tenant] = await db.select({ id: tenants.id }).from(tenants).where(and(eq(tenants.subdomain, subdomain),eq(tenants.isActive,true),eq(tenants.lifecycleStatus,'ACTIVE'))).limit(1);
-
-    if (!tenant) {
+    const resolved = await bookingPageService.resolvePublicPage(subdomain, request.headers.host);
+    if (!resolved) {
       return reply.code(404).send({ error: { code: ERROR_CODES.BOOKING_SITE_NOT_FOUND, message: 'Booking site not found' } });
     }
+    const tenant = resolved.tenant;
 
     const { StripeRepository } = await import('../../modules/integrations/stripe/stripe.repository.js');
     const repo = new StripeRepository();
@@ -362,11 +395,12 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     const { subdomain, reference } = request.params as { subdomain: string, reference: string };
     
-    const db = getDatabase();
-    const [tenant] = await db.select({ id: tenants.id, currency: tenants.currency }).from(tenants).where(and(eq(tenants.subdomain, subdomain),eq(tenants.isActive,true),eq(tenants.lifecycleStatus,'ACTIVE'))).limit(1);
-    if (!tenant) {
+    const resolved = await bookingPageService.resolvePublicPage(subdomain, request.headers.host);
+    if (!resolved) {
       return reply.code(404).send({ error: { code: ERROR_CODES.BOOKING_SITE_NOT_FOUND, message: 'Booking site not found' } });
     }
+    const tenant = resolved.tenant;
+    const db = getDatabase();
 
     const [booking] = await db.select({
       id: appointments.id,

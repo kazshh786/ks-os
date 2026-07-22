@@ -491,6 +491,8 @@ export class MockDataProvider implements DataProvider {
   async getBookings(): Promise<Booking[]> {
     return getStorageData(STORAGE_KEYS.BOOKINGS, generateInitialBookings());
   }
+  async getBookingOperations(query:any):Promise<any>{const items=await this.getBookings();return{items:items.map((b:any)=>({id:b.id,reference:b.reference,startTime:new Date(`${b.date}T${b.startTime}:00Z`).toISOString(),endTime:new Date(`${b.date}T${b.endTime}:00Z`).toISOString(),timezone:'Europe/London',status:String(b.status).toUpperCase(),customer:{id:b.clientId||null,name:b.clientName,email:b.clientEmail||null,phone:b.clientPhone||null},service:{id:b.serviceId||null,name:b.serviceId,durationMinutes:b.duration},staff:{id:b.staffId,name:b.staffId},location:{id:null,name:null},bookingChannel:b.visitType==='Mobile'?'mobile':'in_shop',paymentStatus:b.paymentStatus,quotedAmount:Math.round(b.price*100),intakeStatus:'NOT_REQUIRED',source:'STAFF_CREATED',notes:b.internalNotes||null,customerNotes:null,attentionReasons:[],createdAt:b.createdAt})),meta:{page:query.page||1,limit:query.limit||100,total:items.length,hasMore:false},summary:{total:items.length,confirmed:0,completed:0,cancelled:0,noShow:0,awaitingPayment:0,incompleteForms:0,requiresAttention:0}};}
+  async getBookingDetail(bookingId:string):Promise<any>{const result=await this.getBookingOperations({page:1,limit:100});const item=result.items.find((x:any)=>x.id===bookingId);if(!item)throw new Error('Booking not found.');return item;}
   async saveBookings(bookings: Booking[]): Promise<void> {
     saveStorageData(STORAGE_KEYS.BOOKINGS, bookings);
   }
@@ -541,6 +543,14 @@ export class MockDataProvider implements DataProvider {
   async createStaffBooking(input: any): Promise<any> { throw new Error('Not implemented in mock'); }
   async updateBookingStatus(bookingId: string, status: string): Promise<void> { throw new Error('Not implemented in mock'); }
   async rescheduleBooking(bookingId: string, input: any): Promise<void> { throw new Error('Not implemented in mock'); }
+  async createBookingHold():Promise<any>{throw new Error('Not implemented in mock');}
+  async releaseBookingHold():Promise<void>{}
+  async recordPublicBookingEvent():Promise<void>{}
+  async getBookingPageSettings():Promise<any>{throw new Error('Not implemented in mock');}
+  async updateBookingPageSettings():Promise<any>{throw new Error('Not implemented in mock');}
+  async setBookingPagePublished():Promise<any>{throw new Error('Not implemented in mock');}
+  async configureBookingCustomDomain():Promise<any>{throw new Error('Not implemented in mock');}
+  async getBookingPageAnalytics():Promise<any>{return{days:30,counts:{},conversionRate:0};}
   async cancelBooking(bookingId: string): Promise<void> { throw new Error('Not implemented in mock'); }
 
   private formsUnavailable(): never { throw new Error('Consent forms are not available from the mock provider. Use the live API.'); }

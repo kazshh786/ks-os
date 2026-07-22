@@ -37,6 +37,7 @@ test('Integration: Authorization for rescheduling bookings', async (t) => {
   const getBookingByIdStub = sinon.stub(BookingRepository.prototype, 'getBookingById');
   const rescheduleBookingRepoStub = sinon.stub(BookingRepository.prototype, 'rescheduleBooking').resolves();
   const getOverlappingStub = sinon.stub(BookingRepository.prototype, 'getOverlappingAppointments').resolves([]);
+  sinon.stub(BookingRepository.prototype, 'isRescheduleSlotAvailable').resolves(true);
   const dbInsertStub = sinon.stub(getDatabase() as any, 'insert');
   const dbUpdateStub = sinon.stub(getDatabase() as any, 'update');
   const dbTransactionStub = sinon.stub(getDatabase() as any, 'transaction');
@@ -68,7 +69,8 @@ test('Integration: Authorization for rescheduling bookings', async (t) => {
       serviceId: '55555555-5555-5555-5555-555555555555',
       userId: mockUserId, // Assigned to this staff!
       status: 'CONFIRMED',
-      startTime: new Date('2026-07-16T14:00:00.000Z')
+      startTime: new Date('2026-07-16T14:00:00.000Z'),
+      endTime: new Date('2026-07-16T14:30:00.000Z')
     } as any);
 
     const response = await app.inject({
@@ -102,7 +104,8 @@ test('Integration: Authorization for rescheduling bookings', async (t) => {
       serviceId: '55555555-5555-5555-5555-555555555555',
       userId: '44444444-4444-4444-4444-444444444444', // NOT assigned to this staff
       status: 'CONFIRMED',
-      startTime: new Date('2026-07-16T14:00:00.000Z')
+      startTime: new Date('2026-07-16T14:00:00.000Z'),
+      endTime: new Date('2026-07-16T14:30:00.000Z')
     } as any);
 
     const updateStatusStub = sinon.stub(BookingRepository.prototype, 'updateBookingStatus').resolves();

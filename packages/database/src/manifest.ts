@@ -115,4 +115,19 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     order: 22,
     description: 'Phase 14 compliance audit, consent, privacy requests, legal holds, and retention operations',
   },
+  {
+    filename: '20260723000000_phase_13_integrations.sql',
+    order: 23,
+    description: 'Phase 13 provider-neutral integrations, automation credentials, and supported hardware',
+  },
+  {
+    filename: '20260723010000_advanced_intake_forms.sql',
+    order: 24,
+    description: 'Advanced versioned intake forms, save-and-resume, files, templates, review, and analytics',
+  },
+  {
+    filename: '20260723020000_booking_operations_platform.sql',
+    order: 25,
+    description: 'Booking operations calendar, automatic public booking pages, temporary slot holds, source attribution, audit, and analytics',
+  },
 ];

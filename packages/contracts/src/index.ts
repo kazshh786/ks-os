@@ -105,3 +105,5 @@ export * from './reputation.js';
 export * from './agency.js';
 export * from './authentication.js';
 export * from './compliance.js';
+export * from './integrations.js';
+export * from './booking-operations.js';

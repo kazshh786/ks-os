@@ -40,6 +40,8 @@ import { agencyRoutes, agencyWorkerRoutes, goCardlessWebhookRoutes, managedServi
 import { authenticationRoutes } from './modules/authentication/authentication.routes.js';
 import { env } from './config/env.js';
 import { complianceRoutes, complianceWorkerRoutes } from './modules/agency/compliance.routes.js';
+import { externalApiRoutes, integrationRoutes, publicCalendarRoutes } from './modules/integrations/integrations.routes.js';
+import { bookingPageSettingsRoutes } from './modules/bookings/booking-page.routes.js';
 
 export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => void } = {}) {
   const fastify = Fastify({
@@ -121,6 +123,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
 
   // Public Routes (no auth)
   fastify.register(publicBookingRoutes, { prefix: '/api/v1/public' });
+  fastify.register(publicCalendarRoutes, { prefix: '/api/v1/public' });
   fastify.register(publicFormRoutes, { prefix: '/api/v1/public/forms' });
   fastify.register(publicReputationRoutes, { prefix: '/api/v1/public/review-invitations' });
   fastify.register(reviewOauthCallbackRoutes, { prefix: '/api/v1/reputation/connections' });
@@ -151,6 +154,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(servicesRoutes);
   fastify.register(staffRoutes);
   fastify.register(bookingsRoutes);
+  fastify.register(bookingPageSettingsRoutes);
   fastify.register(dashboardRoutes);
   fastify.register(clientsRoutes);
   fastify.register(posModuleRoutes);
@@ -182,6 +186,8 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(taskRoutes, { prefix: '/api/v1/tasks' });
   fastify.register(taskWorkerRoutes, { prefix: '/api/v1/internal/task-worker' });
   fastify.register(reputationRoutes, { prefix: '/api/v1/reputation' });
+  fastify.register(integrationRoutes, { prefix: '/api/v1' });
+  fastify.register(externalApiRoutes, { prefix: '/api/external/v1' });
 
   return fastify;
 }

@@ -13,6 +13,7 @@ import { getDatabase } from '@ks-os/database';
 import { StripeRepository } from '../src/modules/integrations/stripe/stripe.repository.js';
 import { StripeService } from '../src/modules/integrations/stripe/stripe.service.js';
 import { EntitlementService } from '../src/modules/agency/agency.service.js';
+import { BookingPageService } from '../src/modules/bookings/booking-page.service.js';
 
 test('Integration: Booking Payments E2E', async (t) => {
   const app = buildApp();
@@ -60,6 +61,23 @@ test('Integration: Booking Payments E2E', async (t) => {
 
   const dbExecuteStub = sinon.stub(getDatabase() as any, 'execute');
   dbExecuteStub.resolves({ rows: [{ id: '11111111-1111-1111-1111-111111111111', status: 'PENDING', paymentStatus: 'UNPAID', quoted_amount: 5000 }] });
+  sinon.stub(BookingPageService.prototype, 'resolvePublicPage').resolves({
+    tenant: {
+      id: '11111111-1111-1111-1111-111111111111',
+      name: 'Test Tenant',
+      currency: 'GBP',
+    },
+    page: {
+      id: '44444444-4444-4444-4444-444444444444',
+      allowedServiceIds: [],
+      allowedStaffIds: [],
+      allowedLocationIds: [],
+      paymentSettings: { mode: 'FULL' },
+      intakeFormSettings: { requiredBeforeConfirmation: false },
+    },
+    redirectSlug: null,
+  } as any);
+  sinon.stub(BookingPageService.prototype, 'validateHoldForBooking').resolves(null);
 
   await t.test('POST /api/v1/public/:subdomain/bookings creates checkout session', async () => {
     // Subdomain resolution

@@ -1,17 +1,10 @@
-import React from 'react';
-import { useWorkspace } from '../context/WorkspaceContext.js';
-import BookingWizard from '../components/BookingWizard.js';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { PublicBookingFlow } from '../features/bookings/PublicBookingFlow.js';
 
-export const BookingWizardPage: React.FC = () => {
-  const { activeTenant } = useWorkspace();
-
-  if (!activeTenant) return null;
-
-  return (
-    <BookingWizard
-      tenant={activeTenant}
-      onBookingSuccess={() => {}}
-    />
-  );
-};
+export function BookingWizardPage() {
+  const { subdomain } = useParams();
+  const [search] = useSearchParams();
+  if (!subdomain) return null;
+  return <PublicBookingFlow slug={subdomain} preview={search.get('preview') === '1'} />;
+}
 export default BookingWizardPage;

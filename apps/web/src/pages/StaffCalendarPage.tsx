@@ -1,20 +1,4 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useWorkspace } from '../context/WorkspaceContext.js';
-import StaffCalendar from '../components/StaffCalendar.js';
+import { BookingOperationsCalendar } from '../features/bookings/BookingOperationsCalendar.js';
 
-export const StaffCalendarPage: React.FC = () => {
-  const { activeTenant } = useWorkspace();
-  const navigate = useNavigate();
-
-  if (!activeTenant) return null;
-
-  return (
-    <StaffCalendar
-      tenant={activeTenant}
-      onLaunchManualBooking={() => navigate('/app/reception')}
-      onLaunchCheckout={(booking) => navigate('/app/pos', { state: { booking } })}
-    />
-  );
-};
+export function StaffCalendarPage() { return <BookingOperationsCalendar />; }
 export default StaffCalendarPage;

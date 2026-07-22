@@ -22,6 +22,7 @@ const teamOperationsService=readFileSync(new URL('../src/modules/team-operations
 const posRoutes=readFileSync(new URL('../src/modules/pos/pos.routes.ts',import.meta.url),'utf8');
 const bookingRoutes=readFileSync(new URL('../src/modules/bookings/booking.routes.ts',import.meta.url),'utf8');
 const publicBookingRoutes=readFileSync(new URL('../src/routes/public/booking.ts',import.meta.url),'utf8');
+const bookingPageService=readFileSync(new URL('../src/modules/bookings/booking-page.service.ts',import.meta.url),'utf8');
 
 test('agency roles are a closed server-owned set',()=>{
   assert.deepEqual(AgencyRoleSchema.options,['PLATFORM_OWNER','AGENCY_ADMINISTRATOR','SUPPORT_ADMINISTRATOR','FULFILMENT_ADMINISTRATOR']);
@@ -242,5 +243,5 @@ test('offboarding honours minimum terms and completes through a provider worker'
   assert.match(agencyService,/actions\/cancel/);
   assert.match(routes,/post\('\/offboarding'/);
   assert.match(auth,/Inactive tenant access denied/);
-  assert.match(publicBookingRoutes,/eq\(tenants\.lifecycleStatus,'ACTIVE'\)/);
+  assert.match(bookingPageService,/eq\(tenants\.lifecycleStatus,\s*'ACTIVE'\)/);
 });

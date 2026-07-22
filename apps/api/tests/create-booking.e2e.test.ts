@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import sinon from 'sinon';
 import { buildApp } from '../src/app.js';
 import { BookingService } from '../src/modules/bookings/booking.service.js';
+import { BookingPageService } from '../src/modules/bookings/booking-page.service.js';
 import { EntitlementService } from '../src/modules/agency/agency.service.js';
 import { getDatabase } from '@ks-os/database';
 
@@ -36,6 +37,25 @@ test('Booking Creation endpoints', async (t) => {
   insertResult.values = sinon.stub().returns(insertResult);
   insertResult.onConflictDoNothing = sinon.stub().returns(insertResult);
   sinon.stub(getDatabase() as any, 'insert').returns(insertResult);
+  const updateResult: any = Promise.resolve();
+  updateResult.set = sinon.stub().returns(updateResult);
+  updateResult.where = sinon.stub().returns(updateResult);
+  sinon.stub(getDatabase() as any, 'update').returns(updateResult);
+  sinon.stub(getDatabase() as any, 'transaction').callsFake(async (callback: any) => callback(getDatabase()));
+
+  sinon.stub(BookingPageService.prototype, 'resolvePublicPage').resolves({
+    tenant: { ...mockTenant, currency: 'GBP' },
+    page: {
+      id: '44444444-4444-4444-4444-444444444444',
+      allowedServiceIds: [],
+      allowedStaffIds: [],
+      allowedLocationIds: [],
+      paymentSettings: { mode: 'PAY_LATER' },
+      intakeFormSettings: { requiredBeforeConfirmation: false },
+    },
+    redirectSlug: null,
+  } as any);
+  sinon.stub(BookingPageService.prototype, 'validateHoldForBooking').resolves(null);
   
   const createBookingStub = sinon.stub(BookingService.prototype, 'createPublicBooking').resolves({
     id: 'booking-123',

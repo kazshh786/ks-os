@@ -981,6 +981,9 @@ export function CustomerFormPage() {
         answers,
         acknowledgement: { accepted: true, name },
         idempotencyKey,
+        language: navigator.language || 'en-GB',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        trackingParameters: {},
       });
       navigate('/customer/forms', { replace: true });
     } catch {

@@ -33,6 +33,7 @@ import {
   EmailHistoryItem,
   DashboardOverviewQuery,
   DashboardOverviewResponse
+  ,BookingOperationsQuery, BookingOperationsResponse, BookingOperationsItem, BookingPageResponse, BookingPageUpdate, CreateBookingHold, BookingHoldResponse
   ,AppointmentsReportQuery, AppointmentsReportResponse, ClientsReportQuery, ClientsReportResponse,
   ServicesReportQuery, ServicesReportResponse, StaffReportQuery, StaffReportResponse,
   ProductsReportQuery, ProductsReportResponse, StockReportQuery, StockReportResponse,
@@ -62,6 +63,8 @@ export interface DataProvider {
   saveProducts(tenantId: string, productList: Product[]): Promise<void>;
 
   getBookings(): Promise<Booking[]>;
+  getBookingOperations(query: BookingOperationsQuery): Promise<BookingOperationsResponse>;
+  getBookingDetail(bookingId: string): Promise<BookingOperationsItem>;
   /** @deprecated Do not use in live mode. Use granular methods instead. */
   saveBookings(bookings: Booking[]): Promise<void>;
 
@@ -70,12 +73,20 @@ export interface DataProvider {
   getPublicAvailability(subdomain: string, input: any): Promise<any>;
   getPublicBookingStatus(subdomain: string, reference: string): Promise<any>;
   createPublicBooking(subdomain: string, input: any): Promise<any>;
+  createBookingHold(subdomain: string, input: CreateBookingHold): Promise<BookingHoldResponse>;
+  releaseBookingHold(subdomain: string, holdId: string, token: string): Promise<void>;
+  recordPublicBookingEvent(subdomain: string, input: Record<string, unknown>): Promise<void>;
 
   // Staff Booking Methods
   createStaffBooking(input: any): Promise<any>;
   updateBookingStatus(bookingId: string, status: string): Promise<void>;
   rescheduleBooking(bookingId: string, input: any): Promise<void>;
   cancelBooking(bookingId: string): Promise<void>;
+  getBookingPageSettings(): Promise<BookingPageResponse>;
+  updateBookingPageSettings(input: BookingPageUpdate): Promise<BookingPageResponse>;
+  setBookingPagePublished(published: boolean): Promise<BookingPageResponse>;
+  configureBookingCustomDomain(domain: string | null): Promise<any>;
+  getBookingPageAnalytics(days?: number): Promise<any>;
 
   getEvents(): Promise<OutboxEvent[]>;
   saveEvents(events: OutboxEvent[]): Promise<void>;
