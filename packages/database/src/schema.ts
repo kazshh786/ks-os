@@ -424,12 +424,32 @@ export const checkoutTransactions = pgTable('checkout_transactions', {
   paymentStatus: text('payment_status', { enum: ['PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED'] })
     .default('PENDING')
     .notNull(),
-  paymentMethod: text('payment_method', { enum: ['CARD', 'CASH', 'SPLIT'] })
+  paymentMethod: text('payment_method', { enum: ['CARD', 'CASH', 'BANK_TRANSFER', 'EXTERNAL_CARD', 'OTHER', 'STRIPE_ONLINE', 'STRIPE_TERMINAL', 'SPLIT'] })
     .default('CARD')
     .notNull(),
   purchasedProducts: jsonb('purchased_products').default([]).notNull(),
   stripePaymentIntentId: varchar('stripe_payment_intent_id', { length: 255 }),
   purpose: text('purpose', { enum: ['point_of_sale', 'booking_payment'] }).default('point_of_sale').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const checkoutPaymentComponents = pgTable('checkout_payment_components', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  checkoutTransactionId: uuid('checkout_transaction_id')
+    .notNull()
+    .references(() => checkoutTransactions.id, { onDelete: 'cascade' }),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  paymentMethod: text('payment_method', { enum: ['CASH', 'BANK_TRANSFER', 'EXTERNAL_CARD', 'OTHER', 'STRIPE_ONLINE', 'STRIPE_TERMINAL'] }).notNull(),
+  amountInCents: integer('amount_in_cents').notNull(),
+  externalProvider: varchar('external_provider', { length: 50 }),
+  externalProviderName: varchar('external_provider_name', { length: 100 }),
+  externalReference: varchar('external_reference', { length: 255 }),
+  methodDescription: varchar('method_description', { length: 255 }),
+  verificationSource: text('verification_source', { enum: ['PROVIDER_CONFIRMED', 'STAFF_CONFIRMED'] }).notNull(),
+  providerPaymentId: varchar('provider_payment_id', { length: 255 }),
+  staffUserId: uuid('staff_user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

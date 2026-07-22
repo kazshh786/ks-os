@@ -77,7 +77,7 @@ export const PaymentDetailPage: React.FC = () => {
               </button>
             ) : (
               <span className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-slate-100 text-slate-500 border border-slate-200">
-                {!isStripe ? 'Cash/Terminal (Cannot refund via Stripe)' : 'Fully Refunded'}
+                {!isStripe ? 'External Payment (Refunds must be completed through original provider)' : 'Fully Refunded'}
               </span>
             )}
           </div>

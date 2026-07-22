@@ -1,11 +1,12 @@
 import { PosRepository } from './pos.repository.js';
 import { getPosAppointmentFilter } from './pos.permissions.js';
-import { calculateGrandTotal, validatePaymentMethod, getFinalSplitAmounts } from './pos.calculator.js';
-import { TransactionSummary } from '@ks-os/contracts';
-import { appointments, checkoutTransactions, products, services } from '@ks-os/database';
+import { calculateGrandTotal, validatePaymentMethod, getFinalPaymentComponents } from './pos.calculator.js';
+import { getDatabase } from '@ks-os/database';
+import { appointments, checkoutTransactions, checkoutPaymentComponents, products, services } from '@ks-os/database';
 import { eq, and, sql } from 'drizzle-orm';
 import { BusinessEventsService, stableEventId } from '../automations/business-events.service.js';
 import { PaymentsService } from '../payments/payments.service.js';
+import type { TransactionSummary } from '@ks-os/contracts';
 
 export class PosService {
   private readonly businessEvents = new BusinessEventsService();
@@ -70,8 +71,9 @@ export class PosService {
     }
 
     const grandTotalInCents = calculateGrandTotal(serviceAmountInCents, retailAmountInCents, payload.tipAmountInCents);
+    const finalComponents = getFinalPaymentComponents(payload.paymentMethod, grandTotalInCents, payload.paymentComponents, payload.splitAmounts);
 
-    validatePaymentMethod(payload.paymentMethod, grandTotalInCents, payload.splitAmounts);
+    validatePaymentMethod(payload.paymentMethod, grandTotalInCents, finalComponents);
 
     return {
       serviceAmountInCents,
@@ -211,9 +213,8 @@ export class PosService {
       }
 
       const grandTotalInCents = calculateGrandTotal(serviceAmountInCents, retailAmountInCents, payload.tipAmountInCents);
-      validatePaymentMethod(payload.paymentMethod, grandTotalInCents, payload.splitAmounts);
-
-      const finalSplitAmounts = getFinalSplitAmounts(payload.paymentMethod, grandTotalInCents, payload.splitAmounts);
+      const finalComponents = getFinalPaymentComponents(payload.paymentMethod, grandTotalInCents, payload.paymentComponents, payload.splitAmounts);
+      validatePaymentMethod(payload.paymentMethod, grandTotalInCents, finalComponents);
 
       const [transaction] = await tx.insert(checkoutTransactions)
         .values({
@@ -226,6 +227,28 @@ export class PosService {
           purpose: 'point_of_sale'
         })
         .returning();
+
+      // Insert components
+      const insertedComponents = [];
+      for (const comp of finalComponents) {
+        const [inserted] = await tx.insert(checkoutPaymentComponents).values({
+          checkoutTransactionId: transaction.id,
+          tenantId: tenantId,
+          paymentMethod: comp.method,
+          amountInCents: comp.amountInCents,
+          externalProvider: comp.externalProvider,
+          externalProviderName: comp.externalProviderName,
+          externalReference: comp.externalReference,
+          methodDescription: comp.methodDescription,
+          verificationSource: 'STAFF_CONFIRMED',
+          staffUserId: authUserId,
+        }).returning();
+        insertedComponents.push({
+           ...inserted,
+           verificationSource: inserted.verificationSource as 'PROVIDER_CONFIRMED' | 'STAFF_CONFIRMED'
+        });
+      }
+
       await this.payments.enqueuePaymentEmail(tx, tenantId, transaction.id, 'payment-confirmed', `payment-confirmed:${transaction.id}`);
 
       const nextStatus = appt.status === 'COMPLETED' ? 'COMPLETED' : 'COMPLETED';
@@ -261,7 +284,7 @@ export class PosService {
           grandTotalInCents
         },
         paymentMethod: transaction.paymentMethod as any,
-        splitAmounts: finalSplitAmounts,
+        paymentComponents: insertedComponents,
         paymentStatus: transaction.paymentStatus,
         date: transaction.createdAt.toISOString(),
         items: receiptItems

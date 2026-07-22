@@ -31,9 +31,20 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
   const [customTip, setCustomTip] = useState<string>('');
 
   // Payment Options
-  const [paymentMode, setPaymentMode] = useState<'Cash' | 'Card' | 'Split'>('Card');
-  const [cashPaid, setCashPaid] = useState('');
-  const [cardPaid, setCardPaid] = useState('');
+  // Payment Options
+  const [paymentMode, setPaymentMode] = useState<'Cash' | 'ExternalCard' | 'BankTransfer' | 'Other' | 'Split'>('ExternalCard');
+  
+  // External Provider Info
+  const [externalProvider, setExternalProvider] = useState<string>('SUMUP');
+  const [externalProviderName, setExternalProviderName] = useState<string>('');
+  const [externalReference, setExternalReference] = useState<string>('');
+  const [methodDescription, setMethodDescription] = useState<string>('');
+  
+  // Split payments editor
+  const [splitComponents, setSplitComponents] = useState<any[]>([
+    { id: '1', method: 'CASH', amount: '', provider: '', ref: '', customProvider: '', desc: '' },
+    { id: '2', method: 'EXTERNAL_CARD', amount: '', provider: 'SUMUP', ref: '', customProvider: '', desc: '' }
+  ]);
 
   // Server Authoritative Totals
   const [serverTotals, setServerTotals] = useState<CheckoutPreviewResponse['data'] | null>(null);
@@ -54,7 +65,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
   // Re-generate idempotencyKey if the basket configuration changes
   useEffect(() => {
     idempotencyKeyRef.current = crypto.randomUUID();
-  }, [cart, tipPercentage, customTip, selectedAppointmentId, paymentMode, cashPaid, cardPaid]);
+  }, [cart, tipPercentage, customTip, selectedAppointmentId, paymentMode, splitComponents, externalProvider, externalProviderName, externalReference, methodDescription]);
 
   useEffect(() => {
     const loadPOSData = async () => {
@@ -164,14 +175,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
     return () => clearTimeout(timer);
   }, [cart, tipPercentage, customTip, selectedAppointmentId, paymentMode]);
 
-  // Preset quick split values based on authoritative total
-  useEffect(() => {
-    if (serverTotals && paymentMode === 'Split') {
-      const tot = serverTotals.grandTotalInCents / 100;
-      setCashPaid((tot / 2).toFixed(2));
-      setCardPaid((tot / 2).toFixed(2));
-    }
-  }, [paymentMode, serverTotals]);
+  
 
   const handleCheckoutSubmit = async () => {
     if (!selectedAppointmentId || !serverTotals) return;
@@ -187,7 +191,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
     }
     
     if (paymentMode === 'Split') {
-      const totalProvided = Math.round(parseFloat(cashPaid || '0') * 100) + Math.round(parseFloat(cardPaid || '0') * 100);
+      const totalProvided = splitComponents.reduce((sum, c) => sum + Math.round(parseFloat(c.amount || '0') * 100), 0);
       if (totalProvided !== serverTotals.grandTotalInCents) {
         setCheckoutState('invalid-split');
         return;
@@ -197,22 +201,49 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
     setCheckoutState('loading');
     
     try {
+      let finalMethod = paymentMode;
+      if (paymentMode === 'ExternalCard') finalMethod = 'EXTERNAL_CARD';
+      if (paymentMode === 'BankTransfer') finalMethod = 'BANK_TRANSFER';
+      if (paymentMode === 'Other') finalMethod = 'OTHER';
+
       const payload: any = {
         idempotencyKey: idempotencyKeyRef.current,
         appointmentId: selectedAppointmentId,
-        paymentMethod: paymentMode.toUpperCase(),
+        paymentMethod: finalMethod.toUpperCase(),
         tipAmountInCents: serverTotals.tipAmountInCents,
         purchasedProducts: cart.filter(c => c.type === 'Product').map(c => ({
           productId: c.id,
           quantity: c.quantity
-        }))
+        })),
+        paymentComponents: []
       };
 
       if (paymentMode === 'Split') {
-        payload.splitAmounts = {
-          cashInCents: Math.round(parseFloat(cashPaid || '0') * 100),
-          cardInCents: Math.round(parseFloat(cardPaid || '0') * 100)
+        payload.paymentComponents = splitComponents.map(c => ({
+          method: c.method,
+          amountInCents: Math.round(parseFloat(c.amount || '0') * 100),
+          externalProvider: c.method === 'EXTERNAL_CARD' ? c.provider : undefined,
+          externalProviderName: c.method === 'EXTERNAL_CARD' && c.provider === 'OTHER' ? c.customProvider : (c.method === 'OTHER' ? c.customProvider : undefined),
+          externalReference: c.ref || undefined,
+          methodDescription: c.method === 'OTHER' ? c.desc : undefined
+        })).filter((c: any) => c.amountInCents > 0);
+      } else {
+        const comp: any = {
+          method: finalMethod.toUpperCase(),
+          amountInCents: serverTotals.grandTotalInCents
         };
+        if (paymentMode === 'ExternalCard') {
+          comp.externalProvider = externalProvider;
+          if (externalProvider === 'OTHER') comp.externalProviderName = externalProviderName;
+          comp.externalReference = externalReference || undefined;
+        } else if (paymentMode === 'Other') {
+          comp.methodDescription = methodDescription;
+          comp.externalProviderName = externalProviderName;
+          comp.externalReference = externalReference || undefined;
+        } else if (paymentMode === 'BankTransfer') {
+          comp.externalReference = externalReference || undefined;
+        }
+        payload.paymentComponents = [comp];
       }
 
       const res = await getDataProvider().completeCheckout(payload);
@@ -236,6 +267,12 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
     setTipPercentage(null);
     setCustomTip('');
     setExternalCardConfirmed(false);
+    setPaymentMode('ExternalCard');
+    setSplitComponents([{ id: '1', method: 'CASH', amount: '', provider: '', ref: '', customProvider: '', desc: '' }, { id: '2', method: 'EXTERNAL_CARD', amount: '', provider: 'SUMUP', ref: '', customProvider: '', desc: '' }]);
+    setExternalProvider('SUMUP');
+    setExternalProviderName('');
+    setExternalReference('');
+    setMethodDescription('');
     if (!preloadedBooking) {
       setSelectedAppointmentId(null);
       getDataProvider().getCheckoutAppointments().then(res => setCandidates(res.data)).catch(console.error);
@@ -519,65 +556,116 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
             <div className="border-t pt-3 space-y-2">
               <span className="text-[10px] font-black text-slate-400 block uppercase">Settlement Configuration</span>
               
-              <div className="flex gap-1.5 bg-slate-100 p-0.5 rounded-xl text-[10px] font-bold">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMode('Card')}
-                  className={`flex-1 py-1.5 rounded-lg transition ${paymentMode === 'Card' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-                >
-                  💳 External card terminal
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMode('Cash')}
-                  className={`flex-1 py-1.5 rounded-lg transition ${paymentMode === 'Cash' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-                >
-                  💵 Cash
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMode('Split')}
-                  className={`flex-1 py-1.5 rounded-lg transition ${paymentMode === 'Split' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-                >
-                  ✂️ Split Card/Cash
-                </button>
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 bg-slate-100 p-0.5 rounded-xl text-[10px] font-bold">
+                <button type="button" onClick={() => setPaymentMode('ExternalCard')} className={`py-1.5 rounded-lg transition ${paymentMode === 'ExternalCard' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>💳 Card</button>
+                <button type="button" onClick={() => setPaymentMode('Cash')} className={`py-1.5 rounded-lg transition ${paymentMode === 'Cash' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>💵 Cash</button>
+                <button type="button" onClick={() => setPaymentMode('BankTransfer')} className={`py-1.5 rounded-lg transition ${paymentMode === 'BankTransfer' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>🏦 Bank</button>
+                <button type="button" onClick={() => setPaymentMode('Other')} className={`py-1.5 rounded-lg transition ${paymentMode === 'Other' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>📝 Other</button>
+                <button type="button" onClick={() => setPaymentMode('Split')} className={`py-1.5 rounded-lg transition ${paymentMode === 'Split' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>✂️ Split</button>
               </div>
 
-              {paymentMode === 'Split' && (
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <div>
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Cash Portion (£)</label>
-                    <input
-                      type="number"
-                      value={cashPaid}
-                      onChange={(e) => {
-                        setCashPaid(e.target.value);
-                        if (serverTotals) {
-                          const portion = (serverTotals.grandTotalInCents / 100) - parseFloat(e.target.value || '0');
-                          setCardPaid(Math.max(0, portion).toFixed(2));
-                        }
-                      }}
-                      className="w-full p-1.5 border rounded-lg text-xs font-mono focus:outline-none"
-                    />
+              
+              {paymentMode === 'ExternalCard' && (
+                <div className="space-y-2 mt-2 text-xs">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[8px] font-bold text-slate-400 uppercase">Provider</label>
+                      <select value={externalProvider} onChange={e => setExternalProvider(e.target.value)} className="w-full p-1.5 border rounded-lg">
+                        <option value="SUMUP">SumUp</option>
+                        <option value="ZETTLE">Zettle</option>
+                        <option value="SQUARE">Square</option>
+                        <option value="WORLDPAY">Worldpay</option>
+                        <option value="BANK_TERMINAL">Bank Terminal</option>
+                        <option value="OTHER">Other...</option>
+                      </select>
+                    </div>
+                    {externalProvider === 'OTHER' && (
+                      <div>
+                        <label className="text-[8px] font-bold text-slate-400 uppercase">Provider Name</label>
+                        <input type="text" value={externalProviderName} onChange={e => setExternalProviderName(e.target.value)} placeholder="e.g. Tyro" className="w-full p-1.5 border rounded-lg focus:outline-none" />
+                      </div>
+                    )}
                   </div>
                   <div>
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">External Card Portion (£)</label>
-                    <input
-                      type="number"
-                      value={cardPaid}
-                      onChange={(e) => {
-                        setCardPaid(e.target.value);
-                        if (serverTotals) {
-                          const portion = (serverTotals.grandTotalInCents / 100) - parseFloat(e.target.value || '0');
-                          setCashPaid(Math.max(0, portion).toFixed(2));
-                        }
-                      }}
-                      className="w-full p-1.5 border rounded-lg text-xs font-mono focus:outline-none"
-                    />
+                    <label className="text-[8px] font-bold text-slate-400 uppercase">Receipt/Ref # (Optional)</label>
+                    <input type="text" value={externalReference} onChange={e => setExternalReference(e.target.value)} placeholder="0000" className="w-full p-1.5 border rounded-lg focus:outline-none" />
                   </div>
                 </div>
               )}
-              {(paymentMode === 'Card' || paymentMode === 'Split') && (
+
+              {paymentMode === 'BankTransfer' && (
+                <div className="space-y-2 mt-2 text-xs">
+                  <div>
+                    <label className="text-[8px] font-bold text-slate-400 uppercase">Bank Reference (Optional)</label>
+                    <input type="text" value={externalReference} onChange={e => setExternalReference(e.target.value)} placeholder="Transfer ref" className="w-full p-1.5 border rounded-lg focus:outline-none" />
+                  </div>
+                </div>
+              )}
+
+              {paymentMode === 'Other' && (
+                <div className="space-y-2 mt-2 text-xs">
+                  <div>
+                    <label className="text-[8px] font-bold text-slate-400 uppercase">Method Description</label>
+                    <input type="text" value={methodDescription} onChange={e => setMethodDescription(e.target.value)} placeholder="e.g. Gift Voucher" className="w-full p-1.5 border rounded-lg focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-bold text-slate-400 uppercase">Reference (Optional)</label>
+                    <input type="text" value={externalReference} onChange={e => setExternalReference(e.target.value)} placeholder="Voucher code" className="w-full p-1.5 border rounded-lg focus:outline-none" />
+                  </div>
+                </div>
+              )}
+
+              {paymentMode === 'Split' && (
+                <div className="mt-2 space-y-2 text-xs bg-slate-50 p-2 rounded-xl border border-slate-200">
+                  {splitComponents.map((c, idx) => (
+                    <div key={c.id} className="flex flex-col gap-1.5 bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
+                      <div className="flex justify-between items-center">
+                        <select value={c.method} onChange={e => {
+                          const newComps = [...splitComponents];
+                          newComps[idx].method = e.target.value;
+                          if (e.target.value === 'EXTERNAL_CARD' && !newComps[idx].provider) newComps[idx].provider = 'SUMUP';
+                          setSplitComponents(newComps);
+                        }} className="font-bold border-none bg-transparent focus:ring-0 text-xs p-0 text-indigo-700 w-1/2">
+                          <option value="CASH">Cash</option>
+                          <option value="EXTERNAL_CARD">Ext. Card</option>
+                          <option value="BANK_TRANSFER">Bank</option>
+                          <option value="OTHER">Other</option>
+                        </select>
+                        <input
+                          type="number"
+                          placeholder="0.00"
+                          value={c.amount}
+                          onChange={e => {
+                            const newComps = [...splitComponents];
+                            newComps[idx].amount = e.target.value;
+                            setSplitComponents(newComps);
+                          }}
+                          className="w-20 text-right font-mono border-b focus:outline-none"
+                        />
+                      </div>
+                      {c.method === 'EXTERNAL_CARD' && (
+                        <div className="flex gap-2 text-[10px]">
+                          <select value={c.provider} onChange={e => {
+                            const newComps = [...splitComponents];
+                            newComps[idx].provider = e.target.value;
+                            setSplitComponents(newComps);
+                          }} className="border rounded p-1 w-full bg-slate-50">
+                            <option value="SUMUP">SumUp</option>
+                            <option value="ZETTLE">Zettle</option>
+                            <option value="SQUARE">Square</option>
+                            <option value="WORLDPAY">Worldpay</option>
+                            <option value="BANK_TERMINAL">Bank</option>
+                            <option value="OTHER">Other</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setSplitComponents([...splitComponents, { id: Date.now().toString(), method: 'CASH', amount: '', provider: '', ref: '', customProvider: '', desc: '' }])} className="text-[10px] font-bold text-indigo-600 hover:underline w-full text-center">+ Add split</button>
+                </div>
+              )}
+
+              {paymentMode !== 'Cash' && (
                 <div className="mt-2 text-[10px] text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 flex items-start gap-2">
                   <input
                     type="checkbox"
@@ -587,7 +675,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
                     className="mt-0.5 cursor-pointer"
                   />
                   <label htmlFor="external_card_confirm" className="leading-tight cursor-pointer">
-                    I confirm the external terminal payment was successful.
+                    I confirm that the {paymentMode === 'BankTransfer' ? 'bank transfer was received' : paymentMode === 'Split' ? 'split payments are complete' : 'payment was successful'}.
                   </label>
                 </div>
               )}
@@ -610,7 +698,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
             {/* Submit checkout button */}
             <button
               onClick={handleCheckoutSubmit}
-              disabled={checkoutState === 'loading' || isPreviewing || !serverTotals || !selectedAppointmentId || ((paymentMode === 'Card' || paymentMode === 'Split') && !externalCardConfirmed)}
+              disabled={checkoutState === 'loading' || isPreviewing || !serverTotals || !selectedAppointmentId || ((paymentMode !== 'Cash') && !externalCardConfirmed)}
               className="mt-4 w-full bg-slate-950 text-white font-extrabold text-xs py-3 rounded-2xl hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shadow"
             >
               {checkoutState === 'loading' || isPreviewing ? (

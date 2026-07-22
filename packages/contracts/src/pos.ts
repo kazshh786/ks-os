@@ -2,12 +2,37 @@ import { z } from 'zod';
 
 /**
  * Payment method for the transaction.
- * - CASH: manually confirmed cash payment
- * - CARD: externally confirmed card-terminal payment (not verified or processed by KS OS)
- * - SPLIT: manually confirmed split payment
  */
-export const PaymentMethodSchema = z.enum(['CASH', 'CARD', 'SPLIT']);
+export const PaymentMethodSchema = z.enum([
+  'CASH',
+  'CARD', // Legacy compatibility mapped to EXTERNAL_CARD
+  'BANK_TRANSFER',
+  'EXTERNAL_CARD',
+  'OTHER',
+  'STRIPE_ONLINE',
+  'STRIPE_TERMINAL',
+  'SPLIT',
+]);
 export type PaymentMethod = z.infer<typeof PaymentMethodSchema>;
+
+export const VerificationSourceSchema = z.enum(['PROVIDER_CONFIRMED', 'STAFF_CONFIRMED']);
+export type VerificationSource = z.infer<typeof VerificationSourceSchema>;
+
+export const PaymentComponentInputSchema = z.object({
+  method: z.enum(['CASH', 'BANK_TRANSFER', 'EXTERNAL_CARD', 'OTHER']),
+  amountInCents: z.number().int().positive(),
+  externalProvider: z.string().optional(),
+  externalProviderName: z.string().optional(),
+  externalReference: z.string().optional(),
+  methodDescription: z.string().optional(),
+});
+export type PaymentComponentInput = z.infer<typeof PaymentComponentInputSchema>;
+
+export const PaymentComponentSchema = PaymentComponentInputSchema.extend({
+  id: z.string().uuid(),
+  verificationSource: VerificationSourceSchema,
+});
+export type PaymentComponent = z.infer<typeof PaymentComponentSchema>;
 
 // Product schemas have been moved to products.ts
 
@@ -62,7 +87,8 @@ export type CheckoutCalculation = z.infer<typeof CheckoutCalculationSchema>;
 export const CheckoutPreviewRequestSchema = z.object({
   appointmentId: z.string().uuid(),
   paymentMethod: PaymentMethodSchema,
-  splitAmounts: SplitPaymentAmountsSchema.optional(),
+  paymentComponents: z.array(PaymentComponentInputSchema).optional(),
+  splitAmounts: SplitPaymentAmountsSchema.optional(), // Legacy compat
   tipAmountInCents: z.number().int().nonnegative().default(0),
   purchasedProducts: z.array(CheckoutBasketItemSchema).default([]),
 });
@@ -78,7 +104,8 @@ export const CheckoutRequestSchema = z.object({
   idempotencyKey: z.string().min(1),
   appointmentId: z.string().uuid(),
   paymentMethod: PaymentMethodSchema,
-  splitAmounts: SplitPaymentAmountsSchema.optional(),
+  paymentComponents: z.array(PaymentComponentInputSchema).optional(),
+  splitAmounts: SplitPaymentAmountsSchema.optional(), // Legacy compat
   tipAmountInCents: z.number().int().nonnegative().default(0),
   purchasedProducts: z.array(CheckoutBasketItemSchema).default([]),
 });
@@ -89,7 +116,8 @@ export const TransactionSummarySchema = z.object({
   appointment: CheckoutAppointmentSchema,
   calculation: CheckoutCalculationSchema,
   paymentMethod: PaymentMethodSchema,
-  splitAmounts: SplitPaymentAmountsSchema.optional(),
+  paymentComponents: z.array(PaymentComponentSchema).optional(),
+  splitAmounts: SplitPaymentAmountsSchema.optional(), // Legacy compat
   paymentStatus: z.string(),
   date: z.string(),
   items: z.array(z.object({

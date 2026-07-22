@@ -7,7 +7,7 @@ import { BusinessEventsService, stableEventId } from '../automations/business-ev
 import { EmailService } from '../email/email.service.js';
 
 function mapPaymentSource(method: string, purpose: string): PaymentSource {
-  if (method === 'CARD' && purpose === 'booking_payment') return 'STRIPE_ONLINE';
+  if (method === 'STRIPE_ONLINE' || (method === 'CARD' && purpose === 'booking_payment')) return 'STRIPE_ONLINE';
   if (method === 'CASH') return 'MANUAL_CASH';
   if (method === 'SPLIT') return 'MANUAL_SPLIT';
   return 'EXTERNAL_TERMINAL';
