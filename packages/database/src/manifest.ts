@@ -110,4 +110,9 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     order: 21,
     description: 'Production additive schema reconciliation for 13 missing tables',
   },
+  {
+    filename: '20260722220000_phase_14_compliance_operations.sql',
+    order: 22,
+    description: 'Phase 14 compliance audit, consent, privacy requests, legal holds, and retention operations',
+  },
 ];

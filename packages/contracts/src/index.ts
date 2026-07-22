@@ -104,3 +104,4 @@ export * from './customer-booking-management.js';
 export * from './reputation.js';
 export * from './agency.js';
 export * from './authentication.js';
+export * from './compliance.js';

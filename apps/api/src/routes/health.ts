@@ -1,20 +1,13 @@
 import { FastifyInstance } from 'fastify';
-import { execSync } from 'child_process';
 import { getDatabase, sql } from '@ks-os/database';
+import { env } from '../config/env.js';
 
-function getGitCommit(): string {
-  try {
-    return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
-  } catch {
-    return process.env.GIT_COMMIT || '0.1.0';
-  }
-}
+const version=()=>env.RELEASE_VERSION||process.env.GIT_COMMIT||'development';
 
 export default async function registerRoutes(fastify: FastifyInstance) {
-  // Safe production health endpoint
-  const healthHandler = async (request: any, reply: any) => {
+  const liveness = async (_request:any,reply:any)=>reply.send({status:'OK',service:'ks-os-api',uptime:process.uptime(),version:version(),timestamp:new Date().toISOString()});
+  const readiness = async (_request: any, reply: any) => {
     const timestamp = new Date().toISOString();
-    const version = getGitCommit();
 
     let dbStatus = 'reachable';
     let isDbHealthy = true;
@@ -22,7 +15,7 @@ export default async function registerRoutes(fastify: FastifyInstance) {
     try {
       // Safely ping database with standard query
       const db = getDatabase();
-      await db.execute(sql`SELECT 1`);
+      await Promise.race([db.execute(sql`SELECT 1`),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Database health timeout')),2000))]);
     } catch (error) {
       fastify.log.error({ err: error }, 'Health check database ping failed');
       dbStatus = 'unreachable';
@@ -33,8 +26,9 @@ export default async function registerRoutes(fastify: FastifyInstance) {
       status: isDbHealthy ? ('OK' as const) : ('ERROR' as const),
       service: 'ks-os-api',
       uptime: process.uptime(),
-      version,
+      version:version(),
       database: dbStatus,
+      checks:{database:dbStatus},
       timestamp,
     };
 
@@ -42,6 +36,8 @@ export default async function registerRoutes(fastify: FastifyInstance) {
   };
 
   // Mount at GET /health and GET /api/health
-  fastify.get('/health', healthHandler);
-  fastify.get('/api/health', healthHandler);
+  fastify.get('/health/live', liveness);
+  fastify.get('/health/ready', readiness);
+  fastify.get('/health', readiness);
+  fastify.get('/api/health', readiness);
 }

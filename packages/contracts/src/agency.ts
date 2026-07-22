@@ -8,13 +8,14 @@ export type AgencyRole = z.infer<typeof AgencyRoleSchema>;
 export const AgencyCapabilitySchema = z.enum([
   'agency.users.manage', 'tenants.read', 'tenants.manage', 'plans.read', 'plans.manage',
   'billing.read', 'billing.manage', 'support.read', 'support.session.start', 'support.retry',
-  'fulfilment.read', 'fulfilment.manage', 'analytics.read', 'audit.read',
+  'fulfilment.read', 'fulfilment.manage', 'analytics.read', 'audit.read', 'audit.export',
+  'privacy.read', 'privacy.manage', 'retention.manage',
 ]);
 export type AgencyCapability = z.infer<typeof AgencyCapabilitySchema>;
 
 const roleCapabilities: Record<AgencyRole, readonly AgencyCapability[]> = {
   PLATFORM_OWNER: AgencyCapabilitySchema.options,
-  AGENCY_ADMINISTRATOR: ['tenants.read','tenants.manage','plans.read','plans.manage','billing.read','billing.manage','support.read','support.session.start','support.retry','fulfilment.read','fulfilment.manage','analytics.read','audit.read'],
+  AGENCY_ADMINISTRATOR: ['tenants.read','tenants.manage','plans.read','plans.manage','billing.read','billing.manage','support.read','support.session.start','support.retry','fulfilment.read','fulfilment.manage','analytics.read','audit.read','audit.export','privacy.read','privacy.manage','retention.manage'],
   SUPPORT_ADMINISTRATOR: ['tenants.read','plans.read','billing.read','support.read','support.session.start','support.retry','audit.read'],
   FULFILMENT_ADMINISTRATOR: ['tenants.read','plans.read','support.read','fulfilment.read','fulfilment.manage'],
 };

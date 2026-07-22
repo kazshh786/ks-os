@@ -16,7 +16,7 @@ const TenantUserId=TenantId.extend({userReference:z.string().uuid()});
 const InvitationReference=z.object({invitationReference:z.string().uuid()});
 const StageParams=TenantId.extend({stageKey:z.string().max(40)}); const DeliverableId=z.object({deliverableId:z.string().uuid()});
 function actor(request:FastifyRequest,capability?:Parameters<FastifyRequest['requireAgency']>[0]):AgencyActor{
-  const auth=request.requireAgency(capability);return{agencyUserId:auth.agencyUserId,role:auth.role,requestId:request.id,ipHash:createHash('sha256').update(`${process.env.AUDIT_IP_HASH_SECRET||'local-development'}:${request.ip}`).digest('hex')};
+  const auth=request.requireAgency(capability);return{agencyUserId:auth.agencyUserId,role:auth.role,requestId:request.id,ipHash:createHash('sha256').update(`${process.env.AUDIT_IP_HASH_SECRET||'local-development'}:${request.ip}`).digest('hex'),sessionId:request.authIdentity?.authSessionId||undefined,userAgent:String(request.headers['user-agent']||'').slice(0,500)||undefined};
 }
 
 export async function agencyRoutes(app:FastifyInstance){const service=new AgencyService();

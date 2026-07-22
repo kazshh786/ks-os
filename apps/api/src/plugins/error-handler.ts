@@ -10,13 +10,13 @@ export default function registerErrorHandler(fastify: FastifyInstance) {
     if (error instanceof CustomerPortalError) {
       fastify.log.warn({ code: error.code, statusCode: error.statusCode }, 'Customer portal domain error');
       const response: ApiError = {
-        error: { code: error.code, message: error.message },
+        error: { code: error.code, message: error.message, details:{requestId:request.id} },
       };
       reply.status(error.statusCode).send(response);
       return;
     }
 
-    fastify.log.error(error);
+    fastify.log.error({err:error,requestId:request.id,correlationId:request.correlationId,route:request.routeOptions.url},'request failed');
 
     const isValidation = error instanceof ZodError;
     const statusCode = isValidation ? 400 : (error.statusCode || 500);
@@ -28,7 +28,8 @@ export default function registerErrorHandler(fastify: FastifyInstance) {
     const apiErrorResponse: ApiError = {
       error: {
         code: isValidation ? 'FORM_INVALID_SCHEMA' : (error.code || 'INTERNAL_SERVER_ERROR'),
-        message: isValidation ? 'The request is invalid.' : safeMessage
+        message: isValidation ? 'The request is invalid.' : safeMessage,
+        details:{requestId:request.id}
       }
     };
 

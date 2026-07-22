@@ -38,11 +38,13 @@ import { customerBookingPolicyRoutes } from './modules/customer-portal/customer-
 import { customerReviewInvitationRoutes, publicReputationRoutes, reputationRoutes, reviewOauthCallbackRoutes } from './modules/reputation/reputation.routes.js';
 import { agencyRoutes, agencyWorkerRoutes, goCardlessWebhookRoutes, managedServiceTenantRoutes } from './modules/agency/agency.routes.js';
 import { authenticationRoutes } from './modules/authentication/authentication.routes.js';
+import { env } from './config/env.js';
+import { complianceRoutes, complianceWorkerRoutes } from './modules/agency/compliance.routes.js';
 
 export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => void } = {}) {
   const fastify = Fastify({
     logger: {
-      level: 'info',
+      level: env.LOG_LEVEL,
       redact: [
         'req.headers.authorization',
         'req.headers["x-ks-support-session"]',
@@ -85,7 +87,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
     // We assume the API sits behind a local reverse proxy (like Plesk or Nginx).
     // trustProxy: true tells Fastify to trust the X-Forwarded-For header from the proxy 
     // to determine the real client IP for rate limiting and logging.
-    trustProxy: true,
+    trustProxy: env.TRUST_PROXY,
     // Add global request body size limit (1MB)
     bodyLimit: 1048576
   });
@@ -130,9 +132,11 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
 
   // Agency control plane and commercial billing are isolated from tenant routes.
   fastify.register(agencyRoutes, { prefix: '/api/v1/agency' });
+  fastify.register(complianceRoutes, { prefix: '/api/v1/agency' });
   fastify.register(goCardlessWebhookRoutes, { prefix: '/api/v1/webhooks/gocardless' });
   fastify.register(managedServiceTenantRoutes, { prefix: '/api/v1/managed-services' });
   fastify.register(agencyWorkerRoutes, { prefix: '/api/v1/internal/agency-worker' });
+  fastify.register(complianceWorkerRoutes, { prefix: '/api/v1/internal/privacy-worker' });
 
   // Customer endpoints resolve the independently modelled customer account from
   // the verified Supabase identity. They never accept tenant or client IDs.

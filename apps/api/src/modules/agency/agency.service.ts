@@ -18,14 +18,23 @@ import { GoCardlessClient } from './gocardless.service.js';
 import { AccountInvitationService } from '../authentication/account-invitation.service.js';
 import { getSupabaseAdmin } from '../../lib/supabase-admin.js';
 
-export interface AgencyActor { agencyUserId: string; role: AgencyRole; requestId?: string; ipHash?: string }
+export interface AgencyActor { agencyUserId: string; role: AgencyRole; requestId?: string; ipHash?: string; sessionId?:string; userAgent?:string }
 const fail = (statusCode:number, code:string, message:string) => Object.assign(new Error(message), { statusCode, code });
 const STAGES = ['SALE_HANDOVER','CONTRACT','SETUP_FEE','DIRECT_DEBIT','BUSINESS_PROFILE','BRAND_ASSETS','CATALOGUE','TEAM_AND_LOCATIONS','PAYMENTS','COMMUNICATIONS','TRAINING','LAUNCH'] as const;
 
+const protectedAuditKey=/(password|passcode|token|secret|authorization|cookie|card|cvv|cvc|medical|answer|bank|accountnumber)/i;
+export function redactAuditValue(value:unknown,key='metadata'):{value:unknown;redacted:boolean}{
+  if(protectedAuditKey.test(key))return{value:'[REDACTED]',redacted:true};
+  if(Array.isArray(value)){const items=value.map(item=>redactAuditValue(item,key));return{value:items.map(item=>item.value),redacted:items.some(item=>item.redacted)};}
+  if(value&&typeof value==='object'){let redacted=false;const safe:Record<string,unknown>={};for(const[k,v]of Object.entries(value as Record<string,unknown>)){const item=redactAuditValue(v,k);safe[k]=item.value;redacted||=item.redacted;}return{value:safe,redacted};}
+  return{value,redacted:false};
+}
+
 export class AgencyAuditService {
   private db = getDatabase();
-  async write(actor: AgencyActor | null, action:string, targetType:string, targetId?:string|null, options:{tenantId?:string|null;reason?:string|null;outcome?:string;metadata?:Record<string,unknown>}={}) {
-    await this.db.insert(platformAuditEvents).values({ agencyUserId: actor?.agencyUserId, tenantId: options.tenantId, action, targetType, targetId, outcome: options.outcome || 'SUCCESS', reason: options.reason, requestId: actor?.requestId, ipHash: actor?.ipHash, metadata: options.metadata || {} });
+  async write(actor: AgencyActor | null, action:string, targetType:string, targetId?:string|null, options:{tenantId?:string|null;reason?:string|null;outcome?:string;metadata?:Record<string,unknown>;category?:string;description?:string;previousValues?:unknown;newValues?:unknown;sourceComponent?:string;tx?:any}={}) {
+    const metadata=redactAuditValue(options.metadata||{});const previous=redactAuditValue(options.previousValues,'previousValues');const next=redactAuditValue(options.newValues,'newValues');const db=options.tx||this.db;
+    await db.insert(platformAuditEvents).values({ agencyUserId: actor?.agencyUserId, tenantId: options.tenantId, action, targetType, targetId, outcome: options.outcome || 'SUCCESS', reason: options.reason, requestId: actor?.requestId, ipHash: actor?.ipHash, metadata: metadata.value as Record<string,unknown>, eventCategory:options.category||'ADMINISTRATION',description:options.description,actorRole:actor?.role,sessionId:actor?.sessionId,userAgent:actor?.userAgent,previousValues:previous.value,newValues:next.value,environment:process.env.NODE_ENV||'development',sourceComponent:options.sourceComponent||'agency-api',containsRedactions:metadata.redacted||previous.redacted||next.redacted });
   }
 }
 

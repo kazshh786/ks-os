@@ -1225,11 +1225,24 @@ export const platformAuditEvents = pgTable('platform_audit_events', {
   requestId: varchar('request_id', { length: 100 }),
   ipHash: varchar('ip_hash', { length: 64 }),
   metadata: jsonb('metadata').default({}).notNull(),
+  eventCategory: varchar('event_category', { length: 50 }).default('ADMINISTRATION').notNull(),
+  description: varchar('description', { length: 1000 }),
+  actorRole: varchar('actor_role', { length: 50 }),
+  sessionId: uuid('session_id'),
+  userAgent: varchar('user_agent', { length: 500 }),
+  previousValues: jsonb('previous_values'),
+  newValues: jsonb('new_values'),
+  environment: varchar('environment', { length: 30 }).default('production').notNull(),
+  sourceComponent: varchar('source_component', { length: 120 }).default('api').notNull(),
+  containsRedactions: boolean('contains_redactions').default(false).notNull(),
   occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
 }, table => ({
   tenantOccurredIdx: index('platform_audit_events_tenant_occurred_idx').on(table.tenantId, table.occurredAt),
   actorOccurredIdx: index('platform_audit_events_actor_occurred_idx').on(table.agencyUserId, table.occurredAt),
   actionOccurredIdx: index('platform_audit_events_action_occurred_idx').on(table.action, table.occurredAt),
+  categoryOccurredIdx: index('platform_audit_category_occurred_idx').on(table.eventCategory, table.occurredAt),
+  targetOccurredIdx: index('platform_audit_target_occurred_idx').on(table.targetType, table.targetId, table.occurredAt),
+  outcomeOccurredIdx: index('platform_audit_outcome_occurred_idx').on(table.outcome, table.occurredAt),
 }));
 
 export const platformPlans = pgTable('platform_plans', {
@@ -1358,3 +1371,35 @@ export const tenantActivationMilestones = pgTable('tenant_activation_milestones'
 export const tenantChurnRecords = pgTable('tenant_churn_records', {
   id: uuid('id').defaultRandom().primaryKey(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }), planVersionId: uuid('plan_version_id').references(() => platformPlanVersions.id, { onDelete: 'restrict' }), cancellationAt: timestamp('cancellation_at', { withTimezone: true }).notNull(), lifetimeDays: integer('lifetime_days').notNull(), monthlyValueMinor: integer('monthly_value_minor').notNull(), reason: varchar('reason', { length: 500 }).notNull(), competitor: varchar('competitor', { length: 255 }), productIssue: boolean('product_issue').default(false).notNull(), serviceIssue: boolean('service_issue').default(false).notNull(), priceIssue: boolean('price_issue').default(false).notNull(), businessClosure: boolean('business_closure').default(false).notNull(), failedPayment: boolean('failed_payment').default(false).notNull(), dataExportedAt: timestamp('data_exported_at', { withTimezone: true }), websiteTransferStatus: varchar('website_transfer_status', { length: 80 }).default('NOT_STARTED').notNull(), createdByAgencyUserId: uuid('created_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, table => ({ tenantCancellationIdx: index('tenant_churn_records_tenant_cancellation_idx').on(table.tenantId, table.cancellationAt), cancellationIdx: index('tenant_churn_records_cancellation_idx').on(table.cancellationAt) }));
+
+export const consentRecords = pgTable('consent_records', {
+  id: uuid('id').defaultRandom().primaryKey(), tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'restrict' }), authUserId: uuid('auth_user_id'), clientId: uuid('client_id').references(() => clients.id, { onDelete: 'restrict' }),
+  consentType: varchar('consent_type', { length: 80 }).notNull(), consentVersion: varchar('consent_version', { length: 40 }).notNull(), policyReference: varchar('policy_reference', { length: 500 }), wordingSnapshot: text('wording_snapshot').notNull(), status: varchar('status', { length: 20 }).notNull(), collectionSource: varchar('collection_source', { length: 80 }).notNull(),
+  ipHash: varchar('ip_hash', { length: 64 }), userAgent: varchar('user_agent', { length: 500 }), evidenceMetadata: jsonb('evidence_metadata').default({}).notNull(), supersedesConsentId: uuid('supersedes_consent_id'), grantedAt: timestamp('granted_at', { withTimezone: true }), withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({ subjectIdx: index('consent_records_subject_idx').on(table.tenantId, table.authUserId, table.clientId, table.consentType, table.createdAt) }));
+
+export const privacyRequests = pgTable('privacy_requests', {
+  id: uuid('id').defaultRandom().primaryKey(), publicReference: uuid('public_reference').defaultRandom().notNull().unique(), tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'restrict' }), requestType: varchar('request_type', { length: 20 }).notNull(),
+  subjectAuthUserId: uuid('subject_auth_user_id'), subjectClientId: uuid('subject_client_id').references(() => clients.id, { onDelete: 'restrict' }), subjectEmailHash: varchar('subject_email_hash', { length: 64 }), status: varchar('status', { length: 50 }).default('RECEIVED').notNull(), identityVerificationStatus: varchar('identity_verification_status', { length: 30 }).default('REQUIRED').notNull(),
+  assignedAgencyUserId: uuid('assigned_agency_user_id').references(() => agencyUsers.id, { onDelete: 'set null' }), requestNotes: text('request_notes'), dueAt: timestamp('due_at', { withTimezone: true }).notNull(), completedAt: timestamp('completed_at', { withTimezone: true }), failureReason: varchar('failure_reason', { length: 500 }), decisionReason: varchar('decision_reason', { length: 1000 }), deletionStrategy: varchar('deletion_strategy', { length: 30 }), scheduledFor: timestamp('scheduled_for', { withTimezone: true }), legalHoldCheckedAt: timestamp('legal_hold_checked_at', { withTimezone: true }), retentionException: jsonb('retention_exception'), createdByAgencyUserId: uuid('created_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({ queueIdx: index('privacy_requests_queue_idx').on(table.status, table.dueAt, table.id), subjectIdx: index('privacy_requests_subject_idx').on(table.tenantId, table.subjectAuthUserId, table.subjectClientId, table.createdAt) }));
+
+export const privacyExportArtifacts = pgTable('privacy_export_artifacts', {
+  id: uuid('id').defaultRandom().primaryKey(), requestId: uuid('request_id').notNull().unique().references(() => privacyRequests.id, { onDelete: 'cascade' }), storagePath: varchar('storage_path', { length: 1000 }).notNull(), format: varchar('format', { length: 20 }).notNull(), byteSize: integer('byte_size').notNull(), checksumSha256: varchar('checksum_sha256', { length: 64 }).notNull(), expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), downloadedAt: timestamp('downloaded_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({ expiryIdx: index('privacy_export_expiry_idx').on(table.expiresAt) }));
+
+export const legalHolds = pgTable('legal_holds', {
+  id: uuid('id').defaultRandom().primaryKey(), tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'restrict' }), subjectAuthUserId: uuid('subject_auth_user_id'), subjectClientId: uuid('subject_client_id').references(() => clients.id, { onDelete: 'restrict' }), reason: varchar('reason', { length: 1000 }).notNull(), legalBasis: varchar('legal_basis', { length: 500 }).notNull(), status: varchar('status', { length: 20 }).default('ACTIVE').notNull(), startsAt: timestamp('starts_at', { withTimezone: true }).defaultNow().notNull(), endsAt: timestamp('ends_at', { withTimezone: true }), releasedAt: timestamp('released_at', { withTimezone: true }), createdByAgencyUserId: uuid('created_by_agency_user_id').notNull().references(() => agencyUsers.id, { onDelete: 'restrict' }), releasedByAgencyUserId: uuid('released_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({ activeSubjectIdx: index('legal_holds_active_subject_idx').on(table.status, table.tenantId, table.subjectAuthUserId, table.subjectClientId) }));
+
+export const retentionPolicies = pgTable('retention_policies', {
+  id: uuid('id').defaultRandom().primaryKey(), publicReference: uuid('public_reference').defaultRandom().notNull().unique(), tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'restrict' }), dataCategory: varchar('data_category', { length: 100 }).notNull(), retentionDays: integer('retention_days').notNull(), retentionTrigger: varchar('retention_trigger', { length: 80 }).notNull(), expiryAction: varchar('expiry_action', { length: 30 }).notNull(), legalBasis: varchar('legal_basis', { length: 500 }).notNull(), jurisdiction: varchar('jurisdiction', { length: 80 }), enabled: boolean('enabled').default(false).notNull(), dryRun: boolean('dry_run').default(true).notNull(), version: integer('version').default(1).notNull(), createdByAgencyUserId: uuid('created_by_agency_user_id').notNull().references(() => agencyUsers.id, { onDelete: 'restrict' }), approvedByAgencyUserId: uuid('approved_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }), lastExecutedAt: timestamp('last_executed_at', { withTimezone: true }), nextExecutionAt: timestamp('next_execution_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({ scopeVersionUnique: uniqueIndex('retention_policy_scope_unique').on(table.tenantId, table.dataCategory, table.version), dueIdx: index('retention_policies_due_idx').on(table.enabled, table.nextExecutionAt) }));
+
+export const retentionPolicyVersions = pgTable('retention_policy_versions', {
+  id: uuid('id').defaultRandom().primaryKey(), policyId: uuid('policy_id').notNull().references(() => retentionPolicies.id, { onDelete: 'restrict' }), version: integer('version').notNull(), snapshot: jsonb('snapshot').notNull(), approvedByAgencyUserId: uuid('approved_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({ policyVersionUnique: uniqueIndex('retention_policy_version_unique').on(table.policyId, table.version) }));
+
+export const retentionRuns = pgTable('retention_runs', {
+  id: uuid('id').defaultRandom().primaryKey(), policyId: uuid('policy_id').notNull().references(() => retentionPolicies.id, { onDelete: 'restrict' }), idempotencyKey: varchar('idempotency_key', { length: 160 }).notNull().unique(), status: varchar('status', { length: 20 }).default('QUEUED').notNull(), dryRun: boolean('dry_run').notNull(), scannedCount: integer('scanned_count').default(0).notNull(), affectedCount: integer('affected_count').default(0).notNull(), skippedLegalHoldCount: integer('skipped_legal_hold_count').default(0).notNull(), report: jsonb('report').default({}).notNull(), failureCode: varchar('failure_code', { length: 100 }), startedAt: timestamp('started_at', { withTimezone: true }), completedAt: timestamp('completed_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({ queueIdx: index('retention_runs_queue_idx').on(table.status, table.createdAt, table.id) }));

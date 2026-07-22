@@ -28,6 +28,11 @@ const EnvSchema = z.object({
   SMS_DAILY_SPEND_LIMIT_MINOR: z.coerce.number().int().nonnegative().optional(),
   SMS_WORKER_SECRET: z.string().min(32).optional(),
   PUBLIC_APP_ORIGIN: z.string().url().optional()
+  ,FRONTEND_ORIGIN: z.string().url().optional()
+  ,TRUST_PROXY: z.enum(['true','false']).default('false').transform(v=>v==='true')
+  ,PRIVACY_WORKER_SECRET: z.string().min(32).optional()
+  ,RELEASE_VERSION: z.string().max(120).default('development')
+  ,LOG_LEVEL: z.enum(['fatal','error','warn','info','debug','trace','silent']).default('info')
   ,SUPABASE_URL: z.string().url().optional()
   ,SUPABASE_PUBLISHABLE_KEY: z.string().optional()
   ,SUPABASE_SERVICE_ROLE_KEY: z.string().optional()
@@ -65,6 +70,14 @@ const EnvSchema = z.object({
     if (address && !address.toLowerCase().endsWith(`@${domain}`)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} must use the verified email domain ${domain}` });
     }
+  }
+  if(value.NODE_ENV==='production'){
+    if(value.DEV_AUTH_ENABLED)ctx.addIssue({code:z.ZodIssueCode.custom,path:['DEV_AUTH_ENABLED'],message:'Development authentication cannot be enabled in production'});
+    const required=['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SECRET_KEY','AUDIT_IP_HASH_SECRET','PRIVACY_WORKER_SECRET','FRONTEND_ORIGIN','PUBLIC_APP_ORIGIN'] as const;
+    for(const key of required)if(!value[key])ctx.addIssue({code:z.ZodIssueCode.custom,path:[key],message:`${key} is required in production`});
+    for(const key of ['SUPABASE_URL','FRONTEND_ORIGIN','PUBLIC_APP_ORIGIN'] as const){const configured=value[key];if(configured&&!configured.startsWith('https://'))ctx.addIssue({code:z.ZodIssueCode.custom,path:[key],message:`${key} must use HTTPS in production`});}
+    const raw=process.env.DATABASE_URL||'';if(!raw)ctx.addIssue({code:z.ZodIssueCode.custom,path:['DATABASE_URL'],message:'DATABASE_URL is required in production'});
+    const placeholders=/your-|example\.com|generate-|\[YOUR-|\.\.\./i;for(const key of required){const configured=value[key];if(typeof configured==='string'&&placeholders.test(configured))ctx.addIssue({code:z.ZodIssueCode.custom,path:[key],message:`${key} contains a placeholder value`});}
   }
 });
 
