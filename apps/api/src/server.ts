@@ -6,7 +6,7 @@ const server = buildApp();
 const start = async () => {
   try {
     const port = env.PORT;
-    const host = '0.0.0.0';
+    const host = '127.0.0.1';
     
     await server.listen({ port, host });
     server.log.info(`Server listening on port ${port} in ${env.NODE_ENV} mode`);
