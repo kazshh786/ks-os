@@ -1,0 +1,6 @@
+{
+  "name": "KS OS",
+  "description": "An agency-managed, white-label booking and business operating system for salons, barbers, nail salons, and aesthetics providers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@ks-os/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@ks-os/config": "workspace:*",
+    "typescript": "^5.8.2"
+  }
+}

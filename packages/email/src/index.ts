@@ -1,0 +1,51 @@
+import { render } from '@react-email/render';
+import React from 'react';
+
+import { BookingConfirmedEmail } from './templates/booking-confirmed.js';
+import { BookingRescheduledEmail } from './templates/booking-rescheduled.js';
+import { BookingCancelledEmail } from './templates/booking-cancelled.js';
+import { AppointmentReminderEmail } from './templates/appointment-reminder.js';
+import { FormAssignedEmail } from './templates/form-assigned.js';
+import { FormReminderEmail } from './templates/form-reminder.js';
+import { PaymentConfirmedEmail } from './templates/payment-confirmed.js';
+import { RefundUpdatedEmail } from './templates/refund-updated.js';
+import { StaffOperationalNotificationEmail } from './templates/staff-operational-notification.js';
+import { ScheduledReportReadyEmail } from './templates/scheduled-report-ready.js';
+import { CustomerPortalClaimEmail } from './templates/customer-portal-claim.js';
+import { ReviewInvitationEmail } from './templates/review-invitation.js';
+import { AccountAccessInvitationEmail } from './templates/account-access-invitation.js';
+
+export const templates = {
+  'booking-confirmed': BookingConfirmedEmail,
+  'booking-rescheduled': BookingRescheduledEmail,
+  'booking-cancelled': BookingCancelledEmail,
+  'appointment-reminder': AppointmentReminderEmail,
+  'form-assigned': FormAssignedEmail,
+  'form-reminder': FormReminderEmail,
+  'payment-confirmed': PaymentConfirmedEmail,
+  'refund-updated': RefundUpdatedEmail,
+  'staff-operational-notification': StaffOperationalNotificationEmail,
+  'scheduled-report-ready': ScheduledReportReadyEmail,
+  'customer-portal-claim': CustomerPortalClaimEmail,
+  'review-invitation': ReviewInvitationEmail,
+  'account-access-invitation': AccountAccessInvitationEmail,
+} as const;
+
+export type TemplateKey = keyof typeof templates;
+
+export async function renderEmail(templateKey: string, data: any): Promise<{ html: string; text: string }> {
+  const Template = templates[templateKey as TemplateKey];
+  
+  if (!Template) {
+    throw new Error(`Template ${templateKey} not found`);
+  }
+
+  const element = React.createElement(Template as any, data);
+  
+  const [html, text] = await Promise.all([
+    render(element),
+    render(element, { plainText: true })
+  ]);
+
+  return { html, text };
+}

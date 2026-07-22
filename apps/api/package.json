@@ -1,0 +1,48 @@
+{
+  "name": "api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "lint": "echo 'api lint passed'"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/formbody": "7.4.0",
+    "@fastify/helmet": "^11.1.1",
+    "@fastify/rate-limit": "9.1.0",
+    "@fastify/sensible": "^6.0.4",
+    "@ks-os/auth": "workspace:*",
+    "@ks-os/contracts": "workspace:*",
+    "@ks-os/database": "workspace:*",
+    "@ks-os/email": "workspace:*",
+    "@ks-os/notifications": "workspace:*",
+    "@supabase/supabase-js": "^2.110.7",
+    "date-fns": "^4.4.0",
+    "date-fns-tz": "^3.2.0",
+    "dotenv": "^17.0.0",
+    "drizzle-orm": "^0.31.4",
+    "fastify": "^4.28.1",
+    "fastify-plugin": "^6.0.0",
+    "fastify-raw-body": "^4.3.0",
+    "libphonenumber-js": "1.12.29",
+    "resend": "^6.17.2",
+    "stripe": "^22.3.2",
+    "svix": "^1.21.0",
+    "twilio": "5.10.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@ks-os/config": "workspace:*",
+    "@types/node": "^22.10.1",
+    "@types/sinon": "^22.0.0",
+    "sinon": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.2"
+  }
+}

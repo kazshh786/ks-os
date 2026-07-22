@@ -1,0 +1,140 @@
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
+import type { AgencyCapability, AgencyRole } from '@ks-os/contracts';
+import { fetchWithAuth } from '../../api/client';
+import { supabase } from '../../lib/supabase';
+
+export interface AgencySession {
+  authenticated: true; context: 'AGENCY'; user: { email: string; displayName: string; role: AgencyRole };
+  capabilities: AgencyCapability[]; mfa: { required: boolean; assuranceLevel: 'aal1' | 'aal2' }; expiresAt: string;
+}
+interface AgencyContextValue { session: AgencySession | null; loading: boolean; reload: () => Promise<void>; signOut: () => Promise<void> }
+const AgencyContext = createContext<AgencyContextValue | undefined>(undefined);
+
+export const AgencyAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [session, setSession] = useState<AgencySession | null>(null);
+  const [loading, setLoading] = useState(true);
+  const reload = useCallback(async () => {
+    if (!window.location.pathname.startsWith('/agency')) { setSession(null); setLoading(false); return; }
+    setLoading(true);
+    try {
+      const response = await fetchWithAuth('/api/v1/agency/session', { authContext: 'AGENCY' });
+      const body = await response.json().catch(() => ({}));
+      setSession(response.ok ? body.data : null);
+    } catch { setSession(null); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => {
+    void reload();
+    const { data } = supabase.auth.onAuthStateChange(() => void reload());
+    return () => data.subscription.unsubscribe();
+  }, [reload]);
+  const signOut = async () => {
+    sessionStorage.removeItem('ks-os-support-session');
+    sessionStorage.removeItem('ks-os-support-metadata');
+    await fetchWithAuth('/api/v1/auth/logout', { method: 'POST', authContext: 'AGENCY' }).catch(() => undefined);
+    await supabase.auth.signOut({ scope: 'local' });
+    setSession(null);
+  };
+  return <AgencyContext.Provider value={{ session, loading, reload, signOut }}>{children}</AgencyContext.Provider>;
+};
+
+export const useAgencyAuth = () => {
+  const value = useContext(AgencyContext);
+  if (!value) throw new Error('useAgencyAuth must be used inside AgencyAuthProvider');
+  return value;
+};
+
+export const AgencyGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { session, loading } = useAgencyAuth();
+  const location = useLocation();
+  if (loading) return <div className="min-h-screen bg-slate-950 grid place-items-center text-slate-300">Opening secure agency control plane…</div>;
+  if (!session) return <Navigate to={`/agency/login?returnTo=${encodeURIComponent(location.pathname + location.search)}`} replace />;
+  if (session.mfa.required) return <Navigate to="/agency/mfa/challenge" replace />;
+  return <>{children}</>;
+};
+
+export async function agencyFetch(path: string, options: RequestInit = {}) {
+  const headers = new Headers(options.headers);
+  if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  const response = await fetchWithAuth(`/api/v1/agency${path}`, { ...options, headers, authContext: 'AGENCY' });
+  const body = response.status === 204 ? null : await response.json();
+  if (!response.ok) throw new Error(body?.error?.message || 'Agency request failed.');
+  return body?.data ?? body;
+}
+
+export const AgencyLoginPage: React.FC = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const returnTo = params.get('returnTo')?.startsWith('/agency') ? params.get('returnTo')! : '/agency';
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); setBusy(true); setError(null);
+    try {
+      const signedIn = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (signedIn.error || !signedIn.data.session) throw new Error('The email or password is incorrect.');
+      const response = await fetchWithAuth('/api/v1/agency/session', { authContext: 'AGENCY' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        await supabase.auth.signOut({ scope: 'local' });
+        throw new Error(body?.error?.message || body?.error?.code || 'This account does not have active agency access.');
+      }
+      if (body.data.mfa.required) {
+        const factors = await supabase.auth.mfa.listFactors();
+        navigate(factors.data?.totp?.some(factor => factor.status === 'verified') ? '/agency/mfa/challenge' : '/agency/mfa/enrol', { replace: true });
+      } else navigate(returnTo, { replace: true });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Sign in could not be completed.'); }
+    finally { setBusy(false); }
+  };
+  return <main className="min-h-screen bg-slate-950 grid place-items-center p-6 text-white"><form onSubmit={submit} className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-8 space-y-5 shadow-2xl"><div><div className="h-11 w-11 rounded-xl bg-violet-600 grid place-items-center font-black mb-4">KS</div><h1 className="text-2xl font-black">Agency control plane</h1><p className="text-sm text-slate-400 mt-2">Restricted access for authorised KS OS agency operators.</p></div>{params.get('passwordUpdated') === '1' && <p className="rounded-xl border border-emerald-800 bg-emerald-950/50 p-3 text-sm text-emerald-200">Password updated. Sign in again.</p>}{error && <p role="alert" className="rounded-xl bg-rose-950/50 border border-rose-800 p-3 text-sm text-rose-200">{error}</p>}<label className="block text-sm text-slate-300">Agency email<input autoComplete="email" type="email" required value={email} onChange={event => setEmail(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" /></label><label className="block text-sm text-slate-300">Password<span className="relative mt-2 block"><input autoComplete="current-password" type={showPassword ? 'text' : 'password'} required value={password} onChange={event => setPassword(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 pr-12" /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} title={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(value => !value)} className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-xl text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"><span aria-hidden="true">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</span></button></span></label><button disabled={busy} className="w-full rounded-xl bg-violet-600 py-3 text-sm font-black disabled:opacity-50">{busy ? 'Signing in…' : 'Continue securely'}</button><Link to="/agency/forgot-password" className="block text-center text-xs font-bold text-violet-200">Forgot password?</Link><p className="text-[11px] text-slate-500">Privileged access requires an authenticator and centrally revocable application session.</p></form></main>;
+};
+
+export const AgencyMfaPage: React.FC<{ mode: 'enrol' | 'challenge' }> = ({ mode }) => {
+  const [factorId, setFactorId] = useState<string | null>(null);
+  const [qr, setQr] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(true);
+  const navigate = useNavigate();
+  const { reload } = useAgencyAuth();
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const agencyAccess = await fetchWithAuth('/api/v1/agency/session', { authContext: 'AGENCY' });
+      if (!agencyAccess.ok) { navigate('/access-denied', { replace: true }); return; }
+      const factors = await supabase.auth.mfa.listFactors();
+      if (factors.error) throw new Error(factors.error.message);
+      const verified = factors.data?.totp?.find(factor => factor.status === 'verified');
+      if (mode === 'challenge' && verified) { if (active) setFactorId(verified.id); return; }
+      if (mode === 'challenge' && !verified) { navigate('/agency/mfa/enrol', { replace: true }); return; }
+      if (verified) { navigate('/agency/mfa/challenge', { replace: true }); return; }
+      for (const factor of factors.data?.all?.filter(factor => factor.factor_type === 'totp' && factor.status === 'unverified') ?? []) {
+        const removed = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+        if (removed.error) throw new Error(removed.error.message);
+      }
+      const enrolled = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'KS OS Agency' });
+      if (enrolled.error) throw new Error(enrolled.error.message || 'Authenticator enrolment could not be started.');
+      if (active) { setFactorId(enrolled.data.id); setQr(enrolled.data.totp.qr_code); }
+    })().catch(cause => active && setError(cause instanceof Error ? cause.message : 'Authenticator setup failed.')).finally(() => active && setBusy(false));
+    return () => { active = false; };
+  }, [mode, navigate]);
+  const verify = async (event: React.FormEvent) => {
+    event.preventDefault(); setBusy(true); setError(null);
+    try {
+      if (!factorId) throw new Error('Authenticator setup is incomplete.');
+      const verified = await supabase.auth.mfa.challengeAndVerify({ factorId, code });
+      if (verified.error) throw new Error('That code could not be verified. Try the current six-digit code.');
+      const refreshed = await supabase.auth.refreshSession();
+      if (refreshed.error) throw new Error('Authenticator verification succeeded, but the secure session could not be refreshed. Sign in again.');
+      await reload(); navigate('/agency', { replace: true });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Verification failed.'); }
+    finally { setBusy(false); }
+  };
+  return <main className="min-h-screen bg-slate-950 grid place-items-center p-6 text-white"><form onSubmit={verify} className="w-full max-w-md space-y-5 rounded-3xl border border-slate-800 bg-slate-900 p-8"><h1 className="text-2xl font-black">{mode === 'enrol' ? 'Set up an authenticator' : 'Authenticator check'}</h1><p className="text-sm text-slate-400">{mode === 'enrol' ? 'Scan this QR code in your authenticator app, then enter its current six-digit code.' : 'Enter the current six-digit code from your authenticator app.'}</p>{error && <p role="alert" className="rounded-xl border border-rose-800 bg-rose-950/50 p-3 text-sm text-rose-200">{error}</p>}{qr && <img src={qr} alt="Authenticator QR code" className="mx-auto h-52 w-52 rounded-xl bg-white p-3" />}<label className="block text-sm text-slate-300">Six-digit code<input aria-label="Authenticator code" autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" required value={code} onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-center text-xl tracking-[0.35em]" /></label><button disabled={busy || code.length !== 6} className="w-full rounded-xl bg-violet-600 py-3 text-sm font-black disabled:opacity-50">{busy ? 'Checking…' : 'Verify and continue'}</button></form></main>;
+};

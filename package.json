@@ -1,35 +1,25 @@
 {
-  "name": "lean-salon-growth-os",
-  "version": "0.1.0",
+  "name": "ks-os-platform",
   "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "packageManager": "pnpm@11.13.1",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "test": "node --import tsx --test tests/*.test.ts",
-    "verify": "node scripts/verify.mjs",
-    "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push"
+    "dev": "pnpm --filter \"*\" --parallel dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter api dev",
+    "build": "pnpm --filter \"*\" build",
+    "build:web": "pnpm --filter web build",
+    "build:api": "pnpm --filter api build",
+    "typecheck": "pnpm --filter \"*\" typecheck",
+    "lint": "pnpm --filter \"*\" lint",
+    "test": "pnpm --filter \"*\" test",
+    "verify": "pnpm --filter \"*\" verify",
+    "seed:auth:dev": "pnpm --filter api exec tsx ../../scripts/seed-auth-development.ts"
   },
   "dependencies": {
-    "@radix-ui/react-checkbox": "^1.1.0",
-    "@radix-ui/react-dialog": "^1.1.0",
-    "@radix-ui/react-tooltip": "^1.1.0",
-    "@supabase/supabase-js": "^2.43.0",
-    "drizzle-orm": "^0.31.0",
-    "next": "^15.0.0-rc.0",
-    "react": "^19.0.0-rc.0",
-    "react-dom": "^19.0.0-rc.0"
-  },
-  "devDependencies": {
-    "@types/node": "^20.14.0",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@electric-sql/pglite": "^0.3.8",
-    "drizzle-kit": "^0.22.0",
-    "pg": "^8.12.0",
-    "typescript": "^5.4.5",
-    "tsx": "^4.20.3"
+    "date-fns": "^4.4.0",
+    "date-fns-tz": "^3.2.0"
   }
 }

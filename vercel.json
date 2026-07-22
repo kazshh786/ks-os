@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/v1/service/automation-events/dispatch",
-      "schedule": "* * * * *"
-    }
-  ]
-}

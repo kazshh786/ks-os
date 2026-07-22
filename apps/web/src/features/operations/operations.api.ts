@@ -1,0 +1,9 @@
+import type {CreateTaskInput,OperationsIssue,OperationsIssueListQuery,TaskDetail} from '@ks-os/contracts';
+import {fetchWithAuth} from '../../api/client.js';
+async function request<T>(path:string,init?:RequestInit):Promise<T>{const response=await fetchWithAuth(path,{...init,headers:{'Content-Type':'application/json',...(init?.headers??{})}});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error?.message??'Operations request failed');return body;}
+export async function listOperationsIssues(query:Partial<OperationsIssueListQuery>={}){const params=new URLSearchParams();Object.entries(query).forEach(([key,value])=>{if(value!==undefined&&value!=='')params.set(key,String(value));});return request<{data:OperationsIssue[];nextCursor:string|null}>(`/api/v1/operations/issues?${params}`);}
+export async function getOperationsIssue(id:string){return (await request<{data:OperationsIssue}>(`/api/v1/operations/issues/${id}`)).data;}
+export async function getOperationsSummary(){return (await request<{data:{open:number;acknowledged:number;critical:number;totalActionable:number}}>('/api/v1/operations/issues/summary')).data;}
+export async function issueCommand(id:string,command:'acknowledge'|'resolve'|'dismiss'|'retry'){return request<{data:unknown}>(`/api/v1/operations/issues/${id}/${command}`,{method:'POST'});}
+export async function assignIssue(id:string,assignedToUserId:string|null){return request<{data:OperationsIssue}>(`/api/v1/operations/issues/${id}/assignment`,{method:'PATCH',body:JSON.stringify({assignedToUserId})});}
+export async function createIssueTask(id:string,input:Omit<CreateTaskInput,'sourceType'|'sourceId'|'operationsIssueId'>){return(await request<{data:TaskDetail}>(`/api/v1/operations/issues/${id}/create-task`,{method:'POST',body:JSON.stringify(input)})).data;}

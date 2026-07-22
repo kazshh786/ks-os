@@ -1,132 +1,74 @@
-# Lean Salon Growth OS - Development Setup
+# KS OS - Production Multi-Tenant Platform Monorepo
 
-This project is a highly scalable, multi-tenant Booking, POS, and CRM engine designed for salons.
+Welcome to the production repository for **KS OS Platform**, a modern, multi-tenant scheduling, POS, and CRM suite. This project is a pnpm monorepo structure separating the frontend client, the Node.js Fastify API server, and shared package utilities.
+
+## Technology Stack
+
+- **Runtime**: Node.js `v24` (LTS)
+- **Monorepo Manager**: `pnpm` workspaces
+- **Frontend Client (`apps/web`)**: Vite + React + TypeScript + React Router
+- **Backend API (`apps/api`)**: Fastify + TypeScript
+- **Shared Contracts (`packages/contracts`)**: Zod data validation schemas
+- **Shared Database (`packages/database`)**: Drizzle ORM client skeleton
+- **Shared Auth (`packages/auth`)**: Roles, permissions, and session validators
+
+## Port Assignments
+
+- **Vite Frontend Client**: `http://localhost:3000`
+- **Fastify API Server**: `http://localhost:5000`
 
 ---
 
-## Windows Local Setup Instructions
+## Local Development Setup
 
-Since Node.js, NPM, and Docker are not pre-installed in your environment, follow these steps to run and verify the codebase locally on your Windows machine:
-
-### 1. Install Node.js & Git
-1. Download and run the **[Node.js Windows Installer (LTS)](https://nodejs.org/en/)** (recommends `v20` or higher).
-2. Download and install **[Git for Windows](https://gitforwindows.org/)** to manage commands and dependencies inside Git Bash / PowerShell.
-3. Verify your installations inside your Command Prompt (`cmd`) or PowerShell:
-   ```bash
-   node -v
-   npm -v
-   git --version
-   ```
+### 1. Prerequisites
+- Ensure you have Node.js version `24` installed (verify with `node -v`).
+- Configure `.nvmrc` using NVM if needed (`nvm use`).
+- Install pnpm version `11.13.1` (or run via `npx pnpm`).
 
 ### 2. Configure Environment Variables
-Create a file named `.env.local` in the root of the project folder:
+Copy `.env.example` into a local configuration file inside `apps/api` (and at the root if needed):
 ```bash
-# Supabase Project Client Keys (Public API)
-NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
+cp .env.example .env
+```
+Ensure `DEV_AUTH_ENABLED=true` is set *only* in your local development environment to enable the simulated developer login session.
 
-# PostgreSQL direct database connection string (used by Drizzle ORM)
-# Find this under Project Settings -> Database -> Connection Strings (URI) inside Supabase
-DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.your-project-id.supabase.co:6543/postgres
-
-# Vercel API Domain Provisioning Keys (Staging & Production)
-VERCEL_AUTH_TOKEN=your_vercel_api_token
-VERCEL_PROJECT_ID=prj_vVxi53tF9BkyBeb7iYYiBdy6UW2B
-VERCEL_TEAM_ID=team_KvtNAa8QG2pV8ZpwanQG6wkt
-
-# Cloudflare API DNS Configuration Keys (Staging & Production)
-CLOUDFLARE_API_TOKEN=your_cloudflare_dns_edit_token
-CLOUDFLARE_ZONE_ID=your_cloudflare_domain_zone_id
-
-# Phase 6 private booking service and real Stripe payments
-KS_OS_SERVICE_TOKEN=generate-a-long-random-service-token
-STRIPE_SECRET_KEY=sk_test_or_live_key
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_or_live_key
-STRIPE_WEBHOOK_SECRET=whsec_from_the_stripe_endpoint
-BOOKING_RATE_LIMIT_SALT=generate-another-random-secret-at-least-32-characters
-
-# Prompt 9 transactional automation outbox
-# Must exactly match the dashboard AUTOMATION_EVENT_SECRET.
-AUTOMATION_EVENT_SECRET=generate-a-shared-secret-at-least-32-characters
-AUTOMATION_EVENT_INGEST_URL=https://dashboard.kasimshah.com/api/automations/events
-# Used by the outbox cron; Vercel CRON_SECRET may be used instead.
-AUTOMATION_OUTBOX_WORKER_SECRET=generate-a-worker-secret-at-least-32-characters
-CRON_SECRET=generate-a-vercel-cron-secret-at-least-32-characters
+### 3. Bootstrap & Install Dependencies
+Run package installation from the root workspace directory:
+```bash
+npx pnpm install
 ```
 
-### 3. Install Dependencies
-Run the package installation script:
+### 4. Running the Project Locally
+Start the development server for all apps (frontend and API in parallel):
 ```bash
-npm install
+npx pnpm dev
 ```
-
-### 4. Push Database Schema to Supabase
-We use Drizzle ORM to manage Postgres tables and relational boundaries. Since schema updates were created in `db/schema.ts`, push them directly to your live database using:
-```bash
-# 1. Generate TypeScript migrations
-npm run db:generate
-
-# 2. Push tables directly to Supabase
-npm run db:push
-```
-*Note: Alternatively, apply the numbered SQL scripts in order in the Supabase SQL Editor. Phase 6 requires `module10_booking_service_api.sql` followed by `module11_booking_channels.sql`; Prompt 9 then requires `module12_automation_event_outbox.sql`.*
-
-Owners can configure separate **Visit the shop** and **Mobile appointment** hours from the Manage screen. Mobile hours are opt-in: the public booking journey only offers mobile appointments after at least one mobile schedule has been saved. Customer addresses are stored only with the KS OS appointment.
-
-Booking creation, cancellation, and completion now write a safe event into a transactional outbox. The minute worker delivers only opaque IDs, timestamps, booking channel/status, and amount/currency to the Agency automation API. It never sends customer names, emails, phone numbers, mobile addresses, or payment credentials. Re-test the KS OS integration from the Agency dashboard after applying Module 12 so the KS OS tenant is linked to its Agency workspace.
-
-### 5. Launch the Local Server
-Run the Next.js development server:
-```bash
-npm run dev
-```
-Open **[http://localhost:3000](http://localhost:3000)** inside your browser.
+Alternatively, start individual targets:
+- **Run Frontend only**: `npx pnpm dev:web`
+- **Run Fastify API only**: `npx pnpm dev:api`
 
 ---
 
-## Testing & Verification Steps
+## Workspace Scripts
 
-To verify the real-time calendar syncing and the POS trigger decrements:
-
-1. **Verify Real-time Sync**:
-   * Open the weekly calendar view in one browser tab.
-   * Open your Supabase Dashboard Table Editor in another.
-   * Insert a mock row into the `appointments` table.
-   * Observe the appointment card instantly appearing on the calendar in real-time.
-
-2. **Verify POS Checkout & Stock Decrement**:
-   * Open the POS checkout drawer component.
-   * Search for a product (ensure product has `stock_quantity > 0` in the database).
-   * Click **Pay Now** to process the mock checkout.
-   * Check your `products` table in Supabase. The product's `stock_quantity` will have decremented by 1, and the corresponding appointment status will have updated to `COMPLETED` automatically via the database trigger.
+- **`npx pnpm typecheck`**: Run TypeScript compiler checks across all workspaces.
+- **`npx pnpm lint`**: Enforce syntax guidelines.
+- **`npx pnpm test`**: Run automated test suites.
+- **`npx pnpm verify`**: Execute verification checks.
+- **`npx pnpm build`**: Compile production builds for both client and server applications.
+- **`npx pnpm build:web`**: Build the production Vite bundle.
+- **`npx pnpm build:api`**: Compile the production Fastify bundle.
 
 ---
 
-## Professional Staging & Deployment Workflow
+## Current Status
+**Phase 6.1 (Live Consent Forms)** is implemented in source: strict live templates, immutable versions, secure assignments, public acknowledgement/submission, and appointment-scoped staff access. Apply migration `0004_phase_6_1_secure_forms.sql` in a controlled environment before enabling the routes.
+**Phase 5.1 (POS MVP)** has been completed and integrated.
+**Phase 5.2 (Stripe Connect & Webhooks)** is finalized. The live POS system now correctly processes checkouts via Stripe, enforces strict idempotency, uses pessimistic stock locking, applies integer-based arithmetic, ensures role-based execution boundaries, securely verifies webhooks, and supports full Stripe Connect onboarding.
+**Phase 5.3 (Online Booking Payments)** is finalized. The public booking flow is now integrated with Stripe Checkout, using webhooks to handle `checkout.session.completed` and `checkout.session.expired` to confirm bookings and unlock slots.
+**Phase 5.4A (Payment History & Refunds)** is in progress. The API enforces strict role-based access for payment history and processes refund creation and webhooks securely.
 
-We utilize **Vercel Preview Deployments** to safely test and rehearse changes before merging to production.
+**Phase 6.3 (Transactional SMS)** adds a platform-owned Twilio Messaging Service, UK mobile normalisation, an asynchronous SMS outbox/worker, booking reminders, signed status and opt-out webhooks, and owner-only SMS settings/history. See `docs/phase-6-3-sms-report.md` and `docs/phase-6-3-twilio-setup.md`.
 
-### 1. Git Branch Structure
-- **`staging` Branch**: Used as our rehearsal sandbox. Push code changes here to generate preview deployments.
-- **`main` Branch**: Production branch. Merging staging into main triggers a live build routed to your custom domain (`app.kasimshah.com`).
-
-### 2. Deployment Steps
-1. **Push to Staging**:
-   ```bash
-   git checkout staging
-   # Make changes and commit...
-   git push origin staging
-   ```
-2. **Review Preview URL**: Vercel automatically generates a unique live staging URL (e.g., `ks-os-git-staging-xxx.vercel.app`).
-3. **Merge to Production**: Once verified, open a Pull Request to merge `staging` into `main`, or merge directly:
-   ```bash
-   git checkout main
-   git merge staging
-   git push origin main
-   ```
-
-### 3. Database Isolation (Supabase)
-To prevent staging tests from modifying live customer data, we recommend setting up a secondary staging database:
-- Create a duplicate free Supabase project named `KS OS - Staging`.
-- In Vercel Project Settings, map the environment variables (`DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) for **Preview** environments to target the staging database credentials, while keeping **Production** variables pointing to the live database.
+**Phase 4.1 (Live Client CRM)** has been completed. The client directory, client profiles, and booking histories are now fully connected to the live Postgres database with complete tenant isolation and RBAC for medical notes.

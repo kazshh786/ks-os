@@ -1,0 +1,22 @@
+{
+  "name": "@ks-os/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.31.0",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@ks-os/config": "workspace:*",
+    "@types/pg": "^8.20.0",
+    "drizzle-kit": "^0.22.0",
+    "typescript": "^5.8.2"
+  }
+}

@@ -1,0 +1,20 @@
+import { z } from 'zod';
+
+export const StaffAccountStatusSchema=z.enum(['INVITED','ACTIVE','SUSPENDED','DEACTIVATED']);
+export const TeamInvitationStatusSchema=z.enum(['PENDING','ACCEPTED','EXPIRED','CANCELLED']);
+export const StaffLifecycleActionSchema=z.enum(['activate','suspend','deactivate','reactivate']);
+export const CreateTeamInvitationRequestSchema=z.object({email:z.string().trim().email().max(255),name:z.string().trim().min(1).max(255)}).strict();
+export const TeamInvitationIdParamsSchema=z.object({invitationId:z.string().uuid()}).strict();
+export const TeamMemberIdParamsSchema=z.object({staffUserId:z.string().uuid()}).strict();
+export const UpdateStaffProfileRequestSchema=z.object({name:z.string().trim().min(1).max(255).optional(),jobTitle:z.string().trim().max(120).nullable().optional(),phone:z.string().trim().max(30).nullable().optional(),profileImageUrl:z.string().url().max(1000).nullable().optional(),bio:z.string().trim().max(2000).nullable().optional(),bookingEnabled:z.boolean().optional()}).strict();
+export const UpdateStaffServicesRequestSchema=z.object({serviceIds:z.array(z.string().uuid()).max(200)}).strict().superRefine((v,c)=>{if(new Set(v.serviceIds).size!==v.serviceIds.length)c.addIssue({code:z.ZodIssueCode.custom,message:'Duplicate service assignment'});});
+const ScheduleIntervalSchema=z.object({dayOfWeek:z.number().int().min(0).max(6),enabled:z.boolean(),startTime:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),endTime:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)}).strict().superRefine((v,c)=>{if(v.enabled&&v.startTime>=v.endTime)c.addIssue({code:z.ZodIssueCode.custom,message:'Start must precede end'});});
+export const UpdateStaffScheduleRequestSchema=z.object({schedule:z.array(ScheduleIntervalSchema).max(7)}).strict().superRefine((v,c)=>{const days=v.schedule.map(x=>x.dayOfWeek);if(new Set(days).size!==days.length)c.addIssue({code:z.ZodIssueCode.custom,message:'Only one interval per day is supported'});});
+export const UpdateBookingChannelScheduleRequestSchema=z.object({channel:z.enum(['in_shop','mobile']),schedule:z.array(ScheduleIntervalSchema).max(7)}).strict().superRefine((v,c)=>{const days=v.schedule.map(x=>x.dayOfWeek);if(new Set(days).size!==days.length)c.addIssue({code:z.ZodIssueCode.custom,message:'Only one interval per channel/day is supported'});});
+export const ApplyStaffLifecycleRequestSchema=z.object({action:StaffLifecycleActionSchema,confirmed:z.literal(true)}).strict();
+export type CreateTeamInvitationRequest=z.infer<typeof CreateTeamInvitationRequestSchema>;
+export type UpdateStaffProfileRequest=z.infer<typeof UpdateStaffProfileRequestSchema>;
+export type UpdateStaffServicesRequest=z.infer<typeof UpdateStaffServicesRequestSchema>;
+export type UpdateStaffScheduleRequest=z.infer<typeof UpdateStaffScheduleRequestSchema>;
+export type UpdateBookingChannelScheduleRequest=z.infer<typeof UpdateBookingChannelScheduleRequestSchema>;
+export type StaffLifecycleAction=z.infer<typeof StaffLifecycleActionSchema>;
