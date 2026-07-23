@@ -81,6 +81,7 @@ import { ExternalReviewsPage, PublicReviewInvitationPage, ReputationInvitationsP
 import { AgencyAuthProvider, AgencyCapabilityRoute, AgencyGuard, AgencyLoginPage, AgencyMfaPage } from './features/agency/AgencyAuth.js';
 import { AccessDeniedPage, AuthCallbackPage, InvitationAcceptancePage, PasswordRecoveryPage, SecuritySettingsPage, SelectBusinessPage, SessionExpiredPage } from './auth/AuthPages.js';
 import { AgencyAnalyticsPage, AgencyComplianceAuditPage as AgencyAuditPage, AgencyFulfilmentPage, AgencyJobsPage, AgencyOverviewPage, AgencyPlanCreatePage, AgencyPlansPage, AgencySupportPage, AgencyTenantBillingPage, AgencyTenantCreatePage, AgencyTenantDetailPageFixed as AgencyTenantDetailPage, AgencyTenantEntitlementsPage, AgencyTenantHealthPage, AgencyTenantsPage, AgencyUserInvitePage, AgencyUsersPage, AgencyWebhooksPage, AgencyWorkQueuePage } from './features/agency/AgencyPages.js';
+import { AgencyBookingSystemPage } from './features/agency/AgencyBookingSystem.js';
 
 const ReputationRoute: React.FC<{ children: React.ReactNode; ownerOnly?: boolean }> = ({ children, ownerOnly = false }) => {
   const { role, permissions } = useAuth();
@@ -231,6 +232,7 @@ const AppContent: React.FC = () => {
           <Route path="overview" element={<AgencyCapabilityRoute capabilities={['analytics.read']}><AgencyOverviewPage /></AgencyCapabilityRoute>} />
           <Route path="tenants" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantsPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/new" element={<AgencyCapabilityRoute capabilities={['tenants.manage']}><AgencyTenantCreatePage /></AgencyCapabilityRoute>} />
+          <Route path="bookings" element={<AgencyBookingSystemPage />} />
           <Route path="tenants/:tenantId" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/onboarding" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/billing" element={<AgencyCapabilityRoute capabilities={['billing.read']}><AgencyTenantBillingPage /></AgencyCapabilityRoute>} />

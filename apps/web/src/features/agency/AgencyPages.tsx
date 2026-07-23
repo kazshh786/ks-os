@@ -4,8 +4,8 @@ import { agencyFetch, useAgencyAuth } from './AgencyAuth';
 
 const money=(value:any,currency='GBP')=>new Intl.NumberFormat('en-GB',{style:'currency',currency,maximumFractionDigits:0}).format(Number(value||0)/100);
 const date=(value:any)=>value?new Date(value).toLocaleDateString('en-GB'):'—';
-const Panel:React.FC<{title:string;children:React.ReactNode;action?:React.ReactNode}>=({title,children,action})=><section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><div className="flex items-center justify-between gap-3 mb-4"><h2 className="text-xs uppercase tracking-widest text-slate-400 font-black">{title}</h2>{action}</div>{children}</section>;
-const Status:React.FC<{value:string}>=({value})=><span className="inline-flex rounded-full border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] font-black text-slate-300">{value.replaceAll('_',' ')}</span>;
+export const Panel:React.FC<{title:string;children:React.ReactNode;action?:React.ReactNode}>=({title,children,action})=><section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><div className="flex items-center justify-between gap-3 mb-4"><h2 className="text-xs uppercase tracking-widest text-slate-400 font-black">{title}</h2>{action}</div>{children}</section>;
+export const Status:React.FC<{value:string}>=({value})=><span className="inline-flex rounded-full border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] font-black text-slate-300">{value.replaceAll('_',' ')}</span>;
 function useLive<T>(loader:()=>Promise<T>,deps:any[]=[]){const[data,setData]=useState<T|null>(null);const[error,setError]=useState<string|null>(null);const[loading,setLoading]=useState(true);const reload=async()=>{setLoading(true);setError(null);try{setData(await loader());}catch(e:any){setError(e.message);}finally{setLoading(false);}};useEffect(()=>{void reload();},deps);return{data,error,loading,reload};}
 const State:React.FC<{loading:boolean;error:string|null;children:React.ReactNode}>=({loading,error,children})=>loading?<p className="text-sm text-slate-400">Loading live platform data…</p>:error?<p className="rounded-xl border border-rose-900 bg-rose-950/30 p-4 text-sm text-rose-300">{error}</p>:<>{children}</>;
 
@@ -13,14 +13,283 @@ export const AgencyOverviewPage:React.FC=()=>{const live=useLive(async()=>{const
 const Metric=({label,value}:{label:string;value:any})=><div className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><p className="text-[10px] uppercase tracking-widest text-slate-500 font-black">{label}</p><p className="mt-2 text-2xl font-black text-white">{value}</p></div>;
 const Fact=({label,value}:{label:string;value:any})=><div className="rounded-xl bg-slate-950 p-3"><dt className="text-[10px] uppercase text-slate-500 font-bold">{label}</dt><dd className="mt-1 font-bold text-slate-200">{value}</dd></div>;
 
-export const AgencyTenantsPage:React.FC=()=>{const{session}=useAgencyAuth();const live=useLive<any[]>(()=>agencyFetch('/tenants'),[]);const[search,setSearch]=useState('');const rows=useMemo(()=>live.data?.filter(t=>`${t.name} ${t.subdomain} ${t.legalBusinessName}`.toLowerCase().includes(search.toLowerCase()))||[],[live.data,search]);return <Panel title="Client businesses" action={session?.capabilities.includes('tenants.manage')?<Link to="/agency/tenants/new" className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-black">Create business</Link>:undefined}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search businesses" className="mb-4 w-full max-w-sm rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm"/><State loading={live.loading} error={live.error}><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="p-3">Business</th><th>Lifecycle</th><th>Package</th><th>Contact</th><th></th></tr></thead><tbody>{rows.map(t=><tr key={t.id} className="border-t border-slate-800"><td className="p-3"><strong>{t.name}</strong><div className="text-xs text-slate-500">{t.subdomain}</div></td><td><Status value={t.lifecycleStatus}/></td><td>{t.planKey||'Unassigned'}</td><td className="text-xs text-slate-400">{t.primaryContactEmail||'—'}</td><td className="text-right"><Link to={`/agency/tenants/${t.id}`} className="text-violet-300 font-bold">Open →</Link></td></tr>)}</tbody></table></div></State></Panel>;};
+export const AgencyTenantsPage: React.FC = () => {
+  const { session } = useAgencyAuth();
+  const live = useLive<any[]>(() => agencyFetch('/tenants'), []);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
-export const AgencyTenantCreatePage:React.FC=()=>{
-  const plans=useLive<any[]>(()=>agencyFetch('/plans'),[]);const navigate=useNavigate();
-  const[error,setError]=useState<string|null>(null);const[busy,setBusy]=useState(false);
-  const versions=plans.data?.filter(x=>x.version?.status==='ACTIVE')||[];
-  const submit=async(e:React.FormEvent<HTMLFormElement>)=>{e.preventDefault();if(!versions.length){setError('No active package is available. Publish a package version before creating a client business.');return;}setBusy(true);setError(null);const form=new FormData(e.currentTarget);const payload=Object.fromEntries(form);payload.subdomain=String(payload.subdomain).trim().toLowerCase();try{const result=await agencyFetch('/tenants',{method:'POST',body:JSON.stringify(payload)});navigate(`/agency/tenants/${result.id}`);}catch(err:any){setError(err.message);}finally{setBusy(false);}};
-  return <Panel title="Create client business"><form onSubmit={submit} className="grid gap-4 md:grid-cols-2">{error&&<p role="alert" className="md:col-span-2 rounded-xl border border-rose-900 bg-rose-950/30 p-3 text-sm text-rose-300">{error}</p>}{plans.error&&<p role="alert" className="md:col-span-2 text-rose-300">Packages could not be loaded: {plans.error}</p>}<Field name="name" label="Trading name"/><Field name="legalBusinessName" label="Legal business name"/><Field name="subdomain" label="Workspace subdomain"/><Field name="businessType" label="Business type"/><Field name="primaryContactName" label="Primary contact"/><Field name="primaryContactEmail" label="Contact email" type="email"/><input type="hidden" name="timezone" value="Europe/London"/><input type="hidden" name="currency" value="GBP"/><label className="text-xs text-slate-400">Package<select name="planVersionId" required disabled={!versions.length||busy} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white disabled:opacity-50"><option value="">{plans.loading?'Loading packages…':versions.length?'Select a package':'No active packages available'}</option>{versions.map(x=><option key={x.version.id} value={x.version.id}>{x.plan.name} · {x.version.name} · {money(x.version.monthlyPriceMinor)}</option>)}</select></label>{!plans.loading&&!plans.error&&!versions.length&&<p className="self-end rounded-xl border border-amber-800 bg-amber-950/30 p-3 text-xs text-amber-200">Client creation needs an active package. Go to Packages, create or publish a version, then return here.</p>}<div className="md:col-span-2"><button disabled={busy||plans.loading||!versions.length} className="rounded-xl bg-violet-600 px-5 py-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-50">{busy?'Creating workspace…':'Create onboarding workspace'}</button></div></form></Panel>;
+  const rows = useMemo(() => {
+    return (live.data || []).filter(t => {
+      const matchSearch = `${t.name} ${t.subdomain} ${t.legalBusinessName || ''} ${t.primaryContactEmail || ''}`
+        .toLowerCase()
+        .includes(search.toLowerCase());
+      const matchStatus = statusFilter === 'ALL' || t.lifecycleStatus === statusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [live.data, search, statusFilter]);
+
+  const activeCount = useMemo(() => (live.data || []).filter(t => t.lifecycleStatus === 'ACTIVE').length, [live.data]);
+  const onboardingCount = useMemo(() => (live.data || []).filter(t => t.lifecycleStatus === 'ONBOARDING').length, [live.data]);
+  const suspendedCount = useMemo(() => (live.data || []).filter(t => t.lifecycleStatus === 'SUSPENDED').length, [live.data]);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-4">
+        <Metric label="Total Client Businesses" value={live.data?.length || 0} />
+        <Metric label="Active Workspaces" value={activeCount} />
+        <Metric label="In Onboarding" value={onboardingCount} />
+        <Metric label="Suspended" value={suspendedCount} />
+      </div>
+
+      <Panel
+        title="Client Business Management Directory"
+        action={
+          session?.capabilities.includes('tenants.manage') ? (
+            <Link to="/agency/tenants/new" className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-black text-white hover:bg-violet-500 shadow-md">
+              + Onboard new client
+            </Link>
+          ) : undefined
+        }
+      >
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-5">
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by business name, subdomain, or contact..."
+            className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-violet-500 focus:outline-none"
+          />
+
+          <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+            <span className="text-slate-400">Filter status:</span>
+            {['ALL', 'ACTIVE', 'ONBOARDING', 'SUSPENDED'].map(status => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setStatusFilter(status)}
+                className={`rounded-lg px-3 py-1.5 font-bold transition ${
+                  statusFilter === status
+                    ? 'bg-violet-600 text-white'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <State loading={live.loading} error={live.error}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-300">
+              <thead className="text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-800">
+                <tr>
+                  <th className="p-3">Client Business</th>
+                  <th>Subdomain / Domain</th>
+                  <th>Lifecycle Status</th>
+                  <th>Package Plan</th>
+                  <th>Primary Contact</th>
+                  <th className="text-right p-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-slate-500">
+                      No client businesses found matching filters.
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map(t => (
+                    <tr key={t.id} className="border-t border-slate-800/80 hover:bg-slate-950/50 transition">
+                      <td className="p-3">
+                        <strong className="text-white font-bold">{t.name}</strong>
+                        {t.legalBusinessName && (
+                          <div className="text-xs text-slate-500">{t.legalBusinessName}</div>
+                        )}
+                      </td>
+                      <td>
+                        <span className="font-mono text-xs font-semibold text-indigo-300">
+                          {t.subdomain}.kasimshah.com
+                        </span>
+                      </td>
+                      <td>
+                        <Status value={t.lifecycleStatus} />
+                      </td>
+                      <td>
+                        <span className="inline-flex rounded-full border border-violet-800/60 bg-violet-950/40 px-2.5 py-0.5 text-xs font-black text-violet-300">
+                          {t.planKey || 'CORE'}
+                        </span>
+                      </td>
+                      <td className="text-xs text-slate-400">
+                        {t.primaryContactName && <div className="font-semibold text-slate-300">{t.primaryContactName}</div>}
+                        {t.primaryContactEmail || '—'}
+                      </td>
+                      <td className="text-right p-3">
+                        <Link
+                          to={`/agency/tenants/${t.id}`}
+                          className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-black text-violet-300 hover:bg-violet-900 hover:text-white transition"
+                        >
+                          Manage →
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </State>
+      </Panel>
+    </div>
+  );
+};
+
+export const AgencyTenantCreatePage: React.FC = () => {
+  const plans = useLive<any[]>(() => agencyFetch('/plans'), []);
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [subdomain, setSubdomain] = useState('');
+  const [selectedPlanVersionId, setSelectedPlanVersionId] = useState('');
+
+  const versions = plans.data?.filter(x => x.version?.status === 'ACTIVE') || [];
+
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!versions.length) {
+      setError('No active package is available. Publish a package version before creating a client business.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const form = new FormData(e.currentTarget);
+    const payload = Object.fromEntries(form);
+    payload.subdomain = String(payload.subdomain).trim().toLowerCase();
+    try {
+      const result = await agencyFetch('/tenants', { method: 'POST', body: JSON.stringify(payload) });
+      navigate(`/agency/tenants/${result.id}`);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-black text-white">Onboard New Client Business</h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Provision a client workspace, assign package tier entitlements, and initiate onboarding.
+          </p>
+        </div>
+        <Link to="/agency/tenants" className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-300">
+          ← Back to client list
+        </Link>
+      </div>
+
+      <Panel title="Client Business Onboarding Wizard">
+        <form onSubmit={submit} className="space-y-6">
+          {error && (
+            <p role="alert" className="rounded-xl border border-rose-900 bg-rose-950/40 p-4 text-sm font-semibold text-rose-300">
+              {error}
+            </p>
+          )}
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field name="name" label="Trading Business Name" />
+            <Field name="legalBusinessName" label="Legal Entity Name" />
+            
+            <label className="text-xs text-slate-400">
+              Workspace Subdomain
+              <input
+                name="subdomain"
+                required
+                value={subdomain}
+                onChange={e => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                placeholder="e.g. apexsalon"
+                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white font-mono text-sm"
+              />
+              <span className="mt-1 block text-[11px] font-mono text-indigo-400">
+                Live URL: {subdomain || 'subdomain'}.kasimshah.com
+              </span>
+            </label>
+
+            <Field name="businessType" label="Business Type (e.g. Hair Salon, Aesthetics, Clinic)" />
+            <Field name="primaryContactName" label="Primary Contact Name" />
+            <Field name="primaryContactEmail" label="Contact Email Address" type="email" />
+          </div>
+
+          <input type="hidden" name="timezone" value="Europe/London" />
+          <input type="hidden" name="currency" value="GBP" />
+
+          <div>
+            <label className="block text-xs font-bold text-slate-400 mb-3">
+              Select Package Tier & Entitlements
+            </label>
+            <div className="grid gap-4 md:grid-cols-3">
+              {[
+                { key: 'CORE', name: 'Core Tier', price: '£49/mo', bookings: '500 bookings/mo', staff: '5 staff members', loc: '1 location', desc: 'Complete booking system, POS, manual & online bookings.' },
+                { key: 'GROWTH', name: 'Growth Tier', price: '£149/mo', bookings: '2,500 bookings/mo', staff: '15 staff members', loc: '3 locations', desc: 'Adds custom automations, advanced analytics & priority support.' },
+                { key: 'SCALE', name: 'Scale Tier', price: '£399/mo', bookings: '20,000 bookings/mo', staff: '100 staff members', loc: '20 locations', desc: 'Enterprise volume, multi-location control & strategic support.' },
+              ].map(tier => {
+                const matchedVersion = versions.find(v => v.plan.name.toUpperCase().includes(tier.key));
+                const valueId = matchedVersion?.version?.id || versions[0]?.version?.id;
+                const isSelected = selectedPlanVersionId === valueId;
+
+                return (
+                  <button
+                    key={tier.key}
+                    type="button"
+                    onClick={() => valueId && setSelectedPlanVersionId(valueId)}
+                    className={`rounded-2xl border p-4 text-left transition flex flex-col justify-between ${
+                      isSelected
+                        ? 'border-violet-500 bg-violet-950/40 shadow-lg shadow-violet-950/50'
+                        : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black uppercase text-violet-400">{tier.name}</span>
+                        <span className="text-sm font-black text-white">{tier.price}</span>
+                      </div>
+                      <p className="mt-2 text-xs text-slate-300 font-semibold">{tier.desc}</p>
+                      <ul className="mt-3 text-[11px] space-y-1 text-slate-400">
+                        <li>✓ {tier.bookings}</li>
+                        <li>✓ {tier.staff}</li>
+                        <li>✓ {tier.loc}</li>
+                      </ul>
+                    </div>
+                    {isSelected && (
+                      <span className="mt-4 block text-center rounded-lg bg-violet-600 py-1 text-[10px] font-black uppercase text-white">
+                        Selected Package
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            
+            <input type="hidden" name="planVersionId" value={selectedPlanVersionId || (versions[0]?.version?.id || '')} />
+          </div>
+
+          <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
+            <Link to="/agency/tenants" className="rounded-xl border border-slate-700 px-5 py-3 text-xs font-bold text-slate-300">
+              Cancel
+            </Link>
+            <button
+              disabled={busy || plans.loading || !versions.length}
+              className="rounded-xl bg-violet-600 px-6 py-3 text-xs font-black text-white hover:bg-violet-500 disabled:opacity-50"
+            >
+              {busy ? 'Provisioning client workspace…' : 'Create & Onboard Client Business'}
+            </button>
+          </div>
+        </form>
+      </Panel>
+    </div>
+  );
 };
 const Field=({name,label,type='text'}:{name:string;label:string;type?:string})=><label className="text-xs text-slate-400">{label}<input name={name} type={type} required className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"/></label>;
 
