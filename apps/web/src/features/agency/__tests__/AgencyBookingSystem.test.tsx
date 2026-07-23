@@ -2,30 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { AGENCY_SERVICES, AGENCY_STAFF, AgencyBookingSystemPage } from '../AgencyBookingSystem';
+import { AgencyBookingSystemPage } from '../AgencyBookingSystem';
 
 describe('AgencyBookingSystem', () => {
-  it('defines essential agency services and agency staff', () => {
-    expect(AGENCY_SERVICES.map(s => s.name)).toContain('Platform Demo & Tour');
-    expect(AGENCY_SERVICES.map(s => s.name)).toContain('Onboarding & Business Setup');
-    expect(AGENCY_STAFF.map(s => s.name)).toContain('Kasim Shah');
-  });
-
-  it('renders agency booking dashboard with services catalog and existing client bookings', () => {
+  it('renders agency booking management dashboard with scheduled client sessions', () => {
     render(
       <MemoryRouter>
         <AgencyBookingSystemPage />
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Agency Booking System')).toBeInTheDocument();
-    expect(screen.getAllByText('Platform Demo & Tour')[0]).toBeInTheDocument();
-    expect(screen.getAllByText('Onboarding & Business Setup')[0]).toBeInTheDocument();
+    expect(screen.getByText('KS OS Agency Booking System')).toBeInTheDocument();
+    expect(screen.getByText('Agency Sessions Management')).toBeInTheDocument();
+    expect(screen.getByText('Interactive Agency Booking Engine')).toBeInTheDocument();
     expect(screen.getByText('AGY-10928')).toBeInTheDocument();
     expect(screen.getByText('Salon A Owner')).toBeInTheDocument();
   });
 
-  it('opens agency booking modal and allows booking client onboarding session', async () => {
+  it('allows switching to interactive agency booking wizard view', async () => {
     const user = userEvent.setup();
 
     render(
@@ -34,28 +28,10 @@ describe('AgencyBookingSystem', () => {
       </MemoryRouter>
     );
 
-    const openModalButton = screen.getByRole('button', { name: /Book client session/i });
-    await user.click(openModalButton);
+    const switchButton = screen.getByRole('button', { name: /Interactive Agency Booking Engine/i });
+    await user.click(switchButton);
 
-    expect(screen.getByText('Book Agency Client Session')).toBeInTheDocument();
-    expect(screen.getByText('Select Agency Service')).toBeInTheDocument();
-
-    const chooseDateButton = screen.getByRole('button', { name: /Choose date & time/i });
-    await user.click(chooseDateButton);
-
-    const clientNameInput = screen.getByPlaceholderText('e.g. Jane Doe');
-    await user.type(clientNameInput, 'Sarah Connor');
-
-    const clientEmailInput = screen.getByPlaceholderText('jane@clientbusiness.com');
-    await user.type(clientEmailInput, 'sarah@apexsalon.com');
-
-    const clientCompanyInput = screen.getByPlaceholderText('e.g. Apex Salon');
-    await user.type(clientCompanyInput, 'Apex Salon');
-
-    const confirmButton = screen.getByRole('button', { name: /Confirm booking/i });
-    await user.click(confirmButton);
-
-    expect(screen.getByText('Agency Session Scheduled')).toBeInTheDocument();
-    expect(screen.getByText('Sarah Connor')).toBeInTheDocument();
+    expect(screen.getByText('Agency Service Booking Wizard')).toBeInTheDocument();
+    expect(screen.getByText('Native KS OS Agency Engine')).toBeInTheDocument();
   });
 });

@@ -34,7 +34,11 @@ async function main() {
     auth('staff@salon-a.ksos.local'), auth('owner@salon-b.ksos.local'), auth('multi-tenant-user@ksos.local'),
     auth('customer@ksos.local'), auth('suspended@salon-a.ksos.local'),
   ]);
-  const [salonA, salonB] = await Promise.all([tenant('salon-a', 'Salon A'), tenant('salon-b', 'Salon B')]);
+  const [salonA, salonB, ksAgency] = await Promise.all([
+    tenant('salon-a', 'Salon A'),
+    tenant('salon-b', 'Salon B'),
+    tenant('ks-agency', 'KS OS Agency'),
+  ]);
 
   const [platformOwner] = await db.insert(agencyUsers).values({ authUserId: platformIdentity.id, emailNormalized: 'kasim@kasimshah.com', displayName: 'Platform Owner', role: 'PLATFORM_OWNER', status: 'ACTIVE', mfaRequired: true, activatedAt: new Date() })
     .onConflictDoUpdate({ target: agencyUsers.emailNormalized, set: { authUserId: platformIdentity.id, status: 'ACTIVE', role: 'PLATFORM_OWNER', mfaRequired: true, updatedAt: new Date() } }).returning();
@@ -44,6 +48,7 @@ async function main() {
   const ownerA = await membership({ tenantId: salonA.id, authUserId: ownerAIdentity.id, email: 'owner@salon-a.ksos.local', name: 'Salon A Owner', role: 'owner' });
   await membership({ tenantId: salonA.id, authUserId: staffAIdentity.id, email: 'staff@salon-a.ksos.local', name: 'Salon A Staff', role: 'staff' });
   await membership({ tenantId: salonB.id, authUserId: ownerBIdentity.id, email: 'owner@salon-b.ksos.local', name: 'Salon B Owner', role: 'owner' });
+  await membership({ tenantId: ksAgency.id, authUserId: platformIdentity.id, email: 'kasim@kasimshah.com', name: 'Kasim Shah (Agency Director)', role: 'owner' });
   await membership({ tenantId: salonA.id, authUserId: multiIdentity.id, email: 'multi-tenant-user@ksos.local', name: 'Multi-business User', role: 'staff' });
   await membership({ tenantId: salonB.id, authUserId: multiIdentity.id, email: 'multi-tenant-user@ksos.local', name: 'Multi-business User', role: 'staff' });
   await membership({ tenantId: salonA.id, authUserId: suspendedIdentity.id, email: 'suspended@salon-a.ksos.local', name: 'Suspended User', role: 'staff', status: 'SUSPENDED' });
