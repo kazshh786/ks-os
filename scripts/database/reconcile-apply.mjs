@@ -93,6 +93,15 @@ export async function executeProductionReconciliation() {
         );
         ALTER TABLE "${TRACKING_TABLE}" ADD COLUMN IF NOT EXISTS "execution_type" varchar(20) DEFAULT 'APPLIED' NOT NULL;
         ALTER TABLE "${TRACKING_TABLE}" ADD COLUMN IF NOT EXISTS "execution_duration_ms" integer DEFAULT 0 NOT NULL;
+        ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "booking_source" varchar(40) DEFAULT 'STAFF_CREATED' NOT NULL;
+        ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "source_medium" varchar(80);
+        ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "source_campaign" varchar(120);
+        ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "source_referrer_host" varchar(255);
+        ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "booking_page_id" uuid;
+        ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "booking_hold_id" uuid;
+        ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "intake_status" varchar(20) DEFAULT 'NOT_REQUIRED' NOT NULL;
+        ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "attention_reason" varchar(120);
+        ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "customer_notes" text;
       `);
 
       // 5. Apply reconciliation migration (21st file)
