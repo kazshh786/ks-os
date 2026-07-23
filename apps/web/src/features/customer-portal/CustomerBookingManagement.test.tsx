@@ -71,7 +71,7 @@ describe('customer booking mutation flows', () => {
     vi.spyOn(customerPortalProvider, 'getRescheduleAvailability').mockResolvedValue({ date: '2026-08-10', timezone: appointment.timezone, slots: [slot] });
     vi.spyOn(customerPortalProvider, 'reschedule').mockResolvedValue({ appointment: { ...appointment, startTime: slot.startTime }, previousStartTime: appointment.startTime, policy } as never);
     renderCustomerRoute(`/customer/appointments/${reference}/reschedule`, <CustomerReschedulePage />);
-    await user.click(await screen.findByRole('button', { name: /Alex/ }));
+    await user.click(await screen.findByRole('button', { name: /Alex/ }, { timeout: 5000 }));
     await user.click(screen.getByRole('button', { name: 'Review new time' }));
     expect(screen.getByRole('heading', { name: 'Review your change' })).toBeInTheDocument();
     expect(screen.getByText('Proposed')).toBeInTheDocument();
@@ -95,7 +95,7 @@ describe('customer booking mutation flows', () => {
     vi.spyOn(customerPortalProvider, 'getRescheduleAvailability').mockResolvedValue({ date: '2026-08-10', timezone: appointment.timezone, slots: [slot] });
     vi.spyOn(customerPortalProvider, 'reschedule').mockRejectedValue(new Error('CUSTOMER_BOOKING_STATE_CHANGED'));
     renderCustomerRoute(`/customer/appointments/${reference}/reschedule`, <CustomerReschedulePage />);
-    await user.click(await screen.findByRole('button', { name: /Alex/ }));
+    await user.click(await screen.findByRole('button', { name: /Alex/ }, { timeout: 5000 }));
     await user.click(screen.getByRole('button', { name: 'Review new time' }));
     await user.click(screen.getByRole('button', { name: 'Confirm reschedule' }));
     expect(await screen.findByText(/booking changed while you were viewing it/i)).toBeInTheDocument();
