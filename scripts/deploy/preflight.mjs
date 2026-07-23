@@ -35,13 +35,13 @@ export async function runPreflight() {
   console.log('=== RUNNING KS OS DEPLOYMENT PREFLIGHT CHECKS ===\n');
   let passed = true;
 
-  // 1. Node.js version check (>=24 <25)
+  // 1. Node.js version check (>=22 <25)
   const nodeVersion = process.version;
   const majorNode = parseInt(nodeVersion.replace('v', '').split('.')[0], 10);
-  if (majorNode === 24) {
-    console.log(`✓ Node.js version: ${nodeVersion} (meets >=24 <25)`);
+  if (majorNode >= 22 && majorNode < 25) {
+    console.log(`✓ Node.js version: ${nodeVersion} (meets >=22 <25)`);
   } else {
-    console.error(`✗ Node.js version: ${nodeVersion} (REQUIRED: >=24 <25)`);
+    console.error(`✗ Node.js version: ${nodeVersion} (REQUIRED: >=22 <25)`);
     passed = false;
   }
 
