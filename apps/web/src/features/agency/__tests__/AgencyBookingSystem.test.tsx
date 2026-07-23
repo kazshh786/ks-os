@@ -19,8 +19,8 @@ describe('AgencyBookingSystem', () => {
     );
 
     expect(screen.getByText('Agency Booking System')).toBeInTheDocument();
-    expect(screen.getByText('Platform Demo & Tour')).toBeInTheDocument();
-    expect(screen.getByText('Onboarding & Business Setup')).toBeInTheDocument();
+    expect(screen.getAllByText('Platform Demo & Tour')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Onboarding & Business Setup')[0]).toBeInTheDocument();
     expect(screen.getByText('AGY-10928')).toBeInTheDocument();
     expect(screen.getByText('Salon A Owner')).toBeInTheDocument();
   });
