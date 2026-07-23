@@ -515,8 +515,9 @@ export class ApiDataProvider implements DataProvider {
   async getPaymentHistory(query: PaymentHistoryQuery): Promise<{ data: PaymentHistoryItem[], nextCursor?: string }> {
     const params = new URLSearchParams(query as any).toString();
     const response = await fetchWithAuth(`/api/v1/payments?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch payment history');
-    return response.json();
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.error?.message || body?.error || 'Failed to fetch payment history');
+    return { data: Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : [], nextCursor: body?.nextCursor };
   }
 
   async getPaymentDetail(transactionId: string): Promise<PaymentDetailResponse> {

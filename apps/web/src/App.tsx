@@ -20,7 +20,6 @@ import POSCheckoutPage from './pages/POSCheckoutPage.js';
 import ConsentFormsPage from './pages/ConsentFormsPage.js';
 import BrandSetupPage from './pages/BrandSetupPage.js';
 import NotFoundPage from './pages/NotFoundPage.js';
-import { ModuleConnectingState } from './components/ModuleConnectingState.js';
 import { Payments } from './pages/settings/Payments.js';
 import { StripeReturn } from './pages/settings/StripeReturn.js';
 import { StripeRefresh } from './pages/settings/StripeRefresh.js';
@@ -170,7 +169,7 @@ const AppContent: React.FC = () => {
           {/* Phase 3: Reception Desk is now connected */}
           <Route path="reception" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="BOOKINGS_CREATE"><ReceptionPage /></RoleRoute>} />
           <Route path="clients/*" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="CLIENTS_VIEW_BASIC"><ClientCRMPage /></RoleRoute>} />
-          <Route path="pos" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="POS_USE"><ModuleConnectingState title="POS Checkout" /></RoleRoute>} />
+          <Route path="pos" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="POS_USE"><POSCheckoutPage /></RoleRoute>} />
           <Route path="forms" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE']}><ConsentFormsPage /></RoleRoute>} />
           <Route path="forms/new" element={<RoleRoute allowedRoles={['owner']}><FormEditorPage /></RoleRoute>} />
           <Route path="forms/:formId" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE']}><FormDetailPage /></RoleRoute>} />

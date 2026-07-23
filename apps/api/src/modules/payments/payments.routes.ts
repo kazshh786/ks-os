@@ -14,7 +14,7 @@ export async function paymentRoutes(fastify: FastifyInstance) {
     const tenantId = request.auth!.tenantId;
     const query = PaymentHistoryQuerySchema.parse(request.query);
     const history = await service.getPaymentHistory(tenantId, query);
-    return reply.send(history);
+    return reply.send({ data: history });
   });
 
   fastify.get('/:transactionId', async (request, reply) => {

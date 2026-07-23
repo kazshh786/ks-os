@@ -5,13 +5,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Plus, Minus, CreditCard, DollarSign, Wallet, CheckCircle, Percent, Printer, Sparkles, RefreshCw, ShoppingCart, User, AlertTriangle, Calendar } from 'lucide-react';
-import { BusinessTenant, Service, Booking, POSItem, ClientProfile } from '../data/types.js';
+import { BusinessTenant, POSItem } from '../data/types.js';
 import { CheckoutCandidate, CheckoutPreviewResponse, Product } from '@ks-os/contracts';
 import { getDataProvider } from '../data/data-provider.js';
 
 interface POSCheckoutProps {
   tenant: BusinessTenant;
-  preloadedBooking?: Booking | null;
+  preloadedBooking?: { id: string } | null;
   onCheckoutCompleted: () => void;
 }
 

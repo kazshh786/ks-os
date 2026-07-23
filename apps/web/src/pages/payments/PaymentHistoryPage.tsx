@@ -6,6 +6,7 @@ import { getDataProvider } from '../../data/data-provider';
 export const PaymentHistoryPage: React.FC = () => {
   const [payments, setPayments] = useState<PaymentHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [query, setQuery] = useState<PaymentHistoryQuery>({ limit: 50 });
 
   useEffect(() => {
@@ -14,13 +15,14 @@ export const PaymentHistoryPage: React.FC = () => {
 
   const loadPayments = async (currentQuery: PaymentHistoryQuery) => {
     setLoading(true);
+    setError('');
     try {
       const provider = getDataProvider();
       const res = await provider.getPaymentHistory(currentQuery);
-      setPayments(res.data);
+      setPayments(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error(err);
-      alert('Failed to load payments');
+      setError(err instanceof Error ? err.message : 'Failed to load payments');
     } finally {
       setLoading(false);
     }
@@ -45,6 +47,13 @@ export const PaymentHistoryPage: React.FC = () => {
           <p className="mt-1 text-sm text-slate-500">View all transactions, deposits, and refunds across your business.</p>
         </div>
       </div>
+
+      {error && (
+        <div role="alert" className="mb-6 flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+          <span><strong>Payments could not be loaded.</strong> {error}</span>
+          <button type="button" onClick={() => void loadPayments(query)} className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white">Try again</button>
+        </div>
+      )}
 
       <div className="bg-white shadow rounded-lg overflow-hidden border border-slate-200">
         <div className="overflow-x-auto">
