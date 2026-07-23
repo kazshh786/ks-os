@@ -47,11 +47,13 @@ import FormSubmissionPage from './pages/FormSubmissionPage.js';
 import PublicFormCompletionPage, { PublicFormSuccessPage } from './pages/PublicFormCompletionPage.js';
 import TeamDirectoryPage from './features/team/TeamDirectoryPage.js';import TeamInvitePage from './features/team/TeamInvitePage.js';import TeamMemberPage from './features/team/TeamMemberPage.js';import LegacyInviteAcceptancePage from './features/team/InviteAcceptancePage.js';
 import TeamOperationsPage from './features/team/TeamOperationsPage.js';import StaffAccessPage from './features/team/StaffAccessPage.js';
+import AvailabilityPage from './features/team/AvailabilityPage.js';
 import { AutomationBuilderPage, AutomationDetailPage, AutomationRunPage, AutomationRunsPage, AutomationsPage } from './pages/automations/AutomationsPage.js';
 import { ReportPage, ReportsHome } from './features/reports/OperationalReports.js';
 import { ReportExportsPage, ReportSchedulesPage } from './features/reports/ReportOperations.js';
 import { AdvancedAnalyticsPage } from './features/analytics/AdvancedAnalyticsPage.js';
 import { OperationsInboxPage } from './features/operations/OperationsInboxPage.js';
+import { ServicesPage } from './features/services/ServicesPage.js';
 import { OperationIssueDetailPage } from './features/operations/OperationIssueDetailPage.js';
 import {TasksPage} from './features/tasks/TasksPage.js';
 import {TaskDetailPage} from './features/tasks/TaskDetailPage.js';
@@ -151,6 +153,7 @@ const AppContent: React.FC = () => {
         >
           <Route index element={<Navigate to={role === 'owner' ? '/app/dashboard' : '/app/calendar'} replace />} />
           <Route path="dashboard" element={<RoleRoute allowedRoles={['owner']}><SaaSDashboardPage /></RoleRoute>} />
+          <Route path="services" element={<RoleRoute allowedRoles={['owner']}><ServicesPage /></RoleRoute>} />
           <Route path="reports" element={<RoleRoute allowedRoles={['owner']}><ReportsHome /></RoleRoute>} />
           <Route path="reports/exports" element={<RoleRoute allowedRoles={['owner']}><ReportExportsPage /></RoleRoute>} />
           <Route path="reports/schedules" element={<RoleRoute allowedRoles={['owner']}><ReportSchedulesPage /></RoleRoute>} />
@@ -178,6 +181,7 @@ const AppContent: React.FC = () => {
           <Route path="payments/:transactionId" element={<RoleRoute allowedRoles={['owner']}><PaymentDetailPage /></RoleRoute>} />
           <Route path="settings" element={<RoleRoute allowedRoles={['owner']}><BrandSetupPage /></RoleRoute>} />
           <Route path="settings/team" element={<RoleRoute allowedRoles={['owner']}><TeamDirectoryPage /></RoleRoute>} />
+          <Route path="settings/availability" element={<RoleRoute allowedRoles={['owner']}><AvailabilityPage /></RoleRoute>} />
           <Route path="settings/team/invite" element={<RoleRoute allowedRoles={['owner']}><TeamInvitePage /></RoleRoute>} />
           <Route path="settings/team/:staffUserId" element={<RoleRoute allowedRoles={['owner']}><TeamMemberPage /></RoleRoute>} />
           <Route path="settings/team/:staffUserId/access" element={<RoleRoute allowedRoles={['owner']}><StaffAccessPage /></RoleRoute>} />

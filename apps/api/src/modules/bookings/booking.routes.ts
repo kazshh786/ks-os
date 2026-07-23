@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { 
   StaffCreateBookingRequestSchema, 
+  CreateBlockedTimeRequestSchema,
   UpdateBookingStatusRequestSchema, 
   RescheduleBookingRequestSchema,
   BookingOperationsQuerySchema,
@@ -92,6 +93,8 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
           internalNote: parsed.data.internalNote,
           intakeFormIds: parsed.data.intakeFormIds,
           notifyCustomer: parsed.data.notifyCustomer,
+          confirmPastBooking: parsed.data.confirmPastBooking,
+          walkIn: parsed.data.walkIn,
           requestId: request.id,
         },
       );
@@ -103,10 +106,44 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(409).send({ success: false, error: { code: err.code, message: err.message } });
       }
       const message = err.message || '';
+      if (/invalid booking time/i.test(message)) {
+        return reply.code(400).send({ success: false, error: { code: 'INVALID_BOOKING_TIME', message: 'Choose a booking time at least five minutes from now and no more than 180 days ahead.' } });
+      }
       if (/no longer available|outside booking channel schedule/i.test(message)) {
         return reply.code(409).send({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'Slot unavailable' } });
       }
       return reply.code(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Could not create booking' } });
+    }
+  });
+
+  fastify.post('/api/v1/bookings/blocked-time', async (request, reply) => {
+    request.requireAuth();
+    const parsed = CreateBlockedTimeRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ success: false, error: { code: 'INVALID_BLOCKED_TIME', message: 'Check the team member, time, duration and reason.' } });
+    }
+    try {
+      const block = await bookingService.createBlockedTime(request.auth!, parsed.data, request.id);
+      return reply.code(201).send({ success: true, bookingId: block.id });
+    } catch (err: any) {
+      if (err.message === 'SLOT_UNAVAILABLE') return reply.code(409).send({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'That time overlaps an existing booking or block.' } });
+      if (err.message?.startsWith('UNAUTHORIZED')) return reply.code(403).send({ success: false, error: { code: 'UNAUTHORIZED', message: err.message } });
+      fastify.log.error(err, 'Blocked time creation failed');
+      return reply.code(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Could not block this time.' } });
+    }
+  });
+
+  fastify.delete('/api/v1/bookings/:id/blocked-time', async (request, reply) => {
+    request.requireAuth();
+    const { id } = request.params as { id: string };
+    try {
+      await bookingService.removeBlockedTime(request.auth!, id, request.id);
+      return reply.send({ success: true });
+    } catch (err: any) {
+      if (err.message === 'NOT_FOUND') return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Blocked time not found.' } });
+      if (err.message?.startsWith('UNAUTHORIZED')) return reply.code(403).send({ success: false, error: { code: 'UNAUTHORIZED', message: err.message } });
+      fastify.log.error(err, 'Blocked time removal failed');
+      return reply.code(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Could not remove this blocked time.' } });
     }
   });
 

@@ -6,6 +6,7 @@ import { deriveStripeConnectionStatus } from '../../integrations/stripe/stripe.m
 import * as crypto from 'node:crypto';
 import { BusinessEventsService } from '../../automations/business-events.service.js';
 import { PaymentsService } from '../../payments/payments.service.js';
+import { BookingService } from '../../bookings/booking.service.js';
 
 export class StripeWebhookService {
   private businessEvents = new BusinessEventsService();
@@ -157,6 +158,12 @@ export class StripeWebhookService {
               stripePaymentIntentId: typeof paymentIntentId === 'string' ? paymentIntentId : undefined,
             }).returning({ id: checkoutTransactions.id });
             if (transaction?.id) await this.payments.enqueuePaymentEmail(tx, attempt.tenantId, transaction.id, 'payment-confirmed', `payment-confirmed:${event.id}`);
+            try {
+              await new BookingService().notifyPublicBookingConfirmed(attempt.tenantId, attempt.appointmentId, `stripe:${event.id}`, tx);
+            } catch {
+              // Payment confirmation is authoritative and notification delivery
+              // must never roll back a paid booking.
+            }
             await this.businessEvents.emit({id:`PAYMENT_SUCCEEDED:${event.id}`,tenantId:attempt.tenantId,type:'PAYMENT_SUCCEEDED',occurredAt:new Date(event.created*1000).toISOString(),sourceType:'appointment',sourceId:attempt.appointmentId,payload:{appointmentId:attempt.appointmentId,paymentStatus:'SUCCEEDED'}},tx);
             await this.businessEvents.emit({id:`BOOKING_CONFIRMED:${event.id}`,tenantId:attempt.tenantId,type:'BOOKING_CONFIRMED',occurredAt:new Date(event.created*1000).toISOString(),sourceType:'appointment',sourceId:attempt.appointmentId,payload:{appointmentId:attempt.appointmentId,status:'CONFIRMED',paymentStatus:'SUCCEEDED'}},tx);
           }

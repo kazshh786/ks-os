@@ -48,6 +48,7 @@ export interface DataProvider {
   saveTenants(tenants: BusinessTenant[]): Promise<void>;
 
   getServices(tenantId: string): Promise<Service[]>;
+  createService(tenantId: string, service: Omit<Service, 'id'>): Promise<Service>;
   saveServices(tenantId: string, services: Service[]): Promise<void>;
 
   getStaff(tenantId: string): Promise<Staff[]>;
@@ -79,6 +80,8 @@ export interface DataProvider {
 
   // Staff Booking Methods
   createStaffBooking(input: any): Promise<any>;
+  createBlockedTime(input: any): Promise<any>;
+  removeBlockedTime(bookingId: string): Promise<void>;
   updateBookingStatus(bookingId: string, status: string): Promise<void>;
   rescheduleBooking(bookingId: string, input: any): Promise<void>;
   cancelBooking(bookingId: string): Promise<void>;

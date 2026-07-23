@@ -177,12 +177,22 @@ export const StaffCreateBookingRequestSchema = z.object({
   locationId: z.string().uuid().optional().nullable(),
   intakeFormIds: z.array(z.string().uuid()).max(20).default([]),
   notifyCustomer: z.boolean().default(true),
+  confirmPastBooking: z.boolean().default(false),
+  walkIn: z.boolean().default(false),
 }).strict().superRefine((value, context) => {
   if (value.bookingChannel === 'mobile' && !value.mobileAddress) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['mobileAddress'], message: 'An appointment address is required for mobile bookings.' });
   }
 });
 export type StaffCreateBookingRequest = z.infer<typeof StaffCreateBookingRequestSchema>;
+
+export const CreateBlockedTimeRequestSchema = z.object({
+  staffId: z.string().uuid(),
+  startTime: z.string().datetime(),
+  durationMinutes: z.number().int().min(5).max(1_440),
+  reason: z.string().trim().min(1).max(500),
+}).strict();
+export type CreateBlockedTimeRequest = z.infer<typeof CreateBlockedTimeRequestSchema>;
 
 export const RescheduleBookingRequestSchema = z.object({
   startTime: z.string().datetime(),

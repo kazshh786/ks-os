@@ -397,6 +397,12 @@ export class MockDataProvider implements DataProvider {
     const all = getStorageData<Record<string, Service[]>>(STORAGE_KEYS.SERVICES, SERVICES);
     return all[tenantId] || SERVICES[tenantId] || [];
   }
+  async createService(tenantId: string, service: Omit<Service, 'id'>): Promise<Service> {
+    const created = { ...service, id: `srv-${Date.now()}` };
+    const existing = await this.getServices(tenantId);
+    await this.saveServices(tenantId, [...existing, created]);
+    return created;
+  }
   async saveServices(tenantId: string, servicesList: Service[]): Promise<void> {
     const all = getStorageData<Record<string, Service[]>>(STORAGE_KEYS.SERVICES, SERVICES);
     all[tenantId] = servicesList;
@@ -541,6 +547,8 @@ export class MockDataProvider implements DataProvider {
 
   // Staff Booking Methods (Mock Stubs)
   async createStaffBooking(input: any): Promise<any> { throw new Error('Not implemented in mock'); }
+  async createBlockedTime(input: any): Promise<any> { throw new Error('Not implemented in mock'); }
+  async removeBlockedTime(bookingId: string): Promise<void> { throw new Error('Not implemented in mock'); }
   async updateBookingStatus(bookingId: string, status: string): Promise<void> { throw new Error('Not implemented in mock'); }
   async rescheduleBooking(bookingId: string, input: any): Promise<void> { throw new Error('Not implemented in mock'); }
   async createBookingHold():Promise<any>{throw new Error('Not implemented in mock');}

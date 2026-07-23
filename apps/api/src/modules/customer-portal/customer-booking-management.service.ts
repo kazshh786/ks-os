@@ -11,6 +11,7 @@ import {
   emailOutbox,
   formAssignments,
   getDatabase,
+  internalNotifications,
   locations,
   services,
   smsOutbox,
@@ -306,6 +307,15 @@ export class CustomerBookingManagementService {
         },
       }, tx);
       await this.enqueueRescheduledNotifications(tx, row, requestedStaff.name, newStart, change.id, access);
+      await tx.insert(internalNotifications).values({
+        tenantId: row.tenantId,
+        recipientRole: 'owner',
+        type: 'BOOKING_RESCHEDULED',
+        title: 'Customer rescheduled a booking',
+        message: `${row.serviceName || 'Service'} moved to ${new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: row.timezone }).format(newStart)}.`,
+        sourceType: 'appointment',
+        sourceId: row.appointmentId,
+      });
 
       const nextRow = { ...row, staffId: requestedStaff.id, staffName: requestedStaff.name, startTime: newStart, endTime: newEnd, version: updated.version, customerRescheduleCount: row.customerRescheduleCount + 1 };
       const payment = await this.paymentContext(row.tenantId, row.appointmentId, tx);
@@ -406,6 +416,15 @@ export class CustomerBookingManagementService {
           occurredAt: cancelledAt.toISOString(),
         },
       }, tx);
+      await tx.insert(internalNotifications).values({
+        tenantId: row.tenantId,
+        recipientRole: 'owner',
+        type: 'BOOKING_CANCELLED',
+        title: 'Customer cancelled a booking',
+        message: `${row.serviceName || 'Service'} on ${new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: row.timezone }).format(row.startTime)} was cancelled.`,
+        sourceType: 'appointment',
+        sourceId: row.appointmentId,
+      });
       if (payment.refundableOnlineAmount > 0) {
         await this.issues.report({
           tenantId: row.tenantId,
@@ -663,11 +682,12 @@ export class CustomerBookingManagementService {
   }
 
   private managementUrl(access: CustomerBookingAccess, bookingReference: string) {
-    if (!env.PUBLIC_APP_ORIGIN) return undefined;
+    const origin = env.PUBLIC_APP_ORIGIN || env.FRONTEND_ORIGIN;
+    if (!origin) return undefined;
     const path = access.kind === 'GUEST'
       ? `/manage/${encodeURIComponent(access.token)}`
       : `/customer/appointments/${bookingReference}`;
-    return `${env.PUBLIC_APP_ORIGIN}${path}`;
+    return `${origin}${path}`;
   }
 
   private async enqueueRescheduledNotifications(tx: any, row: AccessRow, staffName: string, newStart: Date, changeId: string, access: CustomerBookingAccess) {

@@ -129,8 +129,32 @@ export class ApiDataProvider implements DataProvider {
       description: s.description,
       price: s.price / 100,
       durationMin: s.duration,
-      category: 'General'
+      category: s.category || 'General'
     }));
+  }
+  async createService(_tenantId: string, service: Omit<Service, 'id'>): Promise<Service> {
+    const res = await fetchWithAuth('/api/v1/services', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: service.name,
+        description: service.description,
+        duration: service.durationMin,
+        price: Math.round(service.price * 100),
+        category: service.category,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.message || 'Could not create service');
+    const created = body.data;
+    return {
+      id: created.id,
+      name: created.name,
+      description: created.description || '',
+      price: created.price / 100,
+      durationMin: created.duration,
+      category: created.category || service.category,
+    };
   }
   async saveServices(tenantId: string, services: Service[]): Promise<void> {
     throw new Error('API Method not implemented: saveServices');
@@ -307,6 +331,18 @@ export class ApiDataProvider implements DataProvider {
     return data;
   }
 
+  async createBlockedTime(input: { staffId: string; startTime: string; durationMinutes: number; reason: string }): Promise<any> {
+    const res = await fetchWithAuth('/api/v1/bookings/blocked-time', { method: 'POST', body: JSON.stringify(input) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(res.status === 409 ? 'SLOT_UNAVAILABLE' : data.error?.message || 'Could not block this time.');
+    return data;
+  }
+
+  async removeBlockedTime(bookingId: string): Promise<void> {
+    const res = await fetchWithAuth(`/api/v1/bookings/${bookingId}/blocked-time`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Could not remove this blocked time.');
+  }
+
   async updateBookingStatus(bookingId: string, status: string): Promise<void> {
     const res = await fetchWithAuth(`/api/v1/bookings/${bookingId}/status`, {
       method: 'PATCH',
@@ -379,7 +415,7 @@ export class ApiDataProvider implements DataProvider {
     throw new Error('API Method not implemented: triggerEvent');
   }
 
-  private async formsRequest(path: string, init?: RequestInit) { const response=await fetchWithAuth(path,{...init,headers:{'Content-Type':'application/json',...(init?.headers||{})}}); if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body.error?.code||'FORM_REQUEST_FAILED');} if(response.status===204)return undefined; const body=await response.json();return body.data; }
+  private async formsRequest(path: string, init?: RequestInit) { const response=await fetchWithAuth(path,{...init,headers:{'Content-Type':'application/json',...(init?.headers||{})}}); if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body.error?.message||body.error?.code||'FORM_REQUEST_FAILED');} if(response.status===204)return undefined; const body=await response.json();return body.data; }
   listForms(){return this.formsRequest('/api/v1/forms');}
   getForm(formId:string){return this.formsRequest(`/api/v1/forms/${formId}`);}
   createForm(input:any){return this.formsRequest('/api/v1/forms',{method:'POST',body:JSON.stringify(input)});}

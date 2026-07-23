@@ -42,7 +42,7 @@ export class TeamService {
 
   private async resolveMember(actor: Actor, publicReference: string) {
     const [member] = await this.db.select().from(users).where(and(
-      eq(users.publicReference, publicReference), eq(users.tenantId, actor.tenantId), eq(users.role, 'staff'),
+      eq(users.publicReference, publicReference), eq(users.tenantId, actor.tenantId), inArray(users.role, ['owner', 'staff']),
     )).limit(1);
     if (!member) throw teamError(404, 'TEAM_MEMBER_NOT_FOUND', 'Team member not found.');
     return member;

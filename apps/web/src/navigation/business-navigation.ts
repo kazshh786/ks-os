@@ -1,6 +1,6 @@
 import {
   BarChart3, Bell, BookOpenCheck, Building2, CalendarDays, ClipboardList, ConciergeBell, CreditCard,
-  FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare,
+  FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors, Clock3,
   Plug, ReceiptText, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
 } from 'lucide-react';
 import type { NavigationGroup } from './navigation.types';
@@ -10,6 +10,7 @@ export const businessNavigation: NavigationGroup[] = [
     id: 'primary',
     items: [
       { id: 'dashboard', label: 'Dashboard', href: '/app/dashboard', icon: LayoutDashboard, roles: ['owner'] },
+      { id: 'services', label: 'Services', href: '/app/services', icon: Scissors, roles: ['owner'] },
       { id: 'calendar', label: 'Booking Calendar', href: '/app/calendar', icon: CalendarDays, permissionsAny: ['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL'] },
       { id: 'bookings', label: 'Bookings', href: '/app/bookings', icon: BookOpenCheck, permissionsAny: ['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL'] },
     ],
@@ -17,7 +18,7 @@ export const businessNavigation: NavigationGroup[] = [
   {
     id: 'customer-operations', label: 'Customer Operations',
     items: [
-      { id: 'walk-in-desk', label: 'Walk-in Desk', href: '/app/reception', icon: ConciergeBell, permissionsAny: ['BOOKINGS_CREATE'] },
+      { id: 'walk-in-desk', label: 'Walk-in Desk', href: '/app/calendar?walkin=1', icon: ConciergeBell, permissionsAny: ['BOOKINGS_CREATE'] },
       { id: 'customers', label: 'Customers', href: '/app/clients', icon: Users, permissionsAny: ['CLIENTS_VIEW_BASIC'], activePrefixes: ['/app/clients/'] },
       { id: 'forms', label: 'Forms', href: '/app/forms', icon: FormInput, permissionsAny: ['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE'], activePrefixes: ['/app/forms/', '/app/form-submissions/'] },
     ],
@@ -50,6 +51,7 @@ export const businessNavigation: NavigationGroup[] = [
     id: 'admin', label: 'Administration',
     items: [
       { id: 'team', label: 'Team', href: '/app/settings/team', icon: Users, roles: ['owner'], activePrefixes: ['/app/settings/team/'] },
+      { id: 'availability', label: 'Availability', href: '/app/settings/availability', icon: Clock3, roles: ['owner'] },
       { id: 'locations', label: 'Locations & Resources', href: '/app/settings/locations', icon: MapPinned, roles: ['owner'], activePrefixes: ['/app/settings/resources'] },
       { id: 'booking-page', label: 'Booking Page', href: '/app/settings/booking-page', icon: Globe2, roles: ['owner'] },
       { id: 'booking-policies', label: 'Booking Policies', href: '/app/settings/booking/customer-management', icon: ReceiptText, roles: ['owner'] },

@@ -21,13 +21,11 @@ export class BookingRepository {
     if (query.locationIds?.length) conditions.push(inArray(appointments.locationId, query.locationIds));
     if (query.statuses?.length) conditions.push(inArray(appointments.status, query.statuses));
     if (query.paymentStatuses?.length) conditions.push(inArray(appointments.paymentStatus, query.paymentStatuses));
-    if (query.intakeStatuses?.length) conditions.push(inArray(appointments.intakeStatus, query.intakeStatuses));
-    if (query.sources?.length) conditions.push(inArray(appointments.bookingSource, query.sources));
+    if (query.intakeStatuses?.length && !query.intakeStatuses.includes('NOT_REQUIRED')) conditions.push(sql`false`);
+    if (query.sources?.length && !query.sources.includes('STAFF_CREATED')) conditions.push(sql`false`);
     if (query.requiresAttention) conditions.push(or(
       eq(appointments.status, 'PENDING'),
       inArray(appointments.paymentStatus, ['FAILED', 'PENDING', 'PARTIALLY_PAID']),
-      inArray(appointments.intakeStatus, ['PENDING', 'IN_PROGRESS', 'OVERDUE']),
-      sql`${appointments.attentionReason} IS NOT NULL`,
       sql`(${appointments.endTime} < now() AND ${appointments.status} NOT IN ('COMPLETED','CANCELLED','NO_SHOW'))`,
     ));
     if (query.search) {
@@ -68,11 +66,11 @@ export class BookingRepository {
       bookingChannel: appointments.bookingChannel,
       paymentStatus: appointments.paymentStatus,
       quotedAmount: appointments.quotedAmount,
-      intakeStatus: appointments.intakeStatus,
-      bookingSource: appointments.bookingSource,
+      intakeStatus: sql<string>`'NOT_REQUIRED'`,
+      bookingSource: sql<string>`'STAFF_CREATED'`,
       notes: appointments.notes,
-      customerNotes: appointments.customerNotes,
-      attentionReason: appointments.attentionReason,
+      customerNotes: sql<string | null>`null`,
+      attentionReason: sql<string | null>`null`,
       createdAt: appointments.createdAt,
     })
       .from(appointments)
@@ -93,14 +91,14 @@ export class BookingRepository {
       .limit(query.limit)
       .offset((query.page - 1) * query.limit);
     const [aggregate] = await db.select({
-      total: count(),
+      total: sql<number>`count(*) filter (where ${appointments.status} <> 'BLOCKED')::int`,
       confirmed: sql<number>`count(*) filter (where ${appointments.status} = 'CONFIRMED')::int`,
       completed: sql<number>`count(*) filter (where ${appointments.status} = 'COMPLETED')::int`,
       cancelled: sql<number>`count(*) filter (where ${appointments.status} = 'CANCELLED')::int`,
       noShow: sql<number>`count(*) filter (where ${appointments.status} = 'NO_SHOW')::int`,
       awaitingPayment: sql<number>`count(*) filter (where ${appointments.status} = 'AWAITING_PAYMENT' or ${appointments.paymentStatus} in ('PENDING','FAILED','PARTIALLY_PAID'))::int`,
-      incompleteForms: sql<number>`count(*) filter (where ${appointments.intakeStatus} in ('PENDING','IN_PROGRESS','OVERDUE'))::int`,
-      requiresAttention: sql<number>`count(*) filter (where ${appointments.status} = 'PENDING' or ${appointments.paymentStatus} in ('PENDING','FAILED','PARTIALLY_PAID') or ${appointments.intakeStatus} in ('PENDING','IN_PROGRESS','OVERDUE') or ${appointments.attentionReason} is not null or (${appointments.endTime} < now() and ${appointments.status} not in ('COMPLETED','CANCELLED','NO_SHOW')))::int`,
+      incompleteForms: sql<number>`0::int`,
+      requiresAttention: sql<number>`count(*) filter (where ${appointments.status} <> 'BLOCKED' and (${appointments.status} = 'PENDING' or ${appointments.paymentStatus} in ('PENDING','FAILED','PARTIALLY_PAID') or (${appointments.endTime} < now() and ${appointments.status} not in ('COMPLETED','CANCELLED','NO_SHOW'))))::int`,
     })
       .from(appointments)
       .leftJoin(services, and(eq(appointments.serviceId, services.id), eq(services.tenantId, scope.tenantId)))
@@ -173,11 +171,11 @@ export class BookingRepository {
       resourceId: appointments.resourceId,
       paymentStatus: appointments.paymentStatus,
       quotedAmount: appointments.quotedAmount,
-      intakeStatus: appointments.intakeStatus,
-      bookingSource: appointments.bookingSource,
+      intakeStatus: sql<string>`'NOT_REQUIRED'`,
+      bookingSource: sql<string>`'STAFF_CREATED'`,
       publicReference: appointments.publicReference,
       notes: appointments.notes,
-      customerNotes: appointments.customerNotes,
+      customerNotes: sql<string | null>`null`,
       createdAt: appointments.createdAt,
     })
     .from(appointments)
@@ -218,12 +216,18 @@ export class BookingRepository {
         ${payNow}::boolean,
         ${idempotencyKey}::uuid,
         ${bookingChannel}::text,
-        ${mobileAddress ? JSON.stringify(mobileAddress) : null}::jsonb,
-        ${resourceId || null}::uuid
+        ${mobileAddress ? JSON.stringify(mobileAddress) : null}::jsonb
       )
     `);
 
-    return result.rows[0] as any;
+    const booking = result.rows[0] as any;
+    const appointmentId = booking?.appointment_id || booking?.id;
+    if (appointmentId && resourceId) {
+      await dbOrTx.update(appointments)
+        .set({ resourceId, updatedAt: new Date() })
+        .where(and(eq(appointments.id, appointmentId), eq(appointments.tenantId, tenantId)));
+    }
+    return booking;
   }
 
   async updateBookingStatus(tenantId: string, bookingId: string, newStatus: string, tx?: any) {

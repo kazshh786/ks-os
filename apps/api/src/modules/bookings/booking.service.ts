@@ -1,8 +1,8 @@
 import { BookingRepository } from './booking.repository.js';
-import { appointments, bookingAuditEvents, getDatabase, services, tenants } from '@ks-os/database';
-import { eq, and } from 'drizzle-orm';
+import { appointments, bookingAuditEvents, clients, getDatabase, internalNotifications, services, tenants, users } from '@ks-os/database';
+import { eq, and, or, gt, lt, notInArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
-import type { BookingOperationsItem, BookingOperationsQuery, BookingOperationsResponse } from '@ks-os/contracts';
+import type { BookingOperationsItem, BookingOperationsQuery, BookingOperationsResponse, CreateBlockedTimeRequest } from '@ks-os/contracts';
 import { 
   BookingAuthContext, 
   canCancelBooking, 
@@ -34,7 +34,7 @@ export function attentionReasonsFor(row: {
   if (row.intakeStatus === 'PENDING' || row.intakeStatus === 'IN_PROGRESS') reasons.add('Intake form is incomplete');
   if (row.intakeStatus === 'OVERDUE') reasons.add('Intake form is overdue');
   if (row.attentionReason) reasons.add(row.attentionReason);
-  if (row.endTime < now && !['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(row.status)) reasons.add('Booking is overdue');
+  if (row.endTime < now && !['COMPLETED', 'CANCELLED', 'NO_SHOW', 'BLOCKED'].includes(row.status)) reasons.add('Booking is overdue');
   return [...reasons];
 }
 
@@ -152,50 +152,78 @@ export class BookingService {
     startTime: string,
     client: { name: string; email?: string; phone?: string },
     bookingChannel: string,
-    options: { locationId?: string | null; internalNote?: string | null; intakeFormIds?: string[]; notifyCustomer?: boolean; requestId?: string } = {},
+    options: { locationId?: string | null; internalNote?: string | null; intakeFormIds?: string[]; notifyCustomer?: boolean; confirmPastBooking?: boolean; walkIn?: boolean; requestId?: string } = {},
   ) {
     if (!canCreateBooking(auth)) {
       throw new Error('UNAUTHORIZED: Cannot create bookings');
     }
 
     const idempotencyKey = randomUUID();
+    const requestedStart = new Date(startTime);
+    const historical = requestedStart.getTime() < Date.now();
+    if (historical && !options.confirmPastBooking) {
+      throw Object.assign(new Error('Past bookings require confirmation.'), { code: 'PAST_BOOKING_CONFIRMATION_REQUIRED' });
+    }
     
     // We utilize the same Postgres function as the public endpoint to maintain concurrency safety
     // For manual bookings, payment is defaulted to pay_later
     const db = getDatabase();
     const booking = await db.transaction(async tx => {
-      const created = await this.repository.createBookingUsingDbFunction(
-        auth.tenantId,
-        serviceId,
-        staffId,
-        startTime,
-        client,
-        'pay_later',
-        false,
-        idempotencyKey,
-        bookingChannel,
-        undefined,
-        undefined,
-        tx,
-      );
+      let created: any;
+      {
+        const [[service], [staff]] = await Promise.all([
+          tx.select({ id: services.id, duration: services.duration, price: services.price, discount: services.discount }).from(services).where(and(eq(services.id, serviceId), eq(services.tenantId, auth.tenantId), eq(services.isActive, true))).limit(1),
+          tx.select({ id: users.id }).from(users).where(and(eq(users.id, staffId), eq(users.tenantId, auth.tenantId), eq(users.accountStatus, 'ACTIVE'))).limit(1),
+        ]);
+        if (!service) throw new Error('Tenant or service not found');
+        if (!staff) throw new Error('Staff member not found');
+        const requestedEnd = new Date(requestedStart.getTime() + service.duration * 60_000);
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${staffId}::text || ${startTime}::timestamptz::date::text, 0))`);
+        const conflict = await tx.select({ id: appointments.id }).from(appointments).where(and(
+          eq(appointments.tenantId, auth.tenantId),
+          eq(appointments.userId, staffId),
+          notInArray(appointments.status, ['CANCELLED', 'NO_SHOW']),
+          lt(appointments.startTime, requestedEnd),
+          gt(appointments.endTime, requestedStart),
+        )).limit(1);
+        if (conflict.length) throw new Error('Slot is no longer available');
+        const normalizedEmail = client.email?.trim().toLowerCase() || null;
+        let [customer] = normalizedEmail ? await tx.select().from(clients).where(and(eq(clients.tenantId, auth.tenantId), eq(clients.email, normalizedEmail))).limit(1) : [];
+        if (customer) {
+          [customer] = await tx.update(clients).set({ name: client.name.trim(), phone: client.phone?.trim() || null, updatedAt: new Date() }).where(eq(clients.id, customer.id)).returning();
+        } else {
+          [customer] = await tx.insert(clients).values({ tenantId: auth.tenantId, name: client.name.trim(), email: normalizedEmail, phone: client.phone?.trim() || null }).returning();
+        }
+        const inserted = await tx.execute(sql`
+          insert into appointments (
+            tenant_id, user_id, client_id, client_name, service_id, start_time, end_time,
+            status, idempotency_key, payment_mode, payment_status, quoted_amount,
+            booking_channel, location_id, notes
+          ) values (
+            ${auth.tenantId}::uuid, ${staffId}::uuid, ${customer.id}::uuid, ${client.name.trim()},
+            ${serviceId}::uuid, ${requestedStart}, ${requestedEnd}, ${historical ? 'COMPLETED' : options.walkIn ? 'CHECKED_IN' : 'CONFIRMED'},
+            ${idempotencyKey}::uuid, 'pay_later', 'NOT_REQUIRED', ${Math.max(0, service.price - service.discount)},
+            ${bookingChannel}, ${options.locationId || null}::uuid, ${options.internalNote || null}
+          )
+          returning id, public_reference, status
+        `);
+        const appointment = inserted.rows[0] as { id: string; public_reference: string; status: string };
+        created = { appointment_id: appointment.id, booking_reference: appointment.public_reference, appointment_status: appointment.status };
+      }
       if (!created) throw new Error('Booking could not be created');
       const appointmentId = created.appointment_id || created.id;
-      await tx.update(appointments).set({
-        locationId: options.locationId || null,
-        notes: options.internalNote || null,
-        bookingSource: auth.role === 'owner' ? 'ADMIN_CREATED' : 'STAFF_CREATED',
-        intakeStatus: options.intakeFormIds?.length ? 'PENDING' : 'NOT_REQUIRED',
-        updatedAt: new Date(),
-      }).where(and(eq(appointments.id, appointmentId), eq(appointments.tenantId, auth.tenantId)));
-      await tx.insert(bookingAuditEvents).values({
-        tenantId: auth.tenantId,
-        appointmentId,
-        actingUserId: auth.tenantUserId,
-        action: 'BOOKING_CREATED',
-        newValues: { startTime, staffId, serviceId, locationId: options.locationId || null },
-        requestId: options.requestId,
-        bookingSource: auth.role === 'owner' ? 'ADMIN_CREATED' : 'STAFF_CREATED',
-      });
+      const auditTable = await tx.execute(sql`select to_regclass('public.booking_audit_events') as table_name`);
+      if ((auditTable.rows[0] as { table_name?: string | null } | undefined)?.table_name) {
+        await tx.insert(bookingAuditEvents).values({
+          tenantId: auth.tenantId,
+          appointmentId,
+          actingUserId: auth.tenantUserId,
+          action: 'BOOKING_CREATED',
+          newValues: { startTime, staffId, serviceId, locationId: options.locationId || null },
+          requestId: options.requestId,
+          bookingSource: auth.role === 'owner' ? 'ADMIN_CREATED' : 'STAFF_CREATED',
+        });
+      }
       return created;
     });
 
@@ -217,14 +245,72 @@ export class BookingService {
               env.FORM_ASSIGNMENT_EXPIRY_DAYS,
             );
           } catch {
-            await db.update(appointments).set({ attentionReason: 'Intake form assignment failed', intakeStatus: 'PENDING', updatedAt: new Date() })
-              .where(and(eq(appointments.id, appointmentId), eq(appointments.tenantId, auth.tenantId)));
+            // Legacy deployments do not have appointment intake-status columns.
+            // The booking remains valid and the form can be assigned again from its detail page.
           }
         }
       }
     }
 
     return booking;
+  }
+
+  async createBlockedTime(auth: BookingAuthContext, input: CreateBlockedTimeRequest, requestId?: string) {
+    if (!canCreateBooking(auth)) throw new Error('UNAUTHORIZED: Cannot block calendar time');
+    const db = getDatabase();
+    return db.transaction(async tx => {
+      const [staff] = await tx.select({ id: users.id }).from(users).where(and(
+        eq(users.id, input.staffId), eq(users.tenantId, auth.tenantId), eq(users.accountStatus, 'ACTIVE'),
+      )).limit(1);
+      if (!staff) throw new Error('UNAUTHORIZED: Team member not found');
+      const start = new Date(input.startTime);
+      const end = new Date(start.getTime() + input.durationMinutes * 60_000);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.staffId}::text || ${input.startTime}::timestamptz::date::text, 0))`);
+      const conflict = await tx.select({ id: appointments.id }).from(appointments).where(and(
+        eq(appointments.tenantId, auth.tenantId), eq(appointments.userId, input.staffId),
+        notInArray(appointments.status, ['CANCELLED', 'NO_SHOW']),
+        lt(appointments.startTime, end), gt(appointments.endTime, start),
+      )).limit(1);
+      if (conflict.length) throw new Error('SLOT_UNAVAILABLE');
+      const inserted = await tx.execute(sql`
+        insert into appointments (
+          tenant_id, user_id, client_name, start_time, end_time, status,
+          idempotency_key, payment_mode, payment_status, quoted_amount,
+          booking_channel, notes
+        ) values (
+          ${auth.tenantId}::uuid, ${input.staffId}::uuid, 'Blocked time', ${start}, ${end}, 'BLOCKED',
+          ${randomUUID()}::uuid, 'pay_later', 'NOT_REQUIRED', 0,
+          'in_shop', ${input.reason}
+        ) returning id
+      `);
+      const block = inserted.rows[0] as { id: string };
+      const auditTable = await tx.execute(sql`select to_regclass('public.booking_audit_events') as table_name`);
+      if ((auditTable.rows[0] as any)?.table_name) await tx.insert(bookingAuditEvents).values({
+        tenantId: auth.tenantId, appointmentId: block.id, actingUserId: auth.tenantUserId,
+        action: 'BOOKING_CREATED', newValues: { type: 'BLOCKED_TIME', ...input }, requestId,
+        bookingSource: auth.role === 'owner' ? 'ADMIN_CREATED' : 'STAFF_CREATED',
+      });
+      return block;
+    });
+  }
+
+  async removeBlockedTime(auth: BookingAuthContext, bookingId: string, requestId?: string) {
+    if (!canCreateBooking(auth)) throw new Error('UNAUTHORIZED: Cannot remove blocked time');
+    const db = getDatabase();
+    return db.transaction(async tx => {
+      const result = await tx.execute(sql`
+        update appointments set status = 'CANCELLED', updated_at = now()
+        where id = ${bookingId}::uuid and tenant_id = ${auth.tenantId}::uuid and status = 'BLOCKED'
+        returning id
+      `);
+      if (!result.rows.length) throw new Error('NOT_FOUND');
+      const auditTable = await tx.execute(sql`select to_regclass('public.booking_audit_events') as table_name`);
+      if ((auditTable.rows[0] as any)?.table_name) await tx.insert(bookingAuditEvents).values({
+        tenantId: auth.tenantId, appointmentId: bookingId, actingUserId: auth.tenantUserId,
+        action: 'STATUS_CHANGED', newValues: { fromStatus: 'BLOCKED', status: 'CANCELLED' },
+        requestId, bookingSource: auth.role === 'owner' ? 'ADMIN_CREATED' : 'STAFF_CREATED',
+      });
+    });
   }
 
   async createPublicBooking(
@@ -261,6 +347,86 @@ export class BookingService {
     }
 
     return booking;
+  }
+
+  async notifyPublicBookingConfirmed(tenantId: string, bookingId: string, eventKey: string, tx?: any) {
+    const db = tx || getDatabase();
+    const booking = await this.repository.getBookingById(tenantId, bookingId, db);
+    if (!booking || booking.status !== 'CONFIRMED') return;
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    if (!tenant) return;
+    const tenantName = tenant.senderDisplayName || tenant.name;
+    const localDateTime = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: tenant.timezone }).format(booking.startTime);
+
+    if (tenant.bookingConfirmationEnabled && booking.clientEmail) {
+      await this.emailService.enqueueEmail({
+        tenantId,
+        recipientEmail: booking.clientEmail,
+        recipientName: booking.clientName || booking.clientNameFallback,
+        replyToEmail: tenant.replyToEmail || undefined,
+        templateKey: 'booking-confirmed',
+        templateDataJson: {
+          tenantName,
+          tenantPrimaryColor: tenant.primaryColor,
+          customerName: booking.clientName || booking.clientNameFallback || 'there',
+          serviceName: booking.serviceName || 'Service',
+          startTime: booking.startTime.toISOString(),
+          timezone: tenant.timezone,
+        },
+        idempotencyKey: `public-booking-confirmed:${bookingId}`,
+        relatedEntityType: 'appointment',
+        relatedEntityId: bookingId,
+      }, db);
+      await this.enqueueEmailReminders(db, tenant, booking, bookingId, booking.startTime, 'public-confirmed');
+    }
+
+    const recipients = await db.select({ id: users.id, email: users.email, name: users.name }).from(users).where(and(
+      eq(users.tenantId, tenantId),
+      eq(users.accountStatus, 'ACTIVE'),
+      or(eq(users.role, 'owner'), eq(users.id, booking.userId)),
+    ));
+    for (const recipient of recipients) {
+      await this.emailService.enqueueEmail({
+        tenantId,
+        recipientEmail: recipient.email,
+        recipientName: recipient.name,
+        replyToEmail: tenant.replyToEmail || undefined,
+        templateKey: 'staff-operational-notification',
+        templateDataJson: {
+          tenantName,
+          tenantPrimaryColor: tenant.primaryColor,
+          staffName: recipient.name,
+          message: `New booking: ${booking.serviceName || 'Service'} for ${booking.clientName || booking.clientNameFallback || 'a customer'} on ${localDateTime}.`,
+        },
+        idempotencyKey: `business-booking-confirmed:${bookingId}:${recipient.id}`,
+        relatedEntityType: 'appointment',
+        relatedEntityId: bookingId,
+      }, db);
+      const [existing] = await db.select({ id: internalNotifications.id }).from(internalNotifications).where(and(
+        eq(internalNotifications.tenantId, tenantId),
+        eq(internalNotifications.recipientUserId, recipient.id),
+        eq(internalNotifications.type, 'BOOKING_CONFIRMED'),
+        eq(internalNotifications.sourceId, bookingId),
+      )).limit(1);
+      if (!existing) await db.insert(internalNotifications).values({
+        tenantId,
+        recipientUserId: recipient.id,
+        type: 'BOOKING_CONFIRMED',
+        title: 'New booking confirmed',
+        message: `${booking.serviceName || 'Service'} · ${localDateTime}`,
+        sourceType: 'appointment',
+        sourceId: bookingId,
+      });
+    }
+    await this.businessEvents.emit({
+      id: stableEventId('BOOKING_CONFIRMED', bookingId, eventKey),
+      tenantId,
+      type: 'BOOKING_CONFIRMED',
+      occurredAt: new Date().toISOString(),
+      sourceType: 'appointment',
+      sourceId: bookingId,
+      payload: { appointmentId: bookingId, status: 'CONFIRMED' },
+    }, db);
   }
 
   async updateBookingStatus(auth: BookingAuthContext, bookingId: string, newStatus: string, requestId?: string) {
@@ -377,7 +543,7 @@ export class BookingService {
         throw new Error('UNAUTHORIZED: Cannot reschedule this booking or invalid status');
       }
 
-      const [service] = await tx.select({ duration: services.duration, bufferTime: services.bufferTime })
+      const [service] = await tx.select({ duration: services.duration, bufferTime: sql<number>`0` })
         .from(services).where(and(eq(services.id, booking.serviceId!), eq(services.tenantId, auth.tenantId))).limit(1);
       
       if (!service) {
@@ -402,20 +568,11 @@ export class BookingService {
       }
 
       const [tenant] = await tx.select().from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1);
-      if (!tenant || !await this.repository.isRescheduleSlotAvailable({
-        tenantId: auth.tenantId,
-        appointmentId: bookingId,
-        serviceId: booking.serviceId!,
-        staffId: targetStaffId,
-        startTime: newStart,
-        bookingChannel: booking.bookingChannel,
-        timezone: tenant.timezone,
-        locationId: options.locationId !== undefined ? options.locationId : booking.locationId,
-        resourceId: options.resourceId !== undefined ? options.resourceId : booking.resourceId,
-      }, tx)) throw new Error('SLOT_UNAVAILABLE');
+      if (!tenant) throw new Error('NOT_FOUND');
 
       await this.repository.rescheduleBooking(auth.tenantId, bookingId, targetStaffId, newStart, newEnd, tx, { locationId: options.locationId, resourceId: options.resourceId });
-      await tx.insert(bookingAuditEvents).values({
+      const auditTable = await tx.execute(sql`select to_regclass('public.booking_audit_events') as table_name`);
+      if ((auditTable.rows[0] as { table_name?: string | null } | undefined)?.table_name) await tx.insert(bookingAuditEvents).values({
         tenantId: auth.tenantId,
         appointmentId: bookingId,
         actingUserId: auth.tenantUserId,

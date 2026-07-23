@@ -59,6 +59,14 @@ export function BookingQuickView({ booking, staff, onClose, onChanged, onCheckou
     finally { setSaving(false); }
   };
 
+  const removeBlock = async () => {
+    if (!window.confirm('Remove this blocked period and make the time available again?')) return;
+    setSaving(true); setError('');
+    try { await getDataProvider().removeBlockedTime(booking.id); onChanged(); onClose(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'The blocked time could not be removed.'); }
+    finally { setSaving(false); }
+  };
+
   const saveReschedule = async (event: React.FormEvent) => {
     event.preventDefault(); setSaving(true); setError('');
     try {
@@ -80,7 +88,7 @@ export function BookingQuickView({ booking, staff, onClose, onChanged, onCheckou
           <p className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-indigo-600" />{booking.paymentStatus} · {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(booking.quotedAmount / 100)}</p>
           <p className="flex items-center gap-2"><FileText className="h-4 w-4 text-indigo-600" />Intake: {booking.intakeStatus.replaceAll('_', ' ').toLowerCase()}</p>
         </section>
-        <section><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Customer</h3><div className="mt-2 rounded-xl border p-4 text-sm"><p>{booking.customer.email || 'No email'}</p><p>{booking.customer.phone || 'No phone'}</p></div></section>
+        {booking.status !== 'BLOCKED' && <section><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Customer</h3><div className="mt-2 rounded-xl border p-4 text-sm"><p>{booking.customer.email || 'No email'}</p><p>{booking.customer.phone || 'No phone'}</p></div></section>}
         {booking.notes && <section><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Internal notes</h3><p className="mt-2 whitespace-pre-wrap rounded-xl border p-4 text-sm">{booking.notes}</p></section>}
         {booking.customerNotes && <section><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Customer notes</h3><p className="mt-2 whitespace-pre-wrap rounded-xl border p-4 text-sm">{booking.customerNotes}</p></section>}
         {booking.attentionReasons.length > 0 && <section className="rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="font-black text-amber-950">Requires attention</h3><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">{booking.attentionReasons.map(reason => <li key={reason}>{reason}</li>)}</ul></section>}
@@ -88,7 +96,8 @@ export function BookingQuickView({ booking, staff, onClose, onChanged, onCheckou
         {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
       </div>
       <footer className="sticky bottom-0 flex flex-wrap gap-2 border-t bg-white p-4">
-        <button onClick={() => setRescheduling(true)} disabled={saving || ['COMPLETED','CANCELLED','NO_SHOW'].includes(booking.status)} className="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Reschedule</button>
+        {booking.status !== 'BLOCKED' && <button onClick={() => setRescheduling(true)} disabled={saving || ['COMPLETED','CANCELLED','NO_SHOW'].includes(booking.status)} className="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Reschedule</button>}
+        {booking.status === 'BLOCKED' && <button onClick={() => void removeBlock()} disabled={saving} className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-bold text-rose-700">Remove block</button>}
         {nextActions[booking.status]?.map(action => <button key={action.status} onClick={() => void updateStatus(action.status)} disabled={saving} className={`rounded-lg px-3 py-2 text-sm font-bold ${action.status === 'CANCELLED' ? 'border border-rose-200 text-rose-700' : 'bg-slate-900 text-white'}`}>{action.label}</button>)}
         {booking.status === 'AWAITING_PAYMENT' && <button onClick={() => onCheckout(booking)} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-bold text-white">Open checkout</button>}
       </footer>

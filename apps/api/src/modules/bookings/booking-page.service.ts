@@ -253,8 +253,13 @@ export class BookingPageService {
     const db = getDatabase();
     const serviceRows = await db.select({ id: services.id, name: services.name, description: services.description, duration: services.duration, price: services.price, discount: services.discount, requiresDeposit: services.requiresDeposit })
       .from(services).where(and(eq(services.tenantId, tenant.id), eq(services.isActive, true), page.allowedServiceIds.length ? inArray(services.id, page.allowedServiceIds) : undefined));
-    const staffRows = await db.select({ id: users.id, name: users.name, role: users.jobTitle, imageUrl: users.profileImageUrl, bio: users.bio })
-      .from(users).where(and(eq(users.tenantId, tenant.id), eq(users.accountStatus, 'ACTIVE'), eq(users.bookingEnabled, true), page.allowedStaffIds.length ? inArray(users.id, page.allowedStaffIds) : undefined));
+    const staffRows = await db.select({ id: users.id, name: users.name, role: users.jobTitle, accountRole: users.role, imageUrl: users.profileImageUrl, bio: users.bio })
+      .from(users).where(and(
+        eq(users.tenantId, tenant.id),
+        eq(users.accountStatus, 'ACTIVE'),
+        or(eq(users.role, 'owner'), eq(users.bookingEnabled, true)),
+        page.allowedStaffIds.length ? inArray(users.id, page.allowedStaffIds) : undefined,
+      ));
     const assignments = staffRows.length && serviceRows.length ? await db.select({ staffId: staffServiceAssignments.staffUserId, serviceId: staffServiceAssignments.serviceId })
       .from(staffServiceAssignments).where(and(eq(staffServiceAssignments.tenantId, tenant.id), eq(staffServiceAssignments.isActive, true), inArray(staffServiceAssignments.staffUserId, staffRows.map(row => row.id)), inArray(staffServiceAssignments.serviceId, serviceRows.map(row => row.id)))) : [];
     const locationRows = await db.select({ id: locations.id, name: locations.name, address: locations.address, postcode: locations.postcode, timezone: locations.timezone, isPrimary: locations.isPrimary })
@@ -269,7 +274,9 @@ export class BookingPageService {
       paymentMode: tenant.defaultPaymentMode,
       bookingChannels: [{ id: 'in_shop', label: 'At the business' }, { id: 'mobile', label: 'Mobile appointment' }],
       services: serviceRows.map(row => ({ ...row, price: Math.max(0, row.price - (row.discount || 0)) })),
-      staff: staffRows.map(row => ({ ...row, serviceIds: assignments.filter(item => item.staffId === row.id).map(item => item.serviceId) })),
+      staff: staffRows
+        .map(row => ({ ...row, serviceIds: assignments.filter(item => item.staffId === row.id).map(item => item.serviceId) }))
+        .sort((a, b) => Number(b.accountRole === 'owner') - Number(a.accountRole === 'owner') || a.name.localeCompare(b.name)),
       locations: locationRows,
       intakeForms: linkedForms,
     };

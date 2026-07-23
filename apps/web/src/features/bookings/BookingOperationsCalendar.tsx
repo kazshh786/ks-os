@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { eachDayOfInterval, format } from 'date-fns';
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Filter, MoreHorizontal, Plus, RefreshCw, Search, Settings2, Share2, SlidersHorizontal } from 'lucide-react';
+import { fromZonedTime } from 'date-fns-tz';
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Clock3, ConciergeBell, Copy, Download, ExternalLink, Filter, MoreHorizontal, Plus, RefreshCw, Search, Settings2, Share2, SlidersHorizontal } from 'lucide-react';
 import type { BookingOperationsItem, BookingOperationsQuery, BookingOperationsResponse, OperationalBookingStatus } from '@ks-os/contracts';
 import type { Service, Staff } from '../../data/types.js';
 import { getDataProvider } from '../../data/data-provider.js';
@@ -13,7 +14,8 @@ import { BookingQuickView } from './BookingQuickView.js';
 import { BookingScheduleView } from './BookingScheduleView.js';
 import { BookingStatusBadge } from './BookingStatusBadge.js';
 import { CreateBookingDialog } from './CreateBookingDialog.js';
-import { bookingStatusDisplay, calendarRange, calendarViews, type CalendarView, moveCalendarAnchor, rangeLabel } from './booking-display.js';
+import { BlockTimeDialog } from './BlockTimeDialog.js';
+import { bookingStatusDisplay, calendarRange, calendarViews, type CalendarView, localDayKey, moveCalendarAnchor, rangeLabel } from './booking-display.js';
 
 interface BookingOperationsCalendarProps {
   initialView?: CalendarView;
@@ -43,6 +45,8 @@ export function BookingOperationsCalendar({ initialView = 'week' }: BookingOpera
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<BookingOperationsItem | null>(null);
   const [createOpen, setCreateOpen] = useState(params.get('create') === '1');
+  const [walkInOpen, setWalkInOpen] = useState(params.get('walkin') === '1');
+  const [blockOpen, setBlockOpen] = useState(params.get('block') === '1');
   const [publicMenu, setPublicMenu] = useState(false);
   const [notice, setNotice] = useState('');
   const [searchValue, setSearchValue] = useState(params.get('search') || '');
@@ -129,12 +133,34 @@ export function BookingOperationsCalendar({ initialView = 'week' }: BookingOpera
     const anchorElement = document.createElement('a'); anchorElement.href = url; anchorElement.download = `bookings-${dateValue}.csv`; anchorElement.click(); URL.revokeObjectURL(url);
   };
 
+  const dragReschedule = async (booking: BookingOperationsItem, target: { id: string; label: string }) => {
+    if (booking.status === 'BLOCKED') return;
+    const currentDay = localDayKey(booking.startTime, booking.timezone);
+    const targetStaffId = view === 'staff' ? target.id : booking.staff.id;
+    const targetDay = view === 'staff' ? currentDay : target.id;
+    if (targetStaffId === booking.staff.id && targetDay === currentDay) return;
+    const time = new Intl.DateTimeFormat('en-GB', { timeZone: booking.timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(booking.startTime));
+    const nextStart = fromZonedTime(`${targetDay}T${time}:00`, booking.timezone).toISOString();
+    const description = view === 'staff' ? `${target.label} at ${time}` : `${target.label} at ${time}`;
+    if (!window.confirm(`Reschedule ${booking.customer.name} to ${description}? The customer will be notified.`)) return;
+    setNotice('Rescheduling booking…');
+    try {
+      await getDataProvider().rescheduleBooking(booking.id, { startTime: nextStart, staffId: targetStaffId, notifyCustomer: true, reason: 'Changed by drag and drop on calendar' });
+      setNotice('Booking rescheduled successfully.');
+      await load(true);
+    } catch (cause) {
+      setNotice(cause instanceof Error && cause.message === 'SLOT_UNAVAILABLE' ? 'That time overlaps another booking. No change was saved.' : cause instanceof Error ? cause.message : 'The booking could not be rescheduled.');
+    }
+  };
+
   return <main className="space-y-4" aria-busy={loading}>
     <header className="rounded-3xl border border-slate-200 bg-white p-4 shadow-xs">
       <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
         <div><p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">Booking operations</p><h1 className="mt-1 text-3xl font-black text-slate-950">Booking calendar</h1><p className="mt-1 text-sm text-slate-500">{rangeLabel(range.from, range.to)} · {activeTenant.timezone}</p></div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setCreateOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-black text-white shadow-sm"><Plus className="h-4 w-4" />Create booking</button>
+          <button onClick={() => setWalkInOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-800"><ConciergeBell className="h-4 w-4" />Add walk-in</button>
+          <button onClick={() => setBlockOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-black"><Clock3 className="h-4 w-4" />Block time</button>
           <div className="relative"><button onClick={() => setPublicMenu(value => !value)} aria-expanded={publicMenu} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-black"><Share2 className="h-4 w-4" />Public booking page</button>{publicMenu && <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border bg-white p-2 shadow-xl"><button onClick={() => void publicPage('open')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-slate-50"><ExternalLink className="h-4 w-4" />Open booking page</button><button onClick={() => void publicPage('copy')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-slate-50"><Copy className="h-4 w-4" />Copy booking link</button><Link to="/app/settings/booking-page" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold hover:bg-slate-50"><Settings2 className="h-4 w-4" />Page settings</Link></div>}</div>
           <button onClick={() => void exportCsv()} title="Export this filtered range as CSV" className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-bold"><Download className="h-4 w-4" />Export</button>
         </div>
@@ -160,14 +186,17 @@ export function BookingOperationsCalendar({ initialView = 'week' }: BookingOpera
     ].map(([label, value]) => <article key={String(label)} className="rounded-xl border bg-white p-3"><p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 text-2xl font-black">{value}</p></article>)}</section>
 
     {notice && <p role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm font-semibold text-indigo-900">{notice}</p>}
-    {error && <div role="alert" className="rounded-2xl border border-rose-200 bg-white p-8 text-center"><p className="font-black text-rose-800">Calendar failed to load</p><p className="mt-1 text-sm text-slate-600">{error}</p><button onClick={() => void load()} className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white">Try again</button></div>}
-    {loading && !error ? <div aria-live="polite" className="h-96 animate-pulse rounded-2xl bg-slate-200"><span className="sr-only">Loading booking calendar</span></div> : !error && (view === 'agenda'
+    {error && <div role="alert" className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"><span><strong>Bookings could not be refreshed.</strong> The calendar remains available with {response.items.length ? 'the last loaded schedule' : 'an empty schedule'}. <span className="text-amber-800">{error}</span></span><button onClick={() => void load()} className="shrink-0 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white">Try again</button></div>}
+    {loading && <p role="status" className="sr-only">Refreshing booking calendar</p>}
+    {view === 'agenda'
       ? <BookingAgendaView bookings={response.items} onOpen={setSelected} />
       : view === 'month' ? <BookingMonthView from={range.from} to={range.to} bookings={response.items} timezone={activeTenant.timezone} onOpen={setSelected} onSelectDay={day => { window.sessionStorage.setItem('ks-calendar-view', 'day'); updateParams({ date: format(day, 'yyyy-MM-dd'), view: 'day' }); }} />
-        : <BookingScheduleView columns={columns} bookings={response.items} groupBy={groupBy} density={density} timezone={activeTenant.timezone} onOpen={setSelected} onCreate={() => setCreateOpen(true)} />)}
+        : <BookingScheduleView columns={columns} bookings={response.items} groupBy={groupBy} density={density} timezone={activeTenant.timezone} onOpen={setSelected} onCreate={() => setCreateOpen(true)} onReschedule={(booking, target) => void dragReschedule(booking, target)} />}
     <section aria-label="Calendar legend" className="flex flex-wrap gap-2 rounded-2xl border bg-white p-3">{Object.entries(bookingStatusDisplay).map(([status]) => <BookingStatusBadge key={status} status={status as OperationalBookingStatus} compact />)}</section>
 
     <CreateBookingDialog open={createOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} onClose={() => { setCreateOpen(false); if (params.has('create')) updateParams({ create: null }); }} onCreated={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
+    <CreateBookingDialog mode="walk-in" open={walkInOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} onClose={() => { setWalkInOpen(false); if (params.has('walkin')) updateParams({ walkin: null }); }} onCreated={() => { setNotice('Walk-in checked in and added to the calendar.'); window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
+    <BlockTimeDialog open={blockOpen} timezone={activeTenant.timezone} staff={staff} initialDate={dateValue} onClose={() => { setBlockOpen(false); if (params.has('block')) updateParams({ block: null }); }} onCreated={() => { setNotice('Time blocked successfully.'); window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <BookingQuickView booking={selected} staff={staff} onClose={() => setSelected(null)} onChanged={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} onCheckout={booking => navigate('/app/pos', { state: { booking } })} />
   </main>;
 }

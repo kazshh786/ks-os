@@ -28,6 +28,9 @@ export async function fetchWithAuth(url: string, options: AuthenticatedRequestIn
   const makeRequest = async (accessToken: string | null) => {
     const headers = new Headers(fetchOptions.headers);
     headers.set('X-KS-Application-Context', context);
+    if (typeof fetchOptions.body === 'string' && !headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
     if (accessToken) {
       headers.set('Authorization', `Bearer ${accessToken}`);
     }

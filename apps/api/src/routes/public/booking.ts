@@ -271,11 +271,19 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       });
       await db.insert(tenantActivationMilestones).values({ tenantId: tenant.id, milestoneKey: 'FIRST_REAL_BOOKING', sourceType: 'APPOINTMENT', sourceId: booking.appointment_id || booking.id }).onConflictDoNothing({ target: [tenantActivationMilestones.tenantId, tenantActivationMilestones.milestoneKey] });
       if (data.analyticsSessionId) await bookingPageService.recordAnalytics(subdomain, { event: 'BOOKING_COMPLETED', sessionId: data.analyticsSessionId, serviceId: data.serviceId, staffId: data.staffId, locationId: data.locationId || undefined, source: data.source, medium: data.sourceMedium, campaign: data.sourceCampaign }, request.headers.host, booking.appointment_id || booking.id);
+      if ((booking.appointment_status || booking.status) === 'CONFIRMED') {
+        try {
+          await bookingService.notifyPublicBookingConfirmed(tenant.id, booking.appointment_id || booking.id, `public:${booking.booking_reference}`);
+        } catch (notificationError) {
+          fastify.log.error(notificationError, 'Booking was created but confirmation notifications could not be queued');
+        }
+      }
 
       // The claim token is generated after the booking transaction commits and is
       // sent directly to email. It is never put in the email outbox or another
       // KS OS database field, where a raw token could be retained.
-      if (data.client.email && env.PUBLIC_APP_ORIGIN) {
+      const customerAppOrigin = env.PUBLIC_APP_ORIGIN || env.FRONTEND_ORIGIN;
+      if (data.client.email && customerAppOrigin) {
         try {
           const appointmentId = booking.appointment_id || booking.id;
           const claim = await new CustomerClaimsService().createForAppointment(tenant.id, appointmentId);
@@ -292,8 +300,8 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
               replyToEmail: tenant.replyToEmail,
               tenantName: tenant.senderDisplayName || tenant.name,
               tenantPrimaryColor: tenant.primaryColor,
-              claimUrl: claim ? `${env.PUBLIC_APP_ORIGIN}/customer/claim/${claim.token}` : undefined,
-              bookingManagementUrl: `${env.PUBLIC_APP_ORIGIN}/manage/${management.token}`,
+              claimUrl: claim ? `${customerAppOrigin}/customer/claim/${claim.token}` : undefined,
+              bookingManagementUrl: `${customerAppOrigin}/manage/${management.token}`,
               idempotencyKey: `customer-portal-claim:${appointmentId}`,
               tenantId: tenant.id,
               relatedEntityId: appointmentId,
