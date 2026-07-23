@@ -10,7 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import pg from 'pg';
-import { MIGRATION_MANIFEST } from '../packages/database/dist/manifest.js';
+import { MIGRATION_MANIFEST } from '../../packages/database/dist/manifest.js';
 
 const ARTIFACTS_DIR = path.resolve(process.cwd(), 'artifacts');
 

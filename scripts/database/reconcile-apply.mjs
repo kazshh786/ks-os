@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import pg from 'pg';
-import { MIGRATION_MANIFEST } from '../packages/database/dist/manifest.js';
+import { MIGRATION_MANIFEST } from '../../packages/database/dist/manifest.js';
 import { inspectDatabaseCatalog, buildReconciliationReport } from './reconcile.mjs';
 
 const TRACKING_TABLE = 'ks_os_schema_migrations';
@@ -89,8 +89,10 @@ export async function executeProductionReconciliation() {
           "checksum_sha256" varchar(64) NOT NULL,
           "execution_type" varchar(20) DEFAULT 'APPLIED' NOT NULL,
           "applied_at" timestamptz DEFAULT now() NOT NULL,
-          "execution_duration_ms" integer NOT NULL
+          "execution_duration_ms" integer DEFAULT 0 NOT NULL
         );
+        ALTER TABLE "${TRACKING_TABLE}" ADD COLUMN IF NOT EXISTS "execution_type" varchar(20) DEFAULT 'APPLIED' NOT NULL;
+        ALTER TABLE "${TRACKING_TABLE}" ADD COLUMN IF NOT EXISTS "execution_duration_ms" integer DEFAULT 0 NOT NULL;
       `);
 
       // 5. Apply reconciliation migration (21st file)
