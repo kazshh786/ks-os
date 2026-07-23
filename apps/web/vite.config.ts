@@ -28,6 +28,8 @@ export default defineConfig(() => {
       globals: true,
       environment: 'jsdom',
       setupFiles: './vitest.setup.ts',
+      // The root workspace runs API and browser suites concurrently on CI.
+      testTimeout: 15_000,
     }
   };
 });

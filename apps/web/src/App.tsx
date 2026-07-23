@@ -77,7 +77,7 @@ import {
   GuestReschedulePage,
 } from './features/customer-portal/CustomerBookingManagement.js';
 import { ExternalReviewsPage, PublicReviewInvitationPage, ReputationInvitationsPage, ReputationOverviewPage, ReviewConnectionsPage } from './features/reputation/ReputationPages.js';
-import { AgencyAuthProvider, AgencyGuard, AgencyLoginPage, AgencyMfaPage } from './features/agency/AgencyAuth.js';
+import { AgencyAuthProvider, AgencyCapabilityRoute, AgencyGuard, AgencyLoginPage, AgencyMfaPage } from './features/agency/AgencyAuth.js';
 import { AccessDeniedPage, AuthCallbackPage, InvitationAcceptancePage, PasswordRecoveryPage, SecuritySettingsPage, SelectBusinessPage, SessionExpiredPage } from './auth/AuthPages.js';
 import { AgencyAnalyticsPage, AgencyComplianceAuditPage as AgencyAuditPage, AgencyFulfilmentPage, AgencyJobsPage, AgencyOverviewPage, AgencyPlanCreatePage, AgencyPlansPage, AgencySupportPage, AgencyTenantBillingPage, AgencyTenantCreatePage, AgencyTenantDetailPageFixed as AgencyTenantDetailPage, AgencyTenantEntitlementsPage, AgencyTenantHealthPage, AgencyTenantsPage, AgencyUserInvitePage, AgencyUsersPage, AgencyWebhooksPage, AgencyWorkQueuePage } from './features/agency/AgencyPages.js';
 
@@ -161,19 +161,19 @@ const AppContent: React.FC = () => {
           <Route path="reputation/invitations" element={<ReputationRoute><ReputationInvitationsPage /></ReputationRoute>} />
           <Route path="settings/integrations/reviews" element={<ReputationRoute ownerOnly><ReviewConnectionsPage /></ReputationRoute>} />
           <Route path="settings/integrations" element={<RoleRoute allowedRoles={['owner']}><Integrations /></RoleRoute>} />
-          <Route path="calendar" element={<RoleRoute allowedRoles={['owner', 'staff']}><StaffCalendarPage /></RoleRoute>} />
-          <Route path="bookings" element={<RoleRoute allowedRoles={['owner', 'staff']}><BookingListPage /></RoleRoute>} />
+          <Route path="calendar" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL']}><StaffCalendarPage /></RoleRoute>} />
+          <Route path="bookings" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL']}><BookingListPage /></RoleRoute>} />
           
           {/* Phase 3: Reception Desk is now connected */}
-          <Route path="reception" element={<RoleRoute allowedRoles={['owner', 'staff']}><ReceptionPage /></RoleRoute>} />
-          <Route path="clients/*" element={<RoleRoute allowedRoles={['owner', 'staff']}><ClientCRMPage /></RoleRoute>} />
-          <Route path="pos" element={<ModuleConnectingState title="POS Checkout" />} />
-          <Route path="forms" element={<RoleRoute allowedRoles={['owner', 'staff']}><ConsentFormsPage /></RoleRoute>} />
+          <Route path="reception" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="BOOKINGS_CREATE"><ReceptionPage /></RoleRoute>} />
+          <Route path="clients/*" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="CLIENTS_VIEW_BASIC"><ClientCRMPage /></RoleRoute>} />
+          <Route path="pos" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="POS_USE"><ModuleConnectingState title="POS Checkout" /></RoleRoute>} />
+          <Route path="forms" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE']}><ConsentFormsPage /></RoleRoute>} />
           <Route path="forms/new" element={<RoleRoute allowedRoles={['owner']}><FormEditorPage /></RoleRoute>} />
-          <Route path="forms/:formId" element={<RoleRoute allowedRoles={['owner', 'staff']}><FormDetailPage /></RoleRoute>} />
+          <Route path="forms/:formId" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE']}><FormDetailPage /></RoleRoute>} />
           <Route path="forms/:formId/edit" element={<RoleRoute allowedRoles={['owner']}><FormEditorPage /></RoleRoute>} />
-          <Route path="forms/:formId/versions/:versionId" element={<RoleRoute allowedRoles={['owner', 'staff']}><FormVersionPage /></RoleRoute>} />
-          <Route path="form-submissions/:submissionId" element={<RoleRoute allowedRoles={['owner', 'staff']}><FormSubmissionPage /></RoleRoute>} />
+          <Route path="forms/:formId/versions/:versionId" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE']}><FormVersionPage /></RoleRoute>} />
+          <Route path="form-submissions/:submissionId" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE']}><FormSubmissionPage /></RoleRoute>} />
           <Route path="payments" element={<RoleRoute allowedRoles={['owner']}><PaymentHistoryPage /></RoleRoute>} />
           <Route path="payments/:transactionId" element={<RoleRoute allowedRoles={['owner']}><PaymentDetailPage /></RoleRoute>} />
           <Route path="settings" element={<RoleRoute allowedRoles={['owner']}><BrandSetupPage /></RoleRoute>} />
@@ -201,11 +201,11 @@ const AppContent: React.FC = () => {
           <Route path="automations/:id/edit" element={<RoleRoute allowedRoles={['owner']}><AutomationBuilderPage /></RoleRoute>} />
           <Route path="automations/:id/runs" element={<RoleRoute allowedRoles={['owner']}><AutomationRunsPage /></RoleRoute>} />
           <Route path="automation-runs/:runId" element={<RoleRoute allowedRoles={['owner']}><AutomationRunPage /></RoleRoute>} />
-          <Route path="operations" element={<RoleRoute allowedRoles={['owner','staff']}><OperationsInboxPage /></RoleRoute>} />
-          <Route path="operations/:issueId" element={<RoleRoute allowedRoles={['owner','staff']}><OperationIssueDetailPage /></RoleRoute>} />
-          <Route path="tasks" element={<RoleRoute allowedRoles={['owner','staff']}><TasksPage /></RoleRoute>} />
-          <Route path="tasks/my" element={<RoleRoute allowedRoles={['owner','staff']}><TasksPage /></RoleRoute>} />
-          <Route path="tasks/:taskId" element={<RoleRoute allowedRoles={['owner','staff']}><TaskDetailPage /></RoleRoute>} />
+          <Route path="operations" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE']}><OperationsInboxPage /></RoleRoute>} />
+          <Route path="operations/:issueId" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE']}><OperationIssueDetailPage /></RoleRoute>} />
+          <Route path="tasks" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL']}><TasksPage /></RoleRoute>} />
+          <Route path="tasks/my" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL']}><TasksPage /></RoleRoute>} />
+          <Route path="tasks/:taskId" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL']}><TaskDetailPage /></RoleRoute>} />
           
           {/* Finance Routes */}
           <Route path="finance" element={<RoleRoute allowedRoles={['owner']}><FinanceOverviewPage /></RoleRoute>} />
@@ -224,28 +224,28 @@ const AppContent: React.FC = () => {
             </AgencyGuard>
           }
         >
-          <Route index element={<Navigate to="/agency/overview" replace />} />
-          <Route path="overview" element={<AgencyOverviewPage />} />
-          <Route path="tenants" element={<AgencyTenantsPage />} />
-          <Route path="tenants/new" element={<AgencyTenantCreatePage />} />
-          <Route path="tenants/:tenantId" element={<AgencyTenantDetailPage />} />
-          <Route path="tenants/:tenantId/onboarding" element={<AgencyTenantDetailPage />} />
-          <Route path="tenants/:tenantId/billing" element={<AgencyTenantBillingPage />} />
-          <Route path="tenants/:tenantId/entitlements" element={<AgencyTenantEntitlementsPage />} />
-          <Route path="tenants/:tenantId/fulfilment" element={<AgencyTenantDetailPage />} />
-          <Route path="tenants/:tenantId/health" element={<AgencyTenantHealthPage />} />
-          <Route path="onboarding" element={<AgencyWorkQueuePage mode="ONBOARDING" />} />
-          <Route path="billing" element={<AgencyWorkQueuePage mode="BILLING" />} />
-          <Route path="plans" element={<AgencyPlansPage />} />
-          <Route path="plans/new" element={<AgencyPlanCreatePage />} />
-          <Route path="fulfilment" element={<AgencyFulfilmentPage />} />
-          <Route path="support" element={<AgencySupportPage />} />
-          <Route path="webhooks" element={<AgencyWebhooksPage />} />
-          <Route path="jobs" element={<AgencyJobsPage />} />
-          <Route path="analytics" element={<AgencyAnalyticsPage />} />
-          <Route path="audit" element={<AgencyAuditPage />} />
-          <Route path="users" element={<AgencyUsersPage />} />
-          <Route path="users/new" element={<AgencyUserInvitePage />} />
+          <Route index element={<Navigate to="/agency/tenants" replace />} />
+          <Route path="overview" element={<AgencyCapabilityRoute capabilities={['analytics.read']}><AgencyOverviewPage /></AgencyCapabilityRoute>} />
+          <Route path="tenants" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantsPage /></AgencyCapabilityRoute>} />
+          <Route path="tenants/new" element={<AgencyCapabilityRoute capabilities={['tenants.manage']}><AgencyTenantCreatePage /></AgencyCapabilityRoute>} />
+          <Route path="tenants/:tenantId" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
+          <Route path="tenants/:tenantId/onboarding" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
+          <Route path="tenants/:tenantId/billing" element={<AgencyCapabilityRoute capabilities={['billing.read']}><AgencyTenantBillingPage /></AgencyCapabilityRoute>} />
+          <Route path="tenants/:tenantId/entitlements" element={<AgencyCapabilityRoute capabilities={['plans.read']}><AgencyTenantEntitlementsPage /></AgencyCapabilityRoute>} />
+          <Route path="tenants/:tenantId/fulfilment" element={<AgencyCapabilityRoute capabilities={['fulfilment.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
+          <Route path="tenants/:tenantId/health" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencyTenantHealthPage /></AgencyCapabilityRoute>} />
+          <Route path="onboarding" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyWorkQueuePage mode="ONBOARDING" /></AgencyCapabilityRoute>} />
+          <Route path="billing" element={<AgencyCapabilityRoute capabilities={['billing.read']}><AgencyWorkQueuePage mode="BILLING" /></AgencyCapabilityRoute>} />
+          <Route path="plans" element={<AgencyCapabilityRoute capabilities={['plans.read']}><AgencyPlansPage /></AgencyCapabilityRoute>} />
+          <Route path="plans/new" element={<AgencyCapabilityRoute capabilities={['plans.manage']}><AgencyPlanCreatePage /></AgencyCapabilityRoute>} />
+          <Route path="fulfilment" element={<AgencyCapabilityRoute capabilities={['fulfilment.read']}><AgencyFulfilmentPage /></AgencyCapabilityRoute>} />
+          <Route path="support" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencySupportPage /></AgencyCapabilityRoute>} />
+          <Route path="webhooks" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencyWebhooksPage /></AgencyCapabilityRoute>} />
+          <Route path="jobs" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencyJobsPage /></AgencyCapabilityRoute>} />
+          <Route path="analytics" element={<AgencyCapabilityRoute capabilities={['analytics.read']}><AgencyAnalyticsPage /></AgencyCapabilityRoute>} />
+          <Route path="audit" element={<AgencyCapabilityRoute capabilities={['audit.read']}><AgencyAuditPage /></AgencyCapabilityRoute>} />
+          <Route path="users" element={<AgencyCapabilityRoute capabilities={['agency.users.manage']}><AgencyUsersPage /></AgencyCapabilityRoute>} />
+          <Route path="users/new" element={<AgencyCapabilityRoute capabilities={['agency.users.manage']}><AgencyUserInvitePage /></AgencyCapabilityRoute>} />
           <Route path="settings/security" element={<SecuritySettingsPage context="AGENCY" />} />
         </Route>
 

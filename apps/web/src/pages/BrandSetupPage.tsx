@@ -3,7 +3,7 @@ import { useWorkspace } from '../context/WorkspaceContext.js';
 import SettingsManager from '../components/SettingsManager.js';
 
 export const BrandSetupPage: React.FC = () => {
-  const { activeTenant, setActiveTenant } = useWorkspace();
+  const { activeTenant } = useWorkspace();
 
   if (!activeTenant) return null;
 

@@ -7,11 +7,17 @@ import { AccessDeniedPage, PasswordRecoveryPage, SessionExpiredPage } from './Au
 afterEach(() => vi.restoreAllMocks());
 
 describe('shared authentication states', () => {
-  it('offers separate business and agency sign-in choices without technical identifiers', () => {
+  it('keeps the default access-denied state business-only without technical identifiers', () => {
     render(<MemoryRouter><AccessDeniedPage /></MemoryRouter>);
     expect(screen.getByRole('link', { name: 'Business sign in' })).toHaveAttribute('href', '/login');
-    expect(screen.getByRole('link', { name: 'Agency sign in' })).toHaveAttribute('href', '/agency/login');
+    expect(screen.queryByRole('link', { name: 'Agency sign in' })).not.toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/tenant id|jwt|auth user/i);
+  });
+
+  it('returns an agency denial only to the agency sign-in route', () => {
+    render(<MemoryRouter initialEntries={['/access-denied?context=agency']}><AccessDeniedPage /></MemoryRouter>);
+    expect(screen.getByRole('link', { name: 'Agency sign in' })).toHaveAttribute('href', '/agency/login');
+    expect(screen.queryByRole('link', { name: 'Business sign in' })).not.toBeInTheDocument();
   });
 
   it('explains an expired session and provides a safe sign-in route', () => {
@@ -29,4 +35,3 @@ describe('shared authentication states', () => {
     expect(await screen.findByText(/If this address is eligible/)).toBeInTheDocument();
   });
 });
-

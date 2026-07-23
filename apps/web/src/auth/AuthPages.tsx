@@ -44,7 +44,7 @@ export function AuthCallbackPage() {
       }
       const response = await fetchWithAuth('/api/v1/auth/context', { authContext: parsed });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok || body.data?.next === 'NO_ACCESS') { navigate('/access-denied', { replace: true }); return; }
+      if (!response.ok || body.data?.next === 'NO_ACCESS') { navigate(`/access-denied?context=${parsed.toLowerCase()}`, { replace: true }); return; }
       if (body.data.next === 'SELECT_WORKSPACE') { navigate('/select-business', { replace: true }); return; }
       if (parsed === 'AGENCY' && ['MFA_ENROL','MFA_CHALLENGE'].includes(body.data.next)) {
         const factors = await supabase.auth.mfa.listFactors();
@@ -144,7 +144,7 @@ export function InvitationAcceptancePage({ context }: { context: 'AGENCY' | 'TEN
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'This invitation cannot be accepted.'); }
     finally { setBusy(false); }
   };
-  if (!invitation) return <Navigate to="/access-denied" replace />;
+  if (!invitation) return <Navigate to={`/access-denied?context=${context.toLowerCase()}`} replace />;
   return <AuthShell title="Review your invitation" description={`Continue to activate access to ${context === 'AGENCY' ? 'the agency control plane' : 'this business workspace'}.`}>
     {error && <p role="alert" className="mb-4 rounded-xl border border-rose-800 bg-rose-950/50 p-3 text-sm text-rose-200">{error}</p>}
     {requiresPassword && <div className="mb-4 space-y-3"><label className="block text-sm text-slate-300">Create a password<input autoComplete="new-password" type="password" minLength={10} required value={password} onChange={event => setPassword(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" /></label><label className="block text-sm text-slate-300">Confirm password<input autoComplete="new-password" type="password" minLength={10} required value={confirm} onChange={event => setConfirm(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" /></label></div>}
@@ -158,7 +158,7 @@ export function SelectBusinessPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (auth.isLoading) return <AuthShell title="Loading your businesses" description="Checking the workspaces available to you."><div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-slate-700 border-t-indigo-400" /></AuthShell>;
-  if (!auth.memberships.length) return <Navigate to="/access-denied" replace />;
+  if (!auth.memberships.length) return <Navigate to="/access-denied?context=tenant" replace />;
   return <AuthShell title="Choose a business" description="Your account has access to more than one workspace. You can switch again from security settings.">
     {error && <p role="alert" className="mb-4 text-sm text-rose-300">{error}</p>}
     <div className="space-y-3">{auth.memberships.map(membership => <button key={membership.businessReference} disabled={!!busy} onClick={async () => { setBusy(membership.businessReference); try { await auth.selectWorkspace(membership.businessReference); navigate('/app', { replace: true }); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Business unavailable.'); } finally { setBusy(null); } }} className="w-full rounded-2xl border border-slate-700 bg-slate-950 p-4 text-left hover:border-indigo-500 disabled:opacity-50"><strong className="block">{membership.businessName}</strong><span className="text-xs text-slate-400">{membership.role === 'owner' ? 'Owner' : 'Team member'} · {membership.businessSlug}</span></button>)}</div>
@@ -191,4 +191,4 @@ export function SecuritySettingsPage({ context }: { context: 'AGENCY' | 'TENANT'
 }
 
 export function SessionExpiredPage() { return <AuthShell title="Your session has ended" description="For your security, sign in again to continue."><Link className="block rounded-xl bg-indigo-600 p-3 text-center font-bold" to="/login">Return to sign in</Link></AuthShell>; }
-export function AccessDeniedPage() { const location = useLocation(); return <AuthShell title="Access unavailable" description="This account does not have active access here, or the business is currently unavailable."><div className="space-y-3"><Link className="block rounded-xl bg-indigo-600 p-3 text-center font-bold" to="/login">Business sign in</Link><Link className="block text-center text-sm font-bold text-slate-300" to="/agency/login">Agency sign in</Link>{location.state && <p className="text-xs text-slate-500">Try signing in with a different account.</p>}</div></AuthShell>; }
+export function AccessDeniedPage() { const location = useLocation();const context=new URLSearchParams(location.search).get('context');const agency=context==='agency';const customer=context==='customer';const signIn=agency?'/agency/login':customer?'/customer/login':'/login';const label=agency?'Agency sign in':customer?'Customer sign in':'Business sign in';const subject=agency?'agency portal':customer?'customer account':'business workspace';return <AuthShell title="Access unavailable" description={`This account does not have active access to the ${subject}.`}><div className="space-y-3"><Link className="block rounded-xl bg-indigo-600 p-3 text-center font-bold" to={signIn}>{label}</Link>{location.state && <p className="text-xs text-slate-500">Try signing in with a different account.</p>}</div></AuthShell>; }

@@ -49,9 +49,17 @@ export const useAgencyAuth = () => {
 export const AgencyGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { session, loading } = useAgencyAuth();
   const location = useLocation();
-  if (loading) return <div className="min-h-screen bg-slate-950 grid place-items-center text-slate-300">Opening secure agency control plane…</div>;
+  if (loading) return <div className="min-h-screen bg-slate-950 grid place-items-center text-slate-300">Opening the secure agency portal…</div>;
   if (!session) return <Navigate to={`/agency/login?returnTo=${encodeURIComponent(location.pathname + location.search)}`} replace />;
   if (session.mfa.required) return <Navigate to="/agency/mfa/challenge" replace />;
+  return <>{children}</>;
+};
+
+export const AgencyCapabilityRoute: React.FC<{ capabilities: AgencyCapability[]; children: React.ReactNode }> = ({ capabilities, children }) => {
+  const { session, loading } = useAgencyAuth();
+  if (loading) return null;
+  if (!session) return <Navigate to="/agency/login" replace />;
+  if (!capabilities.some(capability => session.capabilities.includes(capability))) return <Navigate to="/access-denied?context=agency" replace />;
   return <>{children}</>;
 };
 
@@ -97,7 +105,7 @@ export const AgencyLoginPage: React.FC = () => {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Sign in could not be completed.'); }
     finally { setBusy(false); }
   };
-  return <main className="min-h-screen bg-slate-950 grid place-items-center p-6 text-white"><form onSubmit={submit} className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-8 space-y-5 shadow-2xl"><div><div className="h-11 w-11 rounded-xl bg-violet-600 grid place-items-center font-black mb-4">KS</div><h1 className="text-2xl font-black">Agency control plane</h1><p className="text-sm text-slate-400 mt-2">Restricted access for authorised KS OS agency operators.</p></div>{params.get('passwordUpdated') === '1' && <p className="rounded-xl border border-emerald-800 bg-emerald-950/50 p-3 text-sm text-emerald-200">Password updated. Sign in again.</p>}{error && <p role="alert" className="rounded-xl bg-rose-950/50 border border-rose-800 p-3 text-sm text-rose-200">{error}</p>}<label className="block text-sm text-slate-300">Agency email<input autoComplete="email" type="email" required value={email} onChange={event => setEmail(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" /></label><label className="block text-sm text-slate-300">Password<span className="relative mt-2 block"><input autoComplete="current-password" type={showPassword ? 'text' : 'password'} required value={password} onChange={event => setPassword(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 pr-12" /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} title={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(value => !value)} className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-xl text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"><span aria-hidden="true">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</span></button></span></label><button disabled={busy} className="w-full rounded-xl bg-violet-600 py-3 text-sm font-black disabled:opacity-50">{busy ? 'Signing in…' : 'Continue securely'}</button><Link to="/agency/forgot-password" className="block text-center text-xs font-bold text-violet-200">Forgot password?</Link><p className="text-[11px] text-slate-500">Privileged access requires an authenticator and centrally revocable application session.</p></form></main>;
+  return <main className="min-h-screen bg-slate-950 grid place-items-center p-6 text-white"><form onSubmit={submit} className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-8 space-y-5 shadow-2xl"><div><div className="h-11 w-11 rounded-xl bg-violet-600 grid place-items-center font-black mb-4">KS</div><h1 className="text-2xl font-black">Agency portal</h1><p className="text-sm text-slate-400 mt-2">Restricted access for authorised KS OS agency operators.</p></div>{params.get('passwordUpdated') === '1' && <p className="rounded-xl border border-emerald-800 bg-emerald-950/50 p-3 text-sm text-emerald-200">Password updated. Sign in again.</p>}{error && <p role="alert" className="rounded-xl bg-rose-950/50 border border-rose-800 p-3 text-sm text-rose-200">{error}</p>}<label className="block text-sm text-slate-300">Agency email<input autoComplete="email" type="email" required value={email} onChange={event => setEmail(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" /></label><label className="block text-sm text-slate-300">Password<span className="relative mt-2 block"><input autoComplete="current-password" type={showPassword ? 'text' : 'password'} required value={password} onChange={event => setPassword(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 pr-12" /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} title={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(value => !value)} className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-xl text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"><span aria-hidden="true">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</span></button></span></label><button disabled={busy} className="w-full rounded-xl bg-violet-600 py-3 text-sm font-black disabled:opacity-50">{busy ? 'Signing in…' : 'Continue securely'}</button><Link to="/agency/forgot-password" className="block text-center text-xs font-bold text-violet-200">Forgot password?</Link><p className="text-[11px] text-slate-500">Privileged access requires an authenticator and centrally revocable application session.</p></form></main>;
 };
 
 export const AgencyMfaPage: React.FC<{ mode: 'enrol' | 'challenge' }> = ({ mode }) => {
@@ -112,7 +120,7 @@ export const AgencyMfaPage: React.FC<{ mode: 'enrol' | 'challenge' }> = ({ mode 
     let active = true;
     void (async () => {
       const agencyAccess = await fetchWithAuth('/api/v1/agency/session', { authContext: 'AGENCY' });
-      if (!agencyAccess.ok) { navigate('/access-denied', { replace: true }); return; }
+      if (!agencyAccess.ok) { navigate('/access-denied?context=agency', { replace: true }); return; }
       const factors = await supabase.auth.mfa.listFactors();
       if (factors.error) throw new Error(factors.error.message);
       const verified = factors.data?.totp?.find(factor => factor.status === 'verified');
