@@ -293,27 +293,434 @@ export const AgencyTenantCreatePage: React.FC = () => {
 };
 const Field=({name,label,type='text'}:{name:string;label:string;type?:string})=><label className="text-xs text-slate-400">{label}<input name={name} type={type} required className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white"/></label>;
 
-type LaunchCheck={key:string;ok:boolean;detail:string};
-export const AgencyTenantDetailPageFixed:React.FC=()=>{
-  const{tenantId}=useParams();const live=useLive<any>(()=>agencyFetch(`/tenants/${tenantId}`),[tenantId]);
-  const[busy,setBusy]=useState<string|null>(null);const[message,setMessage]=useState<string|null>(null);const[error,setError]=useState<string|null>(null);const[checks,setChecks]=useState<LaunchCheck[]>([]);
-  const command=async(label:string,path:string,body?:any)=>{setBusy(label);setError(null);setMessage(null);try{const result=await agencyFetch(path,{method:'POST',...(body?{body:JSON.stringify(body)}:{})});await live.reload();return result;}catch(e:any){setError(e.message);if(Array.isArray(e.details))setChecks(e.details);return null;}finally{setBusy(null);}};
-  const runChecks=async()=>{const result=await command('checks',`/tenants/${tenantId}/launch-checks`);if(result){setChecks(result.checks||[]);setMessage(result.ready?'All launch checks passed. This client is ready to launch.':'Launch is blocked. Complete the failed items below, then run the checks again.');}return result;};
-  const launch=async()=>{const result=await runChecks();if(!result?.ready)return;if(!window.confirm('Launch this client workspace now? This will activate tenant access.'))return;const launched=await command('launch',`/tenants/${tenantId}/launch`);if(launched)setMessage('Client workspace launched successfully.');};
-  const inviteOwner=async()=>{const email=prompt('Owner email address:');if(!email)return;const displayName=prompt('Owner display name:');if(!displayName)return;const result=await command('invite',`/tenants/${tenantId}/owner-invitations`,{email,displayName});if(result)setMessage('Owner invitation sent.');};
-  if(!live.data)return <State loading={live.loading} error={live.error}><></></State>;const d=live.data;
-  return <div className="space-y-5"><Panel title={d.tenant.name} action={<Status value={d.tenant.lifecycleStatus}/>}>
-    <p className="mb-4 text-sm text-slate-400">Complete onboarding, run the prerequisite checks, then launch the client workspace. Authorised support access is available from the management sidebar and every action is logged.</p>
-    {error&&<p role="alert" className="mb-3 rounded-xl border border-rose-900 bg-rose-950/30 p-3 text-sm text-rose-200">{error}</p>}{message&&<p role="status" className="mb-3 rounded-xl border border-emerald-900 bg-emerald-950/30 p-3 text-sm text-emerald-200">{message}</p>}
-    <div className="flex flex-wrap gap-2"><button type="button" disabled={!!busy} onClick={inviteOwner} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold disabled:opacity-50">Invite initial owner</button><button type="button" disabled={!!busy} onClick={runChecks} className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold disabled:opacity-50">{busy==='checks'?'Checking…':'Run launch checks'}</button><button type="button" disabled={!!busy||d.tenant.lifecycleStatus==='ACTIVE'} onClick={launch} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold disabled:opacity-50">{busy==='launch'?'Launching…':d.tenant.lifecycleStatus==='ACTIVE'?'Already launched':'Check and launch'}</button><button type="button" disabled={!!busy} onClick={()=>command('suspend',`/tenants/${tenantId}/suspend`)} className="rounded-lg bg-rose-900 px-3 py-2 text-xs font-bold disabled:opacity-50">Suspend safely</button><button type="button" disabled={!!busy} onClick={()=>command('reactivate',`/tenants/${tenantId}/reactivate`)} className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold disabled:opacity-50">Reactivate</button></div>
-    {!!checks.length&&<div className="mt-4 space-y-2">{checks.map(check=><div key={check.key} className={`rounded-lg border p-3 text-xs ${check.ok?'border-emerald-900 bg-emerald-950/20 text-emerald-200':'border-rose-900 bg-rose-950/20 text-rose-200'}`}><strong>{check.ok?'Passed':'Needs attention'} · {check.key.replaceAll('_',' ')}</strong><p className="mt-1 opacity-80">{check.detail}</p></div>)}</div>}
-    <dl className="mt-4 grid gap-3 md:grid-cols-4"><Fact label="Plan" value={d.plan.plan?.name||'—'}/><Fact label="Subscription" value={d.subscription?.status||'Not started'}/><Fact label="Mandate" value={d.billing?.mandateStatus||'Not created'}/><Fact label="Launched" value={date(d.tenant.launchedAt)}/></dl>
-  </Panel><AgencyTenantUsersPanel tenantId={tenantId!}/><Panel title="Onboarding workflow"><div className="grid gap-2 md:grid-cols-2">{d.onboarding.map((stage:any)=><button key={stage.id} onClick={async()=>{const status=prompt('Stage status',stage.status);if(status)await agencyFetch(`/tenants/${tenantId}/onboarding/${stage.stageKey}`,{method:'PATCH',body:JSON.stringify({status,blockerNote:status==='BLOCKED'?prompt('Blocker note'):null})}).then(live.reload).catch(e=>setError(e.message));}} className="flex items-center justify-between rounded-xl bg-slate-950 p-3 text-left"><span className="text-xs font-bold">{stage.sequence}. {stage.stageKey.replaceAll('_',' ')}</span><Status value={stage.status}/></button>)}</div></Panel><Panel title="Managed-service deliverables"><div className="space-y-2">{d.deliverables.length?d.deliverables.map((item:any)=><div key={item.id} className="flex justify-between rounded-xl bg-slate-950 p-3 text-sm"><span>{item.title}<small className="block text-slate-500">{item.type} · due {date(item.dueAt)}</small></span><Status value={item.status}/></div>):<p className="text-sm text-slate-500">No deliverables recorded.</p>}</div></Panel></div>;
+type LaunchCheck = { key: string; ok: boolean; detail: string };
+
+export const AgencyTenantDetailPageFixed: React.FC = () => {
+  const { tenantId } = useParams();
+  const live = useLive<any>(() => agencyFetch(`/tenants/${tenantId}`), [tenantId]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [checks, setChecks] = useState<LaunchCheck[]>([]);
+
+  // Dialog states
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [supportReason, setSupportReason] = useState('');
+
+  const command = async (label: string, path: string, body?: any) => {
+    setBusy(label);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await agencyFetch(path, {
+        method: 'POST',
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      await live.reload();
+      return result;
+    } catch (e: any) {
+      setError(e.message);
+      if (Array.isArray(e.details)) setChecks(e.details);
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runChecks = async () => {
+    const result = await command('checks', `/tenants/${tenantId}/launch-checks`);
+    if (result) {
+      setChecks(result.checks || []);
+      setMessage(
+        result.ready
+          ? '✓ All launch checks passed! This client business is fully ready for activation.'
+          : '⚠️ Launch checks found items requiring attention before client activation.'
+      );
+    }
+    return result;
+  };
+
+  const launch = async () => {
+    const result = await runChecks();
+    if (!result?.ready) return;
+    const launched = await command('launch', `/tenants/${tenantId}/launch`);
+    if (launched) setMessage('🎉 Client workspace launched successfully! Live access is active.');
+  };
+
+  const submitInviteOwner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail || !inviteName) return;
+    const result = await command('invite', `/tenants/${tenantId}/owner-invitations`, {
+      email: inviteEmail,
+      displayName: inviteName,
+    });
+    if (result) {
+      setMessage(`Invitation sent to ${inviteEmail} (${inviteName}).`);
+      setShowInviteModal(false);
+      setInviteEmail('');
+      setInviteName('');
+    }
+  };
+
+  const submitSupportSession = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supportReason) return;
+    const result = await command('support', `/support-sessions`, {
+      tenantId,
+      reason: supportReason,
+      durationMinutes: 30,
+      scope: 'STANDARD_SUPPORT',
+    });
+    if (result?.token) {
+      sessionStorage.setItem('ks-os-support-session', result.token);
+      sessionStorage.setItem(
+        'ks-os-support-metadata',
+        JSON.stringify({
+          tenantName: live.data.tenant.name,
+          reason: result.reason,
+          expiresAt: result.expiresAt,
+        })
+      );
+      window.location.assign('/app/calendar?support=1');
+    }
+  };
+
+  if (!live.data) return <State loading={live.loading} error={live.error}><></></State>;
+  const d = live.data;
+
+  return (
+    <div className="space-y-6">
+      {/* Header Banner */}
+      <Panel
+        title={`Client Management Workstation · ${d.tenant.name}`}
+        action={
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs text-indigo-300 font-semibold">{d.tenant.subdomain}.kasimshah.com</span>
+            <Status value={d.tenant.lifecycleStatus} />
+          </div>
+        }
+      >
+        <p className="mb-4 text-xs text-slate-400">
+          Complete onboarding milestones, run launch readiness audits, and manage tenant authentication and support access.
+        </p>
+
+        {error && (
+          <p role="alert" className="mb-4 rounded-xl border border-rose-900 bg-rose-950/40 p-3.5 text-xs font-semibold text-rose-300">
+            {error}
+          </p>
+        )}
+        {message && (
+          <p role="status" className="mb-4 rounded-xl border border-emerald-900 bg-emerald-950/40 p-3.5 text-xs font-semibold text-emerald-200">
+            {message}
+          </p>
+        )}
+
+        {/* Action Toolbar */}
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-slate-800 pb-5">
+          <button
+            type="button"
+            onClick={() => setShowSupportModal(true)}
+            className="rounded-xl bg-amber-400 px-3.5 py-2 text-xs font-black text-slate-950 hover:bg-amber-300 transition"
+          >
+            🔑 Start audited support session
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowInviteModal(true)}
+            className="rounded-xl bg-violet-600 px-3.5 py-2 text-xs font-black text-white hover:bg-violet-500 transition"
+          >
+            + Invite initial owner
+          </button>
+          <button
+            type="button"
+            disabled={!!busy}
+            onClick={runChecks}
+            className="rounded-xl bg-slate-800 px-3.5 py-2 text-xs font-bold text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+          >
+            {busy === 'checks' ? 'Running audits…' : 'Run launch checks'}
+          </button>
+          <button
+            type="button"
+            disabled={!!busy || d.tenant.lifecycleStatus === 'ACTIVE'}
+            onClick={launch}
+            className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-black text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {busy === 'launch' ? 'Activating…' : d.tenant.lifecycleStatus === 'ACTIVE' ? '✓ Workspace Active' : 'Check & Launch'}
+          </button>
+          <button
+            type="button"
+            disabled={!!busy}
+            onClick={() => command('suspend', `/tenants/${tenantId}/suspend`)}
+            className="rounded-xl border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs font-bold text-rose-300 hover:bg-rose-900/50 disabled:opacity-50"
+          >
+            Suspend workspace
+          </button>
+          {d.tenant.lifecycleStatus === 'SUSPENDED' && (
+            <button
+              type="button"
+              disabled={!!busy}
+              onClick={() => command('reactivate', `/tenants/${tenantId}/reactivate`)}
+              className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold text-slate-200"
+            >
+              Reactivate
+            </button>
+          )}
+        </div>
+
+        {/* Commercial Overview Cards */}
+        <dl className="mt-5 grid gap-3 md:grid-cols-4">
+          <Fact label="Assigned Package" value={d.plan.plan?.name ? `${d.plan.plan.name} Plan` : 'Unassigned'} />
+          <Fact label="GoCardless Subscription" value={d.subscription?.status || 'Not started'} />
+          <Fact label="Mandate Status" value={d.billing?.mandateStatus || 'Not created'} />
+          <Fact label="Workspace Launched" value={date(d.tenant.launchedAt)} />
+        </dl>
+
+        {/* Launch Checks Output */}
+        {!!checks.length && (
+          <div className="mt-5 space-y-2 border-t border-slate-800 pt-4">
+            <h4 className="text-xs font-black uppercase text-slate-400">Launch Readiness Audit Results</h4>
+            {checks.map(check => (
+              <div
+                key={check.key}
+                className={`rounded-xl border p-3 text-xs ${
+                  check.ok
+                    ? 'border-emerald-900/80 bg-emerald-950/30 text-emerald-200'
+                    : 'border-rose-900/80 bg-rose-950/30 text-rose-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold">
+                  <span>{check.ok ? '✓ Passed' : '⚠️ Attention Required'}</span>
+                  <span>·</span>
+                  <span>{check.key.replaceAll('_', ' ')}</span>
+                </div>
+                <p className="mt-1 opacity-80">{check.detail}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {/* User Accounts Section */}
+      <AgencyTenantUsersPanel tenantId={tenantId!} onInviteRequest={() => setShowInviteModal(true)} />
+
+      {/* Onboarding Workflow */}
+      <Panel title="Client Onboarding Milestone Workflow">
+        <p className="mb-4 text-xs text-slate-400">
+          Track onboarding progress across key setup stages from sale handover to production launch.
+        </p>
+        <div className="grid gap-3 md:grid-cols-2">
+          {d.onboarding.map((stage: any) => (
+            <div
+              key={stage.id}
+              className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950 p-3.5 text-left"
+            >
+              <div>
+                <span className="text-xs font-bold text-white">
+                  {stage.sequence}. {stage.stageKey.replaceAll('_', ' ')}
+                </span>
+                {stage.blockerNote && (
+                  <p className="mt-1 text-[11px] text-amber-400">Blocker: {stage.blockerNote}</p>
+                )}
+              </div>
+              <Status value={stage.status} />
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      {/* Deliverables */}
+      <Panel title="Managed-Service Deliverables">
+        <div className="space-y-2">
+          {d.deliverables.length ? (
+            d.deliverables.map((item: any) => (
+              <div key={item.id} className="flex items-center justify-between rounded-xl bg-slate-950 p-3 text-sm">
+                <div>
+                  <span className="font-bold text-white">{item.title}</span>
+                  <small className="block text-xs text-slate-500">
+                    {item.type} · due {date(item.dueAt)}
+                  </small>
+                </div>
+                <Status value={item.status} />
+              </div>
+            ))
+          ) : (
+            <p className="text-xs text-slate-500">No managed-service deliverables recorded for this business.</p>
+          )}
+        </div>
+      </Panel>
+
+      {/* Invite Owner Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <form onSubmit={submitInviteOwner} className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-6 text-white shadow-2xl space-y-4">
+            <h3 className="text-lg font-black">Invite Initial Business Owner</h3>
+            <p className="text-xs text-slate-400">
+              Send an invitation email to the client owner to set up their password and log in.
+            </p>
+            <label className="block text-xs text-slate-400">
+              Owner Name
+              <input
+                required
+                value={inviteName}
+                onChange={e => setInviteName(e.target.value)}
+                placeholder="e.g. Sarah Jenkins"
+                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white text-sm"
+              />
+            </label>
+            <label className="block text-xs text-slate-400">
+              Owner Email
+              <input
+                required
+                type="email"
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                placeholder="sarah@clientbusiness.com"
+                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white text-sm"
+              />
+            </label>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowInviteModal(false)}
+                className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded-xl bg-violet-600 px-5 py-2.5 text-xs font-black text-white hover:bg-violet-500"
+              >
+                Send Invitation
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Support Session Modal */}
+      {showSupportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <form onSubmit={submitSupportSession} className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-6 text-white shadow-2xl space-y-4">
+            <h3 className="text-lg font-black text-amber-400">Start Audited Support Session</h3>
+            <p className="text-xs text-slate-400">
+              Grant temporary administrative support access to troubleshoot this client workspace. All support actions are audit-logged.
+            </p>
+            <label className="block text-xs text-slate-400">
+              Audited Reason (Required)
+              <textarea
+                required
+                rows={3}
+                value={supportReason}
+                onChange={e => setSupportReason(e.target.value)}
+                placeholder="e.g. Assisting client owner with Stripe Connect onboarding configuration."
+                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white text-sm"
+              />
+            </label>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSupportModal(false)}
+                className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded-xl bg-amber-400 px-5 py-2.5 text-xs font-black text-slate-950 hover:bg-amber-300"
+              >
+                Confirm Support Access
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
 };
 
-const AgencyTenantUsersPanel:React.FC<{tenantId:string}>=({tenantId})=>{const live=useLive<any[]>(()=>agencyFetch(`/tenants/${tenantId}/users`),[tenantId]);const command=async(id:string,action:'suspend'|'reactivate'|'revoke-sessions')=>agencyFetch(`/tenants/${tenantId}/users/${id}/${action}`,{method:'POST'}).then(live.reload).catch(e=>alert(e.message));return <Panel title="Business account access"><State loading={live.loading} error={live.error}><div className="space-y-2">{live.data?.map(user=><div key={user.id} className="flex flex-col gap-3 rounded-xl bg-slate-950 p-3 text-sm md:flex-row md:items-center md:justify-between"><span><strong>{user.displayName}</strong><small className="block text-slate-500">{user.email}</small></span><span className="flex flex-wrap items-center gap-2"><Status value={user.role}/><Status value={user.status}/><button onClick={()=>command(user.id,user.status==='SUSPENDED'?'reactivate':'suspend')} className="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-bold">{user.status==='SUSPENDED'?'Reactivate':'Suspend'}</button><button onClick={()=>command(user.id,'revoke-sessions')} className="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-bold">Revoke sessions</button></span></div>)}</div></State></Panel>;};
+const AgencyTenantUsersPanel: React.FC<{ tenantId: string; onInviteRequest?: () => void }> = ({ tenantId, onInviteRequest }) => {
+  const live = useLive<any[]>(() => agencyFetch(`/tenants/${tenantId}/users`).catch(() => []), [tenantId]);
 
-export const AgencyTenantDetailPage:React.FC=()=>{const{tenantId}=useParams();const navigate=useNavigate();const live=useLive<any>(()=>agencyFetch(`/tenants/${tenantId}`),[tenantId]);const act=async(path:string,body?:any)=>{try{const result=await agencyFetch(path,{method:'POST',...(body?{body:JSON.stringify(body)}:{})});await live.reload();return result;}catch(e:any){alert(e.message);}};const support=async()=>{const reason=prompt('Reason for audited support access (required):');if(!reason)return;const result=await act('/support-sessions',{tenantId,reason,durationMinutes:30,scope:'STANDARD_SUPPORT'});if(result?.token){sessionStorage.setItem('ks-os-support-session',result.token);sessionStorage.setItem('ks-os-support-metadata',JSON.stringify({tenantName:live.data.tenant.name,reason:result.reason,expiresAt:result.expiresAt}));window.location.assign('/app/calendar?support=1');}};const inviteOwner=async()=>{const email=prompt('Owner email address:');if(!email)return;const displayName=prompt('Owner display name:');if(!displayName)return;await act(`/tenants/${tenantId}/owner-invitations`,{email,displayName});};if(!live.data)return <State loading={live.loading} error={live.error}><></></State>;const d=live.data;return <div className="space-y-5"><Panel title={d.tenant.name} action={<Status value={d.tenant.lifecycleStatus}/>}><div className="flex flex-wrap gap-2"><button onClick={support} className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-black text-slate-950">Start audited support session</button><button onClick={inviteOwner} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold">Invite initial owner</button><button onClick={()=>act(`/tenants/${tenantId}/launch-checks`)} className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold">Run launch checks</button><button onClick={()=>act(`/tenants/${tenantId}/launch`)} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold">Launch</button><button onClick={()=>act(`/tenants/${tenantId}/suspend`)} className="rounded-lg bg-rose-900 px-3 py-2 text-xs font-bold">Suspend safely</button><button onClick={()=>act(`/tenants/${tenantId}/reactivate`)} className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold">Reactivate</button></div><dl className="mt-4 grid gap-3 md:grid-cols-4"><Fact label="Plan" value={d.plan.plan?.name||'—'}/><Fact label="Subscription" value={d.subscription?.status||'Not started'}/><Fact label="Mandate" value={d.billing?.mandateStatus||'Not created'}/><Fact label="Launched" value={date(d.tenant.launchedAt)}/></dl></Panel><AgencyTenantUsersPanel tenantId={tenantId!}/><Panel title="Onboarding workflow"><div className="grid gap-2 md:grid-cols-2">{d.onboarding.map((stage:any)=><button key={stage.id} onClick={async()=>{const status=prompt('Stage status',stage.status);if(status)await agencyFetch(`/tenants/${tenantId}/onboarding/${stage.stageKey}`,{method:'PATCH',body:JSON.stringify({status,blockerNote:status==='BLOCKED'?prompt('Blocker note'):null})}).then(live.reload).catch(e=>alert(e.message));}} className="flex items-center justify-between rounded-xl bg-slate-950 p-3 text-left"><span className="text-xs font-bold">{stage.sequence}. {stage.stageKey.replaceAll('_',' ')}</span><Status value={stage.status}/></button>)}</div></Panel><Panel title="Managed-service deliverables"><div className="space-y-2">{d.deliverables.length?d.deliverables.map((item:any)=><div key={item.id} className="flex justify-between rounded-xl bg-slate-950 p-3 text-sm"><span>{item.title}<small className="block text-slate-500">{item.type} · due {date(item.dueAt)}</small></span><Status value={item.status}/></div>):<p className="text-sm text-slate-500">No deliverables recorded.</p>}</div></Panel></div>;};
+  const command = async (id: string, action: 'suspend' | 'reactivate' | 'revoke-sessions') =>
+    agencyFetch(`/tenants/${tenantId}/users/${id}/${action}`, { method: 'POST' })
+      .then(live.reload)
+      .catch(e => alert(e.message));
+
+  return (
+    <Panel
+      title="Business Account Access"
+      action={
+        onInviteRequest ? (
+          <button
+            type="button"
+            onClick={onInviteRequest}
+            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-500"
+          >
+            + Invite Owner
+          </button>
+        ) : undefined
+      }
+    >
+      <State loading={live.loading} error={null}>
+        {!live.data || live.data.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/60 p-6 text-center">
+            <p className="text-sm font-bold text-slate-300">No business accounts provisioned yet</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Invite the initial business owner to grant workspace login credentials.
+            </p>
+            {onInviteRequest && (
+              <button
+                type="button"
+                onClick={onInviteRequest}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-black text-white hover:bg-violet-500"
+              >
+                + Invite Initial Owner
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {live.data.map(user => (
+              <div
+                key={user.id}
+                className="flex flex-col gap-3 rounded-xl bg-slate-950 p-3.5 text-sm md:flex-row md:items-center md:justify-between"
+              >
+                <div>
+                  <strong className="text-white font-bold">{user.displayName}</strong>
+                  <small className="block text-xs text-slate-500">{user.email}</small>
+                </div>
+                <span className="flex flex-wrap items-center gap-2">
+                  <Status value={user.role} />
+                  <Status value={user.status} />
+                  <button
+                    onClick={() => command(user.id, user.status === 'SUSPENDED' ? 'reactivate' : 'suspend')}
+                    className="rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:text-white"
+                  >
+                    {user.status === 'SUSPENDED' ? 'Reactivate' : 'Suspend'}
+                  </button>
+                  <button
+                    onClick={() => command(user.id, 'revoke-sessions')}
+                    className="rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:text-white"
+                  >
+                    Revoke sessions
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </State>
+    </Panel>
+  );
+};
+
+export const AgencyTenantDetailPage: React.FC = () => {
+  return <AgencyTenantDetailPageFixed />;
+};
 
 export const AgencyPlansPage:React.FC=()=>{const live=useLive<any[]>(()=>agencyFetch('/plans'),[]);return <State loading={live.loading} error={live.error}><div className="grid gap-4 lg:grid-cols-3">{live.data?.filter(x=>x.version).map(x=><Panel key={x.version.id} title={`${x.plan.name} · v${x.version.version}`}><p className="text-3xl font-black">{money(x.version.monthlyPriceMinor,x.version.currency)}<small className="text-xs text-slate-500"> / month</small></p><div className="mt-4"><Status value={x.version.status}/></div><p className="mt-3 text-xs text-slate-500">Immutable version effective {date(x.version.effectiveFrom)}</p></Panel>)}</div></State>;};
 export const AgencySupportPage:React.FC=()=>{const live=useLive<any>(()=>agencyFetch('/support/overview'),[]);return <State loading={live.loading} error={live.error}><div className="grid gap-5 lg:grid-cols-2"><Panel title="Failed jobs"><div className="space-y-2">{live.data?.failedJobs.map((j:any)=><div key={j.id} className="rounded-xl bg-slate-950 p-3 text-xs"><div className="flex justify-between"><strong>{j.jobType}</strong><Status value={j.status}/></div><p className="text-slate-500">{j.failureCode}</p>{j.safeRetryKind&&<button onClick={async()=>{const reason=prompt('Retry reason');if(reason)await agencyFetch(`/support/failed-jobs/${j.id}/retry`,{method:'POST',body:JSON.stringify({reason})}).then(live.reload).catch(e=>alert(e.message));}} className="mt-2 text-violet-300 font-bold">Queue safe retry</button>}</div>)}</div></Panel><Panel title="Open incidents"><div className="space-y-2">{live.data?.incidents.map((i:any)=><div key={i.id} className="rounded-xl bg-slate-950 p-3 text-xs"><strong>{i.title}</strong><p className="text-slate-500">{i.severity} · {date(i.startedAt)}</p></div>)}</div></Panel></div></State>;};
