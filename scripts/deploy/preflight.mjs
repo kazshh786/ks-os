@@ -13,6 +13,7 @@ import crypto from 'crypto';
 import pg from 'pg';
 import { fileURLToPath } from 'url';
 import { MIGRATION_MANIFEST } from '../../packages/database/dist/manifest.js';
+import { calculateNormalizedSha256 } from '../utils.mjs';
 
 const MIGRATIONS_DIR = path.resolve(process.cwd(), 'packages/database/migrations');
 const TRACKING_TABLE = 'ks_os_schema_migrations';
@@ -27,9 +28,9 @@ function runCmd(cmd) {
 }
 
 function calculateSha256(filePath) {
-  const content = fs.readFileSync(filePath, 'utf8');
-  return crypto.createHash('sha256').update(content).digest('hex');
+  return calculateNormalizedSha256(filePath);
 }
+
 
 export async function runPreflight() {
   console.log('=== RUNNING KS OS DEPLOYMENT PREFLIGHT CHECKS ===\n');

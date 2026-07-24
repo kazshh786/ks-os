@@ -130,4 +130,10 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     order: 25,
     description: 'Booking operations calendar, automatic public booking pages, temporary slot holds, source attribution, audit, and analytics',
   },
+  {
+    filename: '20260724180000_align_checkout_payment_components_schema.sql',
+    order: 26,
+    description: 'Align production checkout payment components with provider-neutral POS schema',
+  },
 ];
+
