@@ -2,7 +2,7 @@
   "name": "ks-os-platform",
   "private": true,
   "engines": {
-    "node": ">=24 <25"
+    "node": ">=22 <25"
   },
   "packageManager": "pnpm@11.13.1",
   "scripts": {
@@ -27,7 +27,8 @@
     "deploy": "scripts/deploy/deploy-vps.sh",
     "deploy:dry": "scripts/deploy/deploy-vps.sh --dry-run",
     "test:deployment": "jest tests/deployment/**/*.test.ts",
-    "seed:auth:dev": "pnpm --filter api exec tsx ../../scripts/seed-auth-development.ts"
+    "seed:auth:dev": "pnpm --filter api exec tsx ../../scripts/seed-auth-development.ts",
+    "seed:demo": "pnpm --filter api exec tsx ../../scripts/seed-salon-a-demo.ts"
   },
   "dependencies": {
     "date-fns": "^4.4.0",

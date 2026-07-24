@@ -1,5 +1,5 @@
 import {
-  Activity, BarChart3, Building2, ClipboardCheck, CreditCard, FileCheck2,
+  Activity, BarChart3, Building2, CalendarDays, ClipboardCheck, CreditCard, FileCheck2,
   Headphones, LayoutDashboard, Package, ScrollText, Settings2, ShieldCheck,
   Users, Webhook,
 } from 'lucide-react';
@@ -10,7 +10,8 @@ export const agencyNavigation: NavigationGroup[] = [
     id: 'agency', label: 'Agency',
     items: [
       { id: 'agency-overview', label: 'Overview', href: '/agency/overview', icon: LayoutDashboard, agencyCapabilitiesAny: ['analytics.read'] },
-      { id: 'businesses', label: 'Businesses', href: '/agency/tenants', icon: Building2, agencyCapabilitiesAny: ['tenants.read'], activePrefixes: ['/agency/tenants/new'] },
+      { id: 'businesses', label: 'Client Businesses', href: '/agency/tenants', icon: Building2, agencyCapabilitiesAny: ['tenants.read'], activePrefixes: ['/agency/tenants/new'] },
+      { id: 'agency-bookings', label: 'Agency Bookings', href: '/agency/bookings', icon: CalendarDays },
     ],
   },
   {

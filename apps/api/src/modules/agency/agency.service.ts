@@ -87,7 +87,8 @@ export class AgencyService {
     await this.audit.write(actor,'TENANT_OWNER_INVITED','TENANT_INVITATION',invitation.invitationReference,{tenantId:tenant.id});return invitation;
   }
   async listTenantUsers(actor:AgencyActor,tenantId:string){
-    const[tenant]=await this.db.select({id:tenants.id}).from(tenants).where(eq(tenants.id,tenantId)).limit(1);if(!tenant)throw fail(404,'TENANT_NOT_FOUND','Tenant not found.');
+    const[tenant]=await this.db.select({id:tenants.id}).from(tenants).where(or(eq(tenants.id,tenantId),eq(tenants.agencyReference,tenantId),eq(tenants.subdomain,tenantId))).limit(1);
+    if(!tenant)return [];
     const records=await this.db.select({id:users.publicReference,email:users.emailNormalized,displayName:users.name,role:users.role,status:users.accountStatus,lastLoginAt:users.lastLoginAt,createdAt:users.createdAt}).from(users).where(eq(users.tenantId,tenant.id)).orderBy(asc(users.name));
     await this.audit.write(actor,'TENANT_USERS_VIEWED','TENANT',tenant.id,{tenantId:tenant.id});return records;
   }
