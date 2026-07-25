@@ -26,7 +26,7 @@ describe('navigation resolution', () => {
     const groups = resolveNavigation(agencyNavigation, {
       portal: 'agency', agencyCapabilities: ['tenants.read', 'support.read', 'support.session.start'],
     });
-    expect(labels(groups)).toEqual(expect.arrayContaining(['Businesses', 'Onboarding', 'Support', 'Jobs', 'Webhooks', 'Security']));
+    expect(labels(groups)).toEqual(expect.arrayContaining(['Client Businesses', 'Onboarding', 'Support', 'Jobs', 'Webhooks', 'Security']));
     expect(labels(groups)).not.toContain('Overview');
     expect(labels(groups)).not.toContain('Billing');
     expect(labels(groups)).not.toContain('Team');

@@ -14,9 +14,9 @@ declare module 'fastify' {
 }
 
 async function registerRequestContext(fastify: FastifyInstance) {
-  fastify.decorateRequest('tenantId', null);
-  fastify.decorateRequest('user', null);
-  fastify.decorateRequest('correlationId', null);
+  fastify.decorateRequest('tenantId', undefined);
+  fastify.decorateRequest('user', undefined);
+  fastify.decorateRequest('correlationId', undefined);
 
   fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
     const supplied=request.headers['x-correlation-id'];

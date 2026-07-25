@@ -23,9 +23,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm build
       - run: pnpm db:migrations:plan
         env:
           DATABASE_URL: postgresql://unused:unused@127.0.0.1:5432/unused

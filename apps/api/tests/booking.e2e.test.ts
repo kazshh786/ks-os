@@ -40,6 +40,7 @@ test('Integration: Authorization for rescheduling bookings', async (t) => {
   sinon.stub(BookingRepository.prototype, 'isRescheduleSlotAvailable').resolves(true);
   const dbInsertStub = sinon.stub(getDatabase() as any, 'insert');
   const dbUpdateStub = sinon.stub(getDatabase() as any, 'update');
+  const dbExecuteStub = sinon.stub(getDatabase() as any, 'execute').resolves({ rows: [{ table_name: null }] } as any);
   const dbTransactionStub = sinon.stub(getDatabase() as any, 'transaction');
 
   const fakeMutationResult: any = Promise.resolve();
