@@ -13,6 +13,7 @@ import crypto from 'crypto';
 import pg from 'pg';
 import { MIGRATION_MANIFEST } from '../../packages/database/dist/manifest.js';
 import { inspectDatabaseCatalog, buildReconciliationReport } from './reconcile.mjs';
+import { calculateNormalizedSha256 } from '../utils.mjs';
 
 const TRACKING_TABLE = 'ks_os_schema_migrations';
 const ADVISORY_LOCK_ID = 88492026;
@@ -22,9 +23,9 @@ const BACKUP_DIR = '/home/ksdeploy/ks-os-backups';
 const MIGRATIONS_DIR = path.resolve(process.cwd(), 'packages/database/migrations');
 
 function calculateSha256(filePath) {
-  const content = fs.readFileSync(filePath, 'utf8');
-  return crypto.createHash('sha256').update(content).digest('hex');
+  return calculateNormalizedSha256(filePath);
 }
+
 
 export async function executeProductionReconciliation() {
   console.log('=== KS OS VERIFIED PRODUCTION BASELINING & RECONCILIATION ===\n');

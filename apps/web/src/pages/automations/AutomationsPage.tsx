@@ -1,5 +1,5 @@
 import React,{useEffect,useState}from'react';
-import{Link,useNavigate,useParams}from'react-router-dom';
+import{Link,useNavigate,useParams}from 'react-router';
 import{getDataProvider}from'../../data/data-provider.js';
 
 const triggers=['BOOKING_CONFIRMED','BOOKING_RESCHEDULED','BOOKING_CANCELLED','APPOINTMENT_CHECKED_IN','APPOINTMENT_COMPLETED','FORM_ASSIGNED','FORM_SUBMITTED','PAYMENT_SUCCEEDED','REFUND_SUCCEEDED'];

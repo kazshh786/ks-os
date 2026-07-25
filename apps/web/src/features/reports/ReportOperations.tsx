@@ -1,6 +1,6 @@
 import React,{useCallback,useEffect,useState} from 'react';
 import {Download,Pause,Play,RefreshCw,Trash2} from 'lucide-react';
-import {useSearchParams} from 'react-router-dom';
+import {useSearchParams} from 'react-router';
 import type {CreateReportSchedule,ExportableReportType} from '@ks-os/contracts';
 import {getDataProvider} from '../../data/data-provider.js';
 

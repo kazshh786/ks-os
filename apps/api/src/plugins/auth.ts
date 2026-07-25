@@ -236,10 +236,10 @@ async function resolveTenant(request: FastifyRequest, claims: Record<string, unk
 }
 
 const authPlugin: FastifyPluginAsync = async fastify => {
-  fastify.decorateRequest('auth', null);
-  fastify.decorateRequest('authIdentity', null);
-  fastify.decorateRequest('agencyAuth', null);
-  fastify.decorateRequest('applicationContext', null);
+  fastify.decorateRequest('auth', undefined);
+  fastify.decorateRequest('authIdentity', undefined);
+  fastify.decorateRequest('agencyAuth', undefined);
+  fastify.decorateRequest('applicationContext', undefined);
   fastify.decorateRequest('requireAuth', function (this: FastifyRequest) {
     if (!this.auth) throw Object.assign(new Error('Authentication required'), { statusCode: 401, code: 'AUTH_REQUIRED' });
   });

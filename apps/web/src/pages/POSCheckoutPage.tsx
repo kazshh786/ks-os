@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useWorkspace } from '../context/WorkspaceContext.js';
 import POSCheckout from '../components/POSCheckout.js';
 

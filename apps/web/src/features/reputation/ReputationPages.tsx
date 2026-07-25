@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, MessageSquareText, RefreshCw, Send, Settings2, ShieldCheck } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 import { DEFAULT_REVIEW_INVITATION_MESSAGE } from '@ks-os/contracts';
 import { getDataProvider } from '../../data/data-provider.js';
 

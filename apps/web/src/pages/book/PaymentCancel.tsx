@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function PaymentCancel() {

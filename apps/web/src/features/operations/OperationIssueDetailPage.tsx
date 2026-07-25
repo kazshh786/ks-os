@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {Link,useNavigate,useParams} from 'react-router-dom';
+import {Link,useNavigate,useParams} from 'react-router';
 import type {OperationsIssue} from '@ks-os/contracts';
 import {assignIssue,createIssueTask,getOperationsIssue,issueCommand} from './operations.api.js';
 import {useAuth} from '../../context/AuthContext.js';

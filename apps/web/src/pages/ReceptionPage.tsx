@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useWorkspace } from '../context/WorkspaceContext.js';
 import ReceptionDesk from '../components/ReceptionDesk.js';
 

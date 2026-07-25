@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router';
 import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { getDataProvider } from '../../data/data-provider';
 

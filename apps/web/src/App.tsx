@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { WorkspaceProvider } from './context/WorkspaceContext.js';
 import { AuthProvider, useAuth } from './auth';
 import { ProtectedRoute, RoleRoute } from './auth';

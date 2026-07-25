@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router';
 import { useWorkspace } from '../context/WorkspaceContext.js';
 import ClientCRM from '../components/ClientCRM.js';
 

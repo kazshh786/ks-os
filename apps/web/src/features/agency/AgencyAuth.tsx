@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { Eye, EyeOff } from 'lucide-react';
 import type { AgencyCapability, AgencyRole } from '@ks-os/contracts';
 import { fetchWithAuth } from '../../api/client';

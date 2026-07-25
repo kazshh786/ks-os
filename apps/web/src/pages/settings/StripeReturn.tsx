@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { getDataProvider } from '../../data/data-provider.js';
 
 export function StripeReturn() {
