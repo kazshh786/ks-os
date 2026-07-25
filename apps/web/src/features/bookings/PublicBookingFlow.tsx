@@ -16,11 +16,17 @@ type Catalog = {
   intakeForms?: Array<{ id: string; title: string; description: string; required: boolean; completionStage: string }>;
 };
 
+export interface PublicBookingSuccessPayload {
+  booking: CreateBookingResponse['booking'];
+  customerName: string;
+  customerEmail: string;
+}
+
 interface PublicBookingFlowProps {
   slug: string;
   preview?: boolean;
   pageOverride?: Record<string, any>;
-  onBookingSuccess?: (booking: CreateBookingResponse['booking']) => void;
+  onBookingSuccess?: (payload: PublicBookingSuccessPayload) => void;
 }
 
 const steps = ['Choose', 'Time', 'Details', 'Review'] as const;
@@ -155,7 +161,7 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
       });
       holdConsumed.current = true;
       if (result.payment.required && result.payment.checkoutUrl) { window.location.assign(result.payment.checkoutUrl); return; }
-      setConfirmation(result); onBookingSuccess?.(result.booking);
+      setConfirmation(result); onBookingSuccess?.({ booking: result.booking, customerName: name.trim(), customerEmail: email.trim() });
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : '';
       if (['SLOT_UNAVAILABLE','SLOT_HELD','HOLD_EXPIRED','HOLD_MISMATCH'].includes(message)) { setError('This slot is no longer available. No booking or duplicate payment was created.'); setStep(1); setHold(null); setSlot(null); }

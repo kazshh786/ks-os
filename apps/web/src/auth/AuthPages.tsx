@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router';
 import type { ApplicationContext } from '@ks-os/contracts';
 import { fetchWithAuth } from '../api/client';
 import { supabase } from '../lib/supabase';

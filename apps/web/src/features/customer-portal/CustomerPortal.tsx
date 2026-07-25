@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, Outlet, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, Outlet, useNavigate, useParams, useSearchParams } from 'react-router';
 import { supabase } from '../../lib/supabase.js';
 import { fetchWithAuth } from '../../api/client.js';
 import { customerPortalProvider } from './customer-portal-provider.js';

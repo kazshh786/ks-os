@@ -7,7 +7,6 @@ settings:
 overrides:
   brace-expansion: ^5.0.8
   fast-uri: ^3.1.4
-  react-router: ^8.3.0
 
 importers:
 
@@ -156,9 +155,9 @@ importers:
       react-dom:
         specifier: ^19.0.1
         version: 19.2.7(react@19.2.7)
-      react-router-dom:
-        specifier: ^7.18.1
-        version: 7.18.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react-router:
+        specifier: ^8.3.0
+        version: 8.3.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -2762,13 +2761,6 @@ packages:
     resolution: {integrity: sha512-QgT5//D3jfjJb6Gsjxv0Slpj23ip+HtOpnNgnb2S5zU3CB26G/IDPGoy4RJB42wzFE46DRsstbW6tKHoKbhAxw==}
     engines: {node: '>=0.10.0'}
 
-  react-router-dom@7.18.1:
-    resolution: {integrity: sha512-KaZh+X/6UtEp28x51AUYZDMg9NGoz2ja3dNHa+ta/tk40vCzKhQ/RypCWBMLbmDr6//E24Vv5uPsrqXFozdkAg==}
-    engines: {node: '>=20.0.0'}
-    peerDependencies:
-      react: '>=18'
-      react-dom: '>=18'
-
   react-router@8.3.0:
     resolution: {integrity: sha512-qyPMvW83jGIct3yiieisxdk9M745anqhpIMKN5m1t6yBMfgVPpt77aHOqs5fUlEJRMCGffg9BaQLH9oPVOL7xQ==}
     engines: {node: '>=22.22.0'}
@@ -5298,12 +5290,6 @@ snapshots:
       fast-deep-equal: 2.0.1
 
   react-refresh@0.18.0: {}
-
-  react-router-dom@7.18.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
-    dependencies:
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
-      react-router: 8.3.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
 
   react-router@8.3.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:

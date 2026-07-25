@@ -28,11 +28,12 @@ function parseArgs() {
     status: args.includes('--status'),
     plan: args.includes('--plan'),
     apply: args.includes('--apply'),
+    validate: args.includes('--validate'),
     allowNonProdApply: args.includes('--allow-non-prod-apply'),
   };
 
   // Default to --plan when no action is supplied
-  if (!flags.status && !flags.plan && !flags.apply) {
+  if (!flags.status && !flags.plan && !flags.apply && !flags.validate) {
     flags.plan = true;
   }
 
@@ -48,6 +49,32 @@ export async function runMigrations(options = {}) {
   const flags = { ...parseArgs(), ...options };
   const nodeEnv = process.env.NODE_ENV || 'development';
   const databaseUrl = process.env.DATABASE_URL;
+
+  if (flags.validate) {
+    // Verify disk files match manifest
+    const diskFiles = fs.readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql'));
+    const manifestFilenames = MIGRATION_MANIFEST.map(m => m.filename);
+
+    const missingFromDisk = manifestFilenames.filter(f => !diskFiles.includes(f));
+    const unmanifestedOnDisk = diskFiles.filter(f => !manifestFilenames.includes(f));
+
+    if (missingFromDisk.length > 0 || unmanifestedOnDisk.length > 0) {
+      console.error('ERROR: Migration manifest mismatch detected!');
+      if (missingFromDisk.length > 0) console.error(' Manifest files missing on disk:', missingFromDisk);
+      if (unmanifestedOnDisk.length > 0) console.error(' Disk files missing from manifest:', unmanifestedOnDisk);
+      process.exit(1);
+    }
+
+    console.log('=== KS OS MIGRATION VALIDATION (Disk Manifest Check) ===');
+    console.log(`Total Manifest Migrations: ${MIGRATION_MANIFEST.length}`);
+    for (const entry of MIGRATION_MANIFEST) {
+      const filePath = path.join(MIGRATIONS_DIR, entry.filename);
+      const currentChecksum = calculateSha256(filePath);
+      console.log(`  - [ORDER ${entry.order}] ${entry.filename} (checksum: ${currentChecksum.slice(0, 8)}...)`);
+    }
+    console.log('✓ Migration manifest integrity verified successfully.');
+    return { status: 'OK', validate: true };
+  }
 
   if (!databaseUrl) {
     console.error('ERROR: DATABASE_URL environment variable is missing.');
@@ -68,8 +95,8 @@ export async function runMigrations(options = {}) {
 
   if (missingFromDisk.length > 0 || unmanifestedOnDisk.length > 0) {
     console.error('ERROR: Migration manifest mismatch detected!');
-    if (missingFromDisk.length > 0) console.error('  Manifest files missing on disk:', missingFromDisk);
-    if (unmanifestedOnDisk.length > 0) console.error('  Disk files missing from manifest:', unmanifestedOnDisk);
+    if (missingFromDisk.length > 0) console.error(' Manifest files missing on disk:', missingFromDisk);
+    if (unmanifestedOnDisk.length > 0) console.error(' Disk files missing from manifest:', unmanifestedOnDisk);
     process.exit(1);
   }
 
@@ -81,23 +108,7 @@ export async function runMigrations(options = {}) {
 
   let client;
   try {
-    try {
-      client = await pool.connect();
-    } catch (err) {
-      if (flags.plan || flags.status) {
-        console.log('=== KS OS MIGRATION PLAN (Offline Manifest Validation) ===');
-        console.log('Database connection offline. Validating migration files on disk against manifest...');
-        console.log(`Total Manifest Migrations: ${MIGRATION_MANIFEST.length}`);
-        for (const entry of MIGRATION_MANIFEST) {
-          const filePath = path.join(MIGRATIONS_DIR, entry.filename);
-          const currentChecksum = calculateSha256(filePath);
-          console.log(`  - [ORDER ${entry.order}] ${entry.filename} (checksum: ${currentChecksum.slice(0, 8)}...)`);
-        }
-        console.log('✓ Migration manifest integrity verified successfully.');
-        return { status: 'OK', offline: true };
-      }
-      throw err;
-    }
+    client = await pool.connect();
 
     // Set lock timeout & statement timeout for safety
     await client.query("SET lock_timeout = '5s'");

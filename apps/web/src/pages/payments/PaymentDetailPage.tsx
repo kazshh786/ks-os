@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router';
 import { PaymentDetailResponse, CreateRefundRequest } from '@ks-os/contracts';
 import { getDataProvider } from '../../data/data-provider';
 import { RefundModal } from './RefundModal';

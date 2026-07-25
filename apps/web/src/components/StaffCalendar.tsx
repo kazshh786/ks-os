@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Calendar as CalendarIcon, Users, Sliders, CheckCircle2, AlertTriangle, Play, RefreshCw, Plus, Clock, Eye, Trash2, ShieldAlert, ChevronLeft, ChevronRight, Lock } from 'lucide-react';
 import { fromZonedTime } from 'date-fns-tz';
 import { BusinessTenant, Service, Staff, Booking, Resource, AppointmentStatus, OutboxEvent } from '../data/types.js';

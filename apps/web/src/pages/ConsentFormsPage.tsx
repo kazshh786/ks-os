@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { FileText, Plus, ShieldAlert } from 'lucide-react';
 import { getDataProvider } from '../data/data-provider.js';
 import { useAuth } from '../auth/index.js';

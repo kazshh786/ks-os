@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Clock3, Plus, PoundSterling, Scissors } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { getDataProvider } from '../../data/data-provider';
 import type { Service } from '../../data/types';

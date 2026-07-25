@@ -8,7 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "DATABASE_URL=\"${DATABASE_URL:-postgresql://unused:unused@127.0.0.1:5432/unused}\" node --import tsx --test tests/**/*.test.ts",
+    "test": "node --import tsx --test tests/**/*.test.ts",
     "lint": "echo 'api lint passed'"
   },
   "dependencies": {

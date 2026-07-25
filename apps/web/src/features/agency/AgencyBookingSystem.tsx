@@ -571,17 +571,17 @@ export function AgencyBookingSystemPage() {
           <PublicBookingFlow
             slug="ks-agency"
             preview={true}
-            onBookingSuccess={(newBooking: any) => {
+            onBookingSuccess={payload => {
               const appt: AgencyAppointment = {
-                id: newBooking.id || newBooking.reference,
-                reference: newBooking.bookingReference || newBooking.reference,
-                serviceName: newBooking.serviceName,
-                staffName: newBooking.staffName || 'Kasim Shah',
-                clientName: newBooking.customerName || 'Client',
-                clientEmail: newBooking.customerEmail || '',
+                id: payload.booking.reference,
+                reference: payload.booking.reference,
+                serviceName: payload.booking.serviceName,
+                staffName: payload.booking.staffName || 'Kasim Shah',
+                clientName: payload.customerName,
+                clientEmail: payload.customerEmail,
                 clientCompany: 'Client Business',
-                startTime: newBooking.startTime,
-                endTime: newBooking.endTime,
+                startTime: payload.booking.startTime,
+                endTime: payload.booking.endTime,
                 status: 'CONFIRMED',
                 paymentStatus: 'NOT_REQUIRED',
                 quotedAmountMinor: 0,

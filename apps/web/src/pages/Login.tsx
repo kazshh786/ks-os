@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { AlertCircle, Lock, LogIn } from 'lucide-react';
 import { fetchWithAuth } from '../api/client';
 import { supabase } from '../lib/supabase';

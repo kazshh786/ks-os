@@ -18,6 +18,7 @@
     "verify": "pnpm --filter \"*\" verify",
     "db:migrations:status": "node --env-file-if-exists=.env scripts/database/migrate.mjs --status",
     "db:migrations:plan": "node --env-file-if-exists=.env scripts/database/migrate.mjs --plan",
+    "db:migrations:validate": "node --env-file-if-exists=.env scripts/database/migrate.mjs --validate",
     "db:migrations:apply": "node --env-file-if-exists=.env scripts/database/migrate.mjs --apply",
     "db:reconcile:report": "node --env-file-if-exists=.env scripts/database/reconcile.mjs",
     "db:reconcile:apply": "node --env-file-if-exists=.env scripts/database/reconcile-apply.mjs",

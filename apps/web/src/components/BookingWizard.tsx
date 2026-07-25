@@ -7,5 +7,5 @@ interface BookingWizardProps {
 }
 
 export default function BookingWizard({ tenant, onBookingSuccess }: BookingWizardProps) {
-  return <PublicBookingFlow slug={tenant.subdomain} onBookingSuccess={booking => onBookingSuccess(booking as unknown as Booking)} />;
+  return <PublicBookingFlow slug={tenant.subdomain} onBookingSuccess={payload => onBookingSuccess(payload.booking as unknown as Booking)} />;
 }
