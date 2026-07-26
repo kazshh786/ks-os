@@ -131,53 +131,58 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     description: 'Booking operations calendar, automatic public booking pages, temporary slot holds, source attribution, audit, and analytics',
   },
   {
-    filename: '20260724090000_phase_15_0_15_2_website_foundation.sql',
+    filename: '20260724180000_align_checkout_payment_components_schema.sql',
     order: 26,
+    description: 'Align production checkout payment components with provider-neutral POS schema',
+  },
+  {
+    filename: '20260724090000_phase_15_0_15_2_website_foundation.sql',
+    order: 27,
     description: 'Phase 15.0-15.2 managed website architecture, site domain model, entitlements, and native booking references',
   },
   {
     filename: '20260724110000_phase_15_3_template_intelligence.sql',
-    order: 27,
+    order: 28,
     description: 'Phase 15.3 secure template inventory, deterministic analysis, approved layout compatibility, and site-specific licensing',
   },
   {
     filename: '20260724130000_phase_15_4_site_blueprint_engine.sql',
-    order: 28,
+    order: 29,
     description: 'Phase 15.4 deterministic site blueprint revisions, typed page mappings, generation runs, action items, and approved-architecture immutability',
   },
   {
     filename: '20260724150000_phase_15_5_public_site_renderer.sql',
-    order: 29,
+    order: 30,
     description: 'Phase 15.5 compile-time renderer mappings, immutable public render snapshots, and signed-preview revocation records',
   },
   {
     filename: '20260725090000_phase_15_6a_site_worker_foundation.sql',
-    order: 30,
+    order: 31,
     description: 'Phase 15.6A durable site-job leasing, attempt history, operational events, cancellation, and worker safety constraints',
   },
   {
     filename: '20260725130000_phase_15_6b_expert_knowledge_engine.sql',
-    order: 31,
+    order: 32,
     description: 'Phase 15.6B immutable expert-knowledge packs, provenance, rule applicability, playbooks, import governance, and activation safety',
   },
   {
     filename: '20260725170000_phase_15_6c_structured_ai_generation.sql',
-    order: 32,
+    order: 33,
     description: 'Phase 15.6C controlled structured site generation, provenance, findings, claims, contexts, and draft-only recovery records',
   },
   {
     filename: '20260725180000_phase_15_6c_generation_runtime.sql',
-    order: 33,
+    order: 34,
     description: 'Phase 15.6C validated structured page persistence for generation and controlled regeneration',
   },
   {
     filename: '20260726090000_phase_15_7a_site_review_workflows.sql',
-    order: 34,
+    order: 35,
     description: 'Phase 15.7A version-pinned Site Studio review cycles, comments, change requests, facts, approvals, invitations, sessions, and audit activity',
   },
   {
     filename: '20260726130000_phase_15_7b_unified_provisioning_site_studio.sql',
-    order: 35,
+    order: 36,
     description: 'Phase 15.7B controlled fact finding, locked production briefs, resumable unified workspace provisioning, and Site Studio readiness',
   },
 ];

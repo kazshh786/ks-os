@@ -1,5 +1,5 @@
 import { Boxes, PackageSearch, ShoppingCart } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { useWorkspacePlan } from './WorkspacePlanContext.js';
 
 export function InventoryPage() {

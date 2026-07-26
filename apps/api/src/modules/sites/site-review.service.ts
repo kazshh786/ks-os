@@ -84,7 +84,8 @@ import {
 import { EmailService } from '../email/email.service.js';
 import { AgencySiteGenerationService } from './site-generation.service.js';
 
-type Database = ReturnType<typeof getDatabase>;
+type FullDatabase = ReturnType<typeof getDatabase>;
+type Database = Omit<FullDatabase, '$client'>;
 type CreateCycleInput = z.infer<typeof CreateReviewCycleSchema>;
 type AddParticipantInput = z.infer<typeof AddReviewParticipantSchema>;
 type CreateCommentInput = z.infer<typeof CreateCommentSchema>;
@@ -323,7 +324,10 @@ export class SiteReviewService {
     private readonly database: Database = getDatabase(),
     private readonly audit = new AgencyAuditService(),
     private readonly email = new EmailService(),
-    private readonly generation = new AgencySiteGenerationService(database, audit),
+    private readonly generation = new AgencySiteGenerationService(
+      database as unknown as FullDatabase,
+      audit,
+    ),
     private readonly environment:
       NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
   ) {}

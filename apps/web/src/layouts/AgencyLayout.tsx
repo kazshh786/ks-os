@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleHelp, DoorOpen, Plus, ShieldCheck } from 'lucide-react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { AccountMenu } from '../components/navigation/AccountMenu';
 import { AppSidebar } from '../components/navigation/AppSidebar';
 import { ManagedBusinessContext } from '../components/navigation/ManagedBusinessContext';

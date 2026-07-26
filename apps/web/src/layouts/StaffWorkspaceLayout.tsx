@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { CircleHelp, Clipboard, ExternalLink, Plus, Store } from 'lucide-react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { AccountMenu } from '../components/navigation/AccountMenu';
 import { AppSidebar } from '../components/navigation/AppSidebar';
 import { MobileNavigation } from '../components/navigation/MobileNavigation';

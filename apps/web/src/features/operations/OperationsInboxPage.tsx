@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {Link} from 'react-router-dom';
+import {Link} from 'react-router';
 import type {OperationsIssue} from '@ks-os/contracts';
 import {listOperationsIssues} from './operations.api.js';
 const severityClass={CRITICAL:'bg-red-100 text-red-800',WARNING:'bg-amber-100 text-amber-800',INFO:'bg-blue-100 text-blue-800'} as const;

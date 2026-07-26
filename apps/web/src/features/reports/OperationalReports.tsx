@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, ArrowLeft, BarChart3, ChevronLeft, ChevronRight, FileText, RefreshCw } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 import { getDataProvider } from '../../data/data-provider.js';
 
 type Option={value:string;label:string};

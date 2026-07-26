@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { PaymentHistoryItem, PaymentHistoryQuery } from '@ks-os/contracts';
 import { getDataProvider } from '../../data/data-provider';
 

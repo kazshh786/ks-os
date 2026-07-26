@@ -1,11 +1,11 @@
-import type { Booking, BusinessTenant } from '../data/types.js';
-import { PublicBookingFlow } from '../features/bookings/PublicBookingFlow.js';
+import type { BusinessTenant } from '../data/types.js';
+import { PublicBookingFlow, type PublicBookingSuccessPayload } from '../features/bookings/PublicBookingFlow.js';
 
 interface BookingWizardProps {
   tenant: BusinessTenant;
-  onBookingSuccess: (booking: Booking) => void;
+  onBookingSuccess: (payload: PublicBookingSuccessPayload) => void;
 }
 
 export default function BookingWizard({ tenant, onBookingSuccess }: BookingWizardProps) {
-  return <PublicBookingFlow slug={tenant.subdomain} onBookingSuccess={booking => onBookingSuccess(booking as unknown as Booking)} />;
+  return <PublicBookingFlow slug={tenant.subdomain} onBookingSuccess={onBookingSuccess} />;
 }

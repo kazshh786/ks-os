@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Search, Plus, UserPlus, Sliders, Calendar, Clock, AlertTriangle, CheckCircle2, User, Sparkles, ChevronLeft, ChevronRight, RefreshCw, Lock } from 'lucide-react';
 import { fromZonedTime } from 'date-fns-tz';
 import { BusinessTenant, Service, Staff, ClientProfile, Booking, Resource } from '../data/types.js';

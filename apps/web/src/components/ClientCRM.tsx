@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router';
 import { Search, User, Award, CreditCard, BookOpen, Clock, Heart, Sliders, Calendar, AlertTriangle, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { BusinessTenant } from '../data/types.js';
 import { getClients, getClientProfile } from '../api/client.js';

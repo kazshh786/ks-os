@@ -1,6 +1,6 @@
 import React from 'react';
 import { LockKeyhole } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import type { NavigationItem } from '../../navigation/navigation.types';
 
 interface SidebarItemProps {

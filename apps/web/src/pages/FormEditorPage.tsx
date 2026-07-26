@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Eye, GripVertical, Plus, Save, Trash2, Undo2 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import type { FormField, FormSchemaJson } from '@ks-os/contracts';
 import { getDataProvider } from '../data/data-provider.js';
 import { FormRenderer } from '../features/forms/FormRenderer.js';

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { ArrowLeft, ArrowRight, DollarSign, Clock, CheckCircle2 } from 'lucide-react';
 import { getDataProvider } from '../../data/data-provider.js';
 import { PayoutListItem } from '@ks-os/contracts';

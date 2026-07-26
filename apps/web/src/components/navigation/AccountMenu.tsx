@@ -1,6 +1,6 @@
 import React from 'react';
 import { LogOut, Settings2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 interface AccountMenuProps {
   displayName: string;
