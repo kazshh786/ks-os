@@ -1,4 +1,5 @@
 import React from 'react';
+import { LockKeyhole } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { NavigationItem } from '../../navigation/navigation.types';
 
@@ -30,6 +31,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({ item, href, active, co
   >
     <Icon aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
     {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+    {item.locked && <><LockKeyhole aria-hidden="true" className={`${collapsed ? 'absolute -right-1 -top-1 rounded-full bg-amber-100 p-1 text-amber-800' : 'text-amber-600'} h-5 w-5 shrink-0`} />{!collapsed && item.requiredPlan && <span aria-hidden="true" className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black text-amber-900">{item.requiredPlan}</span>}</>}
     {badge !== undefined && badge > 0 && <span aria-label={`${badge} items require attention`} className={`${collapsed ? 'absolute -right-1 -top-1' : ''} min-w-5 rounded-full bg-amber-400 px-1.5 py-0.5 text-center text-[10px] font-black text-slate-950`}>{badge > 99 ? '99+' : badge}</span>}
     {collapsed && <span role="tooltip" className="pointer-events-none absolute left-[calc(100%+0.75rem)] z-50 hidden whitespace-nowrap rounded-lg bg-slate-950 px-2.5 py-1.5 text-xs font-bold text-white shadow-xl group-hover:block group-focus-visible:block">{item.label}</span>}
   </Link>;

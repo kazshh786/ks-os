@@ -14,6 +14,10 @@ import { ScheduledReportReadyEmail } from './templates/scheduled-report-ready.js
 import { CustomerPortalClaimEmail } from './templates/customer-portal-claim.js';
 import { ReviewInvitationEmail } from './templates/review-invitation.js';
 import { AccountAccessInvitationEmail } from './templates/account-access-invitation.js';
+import { SiteReviewInvitationEmail } from './templates/site-review-invitation.js';
+import { SiteReviewNotificationEmail } from './templates/site-review-notification.js';
+import { FactFindingInvitationEmail } from './templates/fact-finding-invitation.js';
+import { FactFindingNotificationEmail } from './templates/fact-finding-notification.js';
 
 export const templates = {
   'booking-confirmed': BookingConfirmedEmail,
@@ -29,6 +33,10 @@ export const templates = {
   'customer-portal-claim': CustomerPortalClaimEmail,
   'review-invitation': ReviewInvitationEmail,
   'account-access-invitation': AccountAccessInvitationEmail,
+  'site-review-invitation': SiteReviewInvitationEmail,
+  'site-review-notification': SiteReviewNotificationEmail,
+  'fact-finding-invitation': FactFindingInvitationEmail,
+  'fact-finding-notification': FactFindingNotificationEmail,
 } as const;
 
 export type TemplateKey = keyof typeof templates;

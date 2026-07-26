@@ -1,7 +1,7 @@
 import {
   Activity, BarChart3, Building2, CalendarDays, ClipboardCheck, CreditCard, FileCheck2,
   Headphones, LayoutDashboard, Package, ScrollText, Settings2, ShieldCheck,
-  Users, Webhook,
+  Users, Webhook, WandSparkles, ListChecks,
 } from 'lucide-react';
 import type { NavigationGroup } from './navigation.types';
 
@@ -18,6 +18,8 @@ export const agencyNavigation: NavigationGroup[] = [
     id: 'customer-delivery', label: 'Customer Delivery',
     items: [
       { id: 'onboarding', label: 'Onboarding', href: '/agency/onboarding', icon: ClipboardCheck, agencyCapabilitiesAny: ['tenants.read'] },
+      { id: 'fact-finding', label: 'Fact-finding', href: '/agency/fact-finding', icon: ListChecks, agencyCapabilitiesAny: ['fact_finding.read'] },
+      { id: 'provisioning', label: 'Provision Workspace', href: '/agency/provisioning', icon: WandSparkles, agencyCapabilitiesAny: ['provisioning.read'] },
       { id: 'services', label: 'Services', href: '/agency/fulfilment', icon: FileCheck2, agencyCapabilitiesAny: ['fulfilment.read'] },
       { id: 'support', label: 'Support', href: '/agency/support', icon: Headphones, agencyCapabilitiesAny: ['support.read'] },
     ],

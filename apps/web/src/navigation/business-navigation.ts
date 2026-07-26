@@ -1,5 +1,5 @@
 import {
-  BarChart3, Bell, BookOpenCheck, Building2, CalendarDays, ClipboardList, ConciergeBell, CreditCard,
+  BarChart3, Bell, BookOpenCheck, Boxes, Building2, CalendarDays, ClipboardList, ConciergeBell, CreditCard,
   FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors, Clock3,
   Plug, ReceiptText, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
 } from 'lucide-react';
@@ -34,16 +34,17 @@ export const businessNavigation: NavigationGroup[] = [
   {
     id: 'growth', label: 'Growth and Insights',
     items: [
-      { id: 'analytics', label: 'Analytics', href: '/app/analytics', icon: BarChart3, roles: ['owner'] },
+      { id: 'analytics', label: 'Analytics', href: '/app/analytics', icon: BarChart3, roles: ['owner'], requiredEntitlement: 'analytics.advanced', requiredPlan: 'GROWTH', lockedBenefit: 'Understand booking conversion, customer retention, staff utilisation and location performance.' },
       { id: 'reports', label: 'Reports', href: '/app/reports', icon: FileText, roles: ['owner'], activePrefixes: ['/app/reports/'] },
       { id: 'reviews', label: 'Reviews', href: '/app/reputation', icon: Sparkles, permissionsAny: ['REPUTATION_VIEW'], activePrefixes: ['/app/reputation/'] },
+      { id: 'inventory', label: 'Inventory', href: '/app/inventory', icon: Boxes, roles: ['owner'], requiredEntitlement: 'inventory.enabled', requiredPlan: 'GROWTH', lockedBenefit: 'Monitor stock levels and product performance alongside checkout activity.' },
     ],
   },
   {
     id: 'work', label: 'Work Management',
     items: [
       { id: 'tasks', label: 'Tasks', href: '/app/tasks/my', icon: ClipboardList, permissionsAny: ['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL'], activePrefixes: ['/app/tasks'] },
-      { id: 'automations', label: 'Automations', href: '/app/automations', icon: Workflow, roles: ['owner'], activePrefixes: ['/app/automations/', '/app/automation-runs/'] },
+      { id: 'automations', label: 'Automations', href: '/app/automations', icon: Workflow, roles: ['owner'], activePrefixes: ['/app/automations/', '/app/automation-runs/'], requiredEntitlement: 'automations.enabled', requiredPlan: 'GROWTH', lockedBenefit: 'Automate confirmations, reminders, forms, rebooking and follow-up work.' },
       { id: 'operations', label: 'Operations', href: '/app/operations', icon: Bell, permissionsAny: ['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE'], activePrefixes: ['/app/operations/'] },
     ],
   },

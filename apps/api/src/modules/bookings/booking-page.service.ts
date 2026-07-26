@@ -251,9 +251,9 @@ export class BookingPageService {
     if (!resolved) return null;
     const { page, tenant, redirectSlug } = resolved;
     const db = getDatabase();
-    const serviceRows = await db.select({ id: services.id, name: services.name, description: services.description, duration: services.duration, price: services.price, discount: services.discount, requiresDeposit: services.requiresDeposit })
+    const serviceRows = await db.select({ id: services.id, publicReference: services.publicReference, name: services.name, description: services.description, duration: services.duration, price: services.price, discount: services.discount, requiresDeposit: services.requiresDeposit })
       .from(services).where(and(eq(services.tenantId, tenant.id), eq(services.isActive, true), page.allowedServiceIds.length ? inArray(services.id, page.allowedServiceIds) : undefined));
-    const staffRows = await db.select({ id: users.id, name: users.name, role: users.jobTitle, accountRole: users.role, imageUrl: users.profileImageUrl, bio: users.bio })
+    const staffRows = await db.select({ id: users.id, publicReference: users.publicReference, name: users.name, role: users.jobTitle, accountRole: users.role, imageUrl: users.profileImageUrl, bio: users.bio })
       .from(users).where(and(
         eq(users.tenantId, tenant.id),
         eq(users.accountStatus, 'ACTIVE'),
@@ -262,24 +262,57 @@ export class BookingPageService {
       ));
     const assignments = staffRows.length && serviceRows.length ? await db.select({ staffId: staffServiceAssignments.staffUserId, serviceId: staffServiceAssignments.serviceId })
       .from(staffServiceAssignments).where(and(eq(staffServiceAssignments.tenantId, tenant.id), eq(staffServiceAssignments.isActive, true), inArray(staffServiceAssignments.staffUserId, staffRows.map(row => row.id)), inArray(staffServiceAssignments.serviceId, serviceRows.map(row => row.id)))) : [];
-    const locationRows = await db.select({ id: locations.id, name: locations.name, address: locations.address, postcode: locations.postcode, timezone: locations.timezone, isPrimary: locations.isPrimary })
+    const locationRows = await db.select({ id: locations.id, publicReference: locations.publicReference, name: locations.name, address: locations.address, postcode: locations.postcode, timezone: locations.timezone, isPrimary: locations.isPrimary })
       .from(locations).where(and(eq(locations.tenantId, tenant.id), eq(locations.isActive, true), page.allowedLocationIds.length ? inArray(locations.id, page.allowedLocationIds) : undefined));
     const linkedForms = await db.select({ id: forms.id, title: forms.title, description: forms.description, formType: forms.formType, required: bookingPageForms.required, completionStage: bookingPageForms.completionStage, serviceId: bookingPageForms.serviceId, staffId: bookingPageForms.staffUserId, locationId: bookingPageForms.locationId })
       .from(bookingPageForms).innerJoin(forms, eq(forms.id, bookingPageForms.formId))
-      .where(and(eq(bookingPageForms.bookingPageId, page.id), eq(forms.status, 'PUBLISHED')));
+      .where(and(eq(bookingPageForms.bookingPageId, page.id), eq(bookingPageForms.tenantId, tenant.id), eq(forms.tenantId, tenant.id), eq(forms.status, 'PUBLISHED')));
     return {
       page: this.toResponse(page),
       redirectSlug,
-      tenant: { name: tenant.name, timezone: tenant.timezone, currency: tenant.currency, colors: { primary: tenant.primaryColor, secondary: tenant.secondaryColor, accent: tenant.accentColor } },
+      tenant: {
+        name: tenant.name,
+        timezone: tenant.timezone,
+        currency: tenant.currency,
+        contactPhone: tenant.operationalPhone,
+        contactEmail: tenant.replyToEmail,
+        colors: { primary: tenant.primaryColor, secondary: tenant.secondaryColor, accent: tenant.accentColor },
+      },
       paymentMode: tenant.defaultPaymentMode,
       bookingChannels: [{ id: 'in_shop', label: 'At the business' }, { id: 'mobile', label: 'Mobile appointment' }],
-      services: serviceRows.map(row => ({ ...row, price: Math.max(0, row.price - (row.discount || 0)) })),
+      services: serviceRows.map(row => ({ ...row, basePrice: row.price, price: Math.max(0, row.price - (row.discount || 0)) })),
       staff: staffRows
         .map(row => ({ ...row, serviceIds: assignments.filter(item => item.staffId === row.id).map(item => item.serviceId) }))
         .sort((a, b) => Number(b.accountRole === 'owner') - Number(a.accountRole === 'owner') || a.name.localeCompare(b.name)),
       locations: locationRows,
       intakeForms: linkedForms,
     };
+  }
+
+  async applicableIntakeForms(
+    pageId: string,
+    tenantId: string,
+    context: { serviceId: string; staffId: string; locationId?: string | null; completionStage?: string },
+  ) {
+    return getDatabase().select({
+      id: forms.id,
+      title: forms.title,
+      required: bookingPageForms.required,
+      completionStage: bookingPageForms.completionStage,
+    }).from(bookingPageForms)
+      .innerJoin(forms, eq(forms.id, bookingPageForms.formId))
+      .where(and(
+        eq(bookingPageForms.bookingPageId, pageId),
+        eq(bookingPageForms.tenantId, tenantId),
+        eq(forms.tenantId, tenantId),
+        eq(forms.status, 'PUBLISHED'),
+        or(isNull(bookingPageForms.serviceId), eq(bookingPageForms.serviceId, context.serviceId)),
+        or(isNull(bookingPageForms.staffUserId), eq(bookingPageForms.staffUserId, context.staffId)),
+        context.locationId
+          ? or(isNull(bookingPageForms.locationId), eq(bookingPageForms.locationId, context.locationId))
+          : isNull(bookingPageForms.locationId),
+        context.completionStage ? eq(bookingPageForms.completionStage, context.completionStage) : undefined,
+      ));
   }
 
   async createHold(identifier: string, input: CreateBookingHold, host?: string) {

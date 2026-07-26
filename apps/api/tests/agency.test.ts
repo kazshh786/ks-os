@@ -79,11 +79,11 @@ test('plans are versioned and entitlement types and availability are constrained
   assert.match(migration,/CORE','Core'[\s\S]+GROWTH','Growth'[\s\S]+SCALE','Scale/);
 });
 
-test('timed entitlement overrides require a reason and future expiry',()=>{
+test('timed entitlement overrides require a reason and expose feature availability',()=>{
   const base={entitlementKey:'analytics.advanced',value:{enabled:true},reason:'Temporary managed-service pilot',startsAt:new Date('2026-01-01')};
   assert.equal(CreateEntitlementOverrideSchema.safeParse({...base,expiresAt:new Date('2026-02-01')}).success,true);
   assert.equal(CreateEntitlementOverrideSchema.safeParse({...base,expiresAt:new Date('2025-02-01')}).success,false);
-  assert.match(agencyService,/availability==='GENERALLY_AVAILABLE'/);
+  assert.match(agencyService,/availability\[entitlement\.entitlementKey\]=entitlement\.availability/);
 });
 
 test('downgrades preserve data and report limit blockers',()=>{

@@ -44,30 +44,99 @@ export class EntitlementService {
     const assignments = await this.db.select({ assignment:tenantPlanAssignments, version:platformPlanVersions, plan:platformPlans })
       .from(tenantPlanAssignments).innerJoin(platformPlanVersions,eq(tenantPlanAssignments.planVersionId,platformPlanVersions.id)).innerJoin(platformPlans,eq(platformPlanVersions.planId,platformPlans.id))
       .where(and(eq(tenantPlanAssignments.tenantId,tenantId),eq(tenantPlanAssignments.status,'ACTIVE'),lte(tenantPlanAssignments.startsAt,now),or(isNull(tenantPlanAssignments.endsAt),gt(tenantPlanAssignments.endsAt,now)))).orderBy(desc(tenantPlanAssignments.startsAt)).limit(1);
-    if (!assignments.length) return { plan:null, entitlements:{} as Record<string,any> };
+    if (!assignments.length) return { plan:null, entitlements:{} as Record<string,any>, availability:{} as Record<string,string> };
     const entitlements = await this.db.select().from(platformPlanEntitlements).where(eq(platformPlanEntitlements.planVersionId,assignments[0].version.id));
     const overrides = await this.db.select().from(tenantEntitlementOverrides).where(and(eq(tenantEntitlementOverrides.tenantId,tenantId),lte(tenantEntitlementOverrides.startsAt,now),gt(tenantEntitlementOverrides.expiresAt,now),isNull(tenantEntitlementOverrides.revokedAt)));
     const values:Record<string,any>={};
-    for(const entitlement of entitlements) if(entitlement.availability==='GENERALLY_AVAILABLE') values[entitlement.entitlementKey]=entitlement.valueJson;
-    for(const override of overrides) values[override.entitlementKey]=override.valueJson;
-    return { plan:{ key:assignments[0].plan.key, version:assignments[0].version.version, name:assignments[0].version.name, monthlyPriceMinor:assignments[0].version.monthlyPriceMinor, setupFeeAmountMinor:assignments[0].version.setupFeeAmountMinor, currency:assignments[0].version.currency }, entitlements:values };
+    const availability:Record<string,string>={};
+    for(const entitlement of entitlements) {
+      values[entitlement.entitlementKey]=entitlement.valueJson;
+      availability[entitlement.entitlementKey]=entitlement.availability;
+    }
+    for(const override of overrides) {
+      values[override.entitlementKey]=override.valueJson;
+      availability[override.entitlementKey] ||= 'GENERALLY_AVAILABLE';
+    }
+    return { plan:{ key:assignments[0].plan.key, version:assignments[0].version.version, name:assignments[0].version.name, monthlyPriceMinor:assignments[0].version.monthlyPriceMinor, setupFeeAmountMinor:assignments[0].version.setupFeeAmountMinor, currency:assignments[0].version.currency }, entitlements:values, availability };
   }
   async assertBoolean(tenantId:string,key:string){const resolved=await this.resolve(tenantId);if(resolved.entitlements[key]?.enabled!==true)throw fail(403,'ENTITLEMENT_REQUIRED',`The ${key} entitlement is not available.`);return resolved;}
   async assertQuantity(tenantId:string,key:string,current:number){const resolved=await this.resolve(tenantId);if(!resolved.plan||!resolved.entitlements[key])throw fail(403,'ENTITLEMENT_REQUIRED',`The ${key} entitlement is not available.`);const limit=resolved.entitlements[key]?.limit;if(typeof limit==='number'&&current>=limit)throw fail(409,'ENTITLEMENT_LIMIT_REACHED',`${key} is limited to ${limit}.`);return resolved;}
-  async assertUsageAvailable(tenantId:string,key:string,now=new Date()){
-    const resolved=await this.resolve(tenantId,now);if(!resolved.plan||!resolved.entitlements[key])throw fail(403,'ENTITLEMENT_REQUIRED',`The ${key} entitlement is not available.`);const limit=resolved.entitlements[key]?.limit;
-    if(typeof limit!=='number')return resolved;
-    const start=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1));const end=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,1));
-    let used=0;
+  private usagePeriod(now:Date) {
+    return {
+      start:new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)),
+      end:new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,1)),
+    };
+  }
+  private async usageCount(tenantId:string,key:string,now:Date) {
+    const {start,end}=this.usagePeriod(now);
     if(key==='bookings.monthly'){
       const [row]=await this.db.select({used:sql<number>`count(*)::int`}).from(appointments).where(and(eq(appointments.tenantId,tenantId),gte(appointments.createdAt,start),lt(appointments.createdAt,end)));
-      used=Number(row?.used||0);
-    }else{
-      const [row]=await this.db.select().from(tenantEntitlementUsage).where(and(eq(tenantEntitlementUsage.tenantId,tenantId),eq(tenantEntitlementUsage.entitlementKey,key),eq(tenantEntitlementUsage.periodStart,start))).limit(1);
-      used=row?.used||0;
+      return Number(row?.used||0);
     }
-    if(used>=limit)throw fail(409,'ENTITLEMENT_USAGE_EXCEEDED',`${key} monthly allowance has been used.`);
-    return resolved;
+    const [row]=await this.db.select().from(tenantEntitlementUsage).where(and(eq(tenantEntitlementUsage.tenantId,tenantId),eq(tenantEntitlementUsage.entitlementKey,key),eq(tenantEntitlementUsage.periodStart,start))).limit(1);
+    return Number(row?.used||0);
+  }
+  private usageSnapshot(used:number,limit:number) {
+    const percentage=limit>0?Math.round((used/limit)*1000)/10:0;
+    return {used,limit,percentage,warning:percentage>=80,atLimit:used>=limit,overage:Math.max(0,used-limit)};
+  }
+  async usageStatus(tenantId:string,key:string,now=new Date()){
+    const resolved=await this.resolve(tenantId,now);if(!resolved.plan||!resolved.entitlements[key])throw fail(403,'ENTITLEMENT_REQUIRED',`The ${key} entitlement is not available.`);const limit=resolved.entitlements[key]?.limit;
+    if(typeof limit!=='number')return {...resolved,usage:null};
+    const used=await this.usageCount(tenantId,key,now);
+    return {...resolved,usage:this.usageSnapshot(used,limit)};
+  }
+  async assertUsageAvailable(tenantId:string,key:string,now=new Date()){
+    // Booking capacity uses an audited-overage policy. The caller still checks
+    // entitlement ownership here, but a customer is never unexpectedly blocked
+    // at the monthly boundary.
+    return this.usageStatus(tenantId,key,now);
+  }
+  async recordUsageOverage(tenantId:string,key:string,targetId:string,source:string,requestId?:string){
+    const status=await this.usageStatus(tenantId,key);
+    if(!status.usage?.overage)return status;
+    const action='ENTITLEMENT_USAGE_OVERAGE_ALLOWED';
+    const [existing]=await this.db.select({id:platformAuditEvents.id}).from(platformAuditEvents).where(and(
+      eq(platformAuditEvents.tenantId,tenantId),
+      eq(platformAuditEvents.action,action),
+      eq(platformAuditEvents.targetType,'APPOINTMENT'),
+      eq(platformAuditEvents.targetId,targetId),
+    )).limit(1);
+    if(!existing)await this.db.insert(platformAuditEvents).values({
+      tenantId,action,targetType:'APPOINTMENT',targetId,outcome:'SUCCESS',requestId,
+      eventCategory:'BOOKING',sourceComponent:'booking-api',
+      description:'A booking was accepted under the audited monthly overage policy.',
+      reason:'BOOKING_CONTINUITY_POLICY',
+      metadata:{entitlementKey:key,source,used:status.usage.used,limit:status.usage.limit,overage:status.usage.overage},
+    });
+    return status;
+  }
+  async workspaceSummary(tenantId:string,now=new Date()){
+    const resolved=await this.resolve(tenantId,now);
+    const planKey=(resolved.plan?.key||'CORE') as 'CORE'|'GROWTH'|'SCALE';
+    const bookingLimit=Number(resolved.entitlements['bookings.monthly']?.limit||({CORE:500,GROWTH:2500,SCALE:20000}[planKey]));
+    const staffLimit=Number(resolved.entitlements['staff.limit']?.limit||({CORE:5,GROWTH:15,SCALE:100}[planKey]));
+    const locationLimit=Number(resolved.entitlements['locations.limit']?.limit||({CORE:1,GROWTH:3,SCALE:20}[planKey]));
+    const [bookingsUsed,staffResult,locationResult]=await Promise.all([
+      this.usageCount(tenantId,'bookings.monthly',now),
+      this.db.select({used:sql<number>`count(*)::int`}).from(users).where(and(eq(users.tenantId,tenantId),eq(users.accountStatus,'ACTIVE'))),
+      this.db.select({used:sql<number>`count(*)::int`}).from(locations).where(and(eq(locations.tenantId,tenantId),eq(locations.isActive,true))),
+    ]);
+    return {
+      plan:{
+        key:planKey,
+        name:resolved.plan?.name?.replace(/\s+v\d+$/i,'')||({CORE:'Core',GROWTH:'Growth',SCALE:'Scale'}[planKey]),
+        supportLevel:(resolved.entitlements['support.level']?.level||({CORE:'STANDARD',GROWTH:'PRIORITY',SCALE:'STRATEGIC'}[planKey])) as 'STANDARD'|'PRIORITY'|'STRATEGIC',
+      },
+      entitlements:resolved.entitlements,
+      availability:resolved.availability,
+      usage:{
+        bookings:this.usageSnapshot(bookingsUsed,bookingLimit),
+        staff:this.usageSnapshot(Number(staffResult[0]?.used||0),staffLimit),
+        locations:this.usageSnapshot(Number(locationResult[0]?.used||0),locationLimit),
+      },
+      bookingLimitPolicy:'AUDITED_OVERAGE' as const,
+    };
   }
 }
 

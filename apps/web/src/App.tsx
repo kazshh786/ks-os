@@ -51,6 +51,9 @@ import { AutomationBuilderPage, AutomationDetailPage, AutomationRunPage, Automat
 import { ReportPage, ReportsHome } from './features/reports/OperationalReports.js';
 import { ReportExportsPage, ReportSchedulesPage } from './features/reports/ReportOperations.js';
 import { AdvancedAnalyticsPage } from './features/analytics/AdvancedAnalyticsPage.js';
+import { EntitlementRoute } from './features/plans/EntitlementRoute.js';
+import { InventoryPage } from './features/plans/InventoryPage.js';
+import { WorkspacePlanProvider } from './features/plans/WorkspacePlanContext.js';
 import { OperationsInboxPage } from './features/operations/OperationsInboxPage.js';
 import { ServicesPage } from './features/services/ServicesPage.js';
 import { OperationIssueDetailPage } from './features/operations/OperationIssueDetailPage.js';
@@ -82,12 +85,21 @@ import { AgencyAuthProvider, AgencyCapabilityRoute, AgencyGuard, AgencyLoginPage
 import { AccessDeniedPage, AuthCallbackPage, InvitationAcceptancePage, PasswordRecoveryPage, SecuritySettingsPage, SelectBusinessPage, SessionExpiredPage } from './auth/AuthPages.js';
 import { AgencyAnalyticsPage, AgencyComplianceAuditPage as AgencyAuditPage, AgencyFulfilmentPage, AgencyJobsPage, AgencyOverviewPage, AgencyPlanCreatePage, AgencyPlansPage, AgencySupportPage, AgencyTenantBillingPage, AgencyTenantCreatePage, AgencyTenantDetailPageFixed as AgencyTenantDetailPage, AgencyTenantEntitlementsPage, AgencyTenantHealthPage, AgencyTenantsPage, AgencyUserInvitePage, AgencyUsersPage, AgencyWebhooksPage, AgencyWorkQueuePage } from './features/agency/AgencyPages.js';
 import { AgencyBookingSystemPage } from './features/agency/AgencyBookingSystem.js';
+import { AgencyProvisioningPage } from './features/agency/AgencyProvisioning.js';
+import { AgencyFactFindingPage } from './features/agency/AgencyFactFinding.js';
+import { SiteStudioPage } from './features/agency/SiteStudioPage.js';
+import ClientFactFindingPage from './features/fact-finding/ClientFactFindingPage.js';
 
 const ReputationRoute: React.FC<{ children: React.ReactNode; ownerOnly?: boolean }> = ({ children, ownerOnly = false }) => {
   const { role, permissions } = useAuth();
   const allowed = role === 'owner' || (!ownerOnly && permissions?.includes('REPUTATION_VIEW' as any));
   return allowed ? <>{children}</> : <Navigate to="/app/calendar" replace />;
 };
+
+function StaffWorkspaceWithPlan() {
+  const { businessReference } = useAuth();
+  return <WorkspacePlanProvider businessReference={businessReference}><StaffWorkspaceLayout /></WorkspacePlanProvider>;
+}
 
 const AppContent: React.FC = () => {
   const { authUserId, role } = useAuth();
@@ -133,6 +145,7 @@ const AppContent: React.FC = () => {
         <Route path="/forms/complete/:token" element={<PublicFormCompletionPage />} />
         <Route path="/forms/complete/:token/success" element={<PublicFormSuccessPage />} />
         <Route path="/review/:token" element={<PublicReviewInvitationPage />} />
+        <Route path="/fact-finding" element={<ClientFactFindingPage />} />
 
         {/* Public Booking Widgets */}
         <Route element={<PublicBookingLayout />}>
@@ -147,7 +160,7 @@ const AppContent: React.FC = () => {
           path="/app"
           element={
             <ProtectedRoute>
-              <StaffWorkspaceLayout />
+              <StaffWorkspaceWithPlan />
             </ProtectedRoute>
           }
         >
@@ -158,7 +171,8 @@ const AppContent: React.FC = () => {
           <Route path="reports/exports" element={<RoleRoute allowedRoles={['owner']}><ReportExportsPage /></RoleRoute>} />
           <Route path="reports/schedules" element={<RoleRoute allowedRoles={['owner']}><ReportSchedulesPage /></RoleRoute>} />
           <Route path="reports/:reportKey" element={<RoleRoute allowedRoles={['owner']}><ReportPage /></RoleRoute>} />
-          <Route path="analytics" element={<RoleRoute allowedRoles={['owner']}><AdvancedAnalyticsPage /></RoleRoute>} />
+          <Route path="analytics" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="analytics.advanced" title="Advanced analytics" requiredPlan="GROWTH" benefit="Understand booking conversion, customer retention, staff utilisation and location performance."><AdvancedAnalyticsPage /></EntitlementRoute></RoleRoute>} />
+          <Route path="inventory" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="inventory.enabled" title="Inventory beta" requiredPlan="GROWTH" benefit="Monitor stock levels and product performance alongside checkout activity."><InventoryPage /></EntitlementRoute></RoleRoute>} />
           <Route path="reputation" element={<ReputationRoute><ReputationOverviewPage /></ReputationRoute>} />
           <Route path="reputation/reviews" element={<ReputationRoute><ExternalReviewsPage /></ReputationRoute>} />
           <Route path="reputation/invitations" element={<ReputationRoute><ReputationInvitationsPage /></ReputationRoute>} />
@@ -199,12 +213,12 @@ const AppContent: React.FC = () => {
           <Route path="settings/booking/customer-management" element={<RoleRoute allowedRoles={['owner']}><CustomerBookingManagementSettings /></RoleRoute>} />
           <Route path="settings/booking-page" element={<RoleRoute allowedRoles={['owner']}><BookingPageSettings /></RoleRoute>} />
           <Route path="settings/security" element={<SecuritySettingsPage context="TENANT" />} />
-          <Route path="automations" element={<RoleRoute allowedRoles={['owner']}><AutomationsPage /></RoleRoute>} />
-          <Route path="automations/new" element={<RoleRoute allowedRoles={['owner']}><AutomationBuilderPage /></RoleRoute>} />
-          <Route path="automations/:id" element={<RoleRoute allowedRoles={['owner']}><AutomationDetailPage /></RoleRoute>} />
-          <Route path="automations/:id/edit" element={<RoleRoute allowedRoles={['owner']}><AutomationBuilderPage /></RoleRoute>} />
-          <Route path="automations/:id/runs" element={<RoleRoute allowedRoles={['owner']}><AutomationRunsPage /></RoleRoute>} />
-          <Route path="automation-runs/:runId" element={<RoleRoute allowedRoles={['owner']}><AutomationRunPage /></RoleRoute>} />
+          <Route path="automations" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Workflow automations" requiredPlan="GROWTH" benefit="Automate confirmations, reminders, forms, rebooking and follow-up work."><AutomationsPage /></EntitlementRoute></RoleRoute>} />
+          <Route path="automations/new" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Workflow automations" requiredPlan="GROWTH" benefit="Automate confirmations, reminders, forms, rebooking and follow-up work."><AutomationBuilderPage /></EntitlementRoute></RoleRoute>} />
+          <Route path="automations/:id" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Workflow automations" requiredPlan="GROWTH" benefit="Automate confirmations, reminders, forms, rebooking and follow-up work."><AutomationDetailPage /></EntitlementRoute></RoleRoute>} />
+          <Route path="automations/:id/edit" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Workflow automations" requiredPlan="GROWTH" benefit="Automate confirmations, reminders, forms, rebooking and follow-up work."><AutomationBuilderPage /></EntitlementRoute></RoleRoute>} />
+          <Route path="automations/:id/runs" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Workflow automations" requiredPlan="GROWTH" benefit="Automate confirmations, reminders, forms, rebooking and follow-up work."><AutomationRunsPage /></EntitlementRoute></RoleRoute>} />
+          <Route path="automation-runs/:runId" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Workflow automations" requiredPlan="GROWTH" benefit="Automate confirmations, reminders, forms, rebooking and follow-up work."><AutomationRunPage /></EntitlementRoute></RoleRoute>} />
           <Route path="operations" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE']}><OperationsInboxPage /></RoleRoute>} />
           <Route path="operations/:issueId" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE']}><OperationIssueDetailPage /></RoleRoute>} />
           <Route path="tasks" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL']}><TasksPage /></RoleRoute>} />
@@ -233,6 +247,9 @@ const AppContent: React.FC = () => {
           <Route path="tenants" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantsPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/new" element={<AgencyCapabilityRoute capabilities={['tenants.manage']}><AgencyTenantCreatePage /></AgencyCapabilityRoute>} />
           <Route path="bookings" element={<AgencyBookingSystemPage />} />
+          <Route path="provisioning" element={<AgencyCapabilityRoute capabilities={['provisioning.read']}><AgencyProvisioningPage /></AgencyCapabilityRoute>} />
+          <Route path="fact-finding" element={<AgencyCapabilityRoute capabilities={['fact_finding.read']}><AgencyFactFindingPage /></AgencyCapabilityRoute>} />
+          <Route path="sites/:siteReference/studio" element={<AgencyCapabilityRoute capabilities={['sites.studio.read']}><SiteStudioPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/onboarding" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/billing" element={<AgencyCapabilityRoute capabilities={['billing.read']}><AgencyTenantBillingPage /></AgencyCapabilityRoute>} />

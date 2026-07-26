@@ -15,6 +15,10 @@ export interface NavigationItem {
   agencyCapabilitiesAny?: AgencyCapability[];
   featureFlag?: string;
   activePrefixes?: string[];
+  requiredEntitlement?: string;
+  requiredPlan?: 'GROWTH' | 'SCALE';
+  lockedBenefit?: string;
+  locked?: boolean;
 }
 
 export interface NavigationGroup {
@@ -29,6 +33,7 @@ export interface NavigationContext {
   permissions?: Permission[];
   agencyCapabilities?: AgencyCapability[];
   featureFlags?: Record<string, boolean>;
+  entitlements?: Record<string, { enabled?: boolean }>;
 }
 
 export interface ResolvedNavigationGroup extends Omit<NavigationGroup, 'items'> {

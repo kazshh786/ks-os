@@ -10,6 +10,7 @@ import {
 import { JsonSiteWorkerLogger } from './logger.js';
 import { PostgresSiteJobRepository } from './postgres-repository.js';
 import { createConfiguredSiteGenerationExecutor } from './postgres-generation-executor.js';
+import { PostgresWorkspaceProvisioningExecutor } from './postgres-provisioning-executor.js';
 import { SiteWorker } from './worker.js';
 
 export async function startSiteWorker(
@@ -27,6 +28,7 @@ export async function startSiteWorker(
   const registry = createSiteJobHandlerRegistry(
     config.enableTestHandlers,
     resolvedGenerationExecutor,
+    new PostgresWorkspaceProvisioningExecutor(database, config.generation),
   );
   const logger = new JsonSiteWorkerLogger(config.logLevel);
   const health = new SiteWorkerHealth(repository, registry);
@@ -99,5 +101,7 @@ export * from './health.js';
 export * from './logger.js';
 export * from './postgres-repository.js';
 export * from './postgres-generation-executor.js';
+export * from './postgres-provisioning-executor.js';
+export * from './provisioning-finalization.js';
 export * from './repository.types.js';
 export * from './worker.js';

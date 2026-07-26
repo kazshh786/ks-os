@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   and,
   asc,
@@ -5,11 +6,14 @@ import {
   eq,
   inArray,
   isNull,
+  max,
   or,
   sql,
 } from 'drizzle-orm';
 import {
   agencyUsers,
+  emailOutbox,
+  emailSuppressions,
   getDatabase,
   locations,
   knowledgePacks,
@@ -18,6 +22,11 @@ import {
   siteAssets,
   siteBlueprintPages,
   siteBlueprints,
+  siteApprovalDecisions,
+  siteApprovals,
+  siteChangeRequestEvents,
+  siteChangeRequests,
+  siteFactVerifications,
   siteGenerationClaims,
   siteGenerationContexts,
   siteGenerationFindings,
@@ -26,7 +35,14 @@ import {
   siteGenerationSectionRuns,
   siteJobs,
   sitePages,
+  siteRenderSnapshots,
+  siteReviewActivity,
+  siteReviewComments,
+  siteReviewCycles,
+  siteReviewItems,
+  siteReviewParticipants,
   siteSections,
+  staffServiceAssignments,
   sites,
   siteVersions,
   templateLayoutPageTypes,
@@ -74,7 +90,12 @@ import {
   type SiteJobResult,
   type SiteJobType,
 } from '@ks-os/site-jobs';
-import { SiteSectionTypeSchema, type SiteSection } from '@ks-os/site-schema';
+import {
+  prepareSiteRenderSnapshotForStorage,
+  SiteSectionSchema,
+  SiteSectionTypeSchema,
+  type SiteSection,
+} from '@ks-os/site-schema';
 import type { SiteGenerationKnowledgeContext } from '@ks-os/site-knowledge';
 import type { SiteWorkerConfig } from './config.js';
 import {
@@ -82,6 +103,10 @@ import {
   prepareDatabaseGenerationContext,
 } from './generation-knowledge.js';
 import type { SiteGenerationJobExecutor } from './handlers.js';
+import {
+  failProvisionedWorkspace,
+  finalizeProvisionedWorkspace,
+} from './provisioning-finalization.js';
 
 type Database = ReturnType<typeof getDatabase>;
 
@@ -115,6 +140,7 @@ interface RunContext {
   modelKey: string;
   sourceDataDigestSha256: string;
   promptTemplateVersion: string;
+  provisioningRunId: string | null;
 }
 
 interface PreparedRuntime {
@@ -138,6 +164,431 @@ function safeActions(section: SiteSection) {
 
 function safeExcerpt(value: string): string {
   return value.replace(/\s+/g, ' ').trim().slice(0, 240);
+}
+
+type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+function optionalPublicPhone(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized && /^\+?[0-9 ()-]{7,30}$/.test(normalized)
+    ? normalized
+    : undefined;
+}
+
+function optionalPublicEmail(value: string | null | undefined) {
+  const normalized = value?.trim().toLowerCase();
+  return normalized && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)
+    ? normalized
+    : undefined;
+}
+
+function approvedAssetUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function persistValidatedPreviewSnapshot(
+  transaction: DatabaseTransaction,
+  run: RunContext,
+  sourceContentDigestSha256: string,
+) {
+  const [existing] = await transaction.select({ id: siteRenderSnapshots.id })
+    .from(siteRenderSnapshots)
+    .where(and(
+      eq(siteRenderSnapshots.siteVersionId, run.versionId),
+      eq(siteRenderSnapshots.snapshotKind, 'PREVIEW'),
+      eq(siteRenderSnapshots.sourceContentDigestSha256, sourceContentDigestSha256),
+    ))
+    .limit(1);
+  if (existing) return;
+
+  const [context] = await transaction.select({
+    siteStatus: sites.status,
+    siteCreatedAt: sites.createdAt,
+    versionStatus: siteVersions.status,
+    versionCreatedAt: siteVersions.createdAt,
+    templateStatus: templateVersions.status,
+    tenantReference: tenants.businessReference,
+    tenantName: tenants.name,
+    tenantLegalName: tenants.legalBusinessName,
+    tenantBusinessType: tenants.businessType,
+    tenantSubdomain: tenants.subdomain,
+    tenantPhone: tenants.operationalPhone,
+    tenantEmail: tenants.replyToEmail,
+    primaryColour: tenants.primaryColor,
+    secondaryColour: tenants.secondaryColor,
+    accentColour: tenants.accentColor,
+  }).from(siteVersions)
+    .innerJoin(sites, eq(siteVersions.siteId, sites.id))
+    .innerJoin(tenants, eq(siteVersions.tenantId, tenants.id))
+    .innerJoin(templateVersions, eq(templateVersions.id, run.templateVersionId))
+    .where(and(
+      eq(siteVersions.id, run.versionId),
+      eq(siteVersions.tenantId, run.tenantId),
+      eq(siteVersions.siteId, run.siteId),
+    ))
+    .limit(1);
+  if (!context || context.templateStatus !== 'APPROVED') {
+    throw new SiteJobExecutionError(
+      'TERMINAL_VALIDATION_FAILURE',
+      'A preview snapshot requires the pinned approved template.',
+    );
+  }
+
+  const [pageRows, sectionRows, compatibilityRows, serviceRows, locationRows, staffRows, assignmentRows, assetRows] =
+    await Promise.all([
+      transaction.select({
+        id: sitePages.id,
+        reference: sitePages.publicReference,
+        title: sitePages.title,
+        navigationLabel: sitePages.navigationLabel,
+        slug: sitePages.slug,
+        pageType: sitePages.pageType,
+        conversionRole: sitePages.conversionRole,
+        sortOrder: sitePages.sortOrder,
+        seo: sitePages.seoJson,
+        layoutId: templateLayouts.id,
+        layoutReference: templateLayouts.publicReference,
+        layoutStatus: templateLayouts.status,
+        rendererKey: templateLayoutRenderers.rendererKey,
+        rendererStatus: templateLayoutRenderers.rendererStatus,
+        rendererVersion: templateLayoutRenderers.rendererVersion,
+      }).from(sitePages)
+        .innerJoin(templateLayouts, eq(sitePages.templateLayoutId, templateLayouts.id))
+        .innerJoin(
+          templateLayoutRenderers,
+          eq(templateLayoutRenderers.templateLayoutId, templateLayouts.id),
+        )
+        .where(and(
+          eq(sitePages.versionId, run.versionId),
+          eq(sitePages.tenantId, run.tenantId),
+          isNull(sitePages.archivedAt),
+        ))
+        .orderBy(asc(sitePages.sortOrder)),
+      transaction.select({
+        pageId: siteSections.pageId,
+        reference: siteSections.publicReference,
+        sortOrder: siteSections.sortOrder,
+        content: siteSections.contentJson,
+      }).from(siteSections)
+        .where(and(
+          eq(siteSections.versionId, run.versionId),
+          eq(siteSections.tenantId, run.tenantId),
+        ))
+        .orderBy(asc(siteSections.pageId), asc(siteSections.sortOrder)),
+      transaction.select({
+        layoutId: templateLayoutPageTypes.templateLayoutId,
+        pageType: templateLayoutPageTypes.pageType,
+      }).from(templateLayoutPageTypes),
+      transaction.select({
+        reference: services.publicReference,
+        name: services.name,
+        description: services.description,
+        duration: services.duration,
+        price: services.price,
+      }).from(services).where(and(
+        eq(services.tenantId, run.tenantId),
+        eq(services.isActive, true),
+      )),
+      transaction.select({
+        reference: locations.publicReference,
+        name: locations.name,
+        address: locations.address,
+        postcode: locations.postcode,
+        phone: locations.phone,
+      }).from(locations).where(and(
+        eq(locations.tenantId, run.tenantId),
+        eq(locations.isActive, true),
+      )),
+      transaction.select({
+        id: users.id,
+        reference: users.publicReference,
+        name: users.name,
+        jobTitle: users.jobTitle,
+        biography: users.bio,
+        bookingEnabled: users.bookingEnabled,
+      }).from(users).where(and(
+        eq(users.tenantId, run.tenantId),
+        eq(users.accountStatus, 'ACTIVE'),
+      )),
+      transaction.select({
+        staffId: staffServiceAssignments.staffUserId,
+        serviceReference: services.publicReference,
+      }).from(staffServiceAssignments)
+        .innerJoin(services, eq(staffServiceAssignments.serviceId, services.id))
+        .where(and(
+          eq(staffServiceAssignments.tenantId, run.tenantId),
+          eq(staffServiceAssignments.isActive, true),
+          eq(services.isActive, true),
+        )),
+      transaction.select({
+        reference: siteAssets.publicReference,
+        kind: siteAssets.kind,
+        storagePath: siteAssets.storagePath,
+        mimeType: siteAssets.mimeType,
+        altText: siteAssets.altText,
+        width: siteAssets.width,
+        height: siteAssets.height,
+      }).from(siteAssets).where(and(
+        eq(siteAssets.tenantId, run.tenantId),
+        eq(siteAssets.siteId, run.siteId),
+        eq(siteAssets.versionId, run.versionId),
+        eq(siteAssets.status, 'READY'),
+      )),
+    ]);
+
+  const pageSnapshots = pageRows.map((page) => {
+    if (
+      !page.rendererKey
+      || !page.rendererVersion
+      || page.rendererStatus !== 'READY'
+      || page.layoutStatus !== 'APPROVED'
+    ) {
+      throw new SiteJobExecutionError(
+        'TERMINAL_VALIDATION_FAILURE',
+        'Every preview page requires an approved ready renderer mapping.',
+      );
+    }
+    const path = page.pageType === 'BOOKING'
+      ? '/book'
+      : page.slug === 'home' ? '/' : `/${page.slug}`;
+    const seo = page.seo && typeof page.seo === 'object'
+      ? page.seo as Record<string, unknown>
+      : {};
+    return {
+      publicReference: page.reference,
+      pageType: page.pageType,
+      conversionRole: page.conversionRole,
+      path,
+      title: page.title,
+      active: true,
+      indexable: page.pageType !== 'BOOKING' && seo.index !== false,
+      canonical: true,
+      rendererKey: page.rendererKey,
+      rendererVersion: page.rendererVersion,
+      rendererStatus: 'READY' as const,
+      layoutReference: page.layoutReference,
+      layoutStatus: 'APPROVED' as const,
+      templateVersionStatus: 'APPROVED' as const,
+      compatiblePageTypes: compatibilityRows
+        .filter((item) => item.layoutId === page.layoutId)
+        .map((item) => item.pageType),
+      seo: {
+        title: String(seo.title ?? page.title).slice(0, 70),
+        description: String(
+          seo.description ?? `Learn more about ${page.title} and book securely through KS OS.`,
+        ).slice(0, 170),
+        canonicalPath: path,
+        index: page.pageType !== 'BOOKING' && seo.index !== false,
+        follow: seo.follow !== false,
+        openGraphTitle: String(seo.openGraphTitle ?? seo.title ?? page.title).slice(0, 100),
+        openGraphDescription: String(
+          seo.openGraphDescription
+          ?? seo.description
+          ?? `Learn more about ${page.title} and book securely through KS OS.`,
+        ).slice(0, 200),
+        ...(typeof seo.openGraphImageAssetReference === 'string'
+          ? { openGraphImageAssetReference: seo.openGraphImageAssetReference }
+          : {}),
+        twitterCard: seo.twitterCard === 'summary' ? 'summary' : 'summary_large_image',
+      },
+      sections: sectionRows
+        .filter((section) => section.pageId === page.id)
+        .map((section) => SiteSectionSchema.parse({
+          ...(section.content && typeof section.content === 'object'
+            ? section.content as Record<string, unknown>
+            : {}),
+          reference: section.reference,
+        })),
+    };
+  });
+  if (pageSnapshots.length === 0) {
+    throw new SiteJobExecutionError(
+      'TERMINAL_VALIDATION_FAILURE',
+      'A preview snapshot requires at least one generated page.',
+    );
+  }
+  const navigationCandidates = pageRows.map((page) => ({
+    label: (page.navigationLabel || page.title).slice(0, 80),
+    pageReference: page.reference,
+    pageType: page.pageType,
+    children: [] as Array<{ label: string; pageReference: string }>,
+  }));
+  const primaryNavigation = navigationCandidates
+    .filter((page) => page.pageType !== 'BOOKING')
+    .slice(0, 12);
+  const primaryReferences = new Set(primaryNavigation.map((item) => item.pageReference));
+  const footerNavigation = navigationCandidates
+    .filter((page) => !primaryReferences.has(page.pageReference))
+    .slice(0, 20);
+
+  const allowedAssetMimeTypes = new Set([
+    'image/avif',
+    'image/webp',
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+  ]);
+  const assets = assetRows.flatMap((asset) => {
+    const url = approvedAssetUrl(asset.storagePath);
+    if (
+      !url
+      || !asset.width
+      || !asset.height
+      || !allowedAssetMimeTypes.has(asset.mimeType)
+    ) return [];
+    const alt = asset.altText?.trim().slice(0, 500) ?? '';
+    return [{
+      publicReference: asset.reference,
+      type: ['LOGO', 'ICON'].includes(asset.kind) ? asset.kind : 'IMAGE',
+      publicationStatus: 'PUBLISHED' as const,
+      mimeType: asset.mimeType,
+      url,
+      width: asset.width,
+      height: asset.height,
+      purpose: alt ? 'INFORMATIVE' as const : 'DECORATIVE' as const,
+      alt,
+      variants: [],
+    }];
+  });
+  const staffServices = new Map<string, string[]>();
+  for (const assignment of assignmentRows) {
+    const references = staffServices.get(assignment.staffId) ?? [];
+    references.push(assignment.serviceReference);
+    staffServices.set(assignment.staffId, references);
+  }
+  const fallbackDomain = (
+    process.env.PUBLIC_SITES_FALLBACK_DOMAIN || 'sites.kasimshah.com'
+  ).trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+  const canonicalHostname = `${context.tenantSubdomain}.${fallbackDomain}`;
+  const snapshotReference = randomUUID();
+  const snapshot = {
+    schemaVersion: 1,
+    publicReference: snapshotReference,
+    siteReference: run.siteReference,
+    versionReference: run.versionReference,
+    templateVersionReference: run.templateVersionReference,
+    visibility: 'PREVIEW',
+    siteStatus: context.siteStatus,
+    versionStatus: context.versionStatus,
+    createdAt: new Date().toISOString(),
+    publishedAt: null,
+    language: 'en-GB',
+    theme: {
+      primaryColour: context.primaryColour,
+      secondaryColour: context.secondaryColour,
+      accentColour: context.accentColour,
+      backgroundColour: '#ffffff',
+      surfaceColour: '#ffffff',
+      textColour: '#111827',
+      mutedTextColour: '#4b5563',
+      borderColour: '#d1d5db',
+      headingFontKey: 'SYSTEM_SANS',
+      bodyFontKey: 'SYSTEM_SANS',
+      radiusScale: 'MEDIUM',
+      spacingDensity: 'COMFORTABLE',
+      containerWidth: 'STANDARD',
+      buttonStyle: 'SOLID',
+      imageStyle: 'ROUNDED',
+      motionPreference: 'REDUCED',
+    },
+    navigation: {
+      primary: primaryNavigation.map(({ pageType: _pageType, ...item }) => item),
+      footer: footerNavigation.map(({ pageType: _pageType, ...item }) => item),
+    },
+    business: {
+      name: context.tenantName,
+      ...(context.tenantLegalName ? { legalName: context.tenantLegalName } : {}),
+      description: context.tenantBusinessType
+        ? `${context.tenantName} provides ${context.tenantBusinessType.toLowerCase()} services.`
+        : `${context.tenantName} services and secure online booking.`,
+      ...(optionalPublicPhone(context.tenantPhone)
+        ? { publicTelephone: optionalPublicPhone(context.tenantPhone) }
+        : {}),
+      ...(optionalPublicEmail(context.tenantEmail)
+        ? { publicEmail: optionalPublicEmail(context.tenantEmail) }
+        : {}),
+      socialLinks: [],
+    },
+    locations: locationRows.map((location) => ({
+      publicReference: location.reference,
+      name: location.name,
+      addressLines: location.address
+        .split(/\r?\n|,\s*/)
+        .map((line) => line.trim().slice(0, 240))
+        .filter(Boolean)
+        .slice(0, 5),
+      locality: location.name,
+      postalCode: location.postcode,
+      countryCode: 'GB',
+      ...(optionalPublicPhone(location.phone)
+        ? { publicTelephone: optionalPublicPhone(location.phone) }
+        : {}),
+      openingHours: [],
+    })),
+    services: serviceRows.map((service) => ({
+      publicReference: service.reference,
+      name: service.name,
+      shortDescription: (
+        service.description?.trim()
+        || `${service.name} is available to book through KS OS.`
+      ).slice(0, 500),
+      durationMinutes: service.duration,
+      priceText: `£${(service.price / 100).toFixed(2)}`,
+      bookingEnabled: true,
+    })),
+    staff: staffRows.map((staff) => ({
+      publicReference: staff.reference,
+      displayName: staff.name,
+      role: staff.jobTitle?.trim() || 'Team member',
+      ...(staff.biography?.trim()
+        ? { biography: staff.biography.trim().slice(0, 2_000) }
+        : {}),
+      bookingEnabled: staff.bookingEnabled,
+      serviceReferences: staffServices.get(staff.id) ?? [],
+    })),
+    assets,
+    domains: [{
+      hostname: canonicalHostname,
+      kind: 'FALLBACK',
+      status: 'ACTIVE',
+      primary: true,
+    }],
+    canonicalHostname,
+    booking: {
+      tenantReference: context.tenantReference,
+      tenantSubdomain: context.tenantSubdomain,
+      campaignReference: 'site-review',
+    },
+    pages: pageSnapshots,
+  };
+  const prepared = prepareSiteRenderSnapshotForStorage(snapshot);
+  const [latest] = await transaction.select({
+    value: max(siteRenderSnapshots.revision),
+  }).from(siteRenderSnapshots).where(and(
+    eq(siteRenderSnapshots.siteVersionId, run.versionId),
+    eq(siteRenderSnapshots.snapshotKind, 'PREVIEW'),
+  ));
+  await transaction.insert(siteRenderSnapshots).values({
+    publicReference: snapshotReference,
+    tenantId: run.tenantId,
+    siteId: run.siteId,
+    siteVersionId: run.versionId,
+    templateVersionId: run.templateVersionId,
+    snapshotKind: 'PREVIEW',
+    revision: (latest?.value ?? 0) + 1,
+    schemaVersion: prepared.schemaVersion,
+    contentJson: prepared.content,
+    contentDigestSha256: prepared.contentDigestSha256,
+    sourceContentDigestSha256,
+    createdByAgencyUserId: run.requestedByAgencyUserId,
+  });
 }
 
 function mapProviderError(error: unknown): never {
@@ -261,6 +712,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       signal: lease.signal,
       updateProgress: lease.updateProgress,
     });
+    await finalizeProvisionedWorkspace(this.database, run.id);
     return {
       summary: 'The structured draft site is ready for agency review.',
       outputReferences: [run.reference, run.versionReference, ...result.pageReferences].slice(0, 50),
@@ -307,6 +759,11 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       repairAttempts: generated.repairAttempts,
       findings: generated.findings,
     }, 'SITE_PAGE_REGENERATED');
+    await this.completeReviewRegeneration(
+      run,
+      lease.jobReference,
+      page.pageReference,
+    );
     await lease.updateProgress({ current: 1, total: 1, message: 'The draft page was regenerated and validated.' });
     return {
       summary: 'The structured draft page was regenerated.',
@@ -340,6 +797,12 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       signal: lease.signal,
     });
     await this.persistRegeneratedSection(run, result.output, result.outputContentDigestSha256);
+    await this.completeReviewRegeneration(
+      run,
+      lease.jobReference,
+      payload.pageReference,
+      payload.sectionReference,
+    );
     await lease.updateProgress({ current: 1, total: 1, message: 'The draft section was regenerated and validated.' });
     return {
       summary: 'The structured draft section was regenerated.',
@@ -495,6 +958,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       modelKey: siteGenerationRuns.modelKey,
       sourceDataDigestSha256: siteGenerationRuns.sourceDataDigestSha256,
       promptTemplateVersion: siteGenerationRuns.promptTemplateVersion,
+      provisioningRunId: siteGenerationRuns.provisioningRunId,
     }).from(siteGenerationRuns)
       .innerJoin(siteJobs, eq(siteGenerationRuns.siteJobId, siteJobs.id))
       .innerJoin(tenants, eq(siteGenerationRuns.tenantId, tenants.id))
@@ -774,6 +1238,384 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       assetRequirements: page.assetRequirements,
       missingDataFindings: [],
       claims: [],
+    });
+  }
+
+  private async completeReviewRegeneration(
+    run: RunContext,
+    jobReference: string,
+    pageReference: string,
+    sectionReference?: string,
+  ) {
+    await this.database.transaction(async transaction => {
+      const [linked] = await transaction.select({
+        requestId: siteChangeRequests.id,
+        requestReference: siteChangeRequests.publicReference,
+        requestStatus: siteChangeRequests.status,
+        requestPageId: siteChangeRequests.pageId,
+        requestSectionId: siteChangeRequests.sectionId,
+        cycleId: siteReviewCycles.id,
+        cycleReference: siteReviewCycles.publicReference,
+        cycleStatus: siteReviewCycles.status,
+        reviewScope: siteReviewCycles.reviewScope,
+        scopedPageId: siteReviewCycles.scopedPageId,
+        scopedSectionId: siteReviewCycles.scopedSectionId,
+        reviewRevision: siteReviewCycles.reviewRevision,
+        agencyOwnerUserId: siteReviewCycles.agencyOwnerUserId,
+        clientApprovalRequired: siteReviewCycles.clientApprovalRequired,
+        agencyApprovalRequired: siteReviewCycles.agencyApprovalRequired,
+        createdByAgencyUserId: siteReviewCycles.createdByAgencyUserId,
+        generationRunId: siteReviewCycles.generationRunId,
+        blueprintId: siteReviewCycles.blueprintId,
+        blueprintRevision: siteReviewCycles.blueprintRevision,
+        templateVersionId: siteReviewCycles.templateVersionId,
+        knowledgePackId: siteReviewCycles.knowledgePackId,
+        knowledgePackSemanticVersion: siteReviewCycles.knowledgePackSemanticVersion,
+        provenance: siteVersions.generationProvenanceJson,
+      }).from(siteChangeRequests)
+        .innerJoin(siteJobs, eq(siteChangeRequests.regenerationJobId, siteJobs.id))
+        .innerJoin(siteReviewCycles, eq(siteChangeRequests.reviewCycleId, siteReviewCycles.id))
+        .innerJoin(siteVersions, eq(siteReviewCycles.siteVersionId, siteVersions.id))
+        .where(and(
+          eq(siteJobs.publicReference, jobReference),
+          eq(siteChangeRequests.tenantId, run.tenantId),
+          eq(siteChangeRequests.siteId, run.siteId),
+          eq(siteChangeRequests.versionId, run.versionId),
+          eq(siteChangeRequests.status, 'IN_PROGRESS'),
+        ))
+        .limit(1);
+      if (!linked) return;
+
+      await transaction.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`site-review-revision:${run.versionId}`}::text, 0)
+        )
+      `);
+      const [pages, sections] = await Promise.all([
+        transaction.select({
+          reference: sitePages.publicReference,
+          pageType: sitePages.pageType,
+          title: sitePages.title,
+          navigationLabel: sitePages.navigationLabel,
+          slug: sitePages.slug,
+          sortOrder: sitePages.sortOrder,
+          seoTitle: sitePages.seoTitle,
+          seoDescription: sitePages.seoDescription,
+          seo: sitePages.seoJson,
+          internalLinks: sitePages.internalLinksJson,
+          structuredData: sitePages.structuredDataInputsJson,
+          assets: sitePages.assetRequirementsJson,
+        }).from(sitePages).where(and(
+          eq(sitePages.versionId, run.versionId),
+          isNull(sitePages.archivedAt),
+        )).orderBy(asc(sitePages.sortOrder)),
+        transaction.select({
+          reference: siteSections.publicReference,
+          pageId: siteSections.pageId,
+          sectionType: siteSections.sectionType,
+          sortOrder: siteSections.sortOrder,
+          content: siteSections.contentJson,
+          actions: siteSections.actionsJson,
+        }).from(siteSections).where(eq(siteSections.versionId, run.versionId))
+          .orderBy(asc(siteSections.pageId), asc(siteSections.sortOrder)),
+      ]);
+      const contentDigestSha256 = generationDigest({ pages, sections });
+      const provenance = linked.provenance && typeof linked.provenance === 'object'
+        ? linked.provenance as Record<string, unknown>
+        : {};
+      await transaction.update(siteVersions).set({
+        generationStatus: 'READY_FOR_REVIEW',
+        generationContentDigestSha256: contentDigestSha256,
+        generationProvenanceJson: {
+          ...provenance,
+          outputContentDigestSha256: contentDigestSha256,
+          revisedByJobReference: jobReference,
+          revisedAt: new Date().toISOString(),
+        },
+        updatedAt: new Date(),
+      }).where(eq(siteVersions.id, run.versionId));
+      await transaction.update(siteGenerationRuns).set({
+        outputContentDigestSha256: contentDigestSha256,
+        updatedAt: new Date(),
+      }).where(eq(siteGenerationRuns.id, run.id));
+      await persistValidatedPreviewSnapshot(
+        transaction,
+        run,
+        contentDigestSha256,
+      );
+
+      const invalidatedApprovals = await transaction.update(siteApprovals).set({
+        status: 'WITHDRAWN',
+        invalidatedAt: new Date(),
+        invalidationReason: 'CONTENT_REGENERATED',
+      }).where(and(
+        eq(siteApprovals.reviewCycleId, linked.cycleId),
+        isNull(siteApprovals.invalidatedAt),
+      )).returning({ id: siteApprovals.id, reference: siteApprovals.publicReference });
+      for (const approval of invalidatedApprovals) {
+        await transaction.update(siteApprovalDecisions).set({
+          invalidatedAt: new Date(),
+          invalidationReason: 'CONTENT_REGENERATED',
+        }).where(and(
+          eq(siteApprovalDecisions.approvalId, approval.id),
+          isNull(siteApprovalDecisions.invalidatedAt),
+        ));
+        await transaction.insert(siteReviewActivity).values({
+          reviewCycleId: linked.cycleId,
+          eventType: 'SITE_APPROVAL_INVALIDATED',
+          actorType: 'SYSTEM',
+          targetType: 'SITE_APPROVAL',
+          targetPublicReference: approval.reference,
+          safeMetadataJson: { reasonCode: 'CONTENT_REGENERATED' },
+        });
+      }
+      await transaction.update(siteReviewComments).set({
+        anchorStatus: 'OUTDATED',
+        updatedAt: new Date(),
+      }).where(eq(siteReviewComments.reviewCycleId, linked.cycleId));
+      await transaction.update(siteReviewItems).set({
+        status: 'SUPERSEDED',
+        updatedAt: new Date(),
+      }).where(eq(siteReviewItems.reviewCycleId, linked.cycleId));
+      await transaction.update(siteFactVerifications).set({
+        status: 'SUPERSEDED',
+        supersededAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(siteFactVerifications.reviewCycleId, linked.cycleId));
+      await transaction.update(siteReviewCycles).set({
+        status: 'SUPERSEDED',
+        updatedAt: new Date(),
+      }).where(eq(siteReviewCycles.id, linked.cycleId));
+      await transaction.update(siteChangeRequests).set({
+        status: 'READY_FOR_REVIEW',
+        resultingSiteVersionId: run.versionId,
+        resultingPageId: linked.requestPageId,
+        resultingSectionId: linked.requestSectionId,
+        updatedAt: new Date(),
+      }).where(eq(siteChangeRequests.id, linked.requestId));
+      await transaction.insert(siteChangeRequestEvents).values({
+        changeRequestId: linked.requestId,
+        reviewCycleId: linked.cycleId,
+        eventType: 'READY_FOR_REVIEW',
+        fromStatus: linked.requestStatus,
+        toStatus: 'READY_FOR_REVIEW',
+        actorType: 'SYSTEM',
+        safeMetadataJson: {
+          jobReference,
+          pageReference,
+          ...(sectionReference ? { sectionReference } : {}),
+          contentDigestSha256,
+        },
+      });
+      await transaction.insert(siteReviewActivity).values({
+        reviewCycleId: linked.cycleId,
+        eventType: 'SITE_REVISION_READY',
+        actorType: 'SYSTEM',
+        targetType: 'SITE_CHANGE_REQUEST',
+        targetPublicReference: linked.requestReference,
+        safeMetadataJson: { jobReference, contentDigestSha256 },
+      });
+
+      const [latestRevision] = await transaction.select({
+        value: max(siteReviewCycles.reviewRevision),
+      }).from(siteReviewCycles).where(eq(siteReviewCycles.siteVersionId, run.versionId));
+      const [newCycle] = await transaction.insert(siteReviewCycles).values({
+        tenantId: run.tenantId,
+        siteId: run.siteId,
+        siteVersionId: run.versionId,
+        generationRunId: linked.generationRunId,
+        blueprintId: linked.blueprintId,
+        blueprintRevision: linked.blueprintRevision,
+        templateVersionId: linked.templateVersionId,
+        knowledgePackId: linked.knowledgePackId,
+        knowledgePackSemanticVersion: linked.knowledgePackSemanticVersion,
+        pinnedContentDigestSha256: contentDigestSha256,
+        status: 'DRAFT',
+        reviewScope: linked.reviewScope,
+        scopedPageId: linked.scopedPageId,
+        scopedSectionId: linked.scopedSectionId,
+        reviewRevision: (latestRevision?.value ?? linked.reviewRevision) + 1,
+        agencyOwnerUserId: linked.agencyOwnerUserId,
+        clientApprovalRequired: linked.clientApprovalRequired,
+        agencyApprovalRequired: linked.agencyApprovalRequired,
+        createdByAgencyUserId: linked.createdByAgencyUserId,
+      }).returning({
+        id: siteReviewCycles.id,
+        reference: siteReviewCycles.publicReference,
+        revision: siteReviewCycles.reviewRevision,
+      });
+
+      const previousParticipants = await transaction.select()
+        .from(siteReviewParticipants)
+        .where(eq(siteReviewParticipants.reviewCycleId, linked.cycleId));
+      const clonedParticipants = previousParticipants.length
+        ? await transaction.insert(siteReviewParticipants).values(
+          previousParticipants.map((participant) => ({
+            reviewCycleId: newCycle.id,
+            participantType: participant.participantType,
+            agencyUserId: participant.agencyUserId,
+            tenantUserId: participant.tenantUserId,
+            contactReference: participant.contactReference,
+            displayName: participant.displayName,
+            emailNormalized: participant.emailNormalized,
+            role: participant.role,
+            status: participant.participantType === 'AGENCY_USER' ? 'ACTIVE' : 'INVITED',
+            acceptedAt: participant.participantType === 'AGENCY_USER' ? new Date() : null,
+          })),
+        ).returning()
+        : [];
+
+      const currentPages = await transaction.select({
+        id: sitePages.id,
+        sortOrder: sitePages.sortOrder,
+      }).from(sitePages).where(and(
+        eq(sitePages.versionId, run.versionId),
+        isNull(sitePages.archivedAt),
+      )).orderBy(asc(sitePages.sortOrder));
+      if (currentPages.length) {
+        await transaction.insert(siteReviewItems).values(currentPages.map((page) => ({
+          reviewCycleId: newCycle.id,
+          targetType: 'PAGE',
+          pageId: page.id,
+          status: 'PENDING',
+          requiredReviewerType: 'CLIENT',
+          displayOrder: page.sortOrder,
+        })));
+      }
+      const currentSections = await transaction.select({
+        id: siteSections.id,
+        pageId: siteSections.pageId,
+        sortOrder: siteSections.sortOrder,
+      }).from(siteSections).where(eq(siteSections.versionId, run.versionId));
+      if (currentSections.length) {
+        await transaction.insert(siteReviewItems).values(
+          currentSections.map((section, index) => ({
+            reviewCycleId: newCycle.id,
+            targetType: 'SECTION',
+            pageId: section.pageId,
+            sectionId: section.id,
+            status: 'PENDING',
+            requiredReviewerType: 'CLIENT',
+            displayOrder: (section.sortOrder * 100) + index,
+          })),
+        );
+      }
+      const findings = await transaction.select({
+        id: siteGenerationFindings.id,
+        severity: siteGenerationFindings.severity,
+      }).from(siteGenerationFindings).where(and(
+        eq(siteGenerationFindings.generationRunId, run.id),
+        eq(siteGenerationFindings.current, true),
+      ));
+      if (findings.length) {
+        await transaction.insert(siteReviewItems).values(findings.map((finding, index) => ({
+          reviewCycleId: newCycle.id,
+          targetType: 'GENERATION_FINDING',
+          generationFindingId: finding.id,
+          status: 'PENDING',
+          requiredReviewerType: 'AGENCY',
+          blocking: finding.severity === 'ERROR',
+          clientVisible: false,
+          displayOrder: 100_000 + index,
+        })));
+      }
+
+      const previousFacts = await transaction.select({
+        fact: siteFactVerifications,
+        blocking: siteReviewItems.blocking,
+      }).from(siteFactVerifications)
+        .leftJoin(siteReviewItems, eq(siteFactVerifications.reviewItemId, siteReviewItems.id))
+        .where(eq(siteFactVerifications.reviewCycleId, linked.cycleId));
+      for (const [index, previous] of previousFacts.entries()) {
+        const [item] = await transaction.insert(siteReviewItems).values({
+          reviewCycleId: newCycle.id,
+          targetType: 'FACT',
+          status: 'PENDING',
+          requiredReviewerType: 'FACT_VERIFIER',
+          blocking: previous.blocking ?? false,
+          clientVisible: true,
+          displayOrder: 200_000 + index,
+        }).returning({ id: siteReviewItems.id });
+        await transaction.insert(siteFactVerifications).values({
+          reviewCycleId: newCycle.id,
+          reviewItemId: item.id,
+          tenantId: run.tenantId,
+          factType: previous.fact.factType,
+          sourceEntityType: previous.fact.sourceEntityType,
+          sourceEntityReference: previous.fact.sourceEntityReference,
+          displayLabel: previous.fact.displayLabel,
+          proposedPublicValue: previous.fact.proposedPublicValue,
+          valueDigestSha256: previous.fact.valueDigestSha256,
+          status: 'PENDING_REVIEW',
+          evidenceRequired: previous.fact.evidenceRequired,
+          evidenceReference: previous.fact.evidenceReference,
+          evidencePrivate: previous.fact.evidencePrivate,
+        });
+      }
+
+      await transaction.insert(siteReviewActivity).values({
+        reviewCycleId: newCycle.id,
+        eventType: 'SITE_REVIEW_CYCLE_CREATED',
+        actorType: 'SYSTEM',
+        targetType: 'SITE_REVIEW_CYCLE',
+        targetPublicReference: newCycle.reference,
+        safeMetadataJson: {
+          previousReviewCycleReference: linked.cycleReference,
+          reasonCode: 'CONTENT_REGENERATED',
+          reviewRevision: newCycle.revision,
+          contentDigestSha256,
+        },
+      });
+      await transaction.insert(platformAuditEvents).values({
+        tenantId: run.tenantId,
+        action: 'SITE_REVISION_READY',
+        targetType: 'SITE_CHANGE_REQUEST',
+        targetId: linked.requestReference,
+        outcome: 'SUCCESS',
+        metadata: {
+          previousReviewCycleReference: linked.cycleReference,
+          newReviewCycleReference: newCycle.reference,
+          reviewRevision: newCycle.revision,
+          jobReference,
+          contentDigestSha256,
+        },
+        eventCategory: 'WEBSITE',
+        description: 'A controlled site regeneration completed and created a new review revision.',
+        environment: process.env.NODE_ENV || 'development',
+        sourceComponent: 'site-worker',
+      });
+
+      for (const participant of clonedParticipants.filter((item) =>
+        item.participantType === 'AGENCY_USER')) {
+        const [suppression] = await transaction.select({ id: emailSuppressions.id })
+          .from(emailSuppressions)
+          .where(eq(emailSuppressions.recipientEmailNormalized, participant.emailNormalized))
+          .limit(1);
+        if (suppression) continue;
+        await transaction.insert(emailOutbox).values({
+          tenantId: run.tenantId,
+          recipientEmail: participant.emailNormalized,
+          recipientName: participant.displayName,
+          templateKey: 'site-review-notification',
+          templateVersion: '1.0.0',
+          templateDataJson: {
+            tenantName: 'Your website team',
+            participantName: participant.displayName,
+            heading: 'A revised website draft is ready',
+            message: 'A requested website revision completed and is ready for internal review.',
+            siteReference: run.siteReference,
+            reviewReference: newCycle.reference,
+            reviewRevision: newCycle.revision,
+          },
+          idempotencyKey:
+            `site-review-notify:${newCycle.reference}:revision-ready:${participant.publicReference}`,
+          relatedEntityType: 'site_review_cycle',
+          relatedEntityId: newCycle.id,
+          status: 'PENDING',
+          scheduledFor: new Date(),
+          nextAttemptAt: new Date(),
+        }).onConflictDoNothing({ target: emailOutbox.idempotencyKey });
+      }
     });
   }
 
@@ -1236,6 +2078,11 @@ class PostgresGenerationPersistence implements SiteGenerationPersistence {
         eq(siteVersions.id, this.run.versionId),
         eq(siteVersions.status, 'DRAFT'),
       ));
+      await persistValidatedPreviewSnapshot(
+        transaction,
+        this.run,
+        input.outputContentDigestSha256,
+      );
       await this.audit(transaction, 'SITE_GENERATION_COMPLETED', 'SUCCESS', {
         pageCount: input.pageCountCompleted,
         sectionCount: completedSections.length,
@@ -1272,6 +2119,12 @@ class PostgresGenerationPersistence implements SiteGenerationPersistence {
         { failureCode: input.failureCode },
       );
     });
+    if (this.run.provisioningRunId) {
+      await failProvisionedWorkspace(this.database, this.run.id, {
+        code: input.failureCode,
+        message: input.failureMessage,
+      });
+    }
   }
 
   private async persistClaimsAndFindings(

@@ -3,7 +3,10 @@ import type { NavigationContext, NavigationGroup, NavigationItem, ResolvedNaviga
 export function resolveNavigation(groups: NavigationGroup[], context: NavigationContext): ResolvedNavigationGroup[] {
   return groups.map(group => ({
     ...group,
-    items: group.items.filter(item => isNavigationItemVisible(item, context)),
+    items: group.items.filter(item => isNavigationItemVisible(item, context)).map(item => ({
+      ...item,
+      locked: Boolean(item.requiredEntitlement && context.entitlements && context.entitlements[item.requiredEntitlement]?.enabled !== true),
+    })),
   })).filter(group => group.items.length > 0);
 }
 

@@ -10,20 +10,60 @@ export const AgencyCapabilitySchema = z.enum([
   'billing.read', 'billing.manage', 'support.read', 'support.session.start', 'support.retry',
   'fulfilment.read', 'fulfilment.manage', 'analytics.read', 'audit.read', 'audit.export',
   'privacy.read', 'privacy.manage', 'retention.manage',
-  'sites.knowledge.read', 'sites.knowledge.manage',
+  'sites.read', 'sites.manage', 'sites.publish', 'sites.templates.read',
+  'sites.templates.manage', 'sites.templates.approve',
+  'sites.templates.licenses.manage', 'sites.blueprints.read',
+  'sites.blueprints.manage', 'sites.blueprints.approve', 'sites.domains.manage',
+  'sites.jobs.read', 'sites.jobs.manage', 'sites.jobs.retry',
+  'sites.jobs.cancel', 'sites.knowledge.read', 'sites.knowledge.manage',
   'sites.knowledge.import', 'sites.knowledge.approve',
   'sites.knowledge.activate',
   'sites.generation.read', 'sites.generation.create',
   'sites.generation.cancel', 'sites.generation.retry',
   'sites.generation.regenerate',
+  'sites.review.read', 'sites.review.create', 'sites.review.manage',
+  'sites.review.invite', 'sites.review.comment', 'sites.review.resolve',
+  'sites.review.approve', 'sites.review.reject',
+  'sites.review.change_requests', 'sites.review.fact_verification',
+  'sites.review.compare',
+  'provisioning.read', 'provisioning.create', 'provisioning.update',
+  'provisioning.execute', 'provisioning.retry', 'provisioning.cancel',
+  'sites.studio.read', 'sites.studio.review', 'sites.studio.regenerate',
+  'sites.studio.approve',
+  'fact_finding.read', 'fact_finding.templates.manage', 'fact_finding.create',
+  'fact_finding.manage', 'fact_finding.invite', 'fact_finding.review',
+  'fact_finding.approve', 'fact_finding.uploads.review',
+  'production_briefs.read', 'production_briefs.build',
+  'production_briefs.approve', 'production_briefs.lock',
 ]);
 export type AgencyCapability = z.infer<typeof AgencyCapabilitySchema>;
 
+const phase157bAdminCapabilities = [
+  'provisioning.read', 'provisioning.create', 'provisioning.update',
+  'provisioning.execute', 'provisioning.retry', 'provisioning.cancel',
+  'sites.studio.read', 'sites.studio.review', 'sites.studio.regenerate',
+  'sites.studio.approve',
+  'fact_finding.read', 'fact_finding.templates.manage', 'fact_finding.create',
+  'fact_finding.manage', 'fact_finding.invite', 'fact_finding.review',
+  'fact_finding.approve', 'fact_finding.uploads.review',
+  'production_briefs.read', 'production_briefs.build',
+  'production_briefs.approve', 'production_briefs.lock',
+] as const satisfies readonly AgencyCapability[];
+
+const phase157bFulfilmentCapabilities = [
+  'provisioning.read', 'provisioning.create', 'provisioning.update',
+  'provisioning.execute', 'provisioning.retry', 'provisioning.cancel',
+  'sites.studio.read', 'sites.studio.review', 'sites.studio.regenerate',
+  'fact_finding.read', 'fact_finding.templates.manage', 'fact_finding.create',
+  'fact_finding.manage', 'fact_finding.invite', 'fact_finding.review',
+  'fact_finding.uploads.review', 'production_briefs.read', 'production_briefs.build',
+] as const satisfies readonly AgencyCapability[];
+
 const roleCapabilities: Record<AgencyRole, readonly AgencyCapability[]> = {
   PLATFORM_OWNER: AgencyCapabilitySchema.options,
-  AGENCY_ADMINISTRATOR: ['tenants.read','tenants.manage','plans.read','plans.manage','billing.read','billing.manage','support.read','support.session.start','support.retry','fulfilment.read','fulfilment.manage','analytics.read','audit.read','audit.export','privacy.read','privacy.manage','retention.manage','sites.knowledge.read','sites.knowledge.manage','sites.knowledge.import','sites.knowledge.approve','sites.knowledge.activate','sites.generation.read','sites.generation.create','sites.generation.cancel','sites.generation.retry','sites.generation.regenerate'],
-  SUPPORT_ADMINISTRATOR: ['tenants.read','plans.read','billing.read','support.read','support.session.start','support.retry','audit.read','sites.knowledge.read','sites.generation.read'],
-  FULFILMENT_ADMINISTRATOR: ['tenants.read','plans.read','support.read','fulfilment.read','fulfilment.manage','sites.knowledge.read','sites.knowledge.manage','sites.knowledge.import','sites.generation.read','sites.generation.create','sites.generation.cancel','sites.generation.retry','sites.generation.regenerate'],
+  AGENCY_ADMINISTRATOR: ['tenants.read','tenants.manage','plans.read','plans.manage','billing.read','billing.manage','support.read','support.session.start','support.retry','fulfilment.read','fulfilment.manage','analytics.read','audit.read','audit.export','privacy.read','privacy.manage','retention.manage','sites.read','sites.manage','sites.publish','sites.templates.read','sites.templates.manage','sites.templates.approve','sites.templates.licenses.manage','sites.blueprints.read','sites.blueprints.manage','sites.blueprints.approve','sites.domains.manage','sites.jobs.read','sites.jobs.manage','sites.jobs.retry','sites.jobs.cancel','sites.knowledge.read','sites.knowledge.manage','sites.knowledge.import','sites.knowledge.approve','sites.knowledge.activate','sites.generation.read','sites.generation.create','sites.generation.cancel','sites.generation.retry','sites.generation.regenerate','sites.review.read','sites.review.create','sites.review.manage','sites.review.invite','sites.review.comment','sites.review.resolve','sites.review.approve','sites.review.reject','sites.review.change_requests','sites.review.fact_verification','sites.review.compare',...phase157bAdminCapabilities],
+  SUPPORT_ADMINISTRATOR: ['tenants.read','plans.read','billing.read','support.read','support.session.start','support.retry','audit.read','sites.read','sites.templates.read','sites.blueprints.read','sites.jobs.read','sites.jobs.retry','sites.jobs.cancel','sites.knowledge.read','sites.generation.read','sites.review.read','sites.review.compare','provisioning.read','sites.studio.read','fact_finding.read','production_briefs.read'],
+  FULFILMENT_ADMINISTRATOR: ['tenants.read','plans.read','support.read','fulfilment.read','fulfilment.manage','sites.read','sites.manage','sites.templates.read','sites.templates.manage','sites.templates.licenses.manage','sites.blueprints.read','sites.blueprints.manage','sites.domains.manage','sites.jobs.read','sites.jobs.manage','sites.jobs.retry','sites.jobs.cancel','sites.knowledge.read','sites.knowledge.manage','sites.knowledge.import','sites.generation.read','sites.generation.create','sites.generation.cancel','sites.generation.retry','sites.generation.regenerate','sites.review.read','sites.review.create','sites.review.manage','sites.review.invite','sites.review.comment','sites.review.resolve','sites.review.reject','sites.review.change_requests','sites.review.fact_verification','sites.review.compare',...phase157bFulfilmentCapabilities],
 };
 export const capabilitiesForAgencyRole = (role: AgencyRole): readonly AgencyCapability[] => roleCapabilities[role];
 export const agencyRoleNeedsMfa = (role: AgencyRole) => role !== 'FULFILMENT_ADMINISTRATOR';

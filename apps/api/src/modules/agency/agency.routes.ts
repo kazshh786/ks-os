@@ -10,6 +10,7 @@ import {
 import { AgencyAuditService, AgencyService, type AgencyActor } from './agency.service.js';
 import { GoCardlessWebhookService } from './gocardless.service.js';
 import { AgencyExportsService } from './agency-exports.service.js';
+import { AgencyBookingService } from './agency-booking.service.js';
 
 const Id=z.object({id:z.string().uuid()}); const TenantId=z.object({tenantId:z.string().uuid()});
 const TenantUserId=TenantId.extend({userReference:z.string().uuid()});
@@ -20,9 +21,14 @@ function actor(request:FastifyRequest,capability?:Parameters<FastifyRequest['req
 }
 
 export async function agencyRoutes(app:FastifyInstance){const service=new AgencyService();
+  const agencyBooking = new AgencyBookingService();
   app.get('/session',{config:{rateLimit:{max:20,timeWindow:'1 minute'}}},async(request,reply)=>{
     if(!request.agencyAuth)return reply.code(401).send({success:false,error:{code:'AGENCY_UNAUTHENTICATED',message:'No valid agency session found.'}});
     const session=request.agencyAuth;return{success:true,data:{authenticated:true,context:'AGENCY',user:{email:session.email,displayName:session.displayName,role:session.role},mfa:{required:session.mfaRequired,assuranceLevel:session.assuranceLevel},capabilities:session.capabilities,expiresAt:session.expiresAt}};
+  });
+  app.post('/booking-workspace/activate', async request => {
+    const auth = request.requireAgency();
+    return { data: await agencyBooking.ensureWorkspace(auth) };
   });
   app.get('/users',async r=>({data:await service.listUsers(),actor:actor(r,'agency.users.manage')}));
   app.post('/users',{config:{rateLimit:{max:5,timeWindow:'15 minutes'}}},async(r,reply)=>{const body=z.object({email:z.string().email(),displayName:z.string().trim().min(2).max(255),role:AgencyRoleSchema}).strict().parse(r.body);return reply.code(201).send({data:await service.inviteUser(actor(r,'agency.users.manage'),body)});});

@@ -19,6 +19,7 @@ import { bookingStatusDisplay, calendarRange, calendarViews, type CalendarView, 
 
 interface BookingOperationsCalendarProps {
   initialView?: CalendarView;
+  tenantOverride?: import('../../data/types.js').BusinessTenant | null;
 }
 
 const emptyResponse: BookingOperationsResponse = { items: [], meta: { page: 1, limit: 250, total: 0, hasMore: false }, summary: { total: 0, confirmed: 0, completed: 0, cancelled: 0, noShow: 0, awaitingPayment: 0, incompleteForms: 0, requiresAttention: 0 } };
@@ -28,8 +29,9 @@ type IntakeStatus = NonNullable<BookingOperationsQuery['intakeStatuses']>[number
 const validDensities = new Set<BookingDensity>(['compact', 'comfortable', 'detailed']);
 const validIntakeStatuses = new Set<IntakeStatus>(['NOT_REQUIRED', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE']);
 
-export function BookingOperationsCalendar({ initialView = 'week' }: BookingOperationsCalendarProps) {
-  const { activeTenant } = useWorkspace();
+export function BookingOperationsCalendar({ initialView = 'week', tenantOverride = null }: BookingOperationsCalendarProps) {
+  const { activeTenant: workspaceTenant } = useWorkspace();
+  const activeTenant = tenantOverride || workspaceTenant;
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const storedView = typeof window !== 'undefined' ? window.sessionStorage.getItem('ks-calendar-view') : null;

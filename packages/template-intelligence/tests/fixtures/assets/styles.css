@@ -1,0 +1,27 @@
+:root {
+  --colour-primary: #4b2f63;
+  --colour-accent: #d8a657;
+  --space-section: 4rem;
+  --radius-card: 1rem;
+}
+
+body {
+  color: #221a27;
+  font-family: "Fixture Sans", sans-serif;
+  font-weight: 400;
+}
+
+.layout {
+  display: grid;
+  max-width: 1200px;
+  gap: var(--space-section);
+}
+
+.book-button {
+  border-radius: var(--radius-card);
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 12%);
+}
+
+@media (max-width: 768px) {
+  .layout { display: flex; }
+}

@@ -727,13 +727,14 @@ test('21. job handler registry returns known handlers', () => {
   assert.ok(createSiteJobHandlerRegistry(true).has('TEST_SUCCEED'));
 });
 
-test('21a. production registry exposes only the five Phase 15.6C generation handlers', () => {
+test('21a. production registry exposes only the five Phase 15.6C handlers and Phase 15.7B provisioning', () => {
   const registry = createSiteJobHandlerRegistry(false);
   assert.deepEqual(registry.list().map(handler => handler.jobType), [
     'GENERATE_METADATA',
     'GENERATE_PAGE',
     'GENERATE_SITE',
     'GENERATE_STRUCTURED_DATA',
+    'PROVISION_WORKSPACE',
     'REGENERATE_SECTION',
   ]);
 });
@@ -1191,6 +1192,39 @@ test('67a. enabled AI generation requires server-side provider configuration', (
   assert.match(generationExecutorSource, /class PostgresSiteGenerationExecutor/);
   assert.match(generationExecutorSource, /executeStructuredSiteGeneration/);
   assert.doesNotMatch(generationExecutorSource, /console\.|rawPrompt|rawResponse/);
+});
+
+test('67b. controlled regeneration advances the linked review revision', () => {
+  assert.match(generationExecutorSource, /completeReviewRegeneration/);
+  assert.match(
+    generationExecutorSource,
+    /siteChangeRequests\)\.set\(\{[\s\S]*status: 'READY_FOR_REVIEW'/,
+  );
+  assert.match(
+    generationExecutorSource,
+    /siteReviewCycles\)\.set\(\{[\s\S]*status: 'SUPERSEDED'/,
+  );
+  assert.match(
+    generationExecutorSource,
+    /transaction\.insert\(siteReviewCycles\)[\s\S]*reviewRevision:/,
+  );
+  assert.match(generationExecutorSource, /pinnedContentDigestSha256: contentDigestSha256/);
+  assert.match(generationExecutorSource, /SITE_APPROVAL_INVALIDATED/);
+  assert.match(generationExecutorSource, /SITE_REVISION_READY/);
+  assert.match(generationExecutorSource, /site-review-notification/);
+});
+
+test('67c. completed generation persists a validated digest-bound preview without publishing', () => {
+  assert.match(generationExecutorSource, /persistValidatedPreviewSnapshot/);
+  assert.match(generationExecutorSource, /prepareSiteRenderSnapshotForStorage/);
+  assert.match(generationExecutorSource, /snapshotKind: 'PREVIEW'/);
+  assert.match(generationExecutorSource, /sourceContentDigestSha256/);
+  assert.doesNotMatch(
+    generationExecutorSource.match(
+      /async function persistValidatedPreviewSnapshot[\s\S]*?function mapProviderError/,
+    )?.[0] ?? '',
+    /snapshotKind: 'PUBLISHED'|visibility: 'PUBLISHED'|publishedAt: new Date/,
+  );
 });
 
 test('68. handler registry rejects duplicate registration', () => {

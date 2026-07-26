@@ -5,6 +5,7 @@ import {
   GenerateSitePayloadSchema,
   GenerateStructuredDataPayloadSchema,
   RegenerateSectionPayloadSchema,
+  ProvisionWorkspacePayloadSchema,
   SiteJobExecutionError,
   SiteJobHandlerRegistry,
   SiteJobResultSchema,
@@ -31,6 +32,19 @@ export interface SiteGenerationJobExecutor {
     context: SiteJobLeaseContext,
   ): Promise<SiteJobResult>;
 }
+
+export interface WorkspaceProvisioningJobExecutor {
+  execute(payload: unknown, context: SiteJobLeaseContext): Promise<SiteJobResult>;
+}
+
+const disabledProvisioningExecutor: WorkspaceProvisioningJobExecutor = {
+  async execute() {
+    throw new SiteJobExecutionError(
+      'TERMINAL_HANDLER_NOT_IMPLEMENTED',
+      'Workspace provisioning is not configured for this worker.',
+    );
+  },
+};
 
 const disabledGenerationExecutor: SiteGenerationJobExecutor = {
   async execute() {
@@ -172,8 +186,23 @@ function durationHandler(
 export function createSiteJobHandlerRegistry(
   enableTestHandlers = false,
   generationExecutor: SiteGenerationJobExecutor = disabledGenerationExecutor,
+  provisioningExecutor: WorkspaceProvisioningJobExecutor = disabledProvisioningExecutor,
 ): SiteJobHandlerRegistry {
   const registry = new SiteJobHandlerRegistry()
+    .register({
+      jobType: 'PROVISION_WORKSPACE',
+      payloadSchemaVersion: 1,
+      supportsCancellation: true,
+      defaultRetryPolicy: DEFAULT_SITE_JOB_RETRY_POLICY,
+      payloadSchema: ProvisionWorkspacePayloadSchema,
+      resultSchema: SiteJobResultSchema,
+      async execute(payload: unknown, context: SiteJobLeaseContext) {
+        return provisioningExecutor.execute(
+          ProvisionWorkspacePayloadSchema.parse(payload),
+          context,
+        );
+      },
+    })
     .register(generationHandler('GENERATE_SITE', GenerateSitePayloadSchema, generationExecutor))
     .register(generationHandler('GENERATE_PAGE', GeneratePagePayloadSchema, generationExecutor))
     .register(generationHandler('REGENERATE_SECTION', RegenerateSectionPayloadSchema, generationExecutor))

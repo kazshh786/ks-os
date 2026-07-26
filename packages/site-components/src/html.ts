@@ -1,0 +1,136 @@
+import type {
+  PublishedPageSnapshot,
+  PublishedSiteSnapshot,
+  RichTextDocument,
+  RichTextInline,
+  SiteAction,
+  SiteAssetReference,
+} from '@ks-os/site-schema';
+
+declare const safeHtmlBrand: unique symbol;
+export type SafeHtml = string & { readonly [safeHtmlBrand]: true };
+
+export function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+export function html(strings: TemplateStringsArray, ...values: ReadonlyArray<string | SafeHtml>): SafeHtml {
+  return strings.reduce(
+    (output, part, index) => `${output}${part}${values[index] ?? ''}`,
+    '',
+  ) as SafeHtml;
+}
+
+export interface ComponentRenderContext {
+  snapshot: PublishedSiteSnapshot;
+  page: PublishedPageSnapshot;
+  pagePathByReference: Readonly<Record<string, string>>;
+}
+
+function queryValue(value: string) {
+  return encodeURIComponent(value);
+}
+
+export function actionHref(
+  action: SiteAction,
+  context: ComponentRenderContext,
+): string {
+  switch (action.type) {
+    case 'KS_OS_BOOKING': {
+      const query: string[] = [];
+      if (action.serviceReference) query.push(`service=${queryValue(action.serviceReference)}`);
+      if (action.locationReference) query.push(`location=${queryValue(action.locationReference)}`);
+      if (action.staffReference) query.push(`staff=${queryValue(action.staffReference)}`);
+      if (action.campaignReference) query.push(`campaign=${queryValue(action.campaignReference)}`);
+      return `/book${query.length ? `?${query.join('&')}` : ''}`;
+    }
+    case 'INTERNAL_PAGE': {
+      const path = context.pagePathByReference[action.pageReference];
+      if (!path) throw new Error('Internal actions may reference only the current site.');
+      return path;
+    }
+    case 'PHONE':
+      return `tel:${action.phoneNumber.replace(/[ ()-]/g, '')}`;
+    case 'EMAIL':
+      return `mailto:${action.emailAddress}`;
+  }
+}
+
+export function renderAction(
+  action: SiteAction,
+  context: ComponentRenderContext,
+  className = 'site-action',
+): SafeHtml {
+  const href = escapeHtml(actionHref(action, context));
+  return html`<a class="${escapeHtml(className)}" href="${href}">${escapeHtml(action.label)}</a>`;
+}
+
+export function findAsset(
+  snapshot: PublishedSiteSnapshot,
+  reference: string,
+): SiteAssetReference {
+  const asset = snapshot.assets.find((candidate) => candidate.publicReference === reference);
+  if (!asset) throw new Error('A section referenced an unpublished asset.');
+  return asset;
+}
+
+export function renderImage(
+  asset: SiteAssetReference,
+  options: { eager?: boolean; className?: string } = {},
+): SafeHtml {
+  const srcset = asset.variants.length
+    ? ` srcset="${escapeHtml(
+      asset.variants
+        .map((variant) => `${variant.url} ${variant.width}w`)
+        .join(', '),
+    )}"`
+    : '';
+  const loading = options.eager ? 'eager' : 'lazy';
+  return html`<img${srcset} src="${escapeHtml(asset.url)}" width="${String(asset.width)}" height="${String(asset.height)}" alt="${escapeHtml(asset.alt)}" loading="${loading}" decoding="async" class="${escapeHtml(options.className ?? 'site-image')}">`;
+}
+
+function renderRichTextInline(
+  node: RichTextInline,
+  context: ComponentRenderContext,
+): SafeHtml {
+  switch (node.type) {
+    case 'TEXT':
+      return escapeHtml(node.text) as SafeHtml;
+    case 'STRONG':
+      return html`<strong>${node.children.map((child) => renderRichTextInline(child, context)).join('')}</strong>`;
+    case 'EMPHASIS':
+      return html`<em>${node.children.map((child) => renderRichTextInline(child, context)).join('')}</em>`;
+    case 'INTERNAL_LINK': {
+      const path = context.pagePathByReference[node.pageReference];
+      if (!path) throw new Error('Rich text may link only to the current site.');
+      return html`<a href="${escapeHtml(path)}">${node.children.map((child) => renderRichTextInline(child, context)).join('')}</a>`;
+    }
+    case 'LINE_BREAK':
+      return '<br>' as SafeHtml;
+  }
+}
+
+export function renderRichTextDocument(
+  document: RichTextDocument,
+  context: ComponentRenderContext,
+): SafeHtml {
+  return document.blocks.map((block) => {
+    if (block.type === 'PARAGRAPH') {
+      return html`<p>${block.children.map((node) => renderRichTextInline(node, context)).join('')}</p>`;
+    }
+    if (block.type === 'HEADING') {
+      const tag = block.level.toLowerCase();
+      return `<${tag}>${block.children.map((node) => renderRichTextInline(node, context)).join('')}</${tag}>` as SafeHtml;
+    }
+    const tag = block.type === 'ORDERED_LIST' ? 'ol' : 'ul';
+    const items = block.items
+      .map((item) => `<li>${item.children.map((node) => renderRichTextInline(node, context)).join('')}</li>`)
+      .join('');
+    return `<${tag}>${items}</${tag}>` as SafeHtml;
+  }).join('') as SafeHtml;
+}

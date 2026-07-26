@@ -7,8 +7,9 @@ import type { Service } from '../../data/types';
 
 const emptyDraft = { name: '', description: '', price: '', durationMin: '30', category: 'General' };
 
-export function ServicesPage() {
-  const { activeTenant } = useWorkspace();
+export function ServicesPage({ tenantOverride = null }: { tenantOverride?: import('../../data/types').BusinessTenant | null }) {
+  const { activeTenant: workspaceTenant } = useWorkspace();
+  const activeTenant = tenantOverride || workspaceTenant;
   const [searchParams, setSearchParams] = useSearchParams();
   const [services, setServices] = useState<Service[]>([]);
   const [draft, setDraft] = useState(emptyDraft);

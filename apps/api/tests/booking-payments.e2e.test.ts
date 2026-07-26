@@ -26,6 +26,7 @@ test('Integration: Booking Payments E2E', async (t) => {
   const stripeRepoConnectionStub = sinon.stub(StripeRepository.prototype, 'getConnection');
   const createPaymentSessionStub = sinon.stub(StripeService.prototype, 'createBookingPaymentSession');
   sinon.stub(EntitlementService.prototype, 'assertUsageAvailable').resolves({ plan: null, entitlements: {} } as any);
+  sinon.stub(EntitlementService.prototype, 'recordUsageOverage').resolves({ plan: null, entitlements: {} } as any);
 
   const realStripe = getStripeClient();
   const mockStripe = {
@@ -78,6 +79,7 @@ test('Integration: Booking Payments E2E', async (t) => {
     redirectSlug: null,
   } as any);
   sinon.stub(BookingPageService.prototype, 'validateHoldForBooking').resolves(null);
+  sinon.stub(BookingPageService.prototype, 'applicableIntakeForms').resolves([]);
 
   await t.test('POST /api/v1/public/:subdomain/bookings creates checkout session', async () => {
     // Subdomain resolution

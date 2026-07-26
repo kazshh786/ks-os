@@ -15,10 +15,12 @@
   "dependencies": {
     "@ks-os/contracts": "workspace:*",
     "@ks-os/database": "workspace:*",
+    "@ks-os/site-blueprints": "workspace:*",
     "@ks-os/site-generation": "workspace:*",
     "@ks-os/site-jobs": "workspace:*",
     "@ks-os/site-knowledge": "workspace:*",
     "@ks-os/site-schema": "workspace:*",
+    "@ks-os/workspace-provisioning": "workspace:*",
     "drizzle-orm": "^0.31.4",
     "zod": "^3.23.8"
   },

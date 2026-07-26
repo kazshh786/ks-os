@@ -26,7 +26,7 @@ describe('navigation resolution', () => {
     const groups = resolveNavigation(agencyNavigation, {
       portal: 'agency', agencyCapabilities: ['tenants.read', 'support.read', 'support.session.start'],
     });
-    expect(labels(groups)).toEqual(expect.arrayContaining(['Businesses', 'Onboarding', 'Support', 'Jobs', 'Webhooks', 'Security']));
+    expect(labels(groups)).toEqual(expect.arrayContaining(['Client Businesses', 'Onboarding', 'Support', 'Jobs', 'Webhooks', 'Security']));
     expect(labels(groups)).not.toContain('Overview');
     expect(labels(groups)).not.toContain('Billing');
     expect(labels(groups)).not.toContain('Team');
@@ -36,6 +36,22 @@ describe('navigation resolution', () => {
     const flagged = [{ id: 'flagged', label: 'Experimental', items: [{ ...businessNavigation[0].items[0], id: 'experiment', featureFlag: 'experiment' }] }];
     expect(resolveNavigation(flagged, { portal: 'business', role: 'owner', featureFlags: {} })).toEqual([]);
     expect(labels(resolveNavigation(flagged, { portal: 'business', role: 'owner', featureFlags: { experiment: true } }))).toEqual(['Dashboard']);
+  });
+
+  it('keeps premium features visible and marks them locked for Core', () => {
+    const groups = resolveNavigation(businessNavigation, {
+      portal: 'business',
+      role: 'owner',
+      permissions: [],
+      entitlements: {
+        'analytics.advanced': { enabled: false },
+        'automations.enabled': { enabled: false },
+        'inventory.enabled': { enabled: false },
+      },
+    });
+    const premium = groups.flatMap(group => group.items).filter(item => ['analytics', 'automations', 'inventory'].includes(item.id));
+    expect(premium.map(item => item.label)).toEqual(expect.arrayContaining(['Analytics', 'Automations', 'Inventory']));
+    expect(premium.every(item => item.locked && item.requiredPlan === 'GROWTH')).toBe(true);
   });
 
   it('keeps portal links one-way in each navigation tree', () => {

@@ -98,8 +98,14 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
           requestId: request.id,
         },
       );
+      const appointmentId = booking.appointment_id || booking.id;
+      try {
+        await entitlements.recordUsageOverage(tenantId, 'bookings.monthly', appointmentId, parsed.data.walkIn ? 'WALK_IN' : 'STAFF_CREATED', request.id);
+      } catch (auditError) {
+        request.log.error(auditError, 'Booking was created but its usage-overage audit could not be recorded');
+      }
       
-      return reply.code(201).send({ success: true, bookingId: booking.appointment_id });
+      return reply.code(201).send({ success: true, bookingId: appointmentId });
     } catch (err: any) {
       fastify.log.error(err, 'Staff booking creation failed');
       if (err.code === 'ENTITLEMENT_USAGE_EXCEEDED') {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WorkspacePlanSummarySchema } from './workspace-plan.js';
 
 // 1. Tenant Roles Zod definition and type
 export const TenantRoleSchema = z.enum([
@@ -77,7 +78,8 @@ export const WorkspaceSchema = z.object({
   name: z.string(),
   subdomain: z.string(),
   customDomain: z.string().nullable(),
-  packageTier: z.enum(['core', 'growth', 'scale'])
+  packageTier: z.enum(['core', 'growth', 'scale']),
+  plan: z.lazy(() => WorkspacePlanSummarySchema).optional(),
 });
 
 export type Workspace = z.infer<typeof WorkspaceSchema>;
@@ -107,3 +109,7 @@ export * from './authentication.js';
 export * from './compliance.js';
 export * from './integrations.js';
 export * from './booking-operations.js';
+export * from './workspace-plan.js';
+export * from './sites.js';
+export * from './template-intelligence.js';
+export * from './site-blueprints.js';

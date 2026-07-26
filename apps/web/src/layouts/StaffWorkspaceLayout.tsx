@@ -8,6 +8,7 @@ import { PageHeader } from '../components/navigation/PageHeader';
 import { useAuth } from '../auth/useAuth';
 import { SupportModeBanner } from '../features/agency/SupportModeBanner';
 import { useOperationsSummary } from '../features/operations/useOperationsSummary';
+import { useWorkspacePlan } from '../features/plans/WorkspacePlanContext';
 import { businessNavigation } from '../navigation/business-navigation';
 import { findActiveNavigationItem, resolveNavigation } from '../navigation/navigation.utils';
 
@@ -21,9 +22,10 @@ export const StaffWorkspaceLayout: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(collapsedStorageKey) === 'true');
   const [copyMessage, setCopyMessage] = useState('');
+  const { summary: planSummary } = useWorkspacePlan();
   const groups = useMemo(() => resolveNavigation(businessNavigation, {
-    portal: 'business', role: auth.role, permissions: auth.permissions,
-  }), [auth.permissions, auth.role]);
+    portal: 'business', role: auth.role, permissions: auth.permissions, entitlements: planSummary?.entitlements,
+  }), [auth.permissions, auth.role, planSummary?.entitlements]);
   const activeItem = findActiveNavigationItem(groups, location.pathname);
   const operationsCount = useOperationsSummary(groups.some(group => group.items.some(item => item.id === 'operations')));
   const canCreateBooking = auth.role === 'owner' || auth.permissions.includes('BOOKINGS_CREATE');
@@ -52,6 +54,12 @@ export const StaffWorkspaceLayout: React.FC = () => {
     ? <div className="space-y-2"><Link to="/app/calendar?create=1" className={`flex min-h-11 items-center justify-center rounded-xl bg-indigo-600 font-black text-white shadow-sm hover:bg-indigo-700 ${collapsed ? 'px-0' : 'gap-2 px-4 text-sm'}`} title={collapsed ? 'Create booking' : undefined}><Plus aria-hidden="true" className="h-5 w-5" />{!collapsed && 'Create booking'}</Link>{auth.role === 'owner' && !collapsed && <Link to="/app/services?add=1" className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 hover:bg-slate-50"><Plus aria-hidden="true" className="h-4 w-4" />Add service</Link>}</div>
     : auth.role === 'owner' ? <Link to="/app/services?add=1" className={`flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white font-black text-slate-700 shadow-sm hover:bg-slate-50 ${collapsed ? 'px-0' : 'gap-2 px-4 text-sm'}`} title={collapsed ? 'Add service' : undefined}><Plus aria-hidden="true" className="h-5 w-5" />{!collapsed && 'Add service'}</Link> : undefined;
   const secondaryActions = <div className="space-y-1">
+    {auth.role === 'owner' && planSummary && <div className={`mb-3 rounded-xl border p-3 ${planSummary.usage.bookings.warning ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+      <div className="flex items-center justify-between gap-2"><p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{planSummary.plan.name} plan</p><span className="text-[10px] font-black text-slate-600">{Math.min(100, planSummary.usage.bookings.percentage)}%</span></div>
+      <p className="mt-1 text-xs font-black text-slate-800">{planSummary.usage.bookings.used.toLocaleString()} of {planSummary.usage.bookings.limit.toLocaleString()} bookings this month</p>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><span className={`block h-full rounded-full ${planSummary.usage.bookings.warning ? 'bg-amber-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min(100, planSummary.usage.bookings.percentage)}%` }} /></div>
+      {planSummary.usage.bookings.warning && <><p className="mt-2 text-[10px] leading-4 text-amber-900">{planSummary.usage.bookings.atLimit ? 'New bookings continue under the audited overage policy.' : 'You have used at least 80% of this month’s booking allowance.'}</p><a href="mailto:support@ks-os.com?subject=Upgrade%20KS%20OS%20plan" className="mt-1 inline-block text-[10px] font-black text-indigo-700">Upgrade plan</a></>}
+    </div>}
     <a href={publicBookingUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg px-2 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 hover:text-slate-950"><ExternalLink aria-hidden="true" className="h-4 w-4" />View booking page</a>
     <button type="button" onClick={copyBookingLink} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-bold text-slate-600 hover:bg-slate-100 hover:text-slate-950"><Clipboard aria-hidden="true" className="h-4 w-4" />Copy booking link</button>
     <p aria-live="polite" className="sr-only">{copyMessage}</p>

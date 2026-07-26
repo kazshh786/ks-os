@@ -2,15 +2,21 @@ import { supabase } from '../lib/supabase';
 import type { ApplicationContext } from '@ks-os/contracts';
 
 let refreshPromise: Promise<string | null> | null = null;
+let defaultContextOverride: ApplicationContext | null = null;
 
 export type AuthenticatedRequestInit = RequestInit & { authContext?: ApplicationContext };
 
 function requestContext(url: string, explicit?: ApplicationContext): ApplicationContext {
   if (explicit) return explicit;
+  if (defaultContextOverride) return defaultContextOverride;
   const pathname = url.startsWith('http') ? new URL(url).pathname : url;
   if (pathname.startsWith('/api/v1/customer') || window.location.pathname.startsWith('/customer')) return 'CUSTOMER';
   if (pathname.startsWith('/api/v1/agency') || window.location.pathname.startsWith('/agency')) return 'AGENCY';
   return 'TENANT';
+}
+
+export function setDefaultAuthContextOverride(context: ApplicationContext | null) {
+  defaultContextOverride = context;
 }
 
 export async function fetchWithAuth(url: string, options: AuthenticatedRequestInit = {}): Promise<Response> {

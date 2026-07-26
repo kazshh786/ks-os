@@ -1,55 +1,57 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { AgencyBookingSystemPage } from '../AgencyBookingSystem';
 
-describe('AgencyBookingSystem Workstation', () => {
-  it('renders complete agency booking workstation tabs and dispatch schedule', () => {
-    render(
-      <MemoryRouter>
-        <AgencyBookingSystemPage />
-      </MemoryRouter>
-    );
+const { workspace } = vi.hoisted(() => ({ workspace: {
+  tenant: {
+    id: '11111111-1111-4111-8111-111111111111',
+    name: 'KS OS Agency',
+    subdomain: 'ks-agency',
+    timezone: 'Europe/London',
+    currency: 'GBP',
+    primaryColor: '#0f172a',
+    secondaryColor: '#475569',
+  },
+  membershipReference: '22222222-2222-4222-8222-222222222222',
+  publicBookingPath: '/book/ks-agency',
+} }));
 
-    expect(screen.getByText('KS OS Agency Booking Workstation')).toBeInTheDocument();
-    expect(screen.getByText('Calendar & Dispatch Workstation')).toBeInTheDocument();
-    expect(screen.getByText('Agency Service Catalog')).toBeInTheDocument();
-    expect(screen.getByText('Agency Hosts & Schedules')).toBeInTheDocument();
-    expect(screen.getByText('POS & Financial Checkout')).toBeInTheDocument();
-    expect(screen.getByText('AGY-10928')).toBeInTheDocument();
-    expect(screen.getByText('Salon A Owner')).toBeInTheDocument();
+vi.mock('../AgencyAuth', () => ({ agencyFetch: vi.fn().mockResolvedValue(workspace) }));
+vi.mock('../../../api/client', () => ({
+  fetchWithAuth: vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }),
+  setDefaultAuthContextOverride: vi.fn(),
+}));
+vi.mock('../../bookings/BookingOperationsCalendar', () => ({ BookingOperationsCalendar: () => <div>Live agency calendar</div> }));
+vi.mock('../../services/ServicesPage', () => ({ ServicesPage: () => <div>Live agency services</div> }));
+vi.mock('../../team/AvailabilityPage', () => ({ default: () => <div>Live agency availability</div> }));
+vi.mock('../../../components/POSCheckout', () => ({ default: () => <div>Live agency POS</div> }));
+
+describe('AgencyBookingSystemPage', () => {
+  it('opens a dedicated live agency booking workspace', async () => {
+    render(<MemoryRouter><AgencyBookingSystemPage /></MemoryRouter>);
+    expect(await screen.findByText('KS OS Agency Bookings')).toBeInTheDocument();
+    expect(screen.getByText('Live agency calendar')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open full booking workspace/i })).toHaveAttribute('href', '/app/calendar');
+    expect(screen.getByRole('link', { name: /open public booking page/i })).toHaveAttribute('href', '/book/ks-agency');
   });
 
-  it('allows switching to Agency Service Catalog tab', async () => {
+  it('uses the real services and availability modules', async () => {
     const user = userEvent.setup();
-
-    render(
-      <MemoryRouter>
-        <AgencyBookingSystemPage />
-      </MemoryRouter>
-    );
-
-    const serviceTab = screen.getByRole('button', { name: /Agency Service Catalog/i });
-    await user.click(serviceTab);
-
-    expect(screen.getByText('Agency Service Catalog & Offers')).toBeInTheDocument();
-    expect(screen.getByText('Platform Demo & Product Tour')).toBeInTheDocument();
+    render(<MemoryRouter><AgencyBookingSystemPage /></MemoryRouter>);
+    await screen.findByText('KS OS Agency Bookings');
+    await user.click(screen.getByRole('button', { name: 'Services' }));
+    expect(screen.getByText('Live agency services')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Availability' }));
+    expect(screen.getByText('Live agency availability')).toBeInTheDocument();
   });
 
-  it('allows switching to Live Public Agency Booking Engine tab', async () => {
+  it('embeds the dedicated public booking page', async () => {
     const user = userEvent.setup();
-
-    render(
-      <MemoryRouter>
-        <AgencyBookingSystemPage />
-      </MemoryRouter>
-    );
-
-    const publicTab = screen.getByRole('button', { name: /Live Public Agency Booking Engine/i });
-    await user.click(publicTab);
-
-    expect(screen.getAllByText('Live Public Agency Booking Engine').length).toBeGreaterThan(0);
-    expect(screen.getByText('Native KS OS Agency Engine')).toBeInTheDocument();
+    render(<MemoryRouter><AgencyBookingSystemPage /></MemoryRouter>);
+    await screen.findByText('KS OS Agency Bookings');
+    await user.click(screen.getByRole('button', { name: 'Public booking page' }));
+    expect(screen.getByTitle('KS OS Agency public booking page')).toHaveAttribute('src', '/book/ks-agency');
   });
 });

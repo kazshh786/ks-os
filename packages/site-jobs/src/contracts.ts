@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const SITE_JOB_PAYLOAD_SCHEMA_VERSION = 1 as const;
 
 export const SiteJobTypeSchema = z.enum([
+  'PROVISION_WORKSPACE',
   'IMPORT_TEMPLATE',
   'CLASSIFY_TEMPLATE',
   'CREATE_BLUEPRINT',
@@ -109,6 +110,15 @@ const SafeRegenerationInstructionSchema = z.string().trim().min(8).max(1_000)
 
 const SitePayloadBase = z.object({
   siteReference: PublicReferenceSchema,
+}).strict();
+
+export const ProvisionWorkspacePayloadSchema = SitePayloadBase.extend({
+  jobType: z.literal('PROVISION_WORKSPACE'),
+  provisioningRunReference: PublicReferenceSchema,
+  provisioningDraftReference: PublicReferenceSchema,
+  productionBriefReference: PublicReferenceSchema,
+  productionBriefDigestSha256: SourceDigestSchema,
+  requestedByAgencyUserReference: PublicReferenceSchema,
 }).strict();
 
 const VersionPayloadBase = z.object({
@@ -266,6 +276,7 @@ export const TestCancellablePayloadSchema = TestPayloadBase.extend({
 }).strict();
 
 export const SiteJobPayloadSchema = z.discriminatedUnion('jobType', [
+  ProvisionWorkspacePayloadSchema,
   ImportTemplatePayloadSchema,
   ClassifyTemplatePayloadSchema,
   CreateBlueprintPayloadSchema,

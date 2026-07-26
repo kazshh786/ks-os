@@ -1,0 +1,21 @@
+{
+  "name": "@ks-os/site-jobs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@ks-os/config": "workspace:*",
+    "@types/node": "^22.20.1",
+    "typescript": "^5.8.2"
+  }
+}

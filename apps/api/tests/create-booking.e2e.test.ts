@@ -56,6 +56,7 @@ test('Booking Creation endpoints', async (t) => {
     redirectSlug: null,
   } as any);
   sinon.stub(BookingPageService.prototype, 'validateHoldForBooking').resolves(null);
+  sinon.stub(BookingPageService.prototype, 'applicableIntakeForms').resolves([]);
   
   const createBookingStub = sinon.stub(BookingService.prototype, 'createPublicBooking').resolves({
     id: 'booking-123',
@@ -66,6 +67,7 @@ test('Booking Creation endpoints', async (t) => {
     booking_channel: 'in_shop'
   } as any);
   sinon.stub(EntitlementService.prototype, 'assertUsageAvailable').resolves({ plan: null, entitlements: {} } as any);
+  sinon.stub(EntitlementService.prototype, 'recordUsageOverage').resolves({ plan: null, entitlements: {} } as any);
 
   t.afterEach(() => {
     sinon.resetHistory();

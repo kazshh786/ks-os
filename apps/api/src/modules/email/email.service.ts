@@ -1,10 +1,20 @@
-import { getDatabase, emailOutbox, emailSuppressions, reviewInvitations } from '@ks-os/database';
-import { eq, sql } from 'drizzle-orm';
+import {
+  getDatabase,
+  emailOutbox,
+  emailSuppressions,
+  reviewInvitations,
+  siteReviewCycles,
+  siteReviewInvitations,
+  factFindingInvitations,
+  factFindingQuestionnaires,
+} from '@ks-os/database';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { renderEmail } from '@ks-os/email';
 import { getResend } from '../../lib/resend.js';
 import { OperationsIssueReporter } from '../operations/operations.issue-service.js';
-import { deriveReviewInvitationToken } from '../reputation/reputation.security.js';
+import { deriveReviewInvitationToken as deriveReputationReviewInvitationToken } from '../reputation/reputation.security.js';
 import { env } from '../../config/env.js';
+import { deriveReviewInvitationToken } from '@ks-os/site-review';
 
 export type EnqueueEmailParams = {
   tenantId?: string;
@@ -34,6 +44,10 @@ const SUBJECTS: Record<string, string> = {
   'review-invitation': 'An invitation to share honest feedback',
   'customer-portal-claim': 'View your customer portal',
   'account-access-invitation': 'Your KS OS invitation',
+  'site-review-invitation': 'Your website draft is ready for review',
+  'site-review-notification': 'Website review update',
+  'fact-finding-invitation': 'Complete your business questionnaire',
+  'fact-finding-notification': 'Your business questionnaire needs attention',
 };
 
 const FROM_ENV: Record<string, string> = {
@@ -50,6 +64,10 @@ const FROM_ENV: Record<string, string> = {
   'customer-portal-claim': 'EMAIL_AUTH_FROM',
   'account-access-invitation': 'EMAIL_AUTH_FROM',
   'staff-operational-notification': 'EMAIL_AUTH_FROM',
+  'site-review-invitation': 'EMAIL_AUTH_FROM',
+  'site-review-notification': 'EMAIL_AUTH_FROM',
+  'fact-finding-invitation': 'EMAIL_AUTH_FROM',
+  'fact-finding-notification': 'EMAIL_AUTH_FROM',
 };
 
 export const EMAIL_SUBJECTS = SUBJECTS;
@@ -111,11 +129,99 @@ export class EmailService {
     for (const email of claimed.rows as any[]) {
       const nextAttempt = Number(email.attempt_count ?? 0) + 1;
       try {
+        if (email.related_entity_type === 'site_review_invitation' && email.related_entity_id) {
+          const [reviewState] = await db.select({
+            invitationStatus: siteReviewInvitations.status,
+            reviewStatus: siteReviewCycles.status,
+            expiresAt: siteReviewInvitations.expiresAt,
+          }).from(siteReviewInvitations)
+            .innerJoin(siteReviewCycles, eq(siteReviewInvitations.reviewCycleId, siteReviewCycles.id))
+            .where(and(
+              eq(siteReviewInvitations.id, email.related_entity_id),
+              inArray(siteReviewInvitations.status, ['QUEUED', 'SENT', 'OPENED', 'ACCEPTED']),
+              inArray(siteReviewCycles.status, [
+                'READY_FOR_CLIENT_REVIEW',
+                'CLIENT_REVIEW',
+                'CLIENT_CHANGES_REQUESTED',
+              ]),
+            )).limit(1);
+          if (!reviewState || reviewState.expiresAt.getTime() <= Date.now()) {
+            await db.update(emailOutbox).set({
+              status: 'CANCELLED',
+              lastErrorCode: 'SITE_REVIEW_NOTIFICATION_NO_LONGER_APPLICABLE',
+            }).where(eq(emailOutbox.id, email.id));
+            continue;
+          }
+        }
+        if (email.related_entity_type === 'fact_finding_invitation' && email.related_entity_id) {
+          const [factFindingState] = await db.select({
+            invitationStatus: factFindingInvitations.status,
+            questionnaireStatus: factFindingQuestionnaires.status,
+            expiresAt: factFindingInvitations.expiresAt,
+          }).from(factFindingInvitations)
+            .innerJoin(factFindingQuestionnaires, eq(factFindingInvitations.questionnaireId, factFindingQuestionnaires.id))
+            .where(and(
+              eq(factFindingInvitations.id, email.related_entity_id),
+              inArray(factFindingInvitations.status, ['PENDING', 'SENT', 'ACCEPTED']),
+              inArray(factFindingQuestionnaires.status, ['INVITED', 'IN_PROGRESS', 'CLARIFICATION_REQUIRED']),
+            )).limit(1);
+          if (!factFindingState || factFindingState.expiresAt.getTime() <= Date.now()) {
+            await db.update(emailOutbox).set({
+              status: 'CANCELLED',
+              lastErrorCode: 'FACT_FINDING_NOTIFICATION_NO_LONGER_APPLICABLE',
+            }).where(eq(emailOutbox.id, email.id));
+            continue;
+          }
+        }
         const templateData = { ...(email.template_data_json as Record<string, unknown>) };
         if (email.template_key === 'review-invitation') {
           const invitationId = String(templateData.reviewInvitationId ?? '');
           if (!env.PUBLIC_APP_ORIGIN || !invitationId) throw new Error('REVIEW_INVITATION_LINK_NOT_CONFIGURED');
-          templateData.reviewUrl = env.PUBLIC_APP_ORIGIN.replace(/\/$/, '') + '/review/' + deriveReviewInvitationToken(invitationId);
+          templateData.reviewUrl = env.PUBLIC_APP_ORIGIN.replace(/\/$/, '') + '/review/' + deriveReputationReviewInvitationToken(invitationId);
+        }
+        if (
+          email.template_key === 'site-review-invitation'
+          || (
+            email.template_key === 'site-review-notification'
+            && templateData.invitationReference
+          )
+        ) {
+          const invitationReference = String(templateData.invitationReference ?? '');
+          const reviewReference = String(templateData.reviewReference ?? '');
+          const reviewRevision = Number(templateData.reviewRevision);
+          const secret = process.env.SITE_REVIEW_INVITATION_SECRET;
+          if (
+            !env.PUBLIC_APP_ORIGIN
+            || !secret
+            || secret.length < 32
+            || !invitationReference
+            || !reviewReference
+            || !Number.isInteger(reviewRevision)
+          ) {
+            throw new Error('SITE_REVIEW_INVITATION_LINK_NOT_CONFIGURED');
+          }
+          const token = deriveReviewInvitationToken({
+            invitationReference,
+            reviewCycleReference: reviewReference,
+            reviewRevision,
+            secret,
+          });
+          templateData.reviewUrl = `${env.PUBLIC_APP_ORIGIN.replace(/\/$/, '')}/site-review?invitation=${encodeURIComponent(token)}`;
+        }
+        if (
+          email.template_key === 'fact-finding-invitation'
+          || email.template_key === 'fact-finding-notification'
+        ) {
+          const invitationToken = String(templateData.invitationToken ?? '');
+          const origin = process.env.FACT_FINDING_CLIENT_ORIGIN;
+          if (!origin || !invitationToken) {
+            throw new Error('FACT_FINDING_INVITATION_LINK_NOT_CONFIGURED');
+          }
+          const clientRoute = origin.replace(/\/$/, '').endsWith('/fact-finding')
+            ? origin.replace(/\/$/, '')
+            : `${origin.replace(/\/$/, '')}/fact-finding`;
+          templateData.questionnaireUrl = `${clientRoute}?invitation=${encodeURIComponent(invitationToken)}`;
+          delete templateData.invitationToken;
         }
         const rendered = await renderEmail(email.template_key, templateData);
         const tenantName = String(templateData.tenantName || 'Your salon');
@@ -136,6 +242,13 @@ export class EmailService {
           .where(eq(emailOutbox.id, email.id));
         if (email.related_entity_type === 'review_invitation' && email.related_entity_id) {
           await db.update(reviewInvitations).set({ status: 'SENT', sentAt: new Date(), updatedAt: new Date() }).where(eq(reviewInvitations.id, email.related_entity_id));
+        }
+        if (
+          email.template_key === 'site-review-invitation'
+          && email.related_entity_type === 'site_review_invitation'
+          && email.related_entity_id
+        ) {
+          await db.update(siteReviewInvitations).set({ status: 'SENT', sentAt: new Date() }).where(eq(siteReviewInvitations.id, email.related_entity_id));
         }
       } catch (error) {
         const code = error instanceof Error ? error.message.slice(0, 255) : 'UNKNOWN_ERROR';

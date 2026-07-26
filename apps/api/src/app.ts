@@ -42,8 +42,19 @@ import { env } from './config/env.js';
 import { complianceRoutes, complianceWorkerRoutes } from './modules/agency/compliance.routes.js';
 import { externalApiRoutes, integrationRoutes, publicCalendarRoutes } from './modules/integrations/integrations.routes.js';
 import { bookingPageSettingsRoutes } from './modules/bookings/booking-page.routes.js';
+import { agencySiteRoutes } from './modules/sites/site.routes.js';
+import { agencyTemplateIntelligenceRoutes } from './modules/sites/template-intelligence.routes.js';
+import { agencySiteBlueprintRoutes } from './modules/sites/site-blueprint.routes.js';
+import { agencySiteJobRoutes } from './modules/sites/site-job.routes.js';
 import { agencyKnowledgePackRoutes } from './modules/sites/knowledge-pack.routes.js';
 import { agencySiteGenerationRoutes } from './modules/sites/site-generation.routes.js';
+import { agencySiteReviewRoutes } from './modules/sites/site-review.routes.js';
+import { publicSiteReviewRoutes } from './routes/public/site-review.js';
+import { publicFactFindingRoutes } from './routes/public/fact-finding.js';
+import { agencyFactFindingRoutes } from './modules/provisioning/fact-finding.routes.js';
+import { agencyProvisioningRoutes } from './modules/provisioning/provisioning.routes.js';
+import { agencySiteStudioRoutes } from './modules/sites/site-studio.routes.js';
+import { agencyProductionBriefRoutes } from './modules/provisioning/production-brief.routes.js';
 
 export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => void } = {}) {
   const fastify = Fastify({
@@ -52,6 +63,8 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
       redact: [
         'req.headers.authorization',
         'req.headers["x-ks-support-session"]',
+        'req.headers["x-site-review-session"]',
+        'req.headers["x-fact-finding-session"]',
         'req.headers.cookie',
         'req.headers["set-cookie"]',
         'req.body.client.name',
@@ -69,6 +82,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
         'req.body.answers',
         'req.body.acknowledgement',
         'req.body.reasonText',
+        'req.body.invitationToken',
         'req.params.token',
         'req.url',
         '*.email',
@@ -76,6 +90,8 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
         '*.medicalNotes',
         '*.authorization',
         '*.x-ks-support-session',
+        '*.x-site-review-session',
+        '*.x-fact-finding-session',
         '*.cookie',
         '*.cardDetails',
         '*.password',
@@ -85,6 +101,9 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
         '*.factorId',
         '*.qr_code',
         '*.token',
+        '*.invitationToken',
+        '*.sessionToken',
+        '*.previewUrl',
         'res.body'
       ]
     },
@@ -130,6 +149,8 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(publicReputationRoutes, { prefix: '/api/v1/public/review-invitations' });
   fastify.register(reviewOauthCallbackRoutes, { prefix: '/api/v1/reputation/connections' });
   fastify.register(teamInvitationAcceptanceRoutes, { prefix: '/api/v1/team/invitations' });
+  fastify.register(publicSiteReviewRoutes, { prefix: '/api/v1/site-review' });
+  fastify.register(publicFactFindingRoutes, { prefix: '/api/v1/fact-finding' });
 
   // Auth Plugin
   fastify.register(authPlugin);
@@ -138,8 +159,17 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   // Agency control plane and commercial billing are isolated from tenant routes.
   fastify.register(agencyRoutes, { prefix: '/api/v1/agency' });
   fastify.register(complianceRoutes, { prefix: '/api/v1/agency' });
+  fastify.register(agencySiteRoutes, { prefix: '/api/v1/agency/sites' });
+  fastify.register(agencySiteBlueprintRoutes, { prefix: '/api/v1/agency/sites' });
+  fastify.register(agencySiteJobRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencyKnowledgePackRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencySiteGenerationRoutes, { prefix: '/api/v1/agency/sites' });
+  fastify.register(agencySiteReviewRoutes, { prefix: '/api/v1/agency/sites' });
+  fastify.register(agencyTemplateIntelligenceRoutes, { prefix: '/api/v1/agency' });
+  fastify.register(agencyFactFindingRoutes, { prefix: '/api/v1/agency/fact-finding' });
+  fastify.register(agencyProvisioningRoutes, { prefix: '/api/v1/agency' });
+  fastify.register(agencySiteStudioRoutes, { prefix: '/api/v1/agency/sites' });
+  fastify.register(agencyProductionBriefRoutes, { prefix: '/api/v1/agency' });
   fastify.register(goCardlessWebhookRoutes, { prefix: '/api/v1/webhooks/gocardless' });
   fastify.register(managedServiceTenantRoutes, { prefix: '/api/v1/managed-services' });
   fastify.register(agencyWorkerRoutes, { prefix: '/api/v1/internal/agency-worker' });

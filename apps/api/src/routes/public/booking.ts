@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { getDatabase, tenants, services, users, appointments, tenantActivationMilestones, clientFormSubmissions } from '@ks-os/database';
+import { getDatabase, tenants, services, users, appointments, tenantActivationMilestones, clientFormSubmissions, formAssignments } from '@ks-os/database';
 import { EntitlementService } from '../../modules/agency/agency.service.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { calculateAvailability } from '../../modules/availability/availability.service.js';
@@ -11,6 +11,7 @@ import { CustomerBookingManagementService } from '../../modules/customer-portal/
 import { env } from '../../config/env.js';
 import { BookingPageService } from '../../modules/bookings/booking-page.service.js';
 import { safeReferrerHost } from '../../modules/bookings/booking-page.utils.js';
+import { FormsService } from '../../modules/forms/forms.service.js';
 
 import { 
   CreateBookingRequestSchema, 
@@ -225,9 +226,20 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
 
     try {
       const bookingService = new BookingService();
-      await new EntitlementService().assertUsageAvailable(tenant.id, 'bookings.monthly');
-      const paymentSettings = page.paymentSettings as { mode?: string };
-      const verifiedPaymentMode = paymentSettings.mode === 'FULL' ? 'pay_now'
+      const entitlementService = new EntitlementService();
+      await entitlementService.assertUsageAvailable(tenant.id, 'bookings.monthly');
+      const applicableForms = await bookingPageService.applicableIntakeForms(page.id, tenant.id, {
+        serviceId: data.serviceId,
+        staffId: data.staffId,
+        locationId: data.locationId,
+      });
+      const [bookedService] = await db.select({ requiresDeposit: services.requiresDeposit }).from(services)
+        .where(and(eq(services.id, data.serviceId), eq(services.tenantId, tenant.id), eq(services.isActive, true)))
+        .limit(1);
+      if (!bookedService) return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
+      const paymentSettings = page.paymentSettings as { mode?: string; depositPercentage?: number };
+      const verifiedPaymentMode = bookedService.requiresDeposit ? 'deposit_required'
+        : paymentSettings.mode === 'FULL' ? 'pay_now'
         : paymentSettings.mode === 'DEPOSIT' ? 'deposit_required'
           : paymentSettings.mode === 'CUSTOMER_CHOICE' ? data.paymentMode
             : 'pay_later';
@@ -253,7 +265,8 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
           if (submissions.length !== new Set(data.intakeSubmissionIds).size) throw Object.assign(new Error('One or more intake submissions are invalid.'), { code: 'INVALID_INTAKE_SUBMISSION', statusCode: 400 });
           await tx.update(clientFormSubmissions).set({ appointmentId }).where(and(eq(clientFormSubmissions.tenantId, tenant.id), inArray(clientFormSubmissions.id, data.intakeSubmissionIds)));
         }
-        const intakeRequired = Boolean((page.intakeFormSettings as { requiredBeforeConfirmation?: boolean }).requiredBeforeConfirmation);
+        const intakeRequired = applicableForms.some(form => form.required)
+          || Boolean((page.intakeFormSettings as { requiredBeforeConfirmation?: boolean }).requiredBeforeConfirmation);
         await tx.update(appointments).set({
           locationId: data.locationId || null,
           bookingSource: data.source,
@@ -269,6 +282,40 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         if (hold) await bookingPageService.consumeHold(tx, hold.id, appointmentId);
         return created;
       });
+      try {
+        await entitlementService.recordUsageOverage(tenant.id, 'bookings.monthly', booking.appointment_id || booking.id, 'PUBLIC_BOOKING_PAGE', request.id);
+      } catch (auditError) {
+        fastify.log.error(auditError, 'Booking was created but its usage-overage audit could not be recorded');
+      }
+      if (applicableForms.length) {
+        try {
+          const appointmentId = booking.appointment_id || booking.id;
+          const [target] = await db.select({
+            clientId: appointments.clientId,
+            staffId: appointments.userId,
+            staffRole: users.role,
+          }).from(appointments)
+            .innerJoin(users, and(eq(users.id, appointments.userId), eq(users.tenantId, appointments.tenantId)))
+            .where(and(eq(appointments.id, appointmentId), eq(appointments.tenantId, tenant.id)))
+            .limit(1);
+          if (target?.clientId) {
+            const existing = await db.select({ formId: formAssignments.formId }).from(formAssignments)
+              .where(and(eq(formAssignments.tenantId, tenant.id), eq(formAssignments.appointmentId, appointmentId)));
+            const existingFormIds = new Set(existing.map(item => item.formId));
+            const formsService = new FormsService();
+            for (const form of applicableForms) {
+              if (existingFormIds.has(form.id)) continue;
+              await formsService.createAssignment(
+                { tenantId: tenant.id, userId: target.staffId, role: target.staffRole === 'owner' ? 'owner' : 'staff' },
+                { formId: form.id, clientId: target.clientId, appointmentId, deliveryMethod: 'EMAIL' },
+                env.FORM_ASSIGNMENT_EXPIRY_DAYS,
+              );
+            }
+          }
+        } catch (formError) {
+          fastify.log.error(formError, 'Booking was created but its intake forms could not be assigned');
+        }
+      }
       await db.insert(tenantActivationMilestones).values({ tenantId: tenant.id, milestoneKey: 'FIRST_REAL_BOOKING', sourceType: 'APPOINTMENT', sourceId: booking.appointment_id || booking.id }).onConflictDoNothing({ target: [tenantActivationMilestones.tenantId, tenantActivationMilestones.milestoneKey] });
       if (data.analyticsSessionId) await bookingPageService.recordAnalytics(subdomain, { event: 'BOOKING_COMPLETED', sessionId: data.analyticsSessionId, serviceId: data.serviceId, staffId: data.staffId, locationId: data.locationId || undefined, source: data.source, medium: data.sourceMedium, campaign: data.sourceCampaign }, request.headers.host, booking.appointment_id || booking.id);
       if ((booking.appointment_status || booking.status) === 'CONFIRMED') {
@@ -315,7 +362,11 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       let paymentRequired = false;
       let paymentStatus = 'NOT_REQUIRED';
       let checkoutUrl = undefined;
-      const amountDue = booking.quoted_amount || 0;
+      const quotedAmount = booking.quoted_amount || 0;
+      const depositPercentage = Math.min(100, Math.max(0, Number(paymentSettings.depositPercentage || 0)));
+      const amountDue = verifiedPaymentMode === 'deposit_required'
+        ? Math.ceil(quotedAmount * (depositPercentage > 0 ? depositPercentage : 100) / 100)
+        : quotedAmount;
       
       if (amountDue > 0 && verifiedPaymentMode !== 'pay_later') {
         const { StripeService } = await import('../../modules/integrations/stripe/stripe.service.js');

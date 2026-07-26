@@ -1,0 +1,10 @@
+{
+  "extends": "@ks-os/config/tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "declaration": true,
+    "emitDeclarationOnly": false,
+    "lib": ["DOM", "ES2022"]
+  },
+  "include": ["src/**/*"]
+}
