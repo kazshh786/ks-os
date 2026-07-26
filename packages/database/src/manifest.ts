@@ -130,4 +130,19 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     order: 25,
     description: 'Booking operations calendar, automatic public booking pages, temporary slot holds, source attribution, audit, and analytics',
   },
+  {
+    filename: '20260725130000_phase_15_6b_expert_knowledge_engine.sql',
+    order: 31,
+    description: 'Phase 15.6B immutable expert-knowledge packs, provenance, rule applicability, playbooks, import governance, and activation safety',
+  },
+  {
+    filename: '20260725170000_phase_15_6c_structured_ai_generation.sql',
+    order: 32,
+    description: 'Phase 15.6C controlled structured site generation, provenance, findings, claims, contexts, and draft-only recovery records',
+  },
+  {
+    filename: '20260725180000_phase_15_6c_generation_runtime.sql',
+    order: 33,
+    description: 'Phase 15.6C validated structured page persistence for generation and controlled regeneration',
+  },
 ];

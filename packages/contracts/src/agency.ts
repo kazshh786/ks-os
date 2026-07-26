@@ -10,14 +10,20 @@ export const AgencyCapabilitySchema = z.enum([
   'billing.read', 'billing.manage', 'support.read', 'support.session.start', 'support.retry',
   'fulfilment.read', 'fulfilment.manage', 'analytics.read', 'audit.read', 'audit.export',
   'privacy.read', 'privacy.manage', 'retention.manage',
+  'sites.knowledge.read', 'sites.knowledge.manage',
+  'sites.knowledge.import', 'sites.knowledge.approve',
+  'sites.knowledge.activate',
+  'sites.generation.read', 'sites.generation.create',
+  'sites.generation.cancel', 'sites.generation.retry',
+  'sites.generation.regenerate',
 ]);
 export type AgencyCapability = z.infer<typeof AgencyCapabilitySchema>;
 
 const roleCapabilities: Record<AgencyRole, readonly AgencyCapability[]> = {
   PLATFORM_OWNER: AgencyCapabilitySchema.options,
-  AGENCY_ADMINISTRATOR: ['tenants.read','tenants.manage','plans.read','plans.manage','billing.read','billing.manage','support.read','support.session.start','support.retry','fulfilment.read','fulfilment.manage','analytics.read','audit.read','audit.export','privacy.read','privacy.manage','retention.manage'],
-  SUPPORT_ADMINISTRATOR: ['tenants.read','plans.read','billing.read','support.read','support.session.start','support.retry','audit.read'],
-  FULFILMENT_ADMINISTRATOR: ['tenants.read','plans.read','support.read','fulfilment.read','fulfilment.manage'],
+  AGENCY_ADMINISTRATOR: ['tenants.read','tenants.manage','plans.read','plans.manage','billing.read','billing.manage','support.read','support.session.start','support.retry','fulfilment.read','fulfilment.manage','analytics.read','audit.read','audit.export','privacy.read','privacy.manage','retention.manage','sites.knowledge.read','sites.knowledge.manage','sites.knowledge.import','sites.knowledge.approve','sites.knowledge.activate','sites.generation.read','sites.generation.create','sites.generation.cancel','sites.generation.retry','sites.generation.regenerate'],
+  SUPPORT_ADMINISTRATOR: ['tenants.read','plans.read','billing.read','support.read','support.session.start','support.retry','audit.read','sites.knowledge.read','sites.generation.read'],
+  FULFILMENT_ADMINISTRATOR: ['tenants.read','plans.read','support.read','fulfilment.read','fulfilment.manage','sites.knowledge.read','sites.knowledge.manage','sites.knowledge.import','sites.generation.read','sites.generation.create','sites.generation.cancel','sites.generation.retry','sites.generation.regenerate'],
 };
 export const capabilitiesForAgencyRole = (role: AgencyRole): readonly AgencyCapability[] => roleCapabilities[role];
 export const agencyRoleNeedsMfa = (role: AgencyRole) => role !== 'FULFILMENT_ADMINISTRATOR';

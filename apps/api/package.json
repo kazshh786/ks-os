@@ -9,7 +9,13 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/**/*.test.ts",
-    "lint": "echo 'api lint passed'"
+    "lint": "echo 'api lint passed'",
+    "knowledge:import": "node --env-file-if-exists=../../.env --import tsx src/cli/import-knowledge-pack.ts",
+    "knowledge:seed-actor:dev": "node --env-file-if-exists=../../.env --import tsx src/cli/seed-knowledge-development-actor.ts",
+    "knowledge:verify-active": "node --env-file-if-exists=../../.env --import tsx src/cli/verify-active-knowledge-pack.ts",
+    "knowledge:import:dev": "node --env-file-if-exists=../../.env --env-file=../../.env.development.local --import tsx src/cli/import-knowledge-pack.ts",
+    "knowledge:seed-actor:dev-project": "node --env-file-if-exists=../../.env --env-file=../../.env.development.local --import tsx src/cli/seed-knowledge-development-actor.ts",
+    "knowledge:verify-active:dev": "node --env-file-if-exists=../../.env --env-file=../../.env.development.local --import tsx src/cli/verify-active-knowledge-pack.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
@@ -22,6 +28,9 @@
     "@ks-os/database": "workspace:*",
     "@ks-os/email": "workspace:*",
     "@ks-os/notifications": "workspace:*",
+    "@ks-os/site-generation": "workspace:*",
+    "@ks-os/site-jobs": "workspace:*",
+    "@ks-os/site-knowledge": "workspace:*",
     "@supabase/supabase-js": "^2.110.7",
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.2.0",

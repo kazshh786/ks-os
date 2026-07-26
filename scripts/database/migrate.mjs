@@ -16,6 +16,7 @@ import crypto from 'crypto';
 import fileUrl from 'url';
 import pg from 'pg';
 import { MIGRATION_MANIFEST } from '../../packages/database/dist/manifest.js';
+import { assertSafeMigrationTarget } from './migration-safety.mjs';
 
 const MIGRATIONS_DIR = path.resolve(process.cwd(), 'packages/database/migrations');
 const TRACKING_TABLE = 'ks_os_schema_migrations';
@@ -53,8 +54,18 @@ export async function runMigrations(options = {}) {
     process.exit(1);
   }
 
-  if (flags.apply && nodeEnv !== 'production' && !flags.allowNonProdApply) {
-    console.error(`ERROR: Refusing to run --apply mode when NODE_ENV is "${nodeEnv}". Supply --allow-non-prod-apply to override in non-production environments.`);
+  try {
+    assertSafeMigrationTarget({
+      appEnvironment: process.env.APP_ENV,
+      apply: flags.apply,
+      databaseUrl,
+      explicitDevelopmentOptIn: flags.allowNonProdApply,
+      nodeEnvironment: nodeEnv,
+      remoteDevelopmentOptIn: process.env.MIGRATION_ALLOW_REMOTE_DEVELOPMENT === 'true',
+      allowedProjectRef: process.env.MIGRATION_ALLOWED_PROJECT_REF,
+    });
+  } catch (error) {
+    console.error(`ERROR: ${error.message}`);
     process.exit(1);
   }
 

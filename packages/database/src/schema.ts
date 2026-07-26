@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, jsonb, timestamp, integer, boolean, time, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, jsonb, timestamp, integer, boolean, time, date, numeric, uniqueIndex, index, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 export const tenants = pgTable('tenants', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -1578,3 +1578,529 @@ export const formTemplates=pgTable('form_templates',{
 export const formAnalyticsEvents=pgTable('form_analytics_events',{
  id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),formId:uuid('form_id').notNull().references(()=>forms.id,{onDelete:'cascade'}),formVersionId:uuid('form_version_id').references(()=>formVersions.id,{onDelete:'set null'}),assignmentId:uuid('assignment_id').references(()=>formAssignments.id,{onDelete:'set null'}),eventType:varchar('event_type',{length:40}).notNull(),pageId:varchar('page_id',{length:120}),fieldKey:varchar('field_key',{length:120}),deviceType:varchar('device_type',{length:20}),source:varchar('source',{length:100}),campaign:varchar('campaign',{length:100}),language:varchar('language',{length:12}),durationMs:integer('duration_ms'),occurredAt:timestamp('occurred_at',{withTimezone:true}).defaultNow().notNull(),metadata:jsonb('metadata').default({}).notNull(),
 },t=>({rollupIdx:index('form_analytics_rollup_idx').on(t.tenantId,t.formId,t.formVersionId,t.eventType,t.occurredAt)}));
+
+export const knowledgePacks = pgTable('knowledge_packs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description'),
+  semanticVersion: text('semantic_version').notNull(),
+  intendedScope: text('intended_scope').notNull(),
+  status: text('status').default('DRAFT').notNull(),
+  schemaVersion: integer('schema_version').default(1).notNull(),
+  sourceDigestSha256: text('source_digest_sha256'),
+  contentDigestSha256: text('content_digest_sha256'),
+  ruleCount: integer('rule_count').default(0).notNull(),
+  pagePlaybookCount: integer('page_playbook_count').default(0).notNull(),
+  sectionPlaybookCount: integer('section_playbook_count').default(0).notNull(),
+  sourceCount: integer('source_count').default(0).notNull(),
+  findingCount: integer('finding_count').default(0).notNull(),
+  conflictCount: integer('conflict_count').default(0).notNull(),
+  revisionOfPackId: uuid('revision_of_pack_id')
+    .references((): AnyPgColumn => knowledgePacks.id, { onDelete: 'restrict' }),
+  supersededByPackId: uuid('superseded_by_pack_id')
+    .references((): AnyPgColumn => knowledgePacks.id, { onDelete: 'restrict' }),
+  createdByAgencyUserId: uuid('created_by_agency_user_id').notNull()
+    .references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  approvedByAgencyUserId: uuid('approved_by_agency_user_id')
+    .references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  activatedByAgencyUserId: uuid('activated_by_agency_user_id')
+    .references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  retiredByAgencyUserId: uuid('retired_by_agency_user_id')
+    .references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  activatedAt: timestamp('activated_at', { withTimezone: true }),
+  retiredAt: timestamp('retired_at', { withTimezone: true }),
+}, table => ({
+  versionUnique: uniqueIndex('knowledge_packs_version_unique')
+    .on(table.intendedScope, table.semanticVersion),
+  statusCreatedIdx: index('knowledge_packs_status_created_idx')
+    .on(table.status, table.createdAt, table.id),
+  revisionIdx: index('knowledge_packs_revision_idx').on(table.revisionOfPackId),
+  supersededIdx: index('knowledge_packs_superseded_idx').on(table.supersededByPackId),
+  createdByIdx: index('knowledge_packs_created_by_idx').on(table.createdByAgencyUserId),
+  approvedByIdx: index('knowledge_packs_approved_by_idx').on(table.approvedByAgencyUserId),
+  activatedByIdx: index('knowledge_packs_activated_by_idx').on(table.activatedByAgencyUserId),
+  retiredByIdx: index('knowledge_packs_retired_by_idx').on(table.retiredByAgencyUserId),
+}));
+
+export const knowledgeSources = pgTable('knowledge_sources', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  sourceId: text('source_id').notNull(),
+  sourceTitle: text('source_title').notNull(),
+  author: text('author'),
+  editionOrVersion: text('edition_or_version'),
+  sourceType: text('source_type').notNull(),
+  topicDomainsJson: jsonb('topic_domains_json').default([]).notNull(),
+  evidenceAuthority: text('evidence_authority').notNull(),
+  supportCapability: text('support_capability').notNull(),
+  strengthOfSupport: text('strength_of_support'),
+  temporalClass: text('temporal_class').notNull(),
+  citationLocationsJson: jsonb('citation_locations_json').default([]).notNull(),
+  copyrightNotes: text('copyright_notes'),
+  verifiedAt: date('verified_at'),
+  reviewDueAt: date('review_due_at'),
+  reviewNotes: text('review_notes'),
+  contentDigestSha256: text('content_digest_sha256').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  packIdentifierUnique: uniqueIndex('knowledge_sources_pack_identifier_unique')
+    .on(table.knowledgePackId, table.sourceId),
+  packCreatedIdx: index('knowledge_sources_pack_created_idx')
+    .on(table.knowledgePackId, table.createdAt, table.id),
+  typeIdx: index('knowledge_sources_type_idx')
+    .on(table.sourceType, table.knowledgePackId),
+}));
+
+export const knowledgeRules = pgTable('knowledge_rules', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  ruleId: text('rule_id').notNull(),
+  ruleName: text('rule_name').notNull(),
+  ruleScope: text('rule_scope').notNull(),
+  domain: text('domain').notNull(),
+  subcategory: text('subcategory').notNull(),
+  principle: text('principle').notNull(),
+  whyItMatters: text('why_it_matters'),
+  implementationInstruction: text('implementation_instruction').notNull(),
+  priority: text('priority').notNull(),
+  validationType: text('validation_type').notNull(),
+  publicationEffect: text('publication_effect').notNull(),
+  enforcementAuthority: text('enforcement_authority').notNull(),
+  requiredBusinessDataJson: jsonb('required_business_data_json').default([]).notNull(),
+  prohibitedBehaviour: text('prohibited_behaviour'),
+  antiPattern: text('anti_pattern'),
+  deterministicTestDescription: text('deterministic_test_description'),
+  aiReviewInstruction: text('ai_review_instruction'),
+  humanReviewInstruction: text('human_review_instruction'),
+  supportType: text('support_type'),
+  temporalClass: text('temporal_class').notNull(),
+  verificationSourceIdsJson: jsonb('verification_source_ids_json').default([]).notNull(),
+  verifiedAt: date('verified_at'),
+  reviewDueAt: date('review_due_at'),
+  confidence: numeric('confidence', { precision: 5, scale: 4 }).notNull(),
+  notes: text('notes'),
+  status: text('status').default('ACCEPTED').notNull(),
+  contentDigestSha256: text('content_digest_sha256').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  packIdentifierUnique: uniqueIndex('knowledge_rules_pack_identifier_unique')
+    .on(table.knowledgePackId, table.ruleId),
+  packOrderIdx: index('knowledge_rules_pack_order_idx').on(
+    table.knowledgePackId,
+    table.enforcementAuthority,
+    table.publicationEffect,
+    table.priority,
+    table.domain,
+    table.ruleId,
+  ),
+  packDomainIdx: index('knowledge_rules_pack_domain_idx')
+    .on(table.knowledgePackId, table.domain, table.status),
+  contentDigestIdx: index('knowledge_rules_content_digest_idx')
+    .on(table.knowledgePackId, table.contentDigestSha256),
+}));
+
+export const knowledgeRulePageTypes = pgTable('knowledge_rule_page_types', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  knowledgeRuleId: uuid('knowledge_rule_id').notNull()
+    .references(() => knowledgeRules.id, { onDelete: 'restrict' }),
+  pageType: text('page_type').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  unique: uniqueIndex('knowledge_rule_page_types_unique')
+    .on(table.knowledgeRuleId, table.pageType),
+  packPageIdx: index('knowledge_rule_page_types_pack_page_idx')
+    .on(table.knowledgePackId, table.pageType, table.knowledgeRuleId),
+}));
+
+export const knowledgeRuleSectionTypes = pgTable('knowledge_rule_section_types', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  knowledgeRuleId: uuid('knowledge_rule_id').notNull()
+    .references(() => knowledgeRules.id, { onDelete: 'restrict' }),
+  sectionType: text('section_type').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  unique: uniqueIndex('knowledge_rule_section_types_unique')
+    .on(table.knowledgeRuleId, table.sectionType),
+  packSectionIdx: index('knowledge_rule_section_types_pack_section_idx')
+    .on(table.knowledgePackId, table.sectionType, table.knowledgeRuleId),
+}));
+
+export const knowledgeRuleConversionRoles = pgTable('knowledge_rule_conversion_roles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  knowledgeRuleId: uuid('knowledge_rule_id').notNull()
+    .references(() => knowledgeRules.id, { onDelete: 'restrict' }),
+  conversionRole: text('conversion_role').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  unique: uniqueIndex('knowledge_rule_conversion_roles_unique')
+    .on(table.knowledgeRuleId, table.conversionRole),
+  packRoleIdx: index('knowledge_rule_conversion_roles_pack_role_idx')
+    .on(table.knowledgePackId, table.conversionRole, table.knowledgeRuleId),
+}));
+
+export const knowledgeRuleSources = pgTable('knowledge_rule_sources', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  knowledgeRuleId: uuid('knowledge_rule_id').notNull()
+    .references(() => knowledgeRules.id, { onDelete: 'restrict' }),
+  knowledgeSourceId: uuid('knowledge_source_id').notNull()
+    .references(() => knowledgeSources.id, { onDelete: 'restrict' }),
+  relationshipType: text('relationship_type').default('SUPPORT').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  unique: uniqueIndex('knowledge_rule_sources_unique').on(
+    table.knowledgeRuleId,
+    table.knowledgeSourceId,
+    table.relationshipType,
+  ),
+  packRuleIdx: index('knowledge_rule_sources_pack_rule_idx')
+    .on(table.knowledgePackId, table.knowledgeRuleId),
+  sourceIdx: index('knowledge_rule_sources_source_idx')
+    .on(table.knowledgeSourceId, table.knowledgeRuleId),
+}));
+
+export const knowledgePagePlaybooks = pgTable('knowledge_page_playbooks', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  pageType: text('page_type').notNull(),
+  conversionRole: text('conversion_role').notNull(),
+  contentDigestSha256: text('content_digest_sha256').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  unique: uniqueIndex('knowledge_page_playbooks_unique')
+    .on(table.knowledgePackId, table.pageType, table.conversionRole),
+  packPageIdx: index('knowledge_page_playbooks_pack_page_idx')
+    .on(table.knowledgePackId, table.pageType, table.conversionRole),
+}));
+
+export const knowledgeSectionPlaybooks = pgTable('knowledge_section_playbooks', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  pagePlaybookId: uuid('page_playbook_id').notNull()
+    .references(() => knowledgePagePlaybooks.id, { onDelete: 'restrict' }),
+  sectionType: text('section_type').notNull(),
+  sectionOrderMin: integer('section_order_min').notNull(),
+  sectionOrderMax: integer('section_order_max').notNull(),
+  requirement: text('requirement').notNull(),
+  userIntent: text('user_intent').notNull(),
+  businessObjective: text('business_objective'),
+  sectionPurpose: text('section_purpose').notNull(),
+  requiredBusinessDataJson: jsonb('required_business_data_json').default([]).notNull(),
+  copyInstruction: text('copy_instruction'),
+  seoInstruction: text('seo_instruction'),
+  trustInstruction: text('trust_instruction'),
+  bookingInstruction: text('booking_instruction'),
+  mobileInstruction: text('mobile_instruction'),
+  accessibilityInstruction: text('accessibility_instruction'),
+  allowedPrimaryCtaTypesJson: jsonb('allowed_primary_cta_types_json').default([]).notNull(),
+  allowedSecondaryCtaTypesJson: jsonb('allowed_secondary_cta_types_json').default([]).notNull(),
+  blockingConditionsJson: jsonb('blocking_conditions_json').default([]).notNull(),
+  commonAntiPatternsJson: jsonb('common_anti_patterns_json').default([]).notNull(),
+  ruleIdsJson: jsonb('rule_ids_json').default([]).notNull(),
+  sourceIdsJson: jsonb('source_ids_json').default([]).notNull(),
+  confidence: numeric('confidence', { precision: 5, scale: 4 }).notNull(),
+  notes: text('notes'),
+  contentDigestSha256: text('content_digest_sha256').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  unique: uniqueIndex('knowledge_section_playbooks_unique').on(
+    table.pagePlaybookId,
+    table.sectionType,
+    table.sectionOrderMin,
+    table.sectionOrderMax,
+  ),
+  packPageIdx: index('knowledge_section_playbooks_pack_page_idx').on(
+    table.knowledgePackId,
+    table.pagePlaybookId,
+    table.sectionOrderMin,
+    table.id,
+  ),
+  sectionIdx: index('knowledge_section_playbooks_section_idx')
+    .on(table.sectionType, table.knowledgePackId),
+}));
+
+export const knowledgeImportRuns = pgTable('knowledge_import_runs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  importFormat: text('import_format').notNull(),
+  sourceDigestSha256: text('source_digest_sha256').notNull(),
+  status: text('status').default('STARTED').notNull(),
+  sourceCount: integer('source_count').default(0).notNull(),
+  ruleCount: integer('rule_count').default(0).notNull(),
+  pagePlaybookCount: integer('page_playbook_count').default(0).notNull(),
+  sectionPlaybookCount: integer('section_playbook_count').default(0).notNull(),
+  rejectedRuleCount: integer('rejected_rule_count').default(0).notNull(),
+  findingCount: integer('finding_count').default(0).notNull(),
+  conflictCount: integer('conflict_count').default(0).notNull(),
+  failureCode: text('failure_code'),
+  requestedByAgencyUserId: uuid('requested_by_agency_user_id').notNull()
+    .references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, table => ({
+  packDigestUnique: uniqueIndex('knowledge_import_runs_pack_digest_unique')
+    .on(table.knowledgePackId, table.sourceDigestSha256),
+  packStartedIdx: index('knowledge_import_runs_pack_started_idx')
+    .on(table.knowledgePackId, table.startedAt, table.id),
+  requestedByIdx: index('knowledge_import_runs_requested_by_idx')
+    .on(table.requestedByAgencyUserId),
+}));
+
+export const knowledgeImportFindings = pgTable('knowledge_import_findings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  importRunId: uuid('import_run_id')
+    .references(() => knowledgeImportRuns.id, { onDelete: 'restrict' }),
+  severity: text('severity').notNull(),
+  category: text('category').notNull(),
+  code: text('code').notNull(),
+  message: text('message').notNull(),
+  blocksApproval: boolean('blocks_approval').default(false).notNull(),
+  ruleId: text('rule_id'),
+  sourceId: text('source_id'),
+  pageType: text('page_type'),
+  sectionType: text('section_type'),
+  current: boolean('current').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  packCurrentIdx: index('knowledge_import_findings_pack_current_idx').on(
+    table.knowledgePackId,
+    table.current,
+    table.blocksApproval,
+    table.severity,
+    table.createdAt,
+    table.id,
+  ),
+  importIdx: index('knowledge_import_findings_import_idx')
+    .on(table.importRunId, table.createdAt, table.id),
+}));
+
+export const knowledgeConflicts = pgTable('knowledge_conflicts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  importRunId: uuid('import_run_id')
+    .references(() => knowledgeImportRuns.id, { onDelete: 'restrict' }),
+  conflictType: text('conflict_type').notNull(),
+  severity: text('severity').notNull(),
+  summary: text('summary').notNull(),
+  ruleIdsJson: jsonb('rule_ids_json').default([]).notNull(),
+  pageType: text('page_type'),
+  sectionType: text('section_type'),
+  status: text('status').default('OPEN').notNull(),
+  resolutionReason: text('resolution_reason'),
+  resolvedByAgencyUserId: uuid('resolved_by_agency_user_id')
+    .references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  current: boolean('current').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  packCurrentIdx: index('knowledge_conflicts_pack_current_idx').on(
+    table.knowledgePackId,
+    table.current,
+    table.status,
+    table.severity,
+    table.createdAt,
+    table.id,
+  ),
+  importIdx: index('knowledge_conflicts_import_idx')
+    .on(table.importRunId, table.createdAt, table.id),
+  resolvedByIdx: index('knowledge_conflicts_resolved_by_idx')
+    .on(table.resolvedByAgencyUserId),
+}));
+
+export const knowledgeRejectedRules = pgTable('knowledge_rejected_rules', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  knowledgePackId: uuid('knowledge_pack_id').notNull()
+    .references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  ruleId: text('rule_id').notNull(),
+  ruleName: text('rule_name').notNull(),
+  rejectionReason: text('rejection_reason').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  unique: uniqueIndex('knowledge_rejected_rules_unique')
+    .on(table.knowledgePackId, table.ruleId),
+  packIdx: index('knowledge_rejected_rules_pack_idx')
+    .on(table.knowledgePackId, table.ruleId),
+}));
+
+// Phase 15.6C generation records retain only controlled structured provenance,
+// safe findings and claim digests. Raw prompts, responses and credentials are
+// deliberately absent from the database model.
+export const siteGenerationRuns = pgTable('site_generation_runs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
+  siteVersionId: uuid('site_version_id').references(() => siteVersions.id, { onDelete: 'restrict' }),
+  blueprintId: uuid('blueprint_id').notNull().references(() => siteBlueprints.id, { onDelete: 'restrict' }),
+  blueprintRevision: integer('blueprint_revision').notNull(),
+  templateVersionId: uuid('template_version_id').notNull().references(() => templateVersions.id, { onDelete: 'restrict' }),
+  knowledgePackId: uuid('knowledge_pack_id').notNull().references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  knowledgePackSemanticVersion: text('knowledge_pack_semantic_version').notNull(),
+  siteJobId: uuid('site_job_id').references(() => siteJobs.id, { onDelete: 'restrict' }),
+  generationReason: text('generation_reason').notNull(),
+  generatorVersion: text('generator_version').notNull(),
+  providerKey: text('provider_key').notNull(),
+  modelKey: text('model_key').notNull(),
+  status: text('status').default('PENDING').notNull(),
+  idempotencyKey: text('idempotency_key').notNull(),
+  sourceDataDigestSha256: text('source_data_digest_sha256').notNull(),
+  generationContextDigestSha256: text('generation_context_digest_sha256'),
+  promptTemplateVersion: text('prompt_template_version').notNull(),
+  outputContentDigestSha256: text('output_content_digest_sha256'),
+  pageCountPlanned: integer('page_count_planned').default(0).notNull(),
+  pageCountCompleted: integer('page_count_completed').default(0).notNull(),
+  sectionCountPlanned: integer('section_count_planned').default(0).notNull(),
+  sectionCountCompleted: integer('section_count_completed').default(0).notNull(),
+  attemptCount: integer('attempt_count').default(0).notNull(),
+  repairAttemptCount: integer('repair_attempt_count').default(0).notNull(),
+  failureCode: text('failure_code'),
+  failureMessage: text('failure_message'),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  requestedByAgencyUserId: uuid('requested_by_agency_user_id').notNull().references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  identityUnique: uniqueIndex('site_generation_runs_identity_unique').on(table.tenantId, table.idempotencyKey),
+  siteCreatedIdx: index('site_generation_runs_site_created_idx').on(table.tenantId, table.siteId, table.createdAt),
+  statusCreatedIdx: index('site_generation_runs_status_created_idx').on(table.status, table.createdAt),
+  versionIdx: index('site_generation_runs_version_idx').on(table.siteVersionId),
+}));
+
+export const siteGenerationPageRuns = pgTable('site_generation_page_runs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  generationRunId: uuid('generation_run_id').notNull().references(() => siteGenerationRuns.id, { onDelete: 'restrict' }),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
+  siteVersionId: uuid('site_version_id').notNull().references(() => siteVersions.id, { onDelete: 'restrict' }),
+  sitePageId: uuid('site_page_id').references(() => sitePages.id, { onDelete: 'restrict' }),
+  plannedPageReference: uuid('planned_page_reference').defaultRandom().notNull(),
+  blueprintPageId: uuid('blueprint_page_id').notNull().references(() => siteBlueprintPages.id, { onDelete: 'restrict' }),
+  templateLayoutId: uuid('template_layout_id').notNull().references(() => templateLayouts.id, { onDelete: 'restrict' }),
+  rendererKey: text('renderer_key').notNull(),
+  status: text('status').default('PENDING').notNull(),
+  attemptCount: integer('attempt_count').default(0).notNull(),
+  repairAttemptCount: integer('repair_attempt_count').default(0).notNull(),
+  generationContextDigestSha256: text('generation_context_digest_sha256'),
+  outputContentDigestSha256: text('output_content_digest_sha256'),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  failureCode: text('failure_code'),
+  failureMessage: text('failure_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  blueprintUnique: uniqueIndex('site_generation_page_runs_blueprint_unique').on(table.generationRunId, table.blueprintPageId),
+  plannedReferenceUnique: uniqueIndex('site_generation_page_runs_planned_reference_unique').on(table.generationRunId, table.plannedPageReference),
+  runStatusIdx: index('site_generation_page_runs_run_status_idx').on(table.generationRunId, table.status, table.createdAt),
+}));
+
+export const siteGenerationSectionRuns = pgTable('site_generation_section_runs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  generationRunId: uuid('generation_run_id').notNull().references(() => siteGenerationRuns.id, { onDelete: 'restrict' }),
+  pageRunId: uuid('page_run_id').notNull().references(() => siteGenerationPageRuns.id, { onDelete: 'restrict' }),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  siteSectionId: uuid('site_section_id').references(() => siteSections.id, { onDelete: 'restrict' }),
+  previousSiteSectionId: uuid('previous_site_section_id').references(() => siteSections.id, { onDelete: 'restrict' }),
+  previousContentJson: jsonb('previous_content_json'),
+  previousActionsJson: jsonb('previous_actions_json'),
+  sectionType: text('section_type').notNull(),
+  status: text('status').default('PENDING').notNull(),
+  regenerationInstructionDigestSha256: text('regeneration_instruction_digest_sha256'),
+  outputContentDigestSha256: text('output_content_digest_sha256'),
+  attemptCount: integer('attempt_count').default(0).notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  pageStatusIdx: index('site_generation_section_runs_page_idx').on(table.pageRunId, table.status, table.createdAt),
+}));
+
+export const siteGenerationFindings = pgTable('site_generation_findings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  generationRunId: uuid('generation_run_id').notNull().references(() => siteGenerationRuns.id, { onDelete: 'restrict' }),
+  pageRunId: uuid('page_run_id').references(() => siteGenerationPageRuns.id, { onDelete: 'restrict' }),
+  sectionRunId: uuid('section_run_id').references(() => siteGenerationSectionRuns.id, { onDelete: 'restrict' }),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  severity: text('severity').notNull(),
+  category: text('category').notNull(),
+  code: text('code').notNull(),
+  message: text('message').notNull(),
+  safeMetadataJson: jsonb('safe_metadata_json').default({}).notNull(),
+  current: boolean('current').default(true).notNull(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  resolvedByAgencyUserId: uuid('resolved_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  resolutionNote: text('resolution_note'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  runCurrentIdx: index('site_generation_findings_run_current_idx').on(table.generationRunId, table.current, table.severity, table.createdAt),
+}));
+
+export const siteGenerationClaims = pgTable('site_generation_claims', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  generationRunId: uuid('generation_run_id').notNull().references(() => siteGenerationRuns.id, { onDelete: 'restrict' }),
+  pageRunId: uuid('page_run_id').references(() => siteGenerationPageRuns.id, { onDelete: 'restrict' }),
+  sectionRunId: uuid('section_run_id').references(() => siteGenerationSectionRuns.id, { onDelete: 'restrict' }),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  claimType: text('claim_type').notNull(),
+  claimStatus: text('claim_status').notNull(),
+  claimTextDigestSha256: text('claim_text_digest_sha256').notNull(),
+  factKeysJson: jsonb('fact_keys_json').default([]).notNull(),
+  safeExcerpt: text('safe_excerpt'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  runStatusIdx: index('site_generation_claims_run_status_idx').on(table.generationRunId, table.claimStatus, table.createdAt),
+}));
+
+export const siteGenerationContexts = pgTable('site_generation_contexts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  generationRunId: uuid('generation_run_id').notNull().references(() => siteGenerationRuns.id, { onDelete: 'restrict' }),
+  pageRunId: uuid('page_run_id').references(() => siteGenerationPageRuns.id, { onDelete: 'restrict' }),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  knowledgePackId: uuid('knowledge_pack_id').notNull().references(() => knowledgePacks.id, { onDelete: 'restrict' }),
+  contextDigestSha256: text('context_digest_sha256').notNull(),
+  promptTemplateVersion: text('prompt_template_version').notNull(),
+  selectedRuleIdsJson: jsonb('selected_rule_ids_json').default([]).notNull(),
+  missingBusinessDataKeysJson: jsonb('missing_business_data_keys_json').default([]).notNull(),
+  safeContextSummaryJson: jsonb('safe_context_summary_json').default({}).notNull(),
+  inputCharacterEstimate: integer('input_character_estimate').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  runIdx: index('site_generation_contexts_run_idx').on(table.generationRunId, table.createdAt),
+}));

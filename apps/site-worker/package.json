@@ -1,0 +1,31 @@
+{
+  "name": "site-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node ./dist/index.js",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ks-os/contracts": "workspace:*",
+    "@ks-os/database": "workspace:*",
+    "@ks-os/site-generation": "workspace:*",
+    "@ks-os/site-jobs": "workspace:*",
+    "@ks-os/site-knowledge": "workspace:*",
+    "@ks-os/site-schema": "workspace:*",
+    "drizzle-orm": "^0.31.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@ks-os/config": "workspace:*",
+    "@types/node": "^22.20.1",
+    "tsx": "^4.23.1",
+    "typescript": "^5.8.2"
+  }
+}

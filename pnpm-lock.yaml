@@ -54,6 +54,15 @@ importers:
       '@ks-os/notifications':
         specifier: workspace:*
         version: link:../../packages/notifications
+      '@ks-os/site-generation':
+        specifier: workspace:*
+        version: link:../../packages/site-generation
+      '@ks-os/site-jobs':
+        specifier: workspace:*
+        version: link:../../packages/site-jobs
+      '@ks-os/site-knowledge':
+        specifier: workspace:*
+        version: link:../../packages/site-knowledge
       '@supabase/supabase-js':
         specifier: ^2.110.7
         version: 2.110.7
@@ -111,6 +120,46 @@ importers:
         version: 22.0.0
       tsx:
         specifier: ^4.19.2
+        version: 4.23.1
+      typescript:
+        specifier: ^5.8.2
+        version: 5.8.3
+
+  apps/site-worker:
+    dependencies:
+      '@ks-os/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@ks-os/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@ks-os/site-generation':
+        specifier: workspace:*
+        version: link:../../packages/site-generation
+      '@ks-os/site-jobs':
+        specifier: workspace:*
+        version: link:../../packages/site-jobs
+      '@ks-os/site-knowledge':
+        specifier: workspace:*
+        version: link:../../packages/site-knowledge
+      '@ks-os/site-schema':
+        specifier: workspace:*
+        version: link:../../packages/site-schema
+      drizzle-orm:
+        specifier: ^0.31.4
+        version: 0.31.4(@types/pg@8.20.0)(@types/react@19.2.17)(pg@8.22.0)(react@19.2.7)
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@ks-os/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      tsx:
+        specifier: ^4.23.1
         version: 4.23.1
       typescript:
         specifier: ^5.8.2
@@ -283,6 +332,59 @@ importers:
         version: 22.20.1
       tsx:
         specifier: ^4.19.2
+        version: 4.23.1
+      typescript:
+        specifier: ^5.8.2
+        version: 5.8.3
+
+  packages/site-generation:
+    dependencies:
+      '@ks-os/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@ks-os/site-knowledge':
+        specifier: workspace:*
+        version: link:../site-knowledge
+      '@ks-os/site-schema':
+        specifier: workspace:*
+        version: link:../site-schema
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@ks-os/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      tsx:
+        specifier: ^4.23.1
+        version: 4.23.1
+      typescript:
+        specifier: ^5.8.2
+        version: 5.8.3
+
+  packages/site-knowledge:
+    dependencies:
+      '@ks-os/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@ks-os/site-schema':
+        specifier: workspace:*
+        version: link:../site-schema
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@ks-os/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      tsx:
+        specifier: ^4.23.1
         version: 4.23.1
       typescript:
         specifier: ^5.8.2

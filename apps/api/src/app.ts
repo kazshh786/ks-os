@@ -42,6 +42,8 @@ import { env } from './config/env.js';
 import { complianceRoutes, complianceWorkerRoutes } from './modules/agency/compliance.routes.js';
 import { externalApiRoutes, integrationRoutes, publicCalendarRoutes } from './modules/integrations/integrations.routes.js';
 import { bookingPageSettingsRoutes } from './modules/bookings/booking-page.routes.js';
+import { agencyKnowledgePackRoutes } from './modules/sites/knowledge-pack.routes.js';
+import { agencySiteGenerationRoutes } from './modules/sites/site-generation.routes.js';
 
 export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => void } = {}) {
   const fastify = Fastify({
@@ -136,6 +138,8 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   // Agency control plane and commercial billing are isolated from tenant routes.
   fastify.register(agencyRoutes, { prefix: '/api/v1/agency' });
   fastify.register(complianceRoutes, { prefix: '/api/v1/agency' });
+  fastify.register(agencyKnowledgePackRoutes, { prefix: '/api/v1/agency' });
+  fastify.register(agencySiteGenerationRoutes, { prefix: '/api/v1/agency/sites' });
   fastify.register(goCardlessWebhookRoutes, { prefix: '/api/v1/webhooks/gocardless' });
   fastify.register(managedServiceTenantRoutes, { prefix: '/api/v1/managed-services' });
   fastify.register(agencyWorkerRoutes, { prefix: '/api/v1/internal/agency-worker' });

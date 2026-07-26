@@ -28,7 +28,13 @@
     "deploy:dry": "scripts/deploy/deploy-vps.sh --dry-run",
     "test:deployment": "jest tests/deployment/**/*.test.ts",
     "seed:auth:dev": "pnpm --filter api exec tsx ../../scripts/seed-auth-development.ts",
-    "seed:demo": "pnpm --filter api exec tsx ../../scripts/seed-salon-a-demo.ts"
+    "seed:demo": "pnpm --filter api exec tsx ../../scripts/seed-salon-a-demo.ts",
+    "knowledge:import": "pnpm --filter api knowledge:import",
+    "knowledge:seed-actor:dev": "pnpm --filter api knowledge:seed-actor:dev",
+    "knowledge:verify-active": "pnpm --filter api knowledge:verify-active",
+    "knowledge:import:dev": "pnpm --filter api knowledge:import:dev",
+    "knowledge:seed-actor:dev-project": "pnpm --filter api knowledge:seed-actor:dev-project",
+    "knowledge:verify-active:dev": "pnpm --filter api knowledge:verify-active:dev"
   },
   "dependencies": {
     "date-fns": "^4.4.0",
