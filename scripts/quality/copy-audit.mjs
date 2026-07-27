@@ -17,12 +17,12 @@ function sourceFiles(directory) {
 }
 
 const rules = [
-  { name: 'Use “Sign in”, not “Log in”.', pattern: /(['"`])Log in\1|>\s*Log in\s*</gi },
-  { name: 'Use “Sign out”, not “Log out”.', pattern: /(['"`])Log out\1|>\s*Log out\s*</gi },
+  { name: 'Use “Sign in”, not “Log in”.', pattern: /(['"`])[^'"`\n]*\blog in\b[^'"`\n]*\1/gi },
+  { name: 'Use “Sign out”, not “Log out”.', pattern: /(['"`])[^'"`\n]*\blog out\b[^'"`\n]*\1/gi },
   { name: 'Use “Sign in”, not the noun “Login”.', pattern: /(['"`])Login\1|>\s*Login\s*</g },
   { name: 'Use “Sign out”, not the noun “Logout”.', pattern: /(['"`])Logout\1|>\s*Logout\s*</g },
   { name: 'Replace vague “Submit” buttons with the result.', pattern: /(['"`])Submit\1|>\s*Submit\s*</g },
-  { name: 'Replace “Click here” with the destination or result.', pattern: /(['"`])Click here\1|>\s*Click here\s*</gi },
+  { name: 'Replace “Click here” with the destination or result.', pattern: /(['"`])[^'"`\n]*\bclick here\b[^'"`\n]*\1/gi },
   { name: 'Replace system-focused authentication errors.', pattern: /Invalid credentials|User does not exist(?: in database)?/gi },
   { name: 'Replace database-style empty states.', pattern: /No records found|Create new customer/gi },
   { name: 'Write “and”, not an ampersand, in UI copy.', pattern: /(['"`])[^'"`\n]*\s&\s[^'"`\n]*\1/g },
