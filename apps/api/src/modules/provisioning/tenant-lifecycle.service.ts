@@ -30,6 +30,10 @@ const fail = (statusCode: number, code: string, message: string, details?: unkno
   Object.assign(new Error(message), { statusCode, code, ...(details ? { details } : {}) });
 
 const count = (row: { count?: number } | undefined) => Number(row?.count || 0);
+const isRemovedWorkspace = (tenant: { lifecycleStatus: string; name: string; subdomain: string }) =>
+  tenant.lifecycleStatus === 'OFFBOARDED'
+  && tenant.name === 'Deleted workspace'
+  && tenant.subdomain.startsWith('deleted-');
 
 export class TenantLifecycleService {
   private readonly audit = new AgencyAuditService();
@@ -42,7 +46,7 @@ export class TenantLifecycleService {
       eq(tenants.agencyReference, tenantReference),
       eq(tenants.businessReference, tenantReference),
     )).limit(1);
-    if (!tenant || tenant.lifecycleStatus === 'DELETED') {
+    if (!tenant || isRemovedWorkspace(tenant)) {
       throw fail(404, 'TENANT_NOT_FOUND', 'The client workspace was not found.');
     }
     return tenant;
@@ -292,7 +296,7 @@ export class TenantLifecycleService {
         replyToEmail: null,
         senderDisplayName: null,
         operationalPhone: null,
-        lifecycleStatus: 'DELETED',
+        lifecycleStatus: 'OFFBOARDED',
         isActive: false,
         suspendedAt: now,
         offboardedAt: now,
@@ -306,6 +310,6 @@ export class TenantLifecycleService {
       description: 'An unused workspace was removed from operational use and scrubbed while a non-identifying audit tombstone was retained.',
       metadata: { previousLifecycleStatus: tenant.lifecycleStatus, auditTombstoneRetained: true },
     });
-    return { removed: true, lifecycleStatus: 'DELETED', auditTombstoneRetained: true };
+    return { removed: true, lifecycleStatus: 'OFFBOARDED', removalKind: 'UNUSED_WORKSPACE_TOMBSTONE', auditTombstoneRetained: true };
   }
 }
