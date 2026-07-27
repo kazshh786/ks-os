@@ -44,7 +44,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - name: Upload UX copy audit
-        if: always() && hashFiles('copy-violations.json') != ''
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ux-copy-audit
