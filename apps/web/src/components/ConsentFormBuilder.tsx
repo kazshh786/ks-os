@@ -33,8 +33,8 @@ export interface FormQuestion {
 const DEFAULT_TEMPLATES = [
   {
     id: 'tpl-dermal',
-    title: 'Dermal & Aesthetics Consent Form',
-    category: 'Consultation & Consent',
+    title: 'Dermal and Aesthetics Consent Form',
+    category: 'Consultation and Consent',
     description: 'Perfect for skin clinics, filler injectables, aesthetics and lash extensions.',
     questions: [
       { id: 'q-d-1', label: 'Do you have any skin disorders or severe allergies?', type: 'radio', options: ['Yes', 'No', 'Unsure'], required: true },
@@ -57,7 +57,7 @@ const DEFAULT_TEMPLATES = [
   },
   {
     id: 'tpl-feedback',
-    title: 'Roll Bicycles Experience & Rating Feedback',
+    title: 'Roll Bicycles Experience and Rating Feedback',
     category: 'Feedback Forms',
     description: 'Collect post-purchase rankings and reviews of road bikes, gear, or workshop tune-ups.',
     questions: [
@@ -69,11 +69,11 @@ const DEFAULT_TEMPLATES = [
   },
   {
     id: 'tpl-hair',
-    title: 'Glossy Locks Hair Care & Consultation',
-    category: 'Order & Consultation',
+    title: 'Glossy Locks Hair Care and Consultation',
+    category: 'Order and Consultation',
     description: 'Customize product selection for Glossy Locks shampoos, smoothers, serums, and hair masks.',
     questions: [
-      { id: 'q-h-1', label: 'Select your hair concerns', type: 'radio', options: ['Dry & Damaged', 'Frizz Control', 'Thinning / Volume Boost', 'Color Protection'], required: true },
+      { id: 'q-h-1', label: 'Select your hair concerns', type: 'radio', options: ['Dry and Damaged', 'Frizz Control', 'Thinning / Volume Boost', 'Color Protection'], required: true },
       { id: 'q-h-2', label: 'Choose your desired Glossy Locks premium products', type: 'radio', options: ['Shampoo + Smoother Combo', 'Nourishing Serum', 'Deep Hydration Mask', 'Full Restructuring Bundle'], required: true },
       { id: 'q-h-3', label: 'Upload a picture of your current hair for our lead stylist to review', type: 'fileupload', required: false },
       { id: 'q-h-4', label: 'I authorize standard shipping and billing processing fees', type: 'checkbox', required: true }
@@ -92,7 +92,7 @@ export default function ConsentFormBuilder({ tenant }: ConsentFormBuilderProps) 
     { id: 'q-1', label: 'Are you currently pregnant or breastfeeding?', type: 'radio', options: ['Yes', 'No'], required: true },
     { id: 'q-2', label: 'Please specify any skin allergies or medical concerns', type: 'text', placeholder: 'e.g. skin rashes, active acne', required: false, conditionalOn: 'q-1', conditionalValue: 'Yes' },
     { id: 'q-3', label: 'I authorize treatment and confirm a patch test was completed safely', type: 'checkbox', required: true },
-    { id: 'q-4', label: 'Digital Signature & Full Legal Agreement', type: 'signature', required: true }
+    { id: 'q-4', label: 'Digital Signature and Full Legal Agreement', type: 'signature', required: true }
   ]);
 
   // Active question selected for styling/editing details in sidebar
@@ -244,14 +244,14 @@ export default function ConsentFormBuilder({ tenant }: ConsentFormBuilderProps) 
           placeholder = 'Type details here...';
           break;
         case 'checkbox':
-          label = 'I agree to the cancellation policy & general liability terms';
+          label = 'I agree to the cancellation policy and general liability terms';
           break;
         case 'radio':
           label = 'Do you have skin sensitivities or high blood pressure?';
           options = ['Yes', 'No', 'Unsure'];
           break;
         case 'signature':
-          label = 'Digital Legal Signature & Authorization';
+          label = 'Digital Legal Signature and Authorization';
           break;
         case 'rating':
           label = 'Rate your treatment satisfaction level';
@@ -289,7 +289,7 @@ export default function ConsentFormBuilder({ tenant }: ConsentFormBuilderProps) 
       setSelectedQuestionId(newId);
       saveFormToStorage(updated);
       setFormSubmissionsCount(formSubmissionsCount + 1);
-      triggerNotif(`Added a new ${draggedType.toUpperCase()} element to the drag & drop canvas!`);
+      triggerNotif(`Added a new ${draggedType.toUpperCase()} element to the drag-and-drop canvas!`);
     } else if (draggedQuestionIndex !== null && typeof targetIndex === 'number') {
       // Reordering existing questions
       const updated = [...formQuestions];
@@ -429,7 +429,7 @@ export default function ConsentFormBuilder({ tenant }: ConsentFormBuilderProps) 
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                setFormTitle('Dermal & Aesthetics Consent Form');
+                setFormTitle('Dermal and Aesthetics Consent Form');
                 setFormQuestions(DEFAULT_TEMPLATES[0].questions as any);
                 setSelectedQuestionId('q-d-1');
                 triggerNotif('Reset canvas to master aesthetics consent preset.');
@@ -504,7 +504,7 @@ export default function ConsentFormBuilder({ tenant }: ConsentFormBuilderProps) 
                   { type: 'radio', label: 'Multiple Choice (Radio)', desc: 'Yes / No or options selections', icon: Radio, color: 'text-purple-500 bg-purple-50 border-purple-200' },
                   { type: 'checkbox', label: 'Consent Checkbox', desc: 'Accept terms or privacy waiver', icon: CheckSquare, color: 'text-emerald-500 bg-emerald-50 border-emerald-200' },
                   { type: 'signature', label: 'Legal Digital Signature', desc: 'Authentic touch-to-sign pad', icon: PenTool, color: 'text-indigo-500 bg-indigo-50 border-indigo-200' },
-                  { type: 'rating', label: 'Rating & Stars Slider', desc: 'Star rank questions 1-5', icon: Star, color: 'text-amber-500 bg-amber-50 border-amber-200' },
+                  { type: 'rating', label: 'Rating and Stars Slider', desc: 'Star rank questions 1-5', icon: Star, color: 'text-amber-500 bg-amber-50 border-amber-200' },
                   { type: 'email', label: 'Verified Email Box', desc: 'Validated address checker', icon: Mail, color: 'text-rose-500 bg-rose-50 border-rose-200' },
                   { type: 'phone', label: 'Verified Phone / SMS', desc: 'Standard mobile formats', icon: Laptop, color: 'text-sky-500 bg-sky-50 border-sky-200' },
                   { type: 'fileupload', label: 'Medical File Upload', desc: 'Attach photos, patch tests, PDFs', icon: FileUp, color: 'text-violet-500 bg-violet-50 border-violet-200' }
