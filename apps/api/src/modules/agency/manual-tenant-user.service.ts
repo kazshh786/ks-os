@@ -46,9 +46,9 @@ export class ManualTenantUserService {
     try {
       const now = new Date();
       const bookingEnabled = input.role === 'staff' && input.bookingEnabled === true;
-      const [record] = await this.db.transaction(async tx => {
-        if (existingMembership) {
-          return tx.update(users).set({
+      const record = await this.db.transaction(async tx => {
+        const [membership] = existingMembership
+          ? await tx.update(users).set({
             authUserId: identity.authUserId,
             email: emailNormalized,
             emailNormalized,
@@ -63,30 +63,31 @@ export class ManualTenantUserService {
             deactivatedAt: null,
             sessionsValidAfter: now,
             updatedAt: now,
-          }).where(eq(users.id, existingMembership.id)).returning();
-        }
-        return tx.insert(users).values({
-          tenantId: tenant.id,
-          authUserId: identity.authUserId,
-          email: emailNormalized,
-          emailNormalized,
-          name: input.displayName.trim(),
-          role: input.role,
-          accountStatus: 'ACTIVE',
-          bookingEnabled,
-          invitedByAgencyUserId: actor.agencyUserId,
-          invitedAt: now,
-          acceptedAt: now,
-        }).returning();
-      });
+          }).where(eq(users.id, existingMembership.id)).returning()
+          : await tx.insert(users).values({
+            tenantId: tenant.id,
+            authUserId: identity.authUserId,
+            email: emailNormalized,
+            emailNormalized,
+            name: input.displayName.trim(),
+            role: input.role,
+            accountStatus: 'ACTIVE',
+            bookingEnabled,
+            invitedByAgencyUserId: actor.agencyUserId,
+            invitedAt: now,
+            acceptedAt: now,
+          }).returning();
 
-      await this.audit.write(actor, 'TENANT_USER_MANUALLY_PROVISIONED', 'TENANT_USER', record.id, {
-        tenantId: tenant.id,
-        metadata: {
-          role: input.role,
-          bookingEnabled,
-          identityMode: identity.created ? 'NEW_IDENTITY' : 'EXISTING_IDENTITY',
-        },
+        await this.audit.write(actor, 'TENANT_USER_MANUALLY_PROVISIONED', 'TENANT_USER', membership.id, {
+          tenantId: tenant.id,
+          tx,
+          metadata: {
+            role: input.role,
+            bookingEnabled,
+            identityMode: identity.created ? 'NEW_IDENTITY' : 'EXISTING_IDENTITY',
+          },
+        });
+        return membership;
       });
 
       return {
