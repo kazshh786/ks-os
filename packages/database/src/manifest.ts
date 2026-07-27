@@ -190,4 +190,9 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     order: 37,
     description: 'Phase 15.8 exact-version SEO, accessibility, UX, conversion, booking, content, asset, evidence, waiver, and publication-readiness quality gates',
   },
+  {
+    filename: '20260727110000_reconcile_site_jobs_status_constraint.sql',
+    order: 38,
+    description: 'Remove the obsolete duplicate site-job status check while preserving the canonical Phase 15.6A lifecycle constraint',
+  },
 ];
