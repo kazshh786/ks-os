@@ -9,6 +9,17 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  copy-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Audit UX copy
+        run: node scripts/quality/copy-audit.mjs
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -43,12 +54,4 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - name: Upload UX copy audit
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ux-copy-audit
-          path: copy-violations.json
-          if-no-files-found: ignore
-          retention-days: 7
       - run: pnpm db:migrations:plan
