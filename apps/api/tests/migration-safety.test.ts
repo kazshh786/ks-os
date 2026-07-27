@@ -16,7 +16,7 @@ test('migration safety rejects production and staging environments', () => {
       ...base,
       appEnvironment: environment,
       databaseUrl: 'postgresql://postgres:local@localhost:5432/postgres',
-    }), /Refusing migration apply/);
+    }), /Migration apply in (production|staging) requires APPLY_MIGRATIONS=1/);
   }
 });
 

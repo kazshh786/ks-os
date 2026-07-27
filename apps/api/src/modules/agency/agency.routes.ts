@@ -11,6 +11,7 @@ import { AgencyAuditService, AgencyService, type AgencyActor } from './agency.se
 import { GoCardlessWebhookService } from './gocardless.service.js';
 import { AgencyExportsService } from './agency-exports.service.js';
 import { AgencyBookingService } from './agency-booking.service.js';
+import { ManualTenantUserService } from './manual-tenant-user.service.js';
 
 const Id=z.object({id:z.string().uuid()}); const TenantId=z.object({tenantId:z.string().uuid()});
 const TenantUserId=TenantId.extend({userReference:z.string().uuid()});
@@ -22,6 +23,7 @@ function actor(request:FastifyRequest,capability?:Parameters<FastifyRequest['req
 
 export async function agencyRoutes(app:FastifyInstance){const service=new AgencyService();
   const agencyBooking = new AgencyBookingService();
+  const manualTenantUsers = new ManualTenantUserService();
   app.get('/session',{config:{rateLimit:{max:20,timeWindow:'1 minute'}}},async(request,reply)=>{
     if(!request.agencyAuth)return reply.code(401).send({success:false,error:{code:'AGENCY_UNAUTHENTICATED',message:'No valid agency session found.'}});
     const session=request.agencyAuth;return{success:true,data:{authenticated:true,context:'AGENCY',user:{email:session.email,displayName:session.displayName,role:session.role},mfa:{required:session.mfaRequired,assuranceLevel:session.assuranceLevel},capabilities:session.capabilities,expiresAt:session.expiresAt}};
@@ -46,6 +48,7 @@ export async function agencyRoutes(app:FastifyInstance){const service=new Agency
   app.get('/tenants',async r=>({data:await service.listTenants(),actor:actor(r,'tenants.read')}));
   app.post('/tenants/:tenantId/owner-invitations',{config:{rateLimit:{max:5,timeWindow:'15 minutes'}}},async(r,reply)=>{const{tenantId}=TenantId.parse(r.params);const body=z.object({email:z.string().email(),displayName:z.string().trim().min(1).max(255)}).strict().parse(r.body);return reply.code(201).send({data:await service.inviteTenantOwner(actor(r,'tenants.manage'),tenantId,body)});});
   app.get('/tenants/:tenantId/users',async r=>{const{tenantId}=TenantId.parse(r.params);return{data:await service.listTenantUsers(actor(r,'tenants.read'),tenantId)};});
+  app.post('/tenants/:tenantId/users',{config:{rateLimit:{max:10,timeWindow:'15 minutes'}}},async(r,reply)=>{const{tenantId}=TenantId.parse(r.params);const body=z.object({email:z.string().email(),displayName:z.string().trim().min(2).max(255),role:z.enum(['owner','staff']),bookingEnabled:z.boolean().optional()}).strict().parse(r.body);return reply.code(201).send({data:await manualTenantUsers.create(actor(r,'tenants.manage'),tenantId,body)});});
   app.post('/tenants/:tenantId/users/:userReference/suspend',async r=>{const{tenantId,userReference}=TenantUserId.parse(r.params);return{data:await service.setTenantUserStatus(actor(r,'tenants.manage'),tenantId,userReference,'SUSPENDED')};});
   app.post('/tenants/:tenantId/users/:userReference/reactivate',async r=>{const{tenantId,userReference}=TenantUserId.parse(r.params);return{data:await service.setTenantUserStatus(actor(r,'tenants.manage'),tenantId,userReference,'ACTIVE')};});
   app.post('/tenants/:tenantId/users/:userReference/revoke-sessions',{config:{rateLimit:{max:10,timeWindow:'5 minutes'}}},async(r,reply)=>{const{tenantId,userReference}=TenantUserId.parse(r.params);await service.revokeTenantUserSessions(actor(r,'tenants.manage'),tenantId,userReference);return reply.code(204).send();});

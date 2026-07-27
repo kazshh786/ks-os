@@ -87,15 +87,53 @@ export const AgencyCapabilityRoute: React.FC<{ capabilities: AgencyCapability[];
   return <>{children}</>;
 };
 
+export interface AgencyRequestError extends Error {
+  code?: string;
+  details?: unknown;
+  status?: number;
+  path?: string;
+  requestId?: string;
+}
+
 export async function agencyFetch(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers);
   if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   const response = await fetchWithAuth(`/api/v1/agency${path}`, { ...options, headers, authContext: 'AGENCY' });
-  const body = response.status === 204 ? null : await response.json();
+  const requestId = response.headers.get('x-request-id') || response.headers.get('x-correlation-id') || undefined;
+  const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+  const expectsJson = contentType.includes('application/json') || contentType.includes('+json');
+  let body: any = null;
+
+  if (response.status !== 204 && expectsJson) {
+    try {
+      body = await response.json();
+    } catch {
+      const parseError = new Error('The agency API returned an unreadable response. Please retry after the API deployment is checked.') as AgencyRequestError;
+      parseError.code = 'AGENCY_API_INVALID_RESPONSE';
+      parseError.status = response.status;
+      parseError.path = path;
+      parseError.requestId = requestId;
+      throw parseError;
+    }
+  } else if (response.status !== 204 && !expectsJson) {
+    // Consume the body so the browser can reuse the connection, but never expose
+    // an HTML proxy or SPA fallback response in the operator interface.
+    await response.text().catch(() => '');
+    const transportError = new Error(`The agency API is unavailable for this action (HTTP ${response.status}). The frontend and Fastify deployment may be out of sync.`) as AgencyRequestError;
+    transportError.code = 'AGENCY_API_UNAVAILABLE';
+    transportError.status = response.status;
+    transportError.path = path;
+    transportError.requestId = requestId;
+    throw transportError;
+  }
+
   if (!response.ok) {
-    const error = new Error(body?.error?.message || 'Agency request failed.') as Error & { code?: string; details?: unknown };
+    const error = new Error(body?.error?.message || 'Agency request failed.') as AgencyRequestError;
     error.code = body?.error?.code;
     error.details = body?.error?.details ?? body?.details;
+    error.status = response.status;
+    error.path = path;
+    error.requestId = requestId;
     throw error;
   }
   return body?.data ?? body;

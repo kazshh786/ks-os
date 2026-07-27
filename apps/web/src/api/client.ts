@@ -6,6 +6,15 @@ let defaultContextOverride: ApplicationContext | null = null;
 
 export type AuthenticatedRequestInit = RequestInit & { authContext?: ApplicationContext };
 
+const defaultProductionApiOrigin = 'https://api.kasimshah.com';
+
+function resolveApiUrl(url: string): string {
+  if (!url.startsWith('/api/')) return url;
+  const configuredOrigin = String(import.meta.env.VITE_API_ORIGIN || '').trim().replace(/\/$/, '');
+  const origin = configuredOrigin || (import.meta.env.PROD ? defaultProductionApiOrigin : '');
+  return origin ? new URL(url, `${origin}/`).toString() : url;
+}
+
 function requestContext(url: string, explicit?: ApplicationContext): ApplicationContext {
   if (explicit) return explicit;
   if (defaultContextOverride) return defaultContextOverride;
@@ -22,6 +31,7 @@ export function setDefaultAuthContextOverride(context: ApplicationContext | null
 export async function fetchWithAuth(url: string, options: AuthenticatedRequestInit = {}): Promise<Response> {
   const { authContext, ...fetchOptions } = options;
   const context = requestContext(url, authContext);
+  const requestUrl = resolveApiUrl(url);
   const getAccessToken = async (): Promise<string | null> => {
     // 1. Check current session
     const { data: { session }, error } = await supabase.auth.getSession();
@@ -42,7 +52,7 @@ export async function fetchWithAuth(url: string, options: AuthenticatedRequestIn
     }
     const supportToken = sessionStorage.getItem('ks-os-support-session');
     if (supportToken) headers.set('X-KS-Support-Session', supportToken);
-    return fetch(url, { ...fetchOptions, headers });
+    return fetch(requestUrl, { ...fetchOptions, headers });
   };
 
   let response = await makeRequest(token);
