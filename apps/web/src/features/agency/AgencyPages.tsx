@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { agencyFetch, useAgencyAuth } from './AgencyAuth';
+import { ManualTenantUserDialog } from './ManualTenantUserDialog';
 
 const money=(value:any,currency='GBP')=>new Intl.NumberFormat('en-GB',{style:'currency',currency,maximumFractionDigits:0}).format(Number(value||0)/100);
 const date=(value:any)=>value?new Date(value).toLocaleDateString('en-GB'):'—';
@@ -505,7 +506,7 @@ export const AgencyTenantDetailPageFixed: React.FC = () => {
       </Panel>
 
       {/* User Accounts Section */}
-      <AgencyTenantUsersPanel tenantId={tenantId!} onInviteRequest={() => setShowInviteModal(true)} />
+      <AgencyTenantUsersPanel tenantId={tenantId!} tenantName={d.tenant.name} onInviteRequest={() => setShowInviteModal(true)} />
 
       {/* Onboarding Workflow */}
       <Panel title="Client Onboarding Milestone Workflow">
@@ -642,45 +643,64 @@ export const AgencyTenantDetailPageFixed: React.FC = () => {
   );
 };
 
-const AgencyTenantUsersPanel: React.FC<{ tenantId: string; onInviteRequest?: () => void }> = ({ tenantId, onInviteRequest }) => {
-  const live = useLive<any[]>(() => agencyFetch(`/tenants/${tenantId}/users`).catch(() => []), [tenantId]);
+const AgencyTenantUsersPanel: React.FC<{ tenantId: string; tenantName: string; onInviteRequest?: () => void }> = ({ tenantId, tenantName, onInviteRequest }) => {
+  const live = useLive<any[]>(() => agencyFetch(`/tenants/${tenantId}/users`), [tenantId]);
+  const [manualOpen, setManualOpen] = useState(false);
 
   const command = async (id: string, action: 'suspend' | 'reactivate' | 'revoke-sessions') =>
     agencyFetch(`/tenants/${tenantId}/users/${id}/${action}`, { method: 'POST' })
       .then(live.reload)
       .catch(e => alert(e.message));
 
-  return (
+  return <>
     <Panel
       title="Business Account Access"
       action={
-        onInviteRequest ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onInviteRequest}
-            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-500"
+            onClick={() => setManualOpen(true)}
+            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500"
           >
-            + Invite Owner
+            + Add user manually
           </button>
-        ) : undefined
+          {onInviteRequest && (
+            <button
+              type="button"
+              onClick={onInviteRequest}
+              className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-500"
+            >
+              + Invite Owner
+            </button>
+          )}
+        </div>
       }
     >
-      <State loading={live.loading} error={null}>
+      <State loading={live.loading} error={live.error}>
         {!live.data || live.data.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/60 p-6 text-center">
             <p className="text-sm font-bold text-slate-300">No business accounts provisioned yet</p>
             <p className="mt-1 text-xs text-slate-500">
-              Invite the initial business owner to grant workspace login credentials.
+              Add a user directly without email, or invite the initial owner to complete setup by email.
             </p>
-            {onInviteRequest && (
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
               <button
                 type="button"
-                onClick={onInviteRequest}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-black text-white hover:bg-violet-500"
+                onClick={() => setManualOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white hover:bg-emerald-500"
               >
-                + Invite Initial Owner
+                + Add user manually
               </button>
-            )}
+              {onInviteRequest && (
+                <button
+                  type="button"
+                  onClick={onInviteRequest}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-black text-white hover:bg-violet-500"
+                >
+                  + Invite Initial Owner
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
@@ -697,12 +717,14 @@ const AgencyTenantUsersPanel: React.FC<{ tenantId: string; onInviteRequest?: () 
                   <Status value={user.role} />
                   <Status value={user.status} />
                   <button
+                    type="button"
                     onClick={() => command(user.id, user.status === 'SUSPENDED' ? 'reactivate' : 'suspend')}
                     className="rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:text-white"
                   >
                     {user.status === 'SUSPENDED' ? 'Reactivate' : 'Suspend'}
                   </button>
                   <button
+                    type="button"
                     onClick={() => command(user.id, 'revoke-sessions')}
                     className="rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:text-white"
                   >
@@ -715,7 +737,14 @@ const AgencyTenantUsersPanel: React.FC<{ tenantId: string; onInviteRequest?: () 
         )}
       </State>
     </Panel>
-  );
+    <ManualTenantUserDialog
+      open={manualOpen}
+      tenantId={tenantId}
+      tenantName={tenantName}
+      onClose={() => setManualOpen(false)}
+      onCreated={live.reload}
+    />
+  </>;
 };
 
 export const AgencyTenantDetailPage: React.FC = () => {
