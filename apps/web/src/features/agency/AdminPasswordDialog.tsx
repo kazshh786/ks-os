@@ -181,6 +181,7 @@ export const AdminPasswordDialog: React.FC<{
                 <input required minLength={12} maxLength={128} type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 pr-12 text-white" />
                 <button type="button" onClick={() => setShowPassword(value => !value)} className="absolute inset-y-0 right-0 grid w-11 place-items-center text-slate-400 hover:text-white" aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}</button>
               </span>
+              <small className="mt-1 block text-slate-500">12–128 characters with uppercase, lowercase, number and symbol.</small>
             </label>
 
             <label className="block text-sm text-slate-300">Confirm password
