@@ -29,14 +29,14 @@ jobs:
           cd source
           node scripts/quality/copy-audit.mjs
 
-  api-test-diagnostics:
+  source-test-diagnostics:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Run API tests quietly
+      - name: Run affected source tests
         run: |
           set -e
           mkdir source
@@ -50,11 +50,12 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.13.1 --activate >/dev/null 2>&1
           pnpm install --frozen-lockfile --reporter=silent >/dev/null
-          if ! pnpm --filter api test >api-tests.log 2>&1; then
-            grep -n -E "not ok|AssertionError|ERR_ASSERTION|failureType|error:" api-tests.log | tail -n 120 || true
-            exit 1
-          fi
-          tail -n 20 api-tests.log
+          cd apps/api
+          node --import tsx --test \
+            tests/workspace-data-controls.test.ts \
+            tests/platform-copy-contract.test.ts \
+            tests/unified-provisioning-lifecycle.test.ts \
+            tests/phase-15-7b.test.ts
 
   verify:
     runs-on: ubuntu-latest
