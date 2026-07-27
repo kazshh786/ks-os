@@ -29,7 +29,8 @@ BEGIN
       + (SELECT count(*) FROM internal_notifications WHERE tenant_id = p_tenant_id)
     ),
     'reviewInvitations', (SELECT count(*) FROM review_invitations WHERE tenant_id = p_tenant_id),
-    'waitlistEntries', (SELECT count(*) FROM waitlist WHERE tenant_id = p_tenant_id)
+    'waitlistEntries', (SELECT count(*) FROM waitlist WHERE tenant_id = p_tenant_id),
+    'generatedReports', (SELECT count(*) FROM report_export_jobs WHERE tenant_id = p_tenant_id)
   ) INTO result;
 
   CREATE TEMP TABLE ks_reset_tables(table_name text PRIMARY KEY) ON COMMIT DROP;
@@ -53,6 +54,8 @@ BEGIN
     ('internal_notifications'),
     ('loyalty_ledger'),
     ('operations_issues'),
+    ('report_export_jobs'),
+    ('report_schedule_runs'),
     ('review_invitations'),
     ('sms_outbox'),
     ('stripe_disputes'),
@@ -77,6 +80,12 @@ BEGIN
   END LOOP;
 
   BEGIN
+    UPDATE site_review_invitations
+    SET email_outbox_id = NULL
+    WHERE email_outbox_id IN (
+      SELECT id FROM email_outbox WHERE tenant_id = p_tenant_id
+    );
+
     DELETE FROM client_wallets
     WHERE client_id IN (SELECT id FROM clients WHERE tenant_id = p_tenant_id);
 
@@ -146,13 +155,7 @@ BEGIN
     'clients', (SELECT count(*) FROM clients WHERE tenant_id = p_tenant_id),
     'users', (SELECT count(*) FROM users WHERE tenant_id = p_tenant_id),
     'payments', (SELECT count(*) FROM checkout_transactions WHERE tenant_id = p_tenant_id),
-    'sites', (SELECT count(*) FROM sites WHERE tenant_id = p_tenant_id),
-    'tenantScopedRows', (
-      SELECT coalesce(sum(row_count), 0)
-      FROM (
-        SELECT 0::bigint AS row_count
-      ) seed
-    )
+    'sites', (SELECT count(*) FROM sites WHERE tenant_id = p_tenant_id)
   ) INTO result;
 
   UPDATE application_sessions
