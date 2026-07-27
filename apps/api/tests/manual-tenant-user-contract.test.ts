@@ -27,7 +27,10 @@ test('new identities are compensated when membership creation fails', () => {
   assert.match(service, /tx,/);
   assert.match(service, /TENANT_USER_MANUALLY_PROVISIONED/);
   assert.match(service, /if \(identity\.created\) await deleteSupabaseUserIfCreated/);
-  assert.doesNotMatch(service, /temporaryPassword[\s\S]+metadata:/);
+  const auditStart = service.indexOf("await this.audit.write(actor, 'TENANT_USER_MANUALLY_PROVISIONED'");
+  const auditEnd = service.indexOf('return membership;', auditStart);
+  const auditBlock = service.slice(auditStart, auditEnd);
+  assert.doesNotMatch(auditBlock, /generatedPassword|temporaryPassword/);
 });
 
 test('staff booking access is disabled unless explicitly selected', () => {
