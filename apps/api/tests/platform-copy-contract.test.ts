@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import test from 'node:test';
@@ -30,18 +30,31 @@ const rules = [
 ] as const;
 
 test('user-facing source follows the platform vocabulary contract', () => {
-  const violations: string[] = [];
+  const violations: Array<{ file: string; line: number; rule: string; found: string }> = [];
   for (const file of sourceFiles(webRoot)) {
     const source = readFileSync(file, 'utf8');
     for (const rule of rules) {
       rule.pattern.lastIndex = 0;
       for (const match of source.matchAll(rule.pattern)) {
         const line = source.slice(0, match.index).split('\n').length;
-        violations.push(`${path.relative(webRoot, file)}:${line} — ${rule.name} Found: ${JSON.stringify(match[0])}`);
+        violations.push({
+          file: path.relative(webRoot, file),
+          line,
+          rule: rule.name,
+          found: match[0],
+        });
       }
     }
   }
-  assert.deepEqual(violations, [], `UX writing violations:\n${violations.join('\n')}`);
+  writeFileSync(
+    path.resolve(process.cwd(), 'copy-violations.json'),
+    `${JSON.stringify({ generatedAt: new Date().toISOString(), violations }, null, 2)}\n`,
+  );
+  assert.deepEqual(
+    violations,
+    [],
+    `UX writing violations:\n${violations.map(item => `${item.file}:${item.line} — ${item.rule} Found: ${JSON.stringify(item.found)}`).join('\n')}`,
+  );
 });
 
 test('the writing standard covers actions, inputs, errors and empty states', () => {
