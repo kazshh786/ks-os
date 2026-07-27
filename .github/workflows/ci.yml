@@ -12,13 +12,22 @@ jobs:
   copy-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
       - name: Audit UX copy
-        run: node scripts/quality/copy-audit.mjs
+        run: |
+          set -e
+          mkdir source
+          curl --fail --silent --show-error --location \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/tarball/${SOURCE_SHA}" \
+            --output source.tar.gz
+          tar -xzf source.tar.gz --strip-components=1 -C source
+          cd source
+          node scripts/quality/copy-audit.mjs
 
   verify:
     runs-on: ubuntu-latest
