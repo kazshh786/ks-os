@@ -6,7 +6,6 @@ import {
   Building2,
   CalendarCheck2,
   CheckCircle2,
-  Circle,
   ExternalLink,
   Globe2,
   Loader2,
@@ -42,6 +41,9 @@ const tone: Record<string, string> = {
 
 const statusClass = (value?: string) => tone[value || 'NOT_STARTED'] || tone.IN_PROGRESS;
 const label = (value?: string) => (value || 'NOT_STARTED').replaceAll('_', ' ');
+const isRemovedWorkspace = (tenant: any) => tenant.lifecycleStatus === 'OFFBOARDED'
+  && tenant.name === 'Deleted workspace'
+  && String(tenant.subdomain || '').startsWith('deleted-');
 
 function Status({ value }: { value?: string }) {
   return <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${statusClass(value)}`}>{label(value)}</span>;
@@ -80,7 +82,7 @@ function ClientDeliveryDirectory({ onSelect }: { onSelect: (id: string) => void 
 
   useEffect(() => {
     void agencyFetch('/tenants')
-      .then((rows: any[]) => setTenants(rows.filter(row => row.lifecycleStatus !== 'DELETED')))
+      .then((rows: any[]) => setTenants(rows.filter(row => !isRemovedWorkspace(row))))
       .catch((cause: Error) => setError(cause.message))
       .finally(() => setLoading(false));
   }, []);
