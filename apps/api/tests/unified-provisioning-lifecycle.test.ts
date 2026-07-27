@@ -35,15 +35,17 @@ test('user removal is a guarded lifecycle action rather than destructive history
   assert.doesNotMatch(lifecycle, /delete\(users\)/);
 });
 
-test('unused workspace deletion is platform-owner-only, confirmed and retains an audit tombstone', () => {
+test('unused workspace deletion is platform-owner-only, confirmed and retains a valid audit tombstone', () => {
   assert.match(routes, /tenants\/:tenantReference\/deletion-preview/);
   assert.match(routes, /tenants\/:tenantReference\/delete-unused/);
   assert.match(lifecycle, /actor\.role !== 'PLATFORM_OWNER'/);
   assert.match(lifecycle, /confirmationName\.trim\(\) !== tenant\.name/);
   assert.match(lifecycle, /WORKSPACE_WAS_LAUNCHED/);
   assert.match(lifecycle, /PAYMENT_HISTORY_EXISTS/);
-  assert.match(lifecycle, /lifecycleStatus: 'DELETED'/);
+  assert.match(lifecycle, /lifecycleStatus: 'OFFBOARDED'/);
+  assert.match(lifecycle, /UNUSED_WORKSPACE_TOMBSTONE/);
   assert.match(lifecycle, /auditTombstoneRetained: true/);
+  assert.doesNotMatch(lifecycle, /lifecycleStatus: 'DELETED'/);
   assert.doesNotMatch(lifecycle, /delete\(tenants\)/);
 });
 
