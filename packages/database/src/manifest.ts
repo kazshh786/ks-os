@@ -185,4 +185,9 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     order: 36,
     description: 'Phase 15.7B controlled fact finding, locked production briefs, resumable unified workspace provisioning, and Site Studio readiness',
   },
+  {
+    filename: '20260727120000_race_safe_public_booking.sql',
+    order: 37,
+    description: 'Race-safe authoritative public booking creation with PostgreSQL advisory locking',
+  },
 ];
