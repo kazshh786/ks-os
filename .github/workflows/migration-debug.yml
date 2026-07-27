@@ -1,0 +1,49 @@
+name: Migration debug
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://postgres_debug:postgres_debug_password@127.0.0.1:5434/ks_os_migration_debug
+      APP_ENV: development
+      NODE_ENV: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.13.1 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --reporter=silent
+      - run: pnpm --filter @ks-os/database build
+      - name: Start PostgreSQL
+        run: |
+          docker pull postgres:17 >/dev/null 2>&1
+          docker run -d --name ks-os-migration-debug \
+            -e POSTGRES_USER=postgres_debug \
+            -e POSTGRES_PASSWORD=postgres_debug_password \
+            -e POSTGRES_DB=ks_os_migration_debug \
+            -p 5434:5432 postgres:17 >/dev/null
+          for attempt in $(seq 1 30); do
+            docker exec ks-os-migration-debug pg_isready -U postgres_debug -d ks_os_migration_debug >/dev/null 2>&1 && exit 0
+            sleep 1
+          done
+          exit 1
+      - name: Prepare database roles
+        run: |
+          docker exec ks-os-migration-debug psql -U postgres_debug -d ks_os_migration_debug -v ON_ERROR_STOP=1 -c "create role anon nologin" -c "create role authenticated nologin" -c "create role service_role nologin"
+      - name: Apply migrations
+        run: |
+          set +e
+          node scripts/database/migrate.mjs --apply --allow-non-prod-apply >migration-debug.log 2>&1
+          status=$?
+          cat migration-debug.log
+          exit $status
+      - name: Stop PostgreSQL
+        if: always()
+        run: docker rm -f ks-os-migration-debug >/dev/null 2>&1 || true
