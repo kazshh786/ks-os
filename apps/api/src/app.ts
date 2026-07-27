@@ -55,6 +55,7 @@ import { agencyFactFindingRoutes } from './modules/provisioning/fact-finding.rou
 import { agencyProvisioningRoutes } from './modules/provisioning/provisioning.routes.js';
 import { agencySiteStudioRoutes } from './modules/sites/site-studio.routes.js';
 import { agencySiteQualityRoutes } from './modules/sites/site-quality.routes.js';
+import { agencySitePublicationRoutes } from './modules/sites/site-publication.routes.js';
 import { agencyProductionBriefRoutes } from './modules/provisioning/production-brief.routes.js';
 
 export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => void } = {}) {
@@ -171,6 +172,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(agencyProvisioningRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencySiteStudioRoutes, { prefix: '/api/v1/agency/sites' });
   fastify.register(agencySiteQualityRoutes, { prefix: '/api/v1/agency/sites' });
+  fastify.register(agencySitePublicationRoutes, { prefix: '/api/v1/agency/sites' });
   fastify.register(agencyProductionBriefRoutes, { prefix: '/api/v1/agency' });
   fastify.register(goCardlessWebhookRoutes, { prefix: '/api/v1/webhooks/gocardless' });
   fastify.register(managedServiceTenantRoutes, { prefix: '/api/v1/managed-services' });

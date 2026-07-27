@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { agencyFetch } from './AgencyAuth';
 import { SiteQualityPanel } from './SiteQualityPanel';
+import { SitePublishingPanel } from './SitePublishingPanel';
 
 const pill = (value: string) => <span className="rounded-full border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] font-black">{String(value || 'NOT STARTED').replaceAll('_', ' ')}</span>;
 
@@ -69,6 +70,12 @@ export function SiteStudioPage() {
       siteReference={siteReference!}
       siteVersionReference={studio.version.reference}
       onOpenPage={setSelectedPage}
+    />
+
+    <SitePublishingPanel
+      siteReference={siteReference!}
+      publication={studio.publication}
+      onChanged={load}
     />
 
     <div className="grid gap-5 xl:grid-cols-[250px_1fr_330px]">

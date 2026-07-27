@@ -24,6 +24,16 @@ test(
       }
       authorizedRequestCount += 1;
       const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+      if (requestUrl.pathname === '/fixture-image.svg') {
+        response.writeHead(200, {
+          'cache-control': 'public, max-age=60',
+          'content-type': 'image/svg+xml',
+        });
+        response.end(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"></svg>',
+        );
+        return;
+      }
       const renderedPath = requestUrl.searchParams.get('path') ?? '/';
       const canonicalPath = renderedPath === '/' ? '' : renderedPath;
       response.writeHead(200, {
@@ -57,7 +67,7 @@ test(
               <a class="booking" href="/book">Book now</a>
               <a href="/services">Services</a>
               <img alt="A placeholder fixture" width="48" height="48"
-                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3C/svg%3E">
+                src="/fixture-image.svg">
             </main>
           </body>
         </html>`);
@@ -100,6 +110,7 @@ test(
       assert.equal(result.h1Count, 1);
       assert.equal(result.primaryBookingVisible, true);
       assert.equal(result.primaryBookingKeyboardReachable, true);
+      assert.equal(result.oversizedImageCount, 0);
       assert.deepEqual(result.brokenInternalLinks, []);
       assert.ok(result.structuredDataTypes.includes('LocalBusiness'));
       assert.equal(result.browserVersion, 'PLAYWRIGHT_1_62_AXE_4_12_1');

@@ -185,7 +185,11 @@ implements SiteQualityBrowserAdapter {
     const pageLoadMs = Date.now() - startedAt;
     const capturedAt = new Date();
     const keyboard = await inspectKeyboardJourney(page);
-    const documentResult = await page.evaluate((minimumTouchTargetPixels) => {
+    const documentResult = await page.evaluate((thresholds) => {
+      const {
+        minimumTouchTargetPixels,
+        maximumImageTransferBytes,
+      } = thresholds;
       const content = document.documentElement;
       const images = [...document.querySelectorAll('img')];
       const interactive = [...document.querySelectorAll<HTMLElement>(
@@ -281,7 +285,7 @@ implements SiteQualityBrowserAdapter {
             const resource = entry as PerformanceResourceTiming;
             return resource.initiatorType === 'img'
               && Math.max(resource.transferSize, resource.encodedBodySize)
-                > DEFAULT_SITE_QUALITY_POLICY.thresholds.maximumImageTransferBytes;
+                > maximumImageTransferBytes;
           }).length,
         horizontalOverflowPixels: Math.max(
           0,
@@ -303,7 +307,12 @@ implements SiteQualityBrowserAdapter {
             return total + Math.max(0, resource.transferSize || 0);
           }, 0),
       };
-    }, DEFAULT_SITE_QUALITY_POLICY.thresholds.minimumTouchTargetPixels);
+    }, {
+      minimumTouchTargetPixels:
+        DEFAULT_SITE_QUALITY_POLICY.thresholds.minimumTouchTargetPixels,
+      maximumImageTransferBytes:
+        DEFAULT_SITE_QUALITY_POLICY.thresholds.maximumImageTransferBytes,
+    });
 
     const accessibility = await page.evaluate(async () => {
       const engine = (window as unknown as {

@@ -200,4 +200,9 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     order: 39,
     description: 'Reconcile polymorphic Phase 15.8 quality child-scope validation without weakening ownership, digest, or parent-child guarantees',
   },
+  {
+    filename: '20260727130000_phase_15_9_site_publishing_domains.sql',
+    order: 40,
+    description: 'Phase 15.9 immutable publication pointers, governed hostnames, reviewed DNS operations, health evidence, cache invalidation, and rollback history',
+  },
 ];

@@ -12,6 +12,7 @@ import {
   siteQualityAuditSessions,
   siteQualityRuns,
   sitePages,
+  sitePublicationPointers,
   siteRenderSnapshots,
   siteReviewCycles,
   siteReviewParticipants,
@@ -117,6 +118,7 @@ export class DrizzlePublicSiteRepository implements PublicSiteRepository {
         siteReference: sites.publicReference,
         siteStatus: sites.status,
         domainStatus: siteDomains.status,
+        domainType: siteDomains.domainType,
       })
       .from(siteDomains)
       .innerJoin(sites, eq(siteDomains.siteId, sites.id))
@@ -128,7 +130,7 @@ export class DrizzlePublicSiteRepository implements PublicSiteRepository {
         siteReference: domain.siteReference,
         siteStatus: domain.siteStatus as SiteStatus,
         matchedHostname: hostname,
-        matchKind: 'CUSTOM' as const,
+        matchKind: domain.domainType === 'FALLBACK' ? 'FALLBACK' as const : 'CUSTOM' as const,
         domainStatus: domain.domainStatus === 'ACTIVE' ? 'ACTIVE' as const : 'INACTIVE' as const,
       };
     }
@@ -170,12 +172,16 @@ export class DrizzlePublicSiteRepository implements PublicSiteRepository {
         templateVersionReference: templateVersions.publicReference,
       })
       .from(siteRenderSnapshots)
+      .innerJoin(
+        sitePublicationPointers,
+        eq(sitePublicationPointers.activeSnapshotId, siteRenderSnapshots.id),
+      )
       .innerJoin(sites, eq(siteRenderSnapshots.siteId, sites.id))
       .innerJoin(siteVersions, eq(siteRenderSnapshots.siteVersionId, siteVersions.id))
       .innerJoin(templateVersions, eq(siteRenderSnapshots.templateVersionId, templateVersions.id))
       .where(and(
         eq(sites.publicReference, siteReference),
-        eq(siteRenderSnapshots.siteVersionId, sites.publishedVersionId),
+        eq(sitePublicationPointers.siteId, sites.id),
         eq(siteRenderSnapshots.snapshotKind, 'PUBLISHED'),
         eq(siteVersions.status, 'PUBLISHED'),
         eq(templateVersions.status, 'APPROVED'),

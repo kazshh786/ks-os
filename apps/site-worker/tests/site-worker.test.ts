@@ -52,6 +52,10 @@ const generationExecutorSource = readFileSync(
   new URL('../src/postgres-generation-executor.ts', import.meta.url),
   'utf8',
 );
+const publicationExecutorSource = readFileSync(
+  new URL('../src/postgres-publication-executor.ts', import.meta.url),
+  'utf8',
+);
 const compositionSource = readFileSync(
   new URL('../src/index.ts', import.meta.url),
   'utf8',
@@ -608,6 +612,17 @@ test('9. leasing uses row locking safely', () => {
   assert.match(postgresRepositorySource, /WITH candidate AS/);
 });
 
+test('9b. progress event JSON parameters have concrete Postgres types', () => {
+  assert.match(
+    postgresRepositorySource,
+    /'current',\s*\$\{progress\.current\}::integer/,
+  );
+  assert.match(
+    postgresRepositorySource,
+    /'total',\s*\$\{progress\.total\}::integer/,
+  );
+});
+
 test('10. lease owner is recorded', async () => {
   const repository = new MemorySiteJobRepository();
   repository.enqueue();
@@ -727,16 +742,25 @@ test('21. job handler registry returns known handlers', () => {
   assert.ok(createSiteJobHandlerRegistry(true).has('TEST_SUCCEED'));
 });
 
-test('21a. production registry exposes provisioning, generation and Phase 15.8 quality handlers', () => {
+test('21a. production registry exposes provisioning, generation, quality and Phase 15.9 publication handlers', () => {
   const registry = createSiteJobHandlerRegistry(false);
   assert.deepEqual(registry.list().map(handler => handler.jobType), [
+    'ACTIVATE_CUSTOM_DOMAIN',
+    'ACTIVATE_FALLBACK_DOMAIN',
+    'CONFIGURE_CUSTOM_DOMAIN_DNS',
+    'CREATE_CUSTOM_DOMAIN_PLAN',
+    'CREATE_SITE_PUBLICATION',
+    'DISCOVER_CUSTOM_DOMAIN_DNS',
     'EVALUATE_PUBLICATION_READINESS',
     'GENERATE_METADATA',
     'GENERATE_PAGE',
     'GENERATE_SITE',
     'GENERATE_STRUCTURED_DATA',
+    'INVALIDATE_SITE_CACHE',
     'PROVISION_WORKSPACE',
     'REGENERATE_SECTION',
+    'REMOVE_SITE_DOMAIN',
+    'ROLLBACK_SITE_PUBLICATION',
     'RUN_ACCESSIBILITY_AUDIT',
     'RUN_ASSET_READINESS_AUDIT',
     'RUN_BOOKING_INTEGRITY_AUDIT',
@@ -744,9 +768,22 @@ test('21a. production registry exposes provisioning, generation and Phase 15.8 q
     'RUN_CONVERSION_AUDIT',
     'RUN_FULL_SITE_QUALITY_AUDIT',
     'RUN_PERFORMANCE_AUDIT',
+    'RUN_PUBLICATION_HEALTH_CHECKS',
     'RUN_RESPONSIVE_UX_AUDIT',
     'RUN_TECHNICAL_SEO_AUDIT',
+    'SUSPEND_SITE_DOMAIN',
+    'VERIFY_CUSTOM_DOMAIN',
+    'VERIFY_NAMESERVER_DELEGATION',
   ]);
+});
+
+test('21b. publication snapshots and rollback evidence are committed atomically', () => {
+  assert.match(publicationExecutorSource, /candidate\.siteStatus = 'LIVE'/);
+  assert.match(publicationExecutorSource, /candidate\.versionStatus = 'PUBLISHED'/);
+  assert.match(publicationExecutorSource, /this\.database\.transaction/);
+  assert.match(publicationExecutorSource, /INSERT INTO site_rollback_events/);
+  assert.match(publicationExecutorSource, /requestedByAgencyUserReference/);
+  assert.match(publicationExecutorSource, /from_snapshot_id, to_snapshot_id/);
 });
 
 test('22. registry rejects arbitrary module paths', () => {

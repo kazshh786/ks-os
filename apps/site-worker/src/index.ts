@@ -13,6 +13,7 @@ import { createConfiguredSiteGenerationExecutor } from './postgres-generation-ex
 import { PostgresWorkspaceProvisioningExecutor } from './postgres-provisioning-executor.js';
 import { ProductionPlaywrightQualityAdapter } from './playwright-quality-adapter.js';
 import { PostgresSiteQualityExecutor } from './postgres-quality-executor.js';
+import { PostgresSitePublicationExecutor } from './postgres-publication-executor.js';
 import { SiteWorker } from './worker.js';
 
 export async function startSiteWorker(
@@ -40,6 +41,7 @@ export async function startSiteWorker(
     resolvedGenerationExecutor,
     new PostgresWorkspaceProvisioningExecutor(database, config.generation),
     qualityExecutor,
+    new PostgresSitePublicationExecutor(database),
   );
   const logger = new JsonSiteWorkerLogger(config.logLevel);
   const health = new SiteWorkerHealth(repository, registry);
@@ -115,6 +117,7 @@ export * from './postgres-repository.js';
 export * from './postgres-generation-executor.js';
 export * from './postgres-provisioning-executor.js';
 export * from './postgres-quality-executor.js';
+export * from './postgres-publication-executor.js';
 export * from './playwright-quality-adapter.js';
 export * from './provisioning-finalization.js';
 export * from './repository.types.js';

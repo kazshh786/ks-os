@@ -1,4 +1,35 @@
 import { z } from 'zod';
+import {
+  ActivateCustomDomainPayloadSchema,
+  ActivateFallbackDomainPayloadSchema,
+  ConfigureCustomDomainDnsPayloadSchema,
+  CreateCustomDomainPlanPayloadSchema,
+  CreateSitePublicationPayloadSchema,
+  DiscoverCustomDomainDnsPayloadSchema,
+  InvalidateSiteCachePayloadSchema,
+  RemoveSiteDomainPayloadSchema,
+  RollbackSitePublicationPayloadSchema,
+  RunPublicationHealthChecksPayloadSchema,
+  SuspendSiteDomainPayloadSchema,
+  VerifyCustomDomainPayloadSchema,
+  VerifyNameserverDelegationPayloadSchema,
+} from '@ks-os/site-publishing';
+
+export {
+  ActivateCustomDomainPayloadSchema,
+  ActivateFallbackDomainPayloadSchema,
+  ConfigureCustomDomainDnsPayloadSchema,
+  CreateCustomDomainPlanPayloadSchema,
+  CreateSitePublicationPayloadSchema,
+  DiscoverCustomDomainDnsPayloadSchema,
+  InvalidateSiteCachePayloadSchema,
+  RemoveSiteDomainPayloadSchema,
+  RollbackSitePublicationPayloadSchema,
+  RunPublicationHealthChecksPayloadSchema,
+  SuspendSiteDomainPayloadSchema,
+  VerifyCustomDomainPayloadSchema,
+  VerifyNameserverDelegationPayloadSchema,
+} from '@ks-os/site-publishing';
 
 export const SITE_JOB_PAYLOAD_SCHEMA_VERSION = 1 as const;
 
@@ -32,6 +63,19 @@ export const SiteJobTypeSchema = z.enum([
   'CHECK_BOOKING_LINKS',
   'GENERATE_MONTHLY_PAGE_OPPORTUNITIES',
   'GENERATE_MONTHLY_PAGE',
+  'CREATE_SITE_PUBLICATION',
+  'ACTIVATE_FALLBACK_DOMAIN',
+  'CREATE_CUSTOM_DOMAIN_PLAN',
+  'DISCOVER_CUSTOM_DOMAIN_DNS',
+  'VERIFY_NAMESERVER_DELEGATION',
+  'CONFIGURE_CUSTOM_DOMAIN_DNS',
+  'VERIFY_CUSTOM_DOMAIN',
+  'ACTIVATE_CUSTOM_DOMAIN',
+  'RUN_PUBLICATION_HEALTH_CHECKS',
+  'ROLLBACK_SITE_PUBLICATION',
+  'SUSPEND_SITE_DOMAIN',
+  'REMOVE_SITE_DOMAIN',
+  'INVALIDATE_SITE_CACHE',
 ]);
 export type SiteJobType = z.infer<typeof SiteJobTypeSchema>;
 
@@ -378,6 +422,19 @@ export const SiteJobPayloadSchema = z.discriminatedUnion('jobType', [
   CheckBookingLinksPayloadSchema,
   GenerateMonthlyPageOpportunitiesPayloadSchema,
   GenerateMonthlyPagePayloadSchema,
+  CreateSitePublicationPayloadSchema,
+  ActivateFallbackDomainPayloadSchema,
+  CreateCustomDomainPlanPayloadSchema,
+  DiscoverCustomDomainDnsPayloadSchema,
+  VerifyNameserverDelegationPayloadSchema,
+  ConfigureCustomDomainDnsPayloadSchema,
+  VerifyCustomDomainPayloadSchema,
+  ActivateCustomDomainPayloadSchema,
+  RunPublicationHealthChecksPayloadSchema,
+  RollbackSitePublicationPayloadSchema,
+  SuspendSiteDomainPayloadSchema,
+  RemoveSiteDomainPayloadSchema,
+  InvalidateSiteCachePayloadSchema,
   TestSucceedPayloadSchema,
   TestRetryableFailurePayloadSchema,
   TestTerminalFailurePayloadSchema,
