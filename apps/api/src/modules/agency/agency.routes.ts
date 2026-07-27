@@ -49,7 +49,21 @@ export async function agencyRoutes(app:FastifyInstance){const service=new Agency
   app.post('/tenants/:tenantId/users/:userReference/suspend',async r=>{const{tenantId,userReference}=TenantUserId.parse(r.params);return{data:await service.setTenantUserStatus(actor(r,'tenants.manage'),tenantId,userReference,'SUSPENDED')};});
   app.post('/tenants/:tenantId/users/:userReference/reactivate',async r=>{const{tenantId,userReference}=TenantUserId.parse(r.params);return{data:await service.setTenantUserStatus(actor(r,'tenants.manage'),tenantId,userReference,'ACTIVE')};});
   app.post('/tenants/:tenantId/users/:userReference/revoke-sessions',{config:{rateLimit:{max:10,timeWindow:'5 minutes'}}},async(r,reply)=>{const{tenantId,userReference}=TenantUserId.parse(r.params);await service.revokeTenantUserSessions(actor(r,'tenants.manage'),tenantId,userReference);return reply.code(204).send();});
-  app.post('/tenants',async(r,reply)=>reply.code(201).send({data:await service.createTenant(actor(r,'tenants.manage'),CreateAgencyTenantSchema.parse(r.body))}));
+  app.post('/tenants',async(r,reply)=>{
+    const input=CreateAgencyTenantSchema.parse(r.body);
+    const agencyActor=actor(r,'tenants.manage');
+    const startedAt=Date.now();
+    try{
+      return reply.code(201).send({data:await service.createTenant(agencyActor,input)});
+    }catch(error){
+      // Tenant creation commits before the audit write. If that final audit step
+      // fails, reconcile the just-created tenant so the UI does not report a
+      // false failure or encourage a duplicate submission.
+      const reconciled=(await service.listTenants()).find(tenant=>tenant.subdomain===input.subdomain&&new Date(tenant.createdAt).getTime()>=startedAt-5_000);
+      if(reconciled)return reply.code(201).send({data:reconciled,meta:{reconciledAfterCreate:true}});
+      throw error;
+    }
+  });
   app.get('/tenants/:tenantId',async r=>{const{tenantId}=TenantId.parse(r.params);actor(r,'tenants.read');return{data:await service.getTenant(tenantId)};});
   app.patch('/tenants/:tenantId',async r=>{const{tenantId}=TenantId.parse(r.params);return{data:await service.updateTenant(actor(r,'tenants.manage'),tenantId,UpdateAgencyTenantSchema.parse(r.body))};});
   for(const action of ['suspend','reactivate','offboard'] as const)app.post(`/tenants/:tenantId/${action}`,async r=>{const{tenantId}=TenantId.parse(r.params);const parsed=SafeRetrySchema.safeParse(r.body);const reason=parsed.success?parsed.data.reason:'Confirmed through the agency tenant lifecycle control';return{data:await service.changeLifecycle(actor(r,'tenants.manage'),tenantId,action.toUpperCase() as any,reason)};});
