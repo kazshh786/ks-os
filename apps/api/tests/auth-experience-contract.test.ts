@@ -18,10 +18,10 @@ test('B2B sign-in uses a responsive side-split shell that collapses cleanly on m
 
 test('business and agency sign-in use direct utility copy and familiar actions', () => {
   assert.match(tenantLogin, /Sign in to your business workspace/);
-  assert.match(tenantLogin, />Sign in</);
+  assert.match(tenantLogin, /'Sign in'/);
   assert.match(tenantLogin, /Forgot password\?/);
   assert.match(agencyLogin, /Sign in to the agency portal/);
-  assert.match(agencyLogin, />Sign in</);
+  assert.match(agencyLogin, /'Sign in'/);
   assert.match(agencyLogin, /Forgot password\?/);
   assert.match(agencyAuth, /export \{ AgencyLoginPage \} from '\.\/AgencyLoginPage\.js'/);
   assert.doesNotMatch(tenantLogin + agencyLogin, /onPaste=/);
