@@ -29,6 +29,82 @@ jobs:
           cd source
           node scripts/quality/copy-audit.mjs
 
+  migration-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres_smoke
+          POSTGRES_PASSWORD: postgres_smoke_password
+          POSTGRES_DB: ks_os_migration_smoke
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres_smoke:postgres_smoke_password@127.0.0.1:5433/ks_os_migration_smoke
+      APP_ENV: development
+      NODE_ENV: development
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.13.1 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ks-os/database build
+      - name: Apply complete migration history
+        run: node scripts/database/migrate.mjs --apply --allow-non-prod-apply
+      - name: Exercise workspace data functions
+        run: |
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+
+          const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+          await client.connect();
+          try {
+            const resetWorkspace = await client.query(
+              `insert into tenants (name, subdomain) values ($1, $2) returning id`,
+              ['Migration reset smoke', `reset-smoke-${Date.now()}`],
+            );
+            const resetId = resetWorkspace.rows[0].id;
+            const reset = await client.query(
+              `select public.ks_reset_tenant_test_data($1::uuid) as result`,
+              [resetId],
+            );
+            if (reset.rows[0]?.result?.reset !== true) {
+              throw new Error('Reset function did not return a successful result.');
+            }
+
+            const deleteWorkspace = await client.query(
+              `insert into tenants (name, subdomain) values ($1, $2) returning id`,
+              ['Migration delete smoke', `delete-smoke-${Date.now()}`],
+            );
+            const deleteId = deleteWorkspace.rows[0].id;
+            const deleted = await client.query(
+              `select public.ks_hard_delete_tenant_workspace($1::uuid) as result`,
+              [deleteId],
+            );
+            if (deleted.rows[0]?.result?.deleted !== true) {
+              throw new Error('Hard-delete function did not return a successful result.');
+            }
+            const remaining = await client.query(`select count(*)::int as count from tenants where id = $1`, [deleteId]);
+            if (remaining.rows[0].count !== 0) {
+              throw new Error('Hard-delete function left the workspace row behind.');
+            }
+          } finally {
+            await client.end();
+          }
+          NODE
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
