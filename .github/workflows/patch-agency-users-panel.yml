@@ -1,0 +1,152 @@
+name: Patch agency user panel
+on:
+  push:
+    branches: [agent/fix-agency-controls-manual-users]
+    paths:
+      - '.github/workflows/patch-agency-users-panel.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-agency-controls-manual-users
+      - name: Patch the client user panel
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('apps/web/src/features/agency/AgencyPages.tsx')
+          source = path.read_text()
+          source = source.replace(
+              "import { agencyFetch, useAgencyAuth } from './AgencyAuth';",
+              "import { agencyFetch, useAgencyAuth } from './AgencyAuth';\nimport { ManualTenantUserDialog } from './ManualTenantUserDialog';",
+          )
+          source = source.replace(
+              '<AgencyTenantUsersPanel tenantId={tenantId!} onInviteRequest={() => setShowInviteModal(true)} />',
+              '<AgencyTenantUsersPanel tenantId={tenantId!} tenantName={d.tenant.name} onInviteRequest={() => setShowInviteModal(true)} />',
+          )
+
+          replacement = r'''const AgencyTenantUsersPanel: React.FC<{ tenantId: string; tenantName: string; onInviteRequest?: () => void }> = ({ tenantId, tenantName, onInviteRequest }) => {
+            const live = useLive<any[]>(() => agencyFetch(`/tenants/${tenantId}/users`), [tenantId]);
+            const [manualOpen, setManualOpen] = useState(false);
+
+            const command = async (id: string, action: 'suspend' | 'reactivate' | 'revoke-sessions') =>
+              agencyFetch(`/tenants/${tenantId}/users/${id}/${action}`, { method: 'POST' })
+                .then(live.reload)
+                .catch(e => alert(e.message));
+
+            return <>
+              <Panel
+                title="Business Account Access"
+                action={
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setManualOpen(true)}
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500"
+                    >
+                      + Add user manually
+                    </button>
+                    {onInviteRequest && (
+                      <button
+                        type="button"
+                        onClick={onInviteRequest}
+                        className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-500"
+                      >
+                        + Invite Owner
+                      </button>
+                    )}
+                  </div>
+                }
+              >
+                <State loading={live.loading} error={live.error}>
+                  {!live.data || live.data.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/60 p-6 text-center">
+                      <p className="text-sm font-bold text-slate-300">No business accounts provisioned yet</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Add a user directly without email, or invite the initial owner to complete setup by email.
+                      </p>
+                      <div className="mt-4 flex flex-wrap justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setManualOpen(true)}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white hover:bg-emerald-500"
+                        >
+                          + Add user manually
+                        </button>
+                        {onInviteRequest && (
+                          <button
+                            type="button"
+                            onClick={onInviteRequest}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-black text-white hover:bg-violet-500"
+                          >
+                            + Invite Initial Owner
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {live.data.map(user => (
+                        <div
+                          key={user.id}
+                          className="flex flex-col gap-3 rounded-xl bg-slate-950 p-3.5 text-sm md:flex-row md:items-center md:justify-between"
+                        >
+                          <div>
+                            <strong className="text-white font-bold">{user.displayName}</strong>
+                            <small className="block text-xs text-slate-500">{user.email}</small>
+                          </div>
+                          <span className="flex flex-wrap items-center gap-2">
+                            <Status value={user.role} />
+                            <Status value={user.status} />
+                            <button
+                              type="button"
+                              onClick={() => command(user.id, user.status === 'SUSPENDED' ? 'reactivate' : 'suspend')}
+                              className="rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:text-white"
+                            >
+                              {user.status === 'SUSPENDED' ? 'Reactivate' : 'Suspend'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => command(user.id, 'revoke-sessions')}
+                              className="rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:text-white"
+                            >
+                              Revoke sessions
+                            </button>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </State>
+              </Panel>
+              <ManualTenantUserDialog
+                open={manualOpen}
+                tenantId={tenantId}
+                tenantName={tenantName}
+                onClose={() => setManualOpen(false)}
+                onCreated={live.reload}
+              />
+            </>;
+          };
+
+          export const AgencyTenantDetailPage'''
+
+          pattern = r"const AgencyTenantUsersPanel: React\.FC<\{ tenantId: string; onInviteRequest\?: \(\) => void \}> = \(\{ tenantId, onInviteRequest \}\) => \{.*?\n\};\n\nexport const AgencyTenantDetailPage"
+          source, count = re.subn(pattern, replacement, source, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit(f'Expected to patch one AgencyTenantUsersPanel block, patched {count}')
+          path.write_text(source)
+          PY
+      - name: Commit focused patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/features/agency/AgencyPages.tsx
+          git diff --cached --check
+          git commit -m "fix: expose manual users in client workstation"
+          git push origin HEAD:agent/fix-agency-controls-manual-users
