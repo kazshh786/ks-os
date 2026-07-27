@@ -1,0 +1,32 @@
+name: Agency controls validation
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/lib/supabase-admin.ts'
+      - 'apps/api/src/modules/agency/**'
+      - 'apps/web/src/api/client.ts'
+      - 'apps/web/src/features/agency/**'
+      - 'apps/web/src/layouts/AgencyLayout.tsx'
+      - '.github/workflows/agency-controls-validation.yml'
+permissions:
+  contents: read
+concurrency:
+  group: agency-controls-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.13.1 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter api build
+      - run: pnpm --filter api typecheck
+      - run: pnpm --filter web build
+      - run: pnpm --filter web typecheck
