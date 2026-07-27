@@ -1,0 +1,166 @@
+import { and, desc, eq, or, sql } from 'drizzle-orm';
+import {
+  getDatabase,
+  locations,
+  platformPlans,
+  platformPlanVersions,
+  productionBriefs,
+  provisioningDrafts,
+  provisioningRuns,
+  services,
+  sites,
+  templateSources,
+  templateVersions,
+  tenantPlanAssignments,
+  tenants,
+  users,
+} from '@ks-os/database';
+import { ProvisioningService } from './provisioning.service.js';
+
+const fail = (statusCode: number, code: string, message: string) =>
+  Object.assign(new Error(message), { statusCode, code });
+
+const record = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
+function labels(value: unknown): string[] {
+  const source = Array.isArray(value) ? value : [];
+  const output: string[] = [];
+  const visit = (item: unknown) => {
+    if (typeof item === 'string' && item.trim()) output.push(item.trim());
+    else if (Array.isArray(item)) item.forEach(visit);
+    else if (item && typeof item === 'object') {
+      const row = item as Record<string, unknown>;
+      for (const key of ['name', 'label', 'value', 'text']) {
+        if (typeof row[key] === 'string' && String(row[key]).trim()) {
+          output.push(String(row[key]).trim());
+          return;
+        }
+      }
+    }
+  };
+  source.forEach(visit);
+  return [...new Set(output)];
+}
+
+export class DeliveryContextService {
+  private readonly provisioning: ProvisioningService;
+
+  constructor(private readonly db = getDatabase()) {
+    this.provisioning = new ProvisioningService(db);
+  }
+
+  async get(tenantReference: string) {
+    const [tenant] = await this.db.select({
+      id: tenants.id,
+      agencyReference: tenants.agencyReference,
+      businessReference: tenants.businessReference,
+      name: tenants.name,
+      subdomain: tenants.subdomain,
+      lifecycleStatus: tenants.lifecycleStatus,
+      timezone: tenants.timezone,
+      currency: tenants.currency,
+      launchedAt: tenants.launchedAt,
+    }).from(tenants).where(or(
+      eq(tenants.id, tenantReference),
+      eq(tenants.agencyReference, tenantReference),
+      eq(tenants.businessReference, tenantReference),
+    )).limit(1);
+
+    const removed = tenant
+      && tenant.lifecycleStatus === 'OFFBOARDED'
+      && tenant.name === 'Deleted workspace'
+      && tenant.subdomain.startsWith('deleted-');
+    if (!tenant || removed) {
+      throw fail(404, 'TENANT_NOT_FOUND', 'The client workspace was not found.');
+    }
+
+    const [planRows, briefRows, templateRows, draftRows, runRows, siteRows, canonical] = await Promise.all([
+      this.db.select({
+        versionReference: platformPlanVersions.id,
+        key: platformPlans.key,
+        name: platformPlanVersions.name,
+        version: platformPlanVersions.version,
+        currency: platformPlanVersions.currency,
+        monthlyPriceMinor: platformPlanVersions.monthlyPriceMinor,
+      }).from(tenantPlanAssignments)
+        .innerJoin(platformPlanVersions, eq(tenantPlanAssignments.planVersionId, platformPlanVersions.id))
+        .innerJoin(platformPlans, eq(platformPlanVersions.planId, platformPlans.id))
+        .where(and(eq(tenantPlanAssignments.tenantId, tenant.id), eq(tenantPlanAssignments.status, 'ACTIVE')))
+        .orderBy(desc(tenantPlanAssignments.startsAt)).limit(1),
+      this.db.select({
+        reference: productionBriefs.publicReference,
+        version: productionBriefs.briefVersion,
+        status: productionBriefs.status,
+        readiness: productionBriefs.readinessJson,
+        brief: productionBriefs.briefJson,
+        createdAt: productionBriefs.createdAt,
+      }).from(productionBriefs).where(eq(productionBriefs.tenantId, tenant.id))
+        .orderBy(desc(productionBriefs.briefVersion), desc(productionBriefs.createdAt)).limit(1),
+      this.db.select({
+        reference: templateVersions.publicReference,
+        version: templateVersions.versionNumber,
+        sourceName: templateSources.name,
+        sourceType: templateSources.sourceType,
+      }).from(templateVersions)
+        .innerJoin(templateSources, eq(templateVersions.templateSourceId, templateSources.id))
+        .where(and(eq(templateVersions.status, 'APPROVED'), eq(templateVersions.analysisStatus, 'APPROVED')))
+        .orderBy(desc(templateVersions.createdAt)).limit(50),
+      this.db.select({ reference: provisioningDrafts.publicReference })
+        .from(provisioningDrafts).where(eq(provisioningDrafts.tenantId, tenant.id))
+        .orderBy(desc(provisioningDrafts.createdAt)).limit(1),
+      this.db.select({ reference: provisioningRuns.publicReference })
+        .from(provisioningRuns).where(eq(provisioningRuns.tenantId, tenant.id))
+        .orderBy(desc(provisioningRuns.createdAt)).limit(1),
+      this.db.select({ reference: sites.publicReference, status: sites.status })
+        .from(sites).where(eq(sites.tenantId, tenant.id)).orderBy(desc(sites.createdAt)).limit(1),
+      Promise.all([
+        this.db.select({ count: sql<number>`count(*)::int` }).from(services).where(and(eq(services.tenantId, tenant.id), eq(services.isActive, true))),
+        this.db.select({ count: sql<number>`count(*)::int` }).from(locations).where(and(eq(locations.tenantId, tenant.id), eq(locations.isActive, true))),
+        this.db.select({ count: sql<number>`count(*)::int` }).from(users).where(and(eq(users.tenantId, tenant.id), eq(users.accountStatus, 'ACTIVE'))),
+      ]),
+    ]);
+
+    const brief = briefRows[0] || null;
+    const verifiedFacts = record(record(brief?.brief).verifiedFacts);
+    const draft = draftRows[0] ? await this.provisioning.getDraft(draftRows[0].reference) : null;
+    const run = runRows[0] ? await this.provisioning.getRun(runRows[0].reference) : null;
+    const readiness = await this.provisioning.readiness(tenant.agencyReference);
+
+    return {
+      tenant,
+      plan: planRows[0] || null,
+      productionBrief: brief ? {
+        reference: brief.reference,
+        version: brief.version,
+        status: brief.status,
+        readyForProvisioning: record(brief.readiness).readyForProvisioning === true,
+      } : null,
+      approvedTemplates: templateRows.map(item => ({
+        ...item,
+        label: `${item.sourceName} · version ${item.version}`,
+      })),
+      draft,
+      run,
+      site: siteRows[0] || null,
+      readiness,
+      sourcePreview: {
+        services: labels(verifiedFacts['SERVICE.NAME']),
+        locations: labels(verifiedFacts['LOCATION.NAME']),
+        staff: labels(verifiedFacts['STAFF.NAME']),
+        hasAvailability: Boolean(
+          (Array.isArray(verifiedFacts['STAFF.AVAILABILITY']) && verifiedFacts['STAFF.AVAILABILITY'].length)
+          || (Array.isArray(verifiedFacts['LOCATION.OPENING_HOURS']) && verifiedFacts['LOCATION.OPENING_HOURS'].length)
+        ),
+        hasBookingRules: Object.keys(verifiedFacts).some(key => key.startsWith('BOOKING.')),
+      },
+      canonical: {
+        serviceCount: Number(canonical[0][0]?.count || 0),
+        locationCount: Number(canonical[1][0]?.count || 0),
+        activeUserCount: Number(canonical[2][0]?.count || 0),
+      },
+    };
+  }
+}
