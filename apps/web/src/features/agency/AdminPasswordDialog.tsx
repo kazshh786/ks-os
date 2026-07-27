@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Eye, EyeOff, KeyRound, Mail } from 'lucide-react';
+import { CheckCircle2, Circle, Eye, EyeOff, KeyRound, Mail } from 'lucide-react';
 import { agencyFetch } from './AgencyAuth';
 
 type PasswordScope = 'AGENCY' | 'TENANT';
@@ -34,14 +34,18 @@ export const AdminPasswordDialog: React.FC<{
   const contextLabel = scope === 'TENANT' ? tenantName || 'this business' : 'the agency portal';
   const usersPath = scope === 'TENANT' ? `/tenants/${tenantId}/users` : '/users';
 
-  const passwordValid = useMemo(() => (
-    password.length >= 12
-    && password.length <= 128
-    && /[a-z]/.test(password)
-    && /[A-Z]/.test(password)
-    && /\d/.test(password)
-    && /[^A-Za-z0-9]/.test(password)
-  ), [password]);
+  const validationRules = useMemo(() => [
+    { key: 'length', label: '12–128 characters', met: password.length >= 12 && password.length <= 128 },
+    { key: 'lowercase', label: 'At least one lowercase letter', met: /[a-z]/.test(password) },
+    { key: 'uppercase', label: 'At least one uppercase letter', met: /[A-Z]/.test(password) },
+    { key: 'number', label: 'At least one number', met: /\d/.test(password) },
+    { key: 'symbol', label: 'At least one symbol', met: /[^A-Za-z0-9]/.test(password) },
+    { key: 'match', label: 'Both password fields match', met: password.length > 0 && password === confirmPassword },
+    { key: 'reason', label: 'Administrative reason is at least 20 characters', met: reason.trim().length >= 20 },
+  ], [password, confirmPassword, reason]);
+  const completedRuleCount = validationRules.filter(rule => rule.met).length;
+  const passwordValid = validationRules.slice(0, 5).every(rule => rule.met);
+  const formReady = selectedUser !== null && validationRules.every(rule => rule.met) && busy === null;
 
   useEffect(() => {
     if (!open) return;
@@ -77,11 +81,15 @@ export const AdminPasswordDialog: React.FC<{
     event.preventDefault();
     if (!selectedUser || busy) return;
     if (!passwordValid) {
-      setError('Use 12–128 characters with uppercase, lowercase, number and symbol.');
+      setError('Complete every password requirement shown below.');
       return;
     }
     if (password !== confirmPassword) {
       setError('The password confirmation does not match.');
+      return;
+    }
+    if (reason.trim().length < 20) {
+      setError('Add an administrative reason of at least 20 characters.');
       return;
     }
     setBusy(selectedUser.id);
@@ -182,10 +190,26 @@ export const AdminPasswordDialog: React.FC<{
 
             <label className="block text-sm text-slate-300">Administrative reason
               <textarea required minLength={20} maxLength={500} rows={3} value={reason} onChange={event => setReason(event.target.value)} placeholder="Explain why direct password administration is required." className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-white" />
-              <small className="mt-1 block text-slate-500">The reason is written to the append-only security audit. The password is not.</small>
+              <small className="mt-1 flex items-center justify-between gap-3 text-slate-500"><span>The reason is written to the append-only security audit. The password is not.</span><span className={reason.trim().length >= 20 ? 'text-emerald-400' : ''}>{reason.trim().length}/20 minimum</span></small>
             </label>
 
-            <button disabled={busy !== null || !passwordValid || password !== confirmPassword || reason.trim().length < 20} className="w-full rounded-xl bg-violet-600 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{busy === selectedUser.id ? 'Changing password…' : 'Change password and revoke sessions'}</button>
+            <div aria-label="Password change requirements" className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-black uppercase tracking-wide text-slate-300">Complete every requirement</p>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${completedRuleCount === validationRules.length ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{completedRuleCount}/{validationRules.length}</span>
+              </div>
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {validationRules.map(rule => <li key={rule.key} className={`flex items-start gap-2 text-xs ${rule.met ? 'text-emerald-300' : 'text-slate-500'}`}>
+                  {rule.met ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
+                  <span>{rule.label}</span>
+                </li>)}
+              </ul>
+              <p className={`mt-3 text-xs font-bold ${formReady ? 'text-emerald-300' : 'text-slate-500'}`}>
+                {formReady ? 'Ready to change the password and revoke sessions.' : 'The action button becomes available when every item above is complete.'}
+              </p>
+            </div>
+
+            <button disabled={!formReady} className="w-full rounded-xl bg-violet-600 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">{busy === selectedUser.id ? 'Changing password…' : 'Change password and revoke sessions'}</button>
 
             {scope === 'TENANT' && <button type="button" disabled={busy !== null || selectedUser.status !== 'ACTIVE'} onClick={() => void sendRecovery(selectedUser)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 px-5 py-3 text-xs font-bold text-slate-300 disabled:opacity-50"><Mail className="h-4 w-4" aria-hidden="true" />{busy === selectedUser.id ? 'Working…' : 'Send recovery email instead'}</button>}
           </form> : <div className="grid min-h-56 place-items-center rounded-2xl border border-dashed border-slate-800 bg-slate-950 p-6 text-center text-sm text-slate-500">Select a user to enter a new password.</div>}
