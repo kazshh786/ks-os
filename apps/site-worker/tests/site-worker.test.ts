@@ -727,15 +727,25 @@ test('21. job handler registry returns known handlers', () => {
   assert.ok(createSiteJobHandlerRegistry(true).has('TEST_SUCCEED'));
 });
 
-test('21a. production registry exposes only the five Phase 15.6C handlers and Phase 15.7B provisioning', () => {
+test('21a. production registry exposes provisioning, generation and Phase 15.8 quality handlers', () => {
   const registry = createSiteJobHandlerRegistry(false);
   assert.deepEqual(registry.list().map(handler => handler.jobType), [
+    'EVALUATE_PUBLICATION_READINESS',
     'GENERATE_METADATA',
     'GENERATE_PAGE',
     'GENERATE_SITE',
     'GENERATE_STRUCTURED_DATA',
     'PROVISION_WORKSPACE',
     'REGENERATE_SECTION',
+    'RUN_ACCESSIBILITY_AUDIT',
+    'RUN_ASSET_READINESS_AUDIT',
+    'RUN_BOOKING_INTEGRITY_AUDIT',
+    'RUN_CONTENT_INTEGRITY_AUDIT',
+    'RUN_CONVERSION_AUDIT',
+    'RUN_FULL_SITE_QUALITY_AUDIT',
+    'RUN_PERFORMANCE_AUDIT',
+    'RUN_RESPONSIVE_UX_AUDIT',
+    'RUN_TECHNICAL_SEO_AUDIT',
   ]);
 });
 
@@ -1192,6 +1202,36 @@ test('67a. enabled AI generation requires server-side provider configuration', (
   assert.match(generationExecutorSource, /class PostgresSiteGenerationExecutor/);
   assert.match(generationExecutorSource, /executeStructuredSiteGeneration/);
   assert.doesNotMatch(generationExecutorSource, /console\.|rawPrompt|rawResponse/);
+});
+
+test('67aa. quality browser configuration is explicit and fail-closed', () => {
+  assert.throws(() => parseSiteWorkerConfig({
+    DATABASE_URL: 'postgresql://test.invalid/test',
+    SITE_QUALITY_BROWSER_ENABLED: 'true',
+  }), /requires the site-quality worker/);
+  assert.throws(() => parseSiteWorkerConfig({
+    DATABASE_URL: 'postgresql://test.invalid/test',
+    SITE_QUALITY_ENABLED: 'true',
+    SITE_QUALITY_BROWSER_ENABLED: 'true',
+  }), /preview origin and preview-token secret/);
+  const quality = parseSiteWorkerConfig({
+    DATABASE_URL: 'postgresql://test.invalid/test',
+    SITE_QUALITY_ENABLED: 'true',
+    SITE_QUALITY_BROWSER_ENABLED: 'true',
+    SITE_QUALITY_PREVIEW_ORIGIN: 'https://preview.example.test/',
+    SITE_PREVIEW_TOKEN_SECRET: 'a-quality-preview-secret-that-is-at-least-32-characters',
+  }).quality;
+  assert.equal(quality.enabled, true);
+  assert.equal(quality.browserEnabled, true);
+  assert.equal(quality.previewOrigin, 'https://preview.example.test');
+  assert.equal(quality.browserConcurrency, 2);
+});
+
+test('67ab. live AI quality review remains disabled without a configured provider', () => {
+  assert.throws(() => parseSiteWorkerConfig({
+    DATABASE_URL: 'postgresql://test.invalid/test',
+    SITE_QUALITY_AI_ENABLED: 'true',
+  }), /must remain disabled/);
 });
 
 test('67b. controlled regeneration advances the linked review revision', () => {

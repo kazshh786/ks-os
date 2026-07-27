@@ -19,9 +19,13 @@
     "@ks-os/site-generation": "workspace:*",
     "@ks-os/site-jobs": "workspace:*",
     "@ks-os/site-knowledge": "workspace:*",
+    "@ks-os/site-quality": "workspace:*",
+    "@ks-os/site-review": "workspace:*",
     "@ks-os/site-schema": "workspace:*",
     "@ks-os/workspace-provisioning": "workspace:*",
+    "axe-core": "4.12.1",
     "drizzle-orm": "^0.45.2",
+    "playwright": "1.62.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

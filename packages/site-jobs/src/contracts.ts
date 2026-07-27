@@ -17,6 +17,14 @@ export const SiteJobTypeSchema = z.enum([
   'RUN_UX_AUDIT',
   'RUN_ACCESSIBILITY_AUDIT',
   'RUN_CONVERSION_AUDIT',
+  'RUN_FULL_SITE_QUALITY_AUDIT',
+  'RUN_TECHNICAL_SEO_AUDIT',
+  'RUN_RESPONSIVE_UX_AUDIT',
+  'RUN_BOOKING_INTEGRITY_AUDIT',
+  'RUN_PERFORMANCE_AUDIT',
+  'RUN_CONTENT_INTEGRITY_AUDIT',
+  'RUN_ASSET_READINESS_AUDIT',
+  'EVALUATE_PUBLICATION_READINESS',
   'CREATE_SITE_SNAPSHOT',
   'PREPARE_PUBLICATION',
   'VERIFY_DOMAIN',
@@ -214,6 +222,71 @@ export const RunConversionAuditPayloadSchema = z.object({
   ...AuditPayloadFields,
 }).strict();
 
+const QualityAuditReasonSchema = z.enum([
+  'PRE_INTERNAL_REVIEW',
+  'PRE_CLIENT_REVIEW',
+  'PRE_PUBLICATION',
+  'MANUAL_RECHECK',
+  'POST_REMEDIATION',
+]);
+const QualityAuditPayloadFields = {
+  siteReference: PublicReferenceSchema,
+  siteVersionReference: PublicReferenceSchema,
+  qualityRunReference: PublicReferenceSchema,
+  requestedByAgencyUserReference: PublicReferenceSchema,
+  reason: QualityAuditReasonSchema,
+};
+
+export const RunFullSiteQualityAuditPayloadSchema = z.object({
+  jobType: z.literal('RUN_FULL_SITE_QUALITY_AUDIT'),
+  ...QualityAuditPayloadFields,
+}).strict();
+
+export const RunTechnicalSeoAuditPayloadSchema = z.object({
+  jobType: z.literal('RUN_TECHNICAL_SEO_AUDIT'),
+  ...QualityAuditPayloadFields,
+}).strict();
+
+export const RunPhase158AccessibilityAuditPayloadSchema = z.object({
+  jobType: z.literal('RUN_ACCESSIBILITY_AUDIT'),
+  ...QualityAuditPayloadFields,
+}).strict();
+
+export const RunResponsiveUxAuditPayloadSchema = z.object({
+  jobType: z.literal('RUN_RESPONSIVE_UX_AUDIT'),
+  ...QualityAuditPayloadFields,
+}).strict();
+
+export const RunPhase158ConversionAuditPayloadSchema = z.object({
+  jobType: z.literal('RUN_CONVERSION_AUDIT'),
+  ...QualityAuditPayloadFields,
+}).strict();
+
+export const RunBookingIntegrityAuditPayloadSchema = z.object({
+  jobType: z.literal('RUN_BOOKING_INTEGRITY_AUDIT'),
+  ...QualityAuditPayloadFields,
+}).strict();
+
+export const RunPerformanceAuditPayloadSchema = z.object({
+  jobType: z.literal('RUN_PERFORMANCE_AUDIT'),
+  ...QualityAuditPayloadFields,
+}).strict();
+
+export const RunContentIntegrityAuditPayloadSchema = z.object({
+  jobType: z.literal('RUN_CONTENT_INTEGRITY_AUDIT'),
+  ...QualityAuditPayloadFields,
+}).strict();
+
+export const RunAssetReadinessAuditPayloadSchema = z.object({
+  jobType: z.literal('RUN_ASSET_READINESS_AUDIT'),
+  ...QualityAuditPayloadFields,
+}).strict();
+
+export const EvaluatePublicationReadinessPayloadSchema = z.object({
+  jobType: z.literal('EVALUATE_PUBLICATION_READINESS'),
+  ...QualityAuditPayloadFields,
+}).strict();
+
 export const CreateSiteSnapshotPayloadSchema = VersionPayloadBase.extend({
   jobType: z.literal('CREATE_SITE_SNAPSHOT'),
   snapshotKind: z.enum(['PREVIEW', 'PUBLISHED']),
@@ -288,8 +361,16 @@ export const SiteJobPayloadSchema = z.discriminatedUnion('jobType', [
   OptimiseImagePayloadSchema,
   RunSeoAuditPayloadSchema,
   RunUxAuditPayloadSchema,
-  RunAccessibilityAuditPayloadSchema,
-  RunConversionAuditPayloadSchema,
+  RunPhase158AccessibilityAuditPayloadSchema,
+  RunPhase158ConversionAuditPayloadSchema,
+  RunFullSiteQualityAuditPayloadSchema,
+  RunTechnicalSeoAuditPayloadSchema,
+  RunResponsiveUxAuditPayloadSchema,
+  RunBookingIntegrityAuditPayloadSchema,
+  RunPerformanceAuditPayloadSchema,
+  RunContentIntegrityAuditPayloadSchema,
+  RunAssetReadinessAuditPayloadSchema,
+  EvaluatePublicationReadinessPayloadSchema,
   CreateSiteSnapshotPayloadSchema,
   PreparePublicationPayloadSchema,
   VerifyDomainPayloadSchema,

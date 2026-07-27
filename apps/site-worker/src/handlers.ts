@@ -4,8 +4,18 @@ import {
   GeneratePagePayloadSchema,
   GenerateSitePayloadSchema,
   GenerateStructuredDataPayloadSchema,
+  EvaluatePublicationReadinessPayloadSchema,
   RegenerateSectionPayloadSchema,
   ProvisionWorkspacePayloadSchema,
+  RunAssetReadinessAuditPayloadSchema,
+  RunBookingIntegrityAuditPayloadSchema,
+  RunContentIntegrityAuditPayloadSchema,
+  RunFullSiteQualityAuditPayloadSchema,
+  RunPerformanceAuditPayloadSchema,
+  RunPhase158AccessibilityAuditPayloadSchema,
+  RunPhase158ConversionAuditPayloadSchema,
+  RunResponsiveUxAuditPayloadSchema,
+  RunTechnicalSeoAuditPayloadSchema,
   SiteJobExecutionError,
   SiteJobHandlerRegistry,
   SiteJobResultSchema,
@@ -37,6 +47,27 @@ export interface WorkspaceProvisioningJobExecutor {
   execute(payload: unknown, context: SiteJobLeaseContext): Promise<SiteJobResult>;
 }
 
+export type SiteQualityJobType = Extract<SiteJobType,
+  | 'RUN_FULL_SITE_QUALITY_AUDIT'
+  | 'RUN_TECHNICAL_SEO_AUDIT'
+  | 'RUN_ACCESSIBILITY_AUDIT'
+  | 'RUN_RESPONSIVE_UX_AUDIT'
+  | 'RUN_CONVERSION_AUDIT'
+  | 'RUN_BOOKING_INTEGRITY_AUDIT'
+  | 'RUN_PERFORMANCE_AUDIT'
+  | 'RUN_CONTENT_INTEGRITY_AUDIT'
+  | 'RUN_ASSET_READINESS_AUDIT'
+  | 'EVALUATE_PUBLICATION_READINESS'>;
+
+export interface SiteQualityJobExecutor {
+  execute(
+    jobType: SiteQualityJobType,
+    payload: unknown,
+    context: SiteJobLeaseContext,
+  ): Promise<SiteJobResult>;
+  close?(): Promise<void>;
+}
+
 const disabledProvisioningExecutor: WorkspaceProvisioningJobExecutor = {
   async execute() {
     throw new SiteJobExecutionError(
@@ -51,6 +82,15 @@ const disabledGenerationExecutor: SiteGenerationJobExecutor = {
     throw new SiteJobExecutionError(
       'TERMINAL_DATA_MISSING',
       'Structured site generation is disabled or its server-side provider is not configured.',
+    );
+  },
+};
+
+const disabledQualityExecutor: SiteQualityJobExecutor = {
+  async execute() {
+    throw new SiteJobExecutionError(
+      'TERMINAL_DATA_MISSING',
+      'Site-quality execution is disabled for this worker.',
     );
   },
 };
@@ -70,6 +110,24 @@ function generationHandler(
     async execute(payload: unknown, context: SiteJobLeaseContext) {
       const parsed = payloadSchema.parse(payload);
       return executor.execute(jobType, parsed, context);
+    },
+  };
+}
+
+function qualityHandler(
+  jobType: SiteQualityJobType,
+  payloadSchema: SiteJobHandler['payloadSchema'],
+  executor: SiteQualityJobExecutor,
+): SiteJobHandler {
+  return {
+    jobType,
+    payloadSchemaVersion: 1,
+    supportsCancellation: true,
+    defaultRetryPolicy: DEFAULT_SITE_JOB_RETRY_POLICY,
+    payloadSchema,
+    resultSchema: SiteJobResultSchema,
+    async execute(payload: unknown, context: SiteJobLeaseContext) {
+      return executor.execute(jobType, payloadSchema.parse(payload), context);
     },
   };
 }
@@ -187,6 +245,7 @@ export function createSiteJobHandlerRegistry(
   enableTestHandlers = false,
   generationExecutor: SiteGenerationJobExecutor = disabledGenerationExecutor,
   provisioningExecutor: WorkspaceProvisioningJobExecutor = disabledProvisioningExecutor,
+  qualityExecutor: SiteQualityJobExecutor = disabledQualityExecutor,
 ): SiteJobHandlerRegistry {
   const registry = new SiteJobHandlerRegistry()
     .register({
@@ -207,7 +266,17 @@ export function createSiteJobHandlerRegistry(
     .register(generationHandler('GENERATE_PAGE', GeneratePagePayloadSchema, generationExecutor))
     .register(generationHandler('REGENERATE_SECTION', RegenerateSectionPayloadSchema, generationExecutor))
     .register(generationHandler('GENERATE_METADATA', GenerateMetadataPayloadSchema, generationExecutor))
-    .register(generationHandler('GENERATE_STRUCTURED_DATA', GenerateStructuredDataPayloadSchema, generationExecutor));
+    .register(generationHandler('GENERATE_STRUCTURED_DATA', GenerateStructuredDataPayloadSchema, generationExecutor))
+    .register(qualityHandler('RUN_FULL_SITE_QUALITY_AUDIT', RunFullSiteQualityAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_TECHNICAL_SEO_AUDIT', RunTechnicalSeoAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_ACCESSIBILITY_AUDIT', RunPhase158AccessibilityAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_RESPONSIVE_UX_AUDIT', RunResponsiveUxAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_CONVERSION_AUDIT', RunPhase158ConversionAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_BOOKING_INTEGRITY_AUDIT', RunBookingIntegrityAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_PERFORMANCE_AUDIT', RunPerformanceAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_CONTENT_INTEGRITY_AUDIT', RunContentIntegrityAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_ASSET_READINESS_AUDIT', RunAssetReadinessAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('EVALUATE_PUBLICATION_READINESS', EvaluatePublicationReadinessPayloadSchema, qualityExecutor));
   if (!enableTestHandlers) return registry;
   return registry
     .register(succeedHandler)

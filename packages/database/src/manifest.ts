@@ -185,4 +185,9 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     order: 36,
     description: 'Phase 15.7B controlled fact finding, locked production briefs, resumable unified workspace provisioning, and Site Studio readiness',
   },
+  {
+    filename: '20260727100000_phase_15_8_site_quality_gates.sql',
+    order: 37,
+    description: 'Phase 15.8 exact-version SEO, accessibility, UX, conversion, booking, content, asset, evidence, waiver, and publication-readiness quality gates',
+  },
 ];

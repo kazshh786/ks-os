@@ -326,10 +326,13 @@ export async function handlePreviewRequest(input: {
     }
     const url = new URL(input.request.url);
     const path = normalizePublicPath(url.searchParams.get('path') ?? '/');
-    const tokens = url.searchParams.getAll('token');
-    if (tokens.length !== 1) throw new PreviewTokenError();
+    const authorization = input.request.headers.get('authorization');
+    const bearer = authorization?.match(/^Bearer ([A-Za-z0-9._~-]{20,2000})$/)?.[1];
+    const queryTokens = url.searchParams.getAll('token');
+    if (bearer && queryTokens.length > 0) throw new PreviewTokenError();
+    if (!bearer && queryTokens.length !== 1) throw new PreviewTokenError();
     const payload = verifySitePreviewToken({
-      token: tokens[0] ?? '',
+      token: bearer ?? queryTokens[0] ?? '',
       siteReference: input.siteReference,
       versionReference: input.versionReference,
       secret: input.config.previewTokenSecret,
@@ -357,6 +360,26 @@ export async function handlePreviewRequest(input: {
     ) {
       throw new PreviewTokenError();
     }
+    if (
+      payload.purpose === 'QUALITY_AUDIT'
+      && (
+        !bearer
+        || !payload.qualityRunReference
+        || !input.repository.isQualityAuditSessionActive
+        || !await input.repository.isQualityAuditSessionActive({
+          jti: payload.jti,
+          qualityRunReference: payload.qualityRunReference,
+          siteReference: payload.siteReference,
+          versionReference: payload.versionReference,
+          requestedPath: path,
+        })
+      )
+    ) {
+      throw new PreviewTokenError();
+    }
+    if (payload.purpose !== 'QUALITY_AUDIT' && bearer) {
+      throw new PreviewTokenError();
+    }
     const snapshot = await input.repository.loadPreviewSnapshot(
       input.siteReference,
       input.versionReference,
@@ -375,7 +398,7 @@ export async function handlePreviewRequest(input: {
     const context = renderContext(snapshot, page);
     const content = renderRegisteredSitePage(page, context);
     const structuredData = generateSiteStructuredData(snapshot, page);
-    return htmlResponse(
+    const response = htmlResponse(
       renderPublishedPageDocument({
         snapshot,
         page,
@@ -386,6 +409,10 @@ export async function handlePreviewRequest(input: {
       200,
       NO_STORE,
     );
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    return response;
   } catch {
     return notFound();
   }

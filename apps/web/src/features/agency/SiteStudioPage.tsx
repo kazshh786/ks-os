@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { agencyFetch } from './AgencyAuth';
+import { SiteQualityPanel } from './SiteQualityPanel';
 
 const pill = (value: string) => <span className="rounded-full border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] font-black">{String(value || 'NOT STARTED').replaceAll('_', ' ')}</span>;
 
@@ -63,6 +64,12 @@ export function SiteStudioPage() {
     <header className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-widest text-violet-300">Structured site studio</p><h1 className="mt-1 text-2xl font-black">{studio.site.displayName}</h1><p className="mt-2 text-sm text-slate-400">Review controlled page structures, facts, findings, and native booking actions. This is not a freeform page builder.</p></div>{pill(studio.site.status)}</div></header>
 
     <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><h2 className="text-xs font-black uppercase tracking-widest text-slate-400">Unified readiness</h2><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">{['workspace', 'booking', 'website', 'review', 'payments', 'publication'].map(key => <div key={key} className="rounded-xl bg-slate-950 p-3"><small className="block uppercase text-slate-500">{key}</small><div className="mt-2">{pill(readiness?.[key] || studio.publication?.status)}</div></div>)}</div>{readiness?.blockingIssues?.map((issue: any) => <p key={issue.code} className="mt-3 rounded-lg border border-rose-900 p-3 text-xs text-rose-200"><strong>{issue.area}: {issue.code}</strong> — {issue.message}</p>)}{readiness?.warnings?.map((issue: any) => <p key={issue.code} className="mt-3 rounded-lg border border-amber-800 p-3 text-xs text-amber-200"><strong>Post-provision action: {issue.code}</strong> — {issue.message}</p>)}</section>
+
+    <SiteQualityPanel
+      siteReference={siteReference!}
+      siteVersionReference={studio.version.reference}
+      onOpenPage={setSelectedPage}
+    />
 
     <div className="grid gap-5 xl:grid-cols-[250px_1fr_330px]">
       <aside className="rounded-2xl border border-slate-800 bg-slate-900 p-4"><h2 className="text-xs font-black uppercase tracking-widest text-slate-400">Page navigation</h2><div className="mt-3 space-y-2">{studio.pages.map((item: any) => <button key={item.reference} onClick={() => setSelectedPage(item.reference)} className={`w-full rounded-xl border p-3 text-left ${selectedPage === item.reference ? 'border-violet-500 bg-violet-950/30' : 'border-slate-800 bg-slate-950'}`}><strong className="text-sm">{item.title}</strong><span className="mt-1 block text-[10px] text-slate-500">{item.pageType} · /{item.slug}</span></button>)}</div><div className="mt-5 border-t border-slate-800 pt-4"><h3 className="text-xs font-black">Version history</h3><p className="mt-2 text-xs text-slate-500">Version {studio.version?.versionNumber} · {studio.version?.status}</p><button className="mt-2 text-xs font-bold text-violet-300">Compare selected version</button></div></aside>

@@ -9,6 +9,8 @@ import {
   isNull,
   siteDomains,
   sitePreviewTokenRevocations,
+  siteQualityAuditSessions,
+  siteQualityRuns,
   sitePages,
   siteRenderSnapshots,
   siteReviewCycles,
@@ -52,6 +54,13 @@ export interface PublicSiteRepository {
   isReviewPreviewSessionActive?(input: {
     jti: string;
     reviewCycleReference: string;
+    siteReference: string;
+    versionReference: string;
+    requestedPath: string;
+  }): Promise<boolean>;
+  isQualityAuditSessionActive?(input: {
+    jti: string;
+    qualityRunReference: string;
     siteReference: string;
     versionReference: string;
     requestedPath: string;
@@ -279,5 +288,69 @@ export class DrizzlePublicSiteRepository implements PublicSiteRepository {
       ? '/'
       : `/${session.scopedPageSlug.replace(/^\/+|\/+$/g, '')}`;
     return scopedPath === input.requestedPath;
+  }
+
+  async isQualityAuditSessionActive(input: {
+    jti: string;
+    qualityRunReference: string;
+    siteReference: string;
+    versionReference: string;
+    requestedPath: string;
+  }) {
+    const [session] = await this.database
+      .select({
+        id: siteQualityAuditSessions.id,
+      })
+      .from(siteQualityAuditSessions)
+      .innerJoin(
+        siteQualityRuns,
+        eq(siteQualityAuditSessions.qualityRunId, siteQualityRuns.id),
+      )
+      .innerJoin(sites, eq(siteQualityAuditSessions.siteId, sites.id))
+      .innerJoin(
+        siteVersions,
+        eq(siteQualityAuditSessions.siteVersionId, siteVersions.id),
+      )
+      .innerJoin(sitePages, and(
+        eq(sitePages.siteId, sites.id),
+        eq(sitePages.versionId, siteVersions.id),
+      ))
+      .where(and(
+        eq(siteQualityAuditSessions.tokenJti, input.jti),
+        eq(siteQualityRuns.publicReference, input.qualityRunReference),
+        eq(sites.publicReference, input.siteReference),
+        eq(siteVersions.publicReference, input.versionReference),
+        eq(siteQualityAuditSessions.status, 'ACTIVE'),
+        isNull(siteQualityAuditSessions.revokedAt),
+        gt(siteQualityAuditSessions.expiresAt, new Date()),
+        eq(
+          siteQualityAuditSessions.contentDigestSha256,
+          siteQualityRuns.siteVersionDigestSha256,
+        ),
+        eq(
+          siteQualityAuditSessions.contentDigestSha256,
+          siteVersions.generationContentDigestSha256,
+        ),
+        inArray(siteQualityRuns.status, [
+          'PREPARING',
+          'RENDERING',
+          'RUNNING_DETERMINISTIC_CHECKS',
+          'RUNNING_BROWSER_CHECKS',
+          'RUNNING_AI_REVIEW',
+          'EVALUATING',
+        ]),
+        eq(
+          sitePages.slug,
+          input.requestedPath === '/'
+            ? 'home'
+            : input.requestedPath.replace(/^\/+|\/+$/g, ''),
+        ),
+      ))
+      .limit(1);
+    if (!session) return false;
+    await this.database.update(siteQualityAuditSessions).set({
+      lastAccessedAt: new Date(),
+    }).where(eq(siteQualityAuditSessions.id, session.id));
+    return true;
   }
 }
