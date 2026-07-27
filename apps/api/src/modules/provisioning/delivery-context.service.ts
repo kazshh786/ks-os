@@ -97,7 +97,8 @@ export class DeliveryContextService {
         .orderBy(desc(productionBriefs.briefVersion), desc(productionBriefs.createdAt)).limit(1),
       this.db.select({
         reference: templateVersions.publicReference,
-        version: templateVersions.version,
+        version: templateVersions.versionNumber,
+        sourceName: templateSources.name,
         sourceType: templateSources.sourceType,
       }).from(templateVersions)
         .innerJoin(templateSources, eq(templateVersions.templateSourceId, templateSources.id))
@@ -135,7 +136,7 @@ export class DeliveryContextService {
       } : null,
       approvedTemplates: templateRows.map(item => ({
         ...item,
-        label: `${String(item.sourceType).replaceAll('_', ' ')} template · version ${item.version}`,
+        label: `${item.sourceName} · version ${item.version}`,
       })),
       draft,
       run,
