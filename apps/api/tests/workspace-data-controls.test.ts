@@ -18,11 +18,15 @@ test('test reset clears generated activity while keeping configured workspace da
   assert.match(migration, /client_form_submissions/);
   assert.match(migration, /email_outbox/);
   assert.match(migration, /review_invitations/);
+  assert.match(migration, /report_export_jobs/);
+  assert.match(migration, /report_schedule_runs/);
+  assert.match(migration, /UPDATE site_review_invitations[\s\S]*email_outbox_id = NULL/);
   assert.doesNotMatch(migration, /ks_reset_tenant_test_data[\s\S]*DELETE FROM services/i);
   assert.doesNotMatch(migration, /ks_reset_tenant_test_data[\s\S]*DELETE FROM users/i);
   assert.match(routes, /tenants\/:tenantReference\/test-data-preview/);
   assert.match(routes, /tenants\/:tenantReference\/reset-test-data/);
   assert.match(service, /RESET TEST DATA/);
+  assert.match(service, /generatedReports/);
   assert.match(controls, /What stays/);
 });
 
@@ -39,6 +43,16 @@ test('hard delete physically removes tenant-owned records without a booking-hist
   assert.match(service, /exists\(select 1 from agency_users where auth_user_id/);
   assert.match(service, /auth\.admin\.deleteUser/);
   assert.doesNotMatch(service, /APPOINTMENT_HISTORY_EXISTS/);
+});
+
+test('reset and hard delete remove private stored files before database records', () => {
+  assert.match(service, /fact_finding_uploads/);
+  assert.match(service, /report-exports/);
+  assert.match(service, /storage\.from\(bucket\)\.remove\(chunk\)/);
+  assert.match(service, /WORKSPACE_STORAGE_DELETE_FAILED/);
+  assert.match(service, /No database records were deleted/);
+  assert.match(service, /storedFiles/);
+  assert.match(service, /private files/);
 });
 
 test('destructive dialogs explain impact and show every confirmation requirement', () => {
