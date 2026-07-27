@@ -12,9 +12,15 @@ jobs:
   copy-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        offset: [0, 20, 40]
     env:
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       GH_TOKEN: ${{ github.token }}
+      COPY_AUDIT_OFFSET: ${{ matrix.offset }}
+      COPY_AUDIT_LIMIT: 20
     steps:
       - name: Audit UX copy
         run: |
