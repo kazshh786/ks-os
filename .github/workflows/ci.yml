@@ -43,4 +43,12 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Upload UX copy audit
+        if: always() && hashFiles('copy-violations.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ux-copy-audit
+          path: copy-violations.json
+          if-no-files-found: ignore
+          retention-days: 7
       - run: pnpm db:migrations:plan
