@@ -18,7 +18,8 @@ export const ManualTenantUserDialog: React.FC<{
   tenantId: string;
   tenantName: string;
   onClose: () => void;
-}> = ({ open, tenantId, tenantName, onClose }) => {
+  onCreated?: () => void | Promise<void>;
+}> = ({ open, tenantId, tenantName, onClose, onCreated }) => {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'owner' | 'staff'>('staff');
@@ -72,9 +73,16 @@ export const ManualTenantUserDialog: React.FC<{
     window.setTimeout(() => setCopied(false), 2_000);
   };
 
-  const finish = () => {
-    onClose();
-    window.location.reload();
+  const finish = async () => {
+    setBusy(true);
+    try {
+      await onCreated?.();
+      onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The user was created, but the user list could not be refreshed.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/80 p-4 backdrop-blur-sm">
@@ -84,7 +92,7 @@ export const ManualTenantUserDialog: React.FC<{
           <h2 id="manual-user-title" className="flex items-center gap-2 text-xl font-black"><UserPlus className="h-5 w-5 text-violet-300" aria-hidden="true" />Add user manually</h2>
           <p className="mt-1 text-sm text-slate-400">Create direct portal access for {tenantName}. No invitation email will be sent.</p>
         </div>
-        <button type="button" onClick={result ? finish : onClose} className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-bold">Close</button>
+        <button type="button" disabled={busy} onClick={result ? () => void finish() : onClose} className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-bold disabled:opacity-50">Close</button>
       </div>
 
       {error && <p role="alert" className="mt-4 rounded-xl border border-rose-800 bg-rose-950/40 p-3 text-sm text-rose-200">{error}</p>}
@@ -107,7 +115,7 @@ export const ManualTenantUserDialog: React.FC<{
         </div> : <div className="rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm text-slate-300">
           This email already had a verified Supabase login. KS OS linked that existing identity without changing its password or sending an email.
         </div>}
-        <button type="button" onClick={finish} className="w-full rounded-xl bg-violet-600 px-5 py-3 text-sm font-black text-white">Done and refresh user list</button>
+        <button type="button" disabled={busy} onClick={() => void finish()} className="w-full rounded-xl bg-violet-600 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{busy ? 'Refreshing user list…' : 'Done and refresh user list'}</button>
       </div> : <form onSubmit={submit} className="mt-5 space-y-4">
         <div className="rounded-xl border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
           The user will be activated immediately. For a new login identity, KS OS generates a one-time temporary password instead of sending an email.
