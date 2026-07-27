@@ -11,39 +11,48 @@ jobs:
       DATABASE_URL: postgresql://postgres_debug:postgres_debug_password@127.0.0.1:5434/ks_os_migration_debug
       APP_ENV: development
       NODE_ENV: development
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 11.13.1 }
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile --reporter=silent
-      - run: pnpm --filter @ks-os/database build
-      - name: Start PostgreSQL
+      - name: Diagnose migration
         run: |
+          set -e
+
           docker pull postgres:17 >/dev/null 2>&1
           docker run -d --name ks-os-migration-debug \
             -e POSTGRES_USER=postgres_debug \
             -e POSTGRES_PASSWORD=postgres_debug_password \
             -e POSTGRES_DB=ks_os_migration_debug \
             -p 5434:5432 postgres:17 >/dev/null
+          trap 'docker rm -f ks-os-migration-debug >/dev/null 2>&1 || true' EXIT
+
           for attempt in $(seq 1 30); do
-            docker exec ks-os-migration-debug pg_isready -U postgres_debug -d ks_os_migration_debug >/dev/null 2>&1 && exit 0
+            docker exec ks-os-migration-debug pg_isready -U postgres_debug -d ks_os_migration_debug >/dev/null 2>&1 && break
             sleep 1
           done
-          exit 1
-      - name: Prepare database roles
-        run: |
-          docker exec ks-os-migration-debug psql -U postgres_debug -d ks_os_migration_debug -v ON_ERROR_STOP=1 -c "create role anon nologin" -c "create role authenticated nologin" -c "create role service_role nologin"
-      - name: Apply migrations
-        run: |
+
+          docker exec ks-os-migration-debug psql -U postgres_debug -d ks_os_migration_debug -v ON_ERROR_STOP=1 \
+            -c "create role anon nologin" \
+            -c "create role authenticated nologin" \
+            -c "create role service_role nologin" >/dev/null
+
+          mkdir source
+          curl --fail --silent --show-error --location \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/tarball/${SOURCE_SHA}" \
+            --output source.tar.gz
+          tar -xzf source.tar.gz --strip-components=1 -C source
+          cd source
+
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate >/dev/null 2>&1
+          pnpm install --frozen-lockfile --reporter=silent >/dev/null
+          pnpm --filter @ks-os/database build >/dev/null
+
           set +e
           node scripts/database/migrate.mjs --apply --allow-non-prod-apply >migration-debug.log 2>&1
           status=$?
+          set -e
           cat migration-debug.log
           exit $status
-      - name: Stop PostgreSQL
-        if: always()
-        run: docker rm -f ks-os-migration-debug >/dev/null 2>&1 || true
