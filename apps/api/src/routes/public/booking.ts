@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { getDatabase, tenants, services, users, appointments, tenantActivationMilestones, clientFormSubmissions, formAssignments } from '@ks-os/database';
+import { getDatabase, tenants, services, users, appointments, locations, staffServiceAssignments, tenantActivationMilestones, clientFormSubmissions, formAssignments } from '@ks-os/database';
 import { EntitlementService } from '../../modules/agency/agency.service.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { calculateAvailability } from '../../modules/availability/availability.service.js';
@@ -209,7 +209,17 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
 
     const parseResult = CreateBookingRequestSchema.safeParse(request.body);
     if (!parseResult.success) {
-      return reply.code(400).send({ error: { code: ERROR_CODES.INVALID_BOOKING_REQUEST, message: 'Invalid booking fields' } });
+      const fieldErrors = parseResult.error.issues.map(issue => ({
+        field: issue.path.join('.'),
+        message: issue.message
+      }));
+      return reply.code(400).send({
+        error: {
+          code: ERROR_CODES.INVALID_BOOKING_REQUEST,
+          message: 'Invalid booking fields',
+          fieldErrors
+        }
+      });
     }
     const resolved = await bookingPageService.resolvePublicPage(subdomain, request.headers.host);
     if (!resolved) {
@@ -220,9 +230,67 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
 
     const data = parseResult.data;
 
-    if (page.allowedServiceIds.length && !page.allowedServiceIds.includes(data.serviceId)) return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
-    if (page.allowedStaffIds.length && !page.allowedStaffIds.includes(data.staffId)) return reply.code(404).send({ error: { code: 'STAFF_NOT_AVAILABLE', message: 'This team member is not available for online booking.' } });
-    if (data.locationId && page.allowedLocationIds.length && !page.allowedLocationIds.includes(data.locationId)) return reply.code(404).send({ error: { code: 'LOCATION_NOT_AVAILABLE', message: 'This location is not available for online booking.' } });
+    // Allowed lists on Booking Page
+    if (page.allowedServiceIds.length && !page.allowedServiceIds.includes(data.serviceId)) return reply.code(400).send({ error: { code: 'INVALID_SERVICE', message: 'This service is not available for online booking.' } });
+    if (page.allowedStaffIds.length && !page.allowedStaffIds.includes(data.staffId)) return reply.code(400).send({ error: { code: 'INVALID_STAFF', message: 'This team member is not available for online booking.' } });
+    if (data.locationId && page.allowedLocationIds.length && !page.allowedLocationIds.includes(data.locationId)) return reply.code(400).send({ error: { code: 'INVALID_LOCATION', message: 'This location is not available for online booking.' } });
+
+    // Entity & Relationship Verification
+    const [bookedService] = await db.select({ id: services.id, isActive: services.isActive, requiresDeposit: services.requiresDeposit })
+      .from(services).where(and(eq(services.id, data.serviceId), eq(services.tenantId, tenant.id))).limit(1);
+    if (!bookedService || !bookedService.isActive) {
+      return reply.code(400).send({ error: { code: 'INVALID_SERVICE', message: 'This service is not available for online booking.' } });
+    }
+
+    const [bookedStaff] = await db.select({ id: users.id, accountStatus: users.accountStatus, bookingEnabled: users.bookingEnabled, role: users.role })
+      .from(users).where(and(eq(users.id, data.staffId), eq(users.tenantId, tenant.id))).limit(1);
+    if (!bookedStaff || bookedStaff.accountStatus !== 'ACTIVE' || (bookedStaff.role !== 'owner' && !bookedStaff.bookingEnabled)) {
+      return reply.code(400).send({ error: { code: 'INVALID_STAFF', message: 'This team member is not available for online booking.' } });
+    }
+
+    if (data.locationId) {
+      const [bookedLocation] = await db.select({ id: locations.id, isActive: locations.isActive })
+        .from(locations).where(and(eq(locations.id, data.locationId), eq(locations.tenantId, tenant.id))).limit(1);
+      if (!bookedLocation || !bookedLocation.isActive) {
+        return reply.code(400).send({ error: { code: 'INVALID_LOCATION', message: 'This location is not available for online booking.' } });
+      }
+    }
+
+    const [assignment] = await db.select({ id: staffServiceAssignments.id })
+      .from(staffServiceAssignments)
+      .where(and(
+        eq(staffServiceAssignments.tenantId, tenant.id),
+        eq(staffServiceAssignments.staffUserId, data.staffId),
+        eq(staffServiceAssignments.serviceId, data.serviceId),
+        eq(staffServiceAssignments.isActive, true)
+      )).limit(1);
+    if (!assignment) {
+      return reply.code(400).send({ error: { code: 'INVALID_RELATIONSHIP', message: 'This team member is not assigned to provide this service.' } });
+    }
+
+    // Idempotency conflict check
+    const [existingAppointment] = await db.select({
+      id: appointments.id,
+      serviceId: appointments.serviceId,
+      userId: appointments.userId,
+      startTime: appointments.startTime
+    }).from(appointments).where(and(
+      eq(appointments.tenantId, tenant.id),
+      eq(appointments.idempotencyKey, data.idempotencyKey)
+    )).limit(1);
+
+    if (existingAppointment) {
+      const startIso = new Date(existingAppointment.startTime).toISOString();
+      const reqStartIso = new Date(data.startTime).toISOString();
+      const isCompatible = (
+        existingAppointment.serviceId === data.serviceId &&
+        existingAppointment.userId === data.staffId &&
+        (startIso === reqStartIso || new Date(startIso).getTime() === new Date(reqStartIso).getTime())
+      );
+      if (!isCompatible) {
+        return reply.code(409).send({ error: { code: 'IDEMPOTENCY_CONFLICT', message: 'An appointment was already created with this idempotency key but a different payload.' } });
+      }
+    }
 
     try {
       const bookingService = new BookingService();
@@ -233,10 +301,6 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         staffId: data.staffId,
         locationId: data.locationId,
       });
-      const [bookedService] = await db.select({ requiresDeposit: services.requiresDeposit }).from(services)
-        .where(and(eq(services.id, data.serviceId), eq(services.tenantId, tenant.id), eq(services.isActive, true)))
-        .limit(1);
-      if (!bookedService) return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
       const paymentSettings = page.paymentSettings as { mode?: string; depositPercentage?: number };
       const verifiedPaymentMode = bookedService.requiresDeposit ? 'deposit_required'
         : paymentSettings.mode === 'FULL' ? 'pay_now'

@@ -360,7 +360,7 @@ export class BookingPageService {
     return Boolean(released);
   }
 
-  async validateHoldForBooking(tx: DatabaseLike, pageId: string, input: { holdId?: string; holdToken?: string; serviceId: string; staffId: string; startTime: string; locationId?: string | null }) {
+  async validateHoldForBooking(tx: DatabaseLike, pageId: string, input: { holdId?: string | null; holdToken?: string | null; serviceId: string; staffId: string; startTime: string; locationId?: string | null }) {
     if (!input.holdId && !input.holdToken) return null;
     if (!input.holdId || !input.holdToken) throw Object.assign(new Error('The slot reservation is incomplete.'), { code: 'INVALID_HOLD', statusCode: 400 });
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.holdId}::text, 0))`);

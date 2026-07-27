@@ -84,26 +84,67 @@ export type AvailabilityResult = z.infer<typeof AvailabilityResultSchema>;
 // BOOKING CREATION & UPDATES
 // ============================================================================
 
+const safeString = (min: number, max: number) =>
+  z.string()
+    .transform(val => val.normalize('NFC').trim())
+    .refine(val => val.length >= min, { message: `Must be at least ${min} characters` })
+    .refine(val => val.length <= max, { message: `Must be at most ${max} characters` })
+    .refine(val => !/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(val), { message: 'Control characters are not allowed.' })
+    .refine(val => !/<script|javascript:|onerror=|onload=|<iframe|<embed|eval\(/i.test(val), { message: 'Executable or script payloads are not allowed.' });
+
 export const CustomerBookingDetailsSchema = z.object({
-  name: z.string().trim().min(2).max(255),
-  email: z.string().trim().email().max(255),
-  phone: z.string().trim().min(7).max(30),
+  name: safeString(2, 255),
+  email: z.string()
+    .transform(val => val.normalize('NFC').trim().toLowerCase())
+    .refine(val => val.length >= 5 && val.length <= 255, { message: 'Email must be between 5 and 255 characters' })
+    .refine(val => !/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(val), { message: 'Control characters are not allowed.' })
+    .refine(val => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val), { message: 'Invalid email address' }),
+  phone: z.string()
+    .transform(val => val.normalize('NFC').trim())
+    .refine(val => val.length >= 7 && val.length <= 30, { message: 'Phone must be between 7 and 30 characters' })
+    .refine(val => !/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(val), { message: 'Control characters are not allowed.' })
+    .refine(val => !/<script|javascript:|onerror=|onload=|<iframe|<embed|eval\(/i.test(val), { message: 'Executable or script payloads are not allowed.' })
+    .refine(val => /^[+\d\s().-]{7,30}$/.test(val), { message: 'Invalid phone number' }),
 }).strict();
 export type CustomerBookingDetails = z.infer<typeof CustomerBookingDetailsSchema>;
 
-export const MobileAddressSchema = z.object({
-  line1: z.string().trim().min(1).max(255),
-  line2: z.string().trim().max(255).optional().nullable(),
-  city: z.string().trim().min(1).max(100),
-  postcode: z.string().trim().min(1).max(20),
-  accessNotes: z.string().trim().max(1000).optional().nullable(),
-}).strict();
+export const MobileAddressSchema = z.preprocess(
+  (raw: any) => {
+    if (typeof raw !== 'object' || raw === null) return raw;
+    return {
+      ...raw,
+      line1: raw.line1 ?? raw.addressLine1,
+      line2: raw.line2 ?? raw.addressLine2,
+      county: raw.county ?? raw.region,
+      countryCode: raw.countryCode ?? raw.country ?? 'GB',
+      accessNotes: raw.accessNotes ?? raw.accessInstructions,
+    };
+  },
+  z.object({
+    line1: safeString(1, 255),
+    line2: safeString(0, 255).optional().nullable(),
+    city: safeString(1, 100),
+    county: safeString(0, 100).optional().nullable(),
+    postcode: safeString(1, 20).refine(val => /^[A-Za-z0-9\s-]{1,20}$/.test(val), { message: 'Invalid postcode' }),
+    countryCode: z.string()
+      .transform(v => v.trim().toUpperCase())
+      .refine(v => /^[A-Z]{2}$/.test(v), { message: 'Invalid 2-letter ISO country code' })
+      .default('GB'),
+    accessNotes: safeString(0, 1000).optional().nullable(),
+  }).strict().refine(val => {
+    const allowed = ['line1','line2','city','county','postcode','countryCode','accessNotes'];
+    return Object.keys(val).every(k => allowed.includes(k));
+  }, { message: 'Unexpected fields in address' })
+);
 export type MobileAddress = z.infer<typeof MobileAddressSchema>;
 
 export const CreateBookingRequestSchema = z.object({
   serviceId: z.string().uuid(),
   staffId: z.string().uuid(),
-  startTime: z.string().datetime(),
+  startTime: z.string().datetime().refine(val => {
+    const time = new Date(val).getTime();
+    return !isNaN(time) && time >= Date.now() - 5 * 60 * 1000;
+  }, { message: 'Selected slot start time cannot be in the past' }),
   client: CustomerBookingDetailsSchema,
   bookingChannel: z.enum(['in_shop', 'mobile']),
   mobileAddress: MobileAddressSchema.optional().nullable(),
@@ -112,14 +153,14 @@ export const CreateBookingRequestSchema = z.object({
   idempotencyKey: z.string().uuid(),
   resourceId: z.string().uuid().optional().nullable(),
   locationId: z.string().uuid().optional().nullable(),
-  holdId: z.string().uuid().optional(),
-  holdToken: z.string().min(32).max(200).optional(),
+  holdId: z.string().uuid().optional().nullable(),
+  holdToken: z.string().min(32).max(200).optional().nullable(),
   source: z.enum(['PUBLIC_BOOKING_PAGE', 'EMBEDDED_WIDGET', 'CUSTOMER_PORTAL', 'GOOGLE_BUSINESS_PROFILE', 'INSTAGRAM', 'FACEBOOK', 'TIKTOK', 'WHATSAPP', 'REFERRAL', 'OTHER']).default('PUBLIC_BOOKING_PAGE'),
-  sourceMedium: z.string().trim().max(80).regex(/^[a-zA-Z0-9._-]+$/).optional(),
-  sourceCampaign: z.string().trim().max(120).regex(/^[a-zA-Z0-9._ -]+$/).optional(),
+  sourceMedium: z.string().transform(v => v.normalize('NFC').trim()).pipe(z.string().max(80).regex(/^[a-zA-Z0-9._-]+$/)).optional(),
+  sourceCampaign: z.string().transform(v => v.normalize('NFC').trim()).pipe(z.string().max(120).regex(/^[a-zA-Z0-9._ -]+$/)).optional(),
   intakeSubmissionIds: z.array(z.string().uuid()).max(20).default([]),
-  analyticsSessionId: z.string().uuid().optional(),
-  customerNotes: z.string().trim().max(2_000).optional(),
+  analyticsSessionId: z.string().uuid().optional().nullable(),
+  customerNotes: safeString(0, 2000).optional().nullable(),
 }).strict().superRefine((value, context) => {
   if (value.bookingChannel === 'mobile' && !value.mobileAddress) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['mobileAddress'], message: 'An appointment address is required for mobile bookings.' });
