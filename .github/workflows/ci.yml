@@ -50,19 +50,26 @@ jobs:
       DATABASE_URL: postgresql://postgres_smoke:postgres_smoke_password@127.0.0.1:5433/ks_os_migration_smoke
       APP_ENV: development
       NODE_ENV: development
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: pnpm/action-setup@v4
-        with: { version: 11.13.1 }
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @ks-os/database build
-      - name: Prepare Supabase roles
+      - name: Apply migrations and exercise purge functions
         run: |
+          set -e
+          mkdir source
+          curl --fail --silent --show-error --location \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/tarball/${SOURCE_SHA}" \
+            --output source.tar.gz
+          tar -xzf source.tar.gz --strip-components=1 -C source
+          cd source
+
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate >/dev/null 2>&1
+          pnpm install --frozen-lockfile --reporter=silent >/dev/null
+          pnpm --filter @ks-os/database build >/dev/null
+
           node --input-type=module <<'NODE'
           import pg from 'pg';
 
@@ -77,15 +84,12 @@ jobs:
             await client.end();
           }
           NODE
-      - name: Apply complete migration history
-        run: |
+
           if ! node scripts/database/migrate.mjs --apply --allow-non-prod-apply >migration-smoke.log 2>&1; then
-            tail -n 120 migration-smoke.log
+            cat migration-smoke.log
             exit 1
           fi
-          tail -n 20 migration-smoke.log
-      - name: Exercise workspace data functions
-        run: |
+
           node --input-type=module <<'NODE'
           import pg from 'pg';
 
@@ -125,6 +129,8 @@ jobs:
             await client.end();
           }
           NODE
+
+          tail -n 20 migration-smoke.log
 
   verify:
     runs-on: ubuntu-latest
