@@ -33,4 +33,4 @@ jobs:
       - run: pnpm --filter api exec node --import tsx --test tests/manual-tenant-user-contract.test.ts
       - run: pnpm --filter web... build
       - run: pnpm --filter web typecheck
-      - run: pnpm --filter web test -- --run src/features/agency/__tests__/AgencyAuth.test.ts
+      - run: pnpm --filter web exec vitest run src/features/agency/__tests__/AgencyAuth.test.ts
