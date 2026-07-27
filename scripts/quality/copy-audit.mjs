@@ -2,6 +2,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 const webRoot = path.resolve(process.cwd(), 'apps/web/src');
+const offset = Number.parseInt(process.env.COPY_AUDIT_OFFSET || '0', 10);
+const limit = Number.parseInt(process.env.COPY_AUDIT_LIMIT || '1000', 10);
 
 function sourceFiles(directory) {
   return readdirSync(directory).flatMap(entry => {
@@ -44,8 +46,9 @@ for (const file of sourceFiles(webRoot)) {
 }
 
 if (violations.length) {
-  console.error(`UX writing audit found ${violations.length} violation(s):`);
-  for (const violation of violations) {
+  const selected = violations.slice(offset, offset + limit);
+  console.error(`UX writing audit found ${violations.length} violation(s). Showing ${offset + 1}-${Math.min(offset + selected.length, violations.length)}:`);
+  for (const violation of selected) {
     console.error(`${violation.file}:${violation.line} — ${violation.rule}`);
     console.error(`  ${JSON.stringify(violation.found)}`);
   }
