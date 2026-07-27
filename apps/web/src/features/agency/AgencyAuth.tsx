@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { Eye, EyeOff } from 'lucide-react';
 import type { AgencyCapability, AgencyRole } from '@ks-os/contracts';
@@ -15,21 +15,45 @@ const AgencyContext = createContext<AgencyContextValue | undefined>(undefined);
 export const AgencyAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<AgencySession | null>(null);
   const [loading, setLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
+
   const reload = useCallback(async () => {
-    if (!window.location.pathname.startsWith('/agency')) { setSession(null); setLoading(false); return; }
-    setLoading(true);
+    const isInitialLoad = !hasLoadedRef.current;
+    if (!window.location.pathname.startsWith('/agency')) {
+      setSession(null);
+      hasLoadedRef.current = true;
+      setLoading(false);
+      return;
+    }
+    if (isInitialLoad) setLoading(true);
     try {
       const response = await fetchWithAuth('/api/v1/agency/session', { authContext: 'AGENCY' });
       const body = await response.json().catch(() => ({}));
-      setSession(response.ok ? body.data : null);
-    } catch { setSession(null); }
-    finally { setLoading(false); }
+      if (response.ok && body.data) setSession(body.data);
+      else if (isInitialLoad) setSession(null);
+    } catch {
+      // A background token refresh must not unmount the active route or erase
+      // unsaved form input because of a transient session-check failure.
+      if (isInitialLoad) setSession(null);
+    } finally {
+      hasLoadedRef.current = true;
+      if (isInitialLoad) setLoading(false);
+    }
   }, []);
+
   useEffect(() => {
     void reload();
-    const { data } = supabase.auth.onAuthStateChange(() => void reload());
+    const { data } = supabase.auth.onAuthStateChange(event => {
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setLoading(false);
+        return;
+      }
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') void reload();
+    });
     return () => data.subscription.unsubscribe();
   }, [reload]);
+
   const signOut = async () => {
     sessionStorage.removeItem('ks-os-support-session');
     sessionStorage.removeItem('ks-os-support-metadata');
