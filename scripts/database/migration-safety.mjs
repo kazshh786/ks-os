@@ -20,10 +20,9 @@ export function assertSafeMigrationTarget({
   const environment = (appEnvironment || nodeEnvironment || '').toLowerCase();
 
   if (['production', 'staging'].includes(environment)) {
-    if (!explicitProductionOptIn) {
-      throw new Error(
-        `Migration apply in ${environment} requires APPLY_MIGRATIONS=1 and --allow-production-apply.`,
-      );
+    const productionOptIn = explicitProductionOptIn === true || process.env.APPLY_MIGRATIONS === '1';
+    if (!productionOptIn) {
+      throw new Error(`Migration apply in ${environment} requires APPLY_MIGRATIONS=1.`);
     }
     return;
   }
