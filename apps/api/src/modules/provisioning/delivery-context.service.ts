@@ -69,7 +69,11 @@ export class DeliveryContextService {
       eq(tenants.businessReference, tenantReference),
     )).limit(1);
 
-    if (!tenant || tenant.lifecycleStatus === 'DELETED') {
+    const removed = tenant
+      && tenant.lifecycleStatus === 'OFFBOARDED'
+      && tenant.name === 'Deleted workspace'
+      && tenant.subdomain.startsWith('deleted-');
+    if (!tenant || removed) {
       throw fail(404, 'TENANT_NOT_FOUND', 'The client workspace was not found.');
     }
 
