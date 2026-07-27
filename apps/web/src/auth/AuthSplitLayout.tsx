@@ -56,7 +56,8 @@ export const AuthSplitLayout: React.FC<AuthSplitLayoutProps> = ({
 
   useEffect(() => {
     if (highlights.length < 2 || typeof window === 'undefined') return;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduceMotion = typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduceMotion) return;
     const timer = window.setInterval(() => {
       setActiveIndex(current => (current + 1) % highlights.length);
