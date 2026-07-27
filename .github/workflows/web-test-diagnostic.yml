@@ -1,18 +1,35 @@
-name: Web test diagnostic
+name: Full test diagnostic
 on:
   pull_request:
     paths:
-      - 'apps/web/**'
+      - 'apps/**'
+      - 'packages/**'
       - '.github/workflows/web-test-diagnostic.yml'
 permissions:
   contents: read
 concurrency:
-  group: web-test-diagnostic-${{ github.ref }}
+  group: full-test-diagnostic-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres_ci
+          POSTGRES_PASSWORD: postgres_ci_password
+          POSTGRES_DB: ks_os_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres_ci:postgres_ci_password@127.0.0.1:5432/ks_os_ci
     steps:
       - uses: actions/checkout@v4
         with: { show-progress: false }
@@ -23,18 +40,18 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile --reporter=silent
-      - run: pnpm --filter web... build
-      - name: Capture web tests
+      - run: pnpm build
+      - name: Capture full tests
         run: |
           set +e
-          pnpm --filter web test > web-test.log 2>&1
-          echo "$?" > web-test.exit
+          pnpm test > full-test.log 2>&1
+          echo "$?" > full-test.exit
           exit 0
       - uses: actions/upload-artifact@v4
         with:
-          name: web-test-diagnostics
+          name: full-test-diagnostics
           path: |
-            web-test.log
-            web-test.exit
-      - name: Assert web tests
-        run: test "$(cat web-test.exit)" = "0"
+            full-test.log
+            full-test.exit
+      - name: Assert full tests
+        run: test "$(cat full-test.exit)" = "0"
