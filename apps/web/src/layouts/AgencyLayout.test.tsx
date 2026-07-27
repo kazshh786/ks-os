@@ -31,7 +31,7 @@ describe('AgencyLayout', () => {
     expect(screen.getByRole('navigation', { name: 'Agency navigation' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Services' })).toHaveAttribute('href', '/agency/fulfilment');
-    expect(screen.getByRole('link', { name: 'Audit Logs' })).toHaveAttribute('href', '/agency/audit');
+    expect(screen.getByRole('link', { name: 'Audit logs' })).toHaveAttribute('href', '/agency/audit');
     expect(screen.getByRole('link', { name: 'Team' })).toHaveAttribute('href', '/agency/users');
   });
 
@@ -43,7 +43,7 @@ describe('AgencyLayout', () => {
     expect(screen.getByRole('link', { name: 'Back to Businesses' })).toHaveAttribute('href', '/agency/tenants');
     expect(screen.getByRole('link', { name: 'Billing' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Features' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/entitlements`);
-    expect(screen.getByRole('link', { name: 'System Health' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/health`);
+    expect(screen.getByRole('link', { name: 'System health' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/health`);
     expect(screen.queryByRole('navigation', { name: /tenant tabs/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open support workspace' })).toBeInTheDocument();
     await user.selectOptions(screen.getByRole('combobox', { name: 'Switch managed business' }), tenantTwo);
