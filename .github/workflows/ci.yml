@@ -41,18 +41,5 @@ jobs:
       - run: pnpm build
       - run: pnpm lint
       - run: pnpm typecheck
-      - name: Capture full test suite
-        run: |
-          set +e
-          pnpm test > full-test.log 2>&1
-          echo "$?" > full-test.exit
-          exit 0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: full-test-diagnostics
-          path: |
-            full-test.log
-            full-test.exit
-      - name: Assert full test suite
-        run: test "$(cat full-test.exit)" = "0"
+      - run: pnpm test
       - run: pnpm db:migrations:plan
