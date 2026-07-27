@@ -195,4 +195,9 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     order: 38,
     description: 'Remove the obsolete duplicate site-job status check while preserving the canonical Phase 15.6A lifecycle constraint',
   },
+  {
+    filename: '20260727120000_reconcile_site_quality_child_scope_trigger.sql',
+    order: 39,
+    description: 'Reconcile polymorphic Phase 15.8 quality child-scope validation without weakening ownership, digest, or parent-child guarantees',
+  },
 ];
