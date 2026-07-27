@@ -1,1 +1,29 @@
-{"name":"@ks-os/notifications","version":"0.1.0","private":true,"type":"module","main":"./dist/sms/index.js","types":"./src/sms/index.ts","exports":{".":{"import":"./dist/sms/index.js","types":"./src/sms/index.ts"}},"scripts":{"build":"tsc","typecheck":"tsc --noEmit","test":"node --import tsx --test src/**/*.test.ts"},"devDependencies":{"@ks-os/config":"workspace:*","@types/node":"^22.10.1","tsx":"^4.19.2","typescript":"^5.8.2"}}
+{
+  "name": "@ks-os/notifications",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./src/index.ts"
+    },
+    "./sms": {
+      "import": "./dist/sms/index.js",
+      "types": "./src/sms/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts"
+  },
+  "devDependencies": {
+    "@ks-os/config": "workspace:*",
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.2"
+  }
+}

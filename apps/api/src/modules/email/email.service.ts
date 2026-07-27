@@ -10,6 +10,7 @@ import {
 } from '@ks-os/database';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { renderEmail } from '@ks-os/email';
+import { decideOutboxRetry } from '@ks-os/notifications';
 import { getResend } from '../../lib/resend.js';
 import { OperationsIssueReporter } from '../operations/operations.issue-service.js';
 import { deriveReviewInvitationToken as deriveReputationReviewInvitationToken } from '../reputation/reputation.security.js';
@@ -107,7 +108,7 @@ export class EmailService {
     `);
   }
 
-  async processOutbox(limit = 10) {
+  async processOutbox(limit = 10, randomSource: number | (() => number) = Math.random) {
     const db = getDatabase();
     const claimed = await db.execute(sql`
       WITH candidates AS (
@@ -253,16 +254,56 @@ export class EmailService {
       } catch (error) {
         const code = error instanceof Error ? error.message.slice(0, 255) : 'UNKNOWN_ERROR';
         const permanent = /INVALID|VALIDATION|SUPPRESSED|NOT_CONFIGURED/i.test(code);
-        const failed = permanent || nextAttempt >= 5;
-        const delayMinutes = Math.min(2 ** nextAttempt, 60);
+        const randomVal = typeof randomSource === 'function' ? randomSource() : randomSource;
+        const decision = decideOutboxRetry({ attemptNumber: nextAttempt, isTerminalFailure: permanent, randomValue: randomVal });
+        const finalStatus = decision.deadLetter ? 'DEAD_LETTER' : 'PENDING';
         await db.update(emailOutbox).set({
-          status: failed ? 'FAILED' : 'DELAYED', attemptCount: nextAttempt,
-          nextAttemptAt: new Date(Date.now() + delayMinutes * 60_000), lastErrorCode: code,
-          failedAt: failed ? new Date() : null,
+          status: finalStatus,
+          attemptCount: nextAttempt,
+          nextAttemptAt: decision.retry ? new Date(Date.now() + decision.delayMs) : new Date(),
+          lastErrorCode: code,
+          failedAt: decision.deadLetter ? new Date() : null,
         }).where(eq(emailOutbox.id, email.id));
-        if(failed&&email.tenant_id){const formDelivery=String(email.template_key).startsWith('form-');const issueType=formDelivery?'FORM_DELIVERY_FAILED':'EMAIL_FAILED';await this.issues.report({tenantId:email.tenant_id,category:formDelivery?'FORM':'EMAIL',issueType,severity:'WARNING',title:formDelivery?'Form delivery failed':'Email delivery failed',message:'A transactional email could not be sent after retrying.',sourceType:'EMAIL_OUTBOX',sourceId:email.id,deduplicationKey:`${issueType}:${email.id}`,relatedAppointmentId:email.related_entity_type==='appointment'?email.related_entity_id:null,metadata:{templateKey:email.template_key,errorCode:code}});}
+        if (decision.deadLetter && email.tenant_id) {
+          const formDelivery = String(email.template_key).startsWith('form-');
+          const issueType = formDelivery ? 'FORM_DELIVERY_FAILED' : 'EMAIL_FAILED';
+          await this.issues.report({
+            tenantId: email.tenant_id,
+            category: formDelivery ? 'FORM' : 'EMAIL',
+            issueType,
+            severity: 'WARNING',
+            title: formDelivery ? 'Form delivery failed' : 'Email delivery failed',
+            message: 'A transactional email could not be sent after retrying.',
+            sourceType: 'EMAIL_OUTBOX',
+            sourceId: email.id,
+            deduplicationKey: `${issueType}:${email.id}`,
+            relatedAppointmentId: email.related_entity_type === 'appointment' ? email.related_entity_id : null,
+            metadata: { templateKey: email.template_key, errorCode: code },
+          });
+        }
       }
     }
     return { claimed: claimed.rows.length };
+  }
+
+  async retryDeadLetter(tenantId: string, emailOutboxId: string, tx?: any) {
+    const dbOrTx = tx || getDatabase();
+    const [existing] = await dbOrTx.select().from(emailOutbox).where(and(
+      eq(emailOutbox.id, emailOutboxId),
+      eq(emailOutbox.tenantId, tenantId),
+      inArray(emailOutbox.status, ['DEAD_LETTER', 'FAILED']),
+    )).limit(1);
+    if (!existing) return { retried: false, reason: 'NOT_ELIGIBLE' as const };
+
+    await dbOrTx.update(emailOutbox).set({
+      status: 'PENDING',
+      attemptCount: 0,
+      nextAttemptAt: new Date(),
+      scheduledFor: new Date(),
+      failedAt: null,
+      lastErrorCode: null,
+    }).where(eq(emailOutbox.id, emailOutboxId));
+
+    return { retried: true as const, emailOutboxId };
   }
 }

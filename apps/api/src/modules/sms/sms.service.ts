@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { clients, getDatabase, reviewInvitations, smsOutbox, tenants } from '@ks-os/database';
-import { renderSms, type SmsTemplateKey } from '@ks-os/notifications';
+import { renderSms, decideOutboxRetry, type SmsTemplateKey } from '@ks-os/notifications';
 import { env } from '../../config/env.js';
 import { getTwilioClient, isSmsConfigured } from '../../lib/twilio.js';
 import { normalizeSmsPhone } from './phone.js';
@@ -8,7 +8,8 @@ import { OperationsIssueReporter } from '../operations/operations.issue-service.
 import { deriveReviewInvitationToken } from '../reputation/reputation.security.js';
 
 export class SmsService {
-  private issues=new OperationsIssueReporter();
+  private issues = new OperationsIssueReporter();
+
   async enqueue(params: { tenantId: string; clientId?: string; appointmentId?: string; formAssignmentId?: string; recipientPhone: string; templateKey: SmsTemplateKey; templateData: Record<string, unknown>; idempotencyKey: string; scheduledFor?: Date; validUntil?: Date }, tx?: any) {
     const db = tx ?? getDatabase();
     let phone: string;
@@ -20,10 +21,12 @@ export class SmsService {
     await db.insert(smsOutbox).values({ tenantId: params.tenantId, clientId: params.clientId, appointmentId: params.appointmentId, formAssignmentId: params.formAssignmentId, recipientPhoneE164: phone, templateKey: params.templateKey, templateDataJson: params.templateData, idempotencyKey: params.idempotencyKey, scheduledFor: params.scheduledFor ?? new Date(), validUntil: params.validUntil, nextAttemptAt: params.scheduledFor ?? new Date() }).onConflictDoNothing({ target: smsOutbox.idempotencyKey });
     return true;
   }
+
   async cancelAppointmentReminders(tenantId: string, appointmentId: string, tx?: any) {
     await (tx ?? getDatabase()).update(smsOutbox).set({ status: 'CANCELLED' }).where(and(eq(smsOutbox.tenantId, tenantId), eq(smsOutbox.appointmentId, appointmentId), eq(smsOutbox.templateKey, 'appointment-reminder'), inArray(smsOutbox.status, ['PENDING','PROCESSING'])));
   }
-  async processOutbox(limit = 10) {
+
+  async processOutbox(limit = 10, randomSource: number | (() => number) = Math.random) {
     if (!isSmsConfigured()) throw new Error('SMS_NOT_CONFIGURED');
     const db = getDatabase();
     const claimed = await db.execute(sql`UPDATE sms_outbox SET status='PROCESSING' WHERE id IN (SELECT id FROM sms_outbox WHERE status='PENDING' AND scheduled_for<=now() AND next_attempt_at<=now() ORDER BY next_attempt_at FOR UPDATE SKIP LOCKED LIMIT ${limit}) RETURNING *`);
@@ -47,11 +50,60 @@ export class SmsService {
         await db.update(smsOutbox).set({ status: 'ACCEPTED', providerMessageSid: message.sid, attemptCount: row.attempt_count + 1, segmentCount: rendered.segmentCount, encoding: rendered.encoding, sentAt: new Date() }).where(eq(smsOutbox.id, row.id));
         if (row.template_key === 'review-invitation' && templateData.reviewInvitationId) await db.update(reviewInvitations).set({ status: 'SENT', sentAt: new Date(), updatedAt: new Date() }).where(eq(reviewInvitations.id, String(templateData.reviewInvitationId)));
       } catch (error: any) {
-        const attempts = row.attempt_count + 1; const permanent = ['SMS_RECIPIENT_INVALID','SMS_RECIPIENT_OPTED_OUT','SMS_TEMPLATE_TOO_LONG'].includes(error.message) || ['21211','21610','21614'].includes(String(error.code));
-        const failed=permanent || attempts >= env.SMS_MAX_ATTEMPTS;await db.update(smsOutbox).set({ status: failed ? 'FAILED' : 'PENDING', attemptCount: attempts, nextAttemptAt: new Date(Date.now() + Math.min(2 ** attempts, 60) * 60000), lastErrorCode: permanent ? 'INVALID_PHONE_NUMBER' : 'TEMPORARY_PROVIDER_FAILURE', failedAt: failed ? new Date() : null }).where(eq(smsOutbox.id, row.id));
-        if(failed){const formDelivery=!!row.form_assignment_id;const issueType=formDelivery?'FORM_DELIVERY_FAILED':'SMS_FAILED';await this.issues.report({tenantId:row.tenant_id,category:formDelivery?'FORM':'SMS',issueType,severity:'WARNING',title:formDelivery?'Form delivery failed':'SMS delivery failed',message:'A transactional SMS could not be delivered after retrying.',sourceType:'SMS_OUTBOX',sourceId:row.id,deduplicationKey:`${issueType}:${row.id}`,relatedAppointmentId:row.appointment_id,metadata:{templateKey:row.template_key,errorCode:permanent?'INVALID_PHONE_NUMBER':'TEMPORARY_PROVIDER_FAILURE'}});}
+        const attempts = row.attempt_count + 1;
+        const permanent = ['SMS_RECIPIENT_INVALID','SMS_RECIPIENT_OPTED_OUT','SMS_TEMPLATE_TOO_LONG'].includes(error.message) || ['21211','21610','21614'].includes(String(error.code));
+        const randomVal = typeof randomSource === 'function' ? randomSource() : randomSource;
+        const decision = decideOutboxRetry({ attemptNumber: attempts, isTerminalFailure: permanent, randomValue: randomVal });
+        const finalStatus = decision.deadLetter ? 'DEAD_LETTER' : 'PENDING';
+        const lastCode = permanent ? 'INVALID_PHONE_NUMBER' : 'TEMPORARY_PROVIDER_FAILURE';
+        await db.update(smsOutbox).set({
+          status: finalStatus,
+          attemptCount: attempts,
+          nextAttemptAt: decision.retry ? new Date(Date.now() + decision.delayMs) : new Date(),
+          lastErrorCode: lastCode,
+          failedAt: decision.deadLetter ? new Date() : null,
+        }).where(eq(smsOutbox.id, row.id));
+
+        if (decision.deadLetter) {
+          const formDelivery = !!row.form_assignment_id;
+          const issueType = formDelivery ? 'FORM_DELIVERY_FAILED' : 'SMS_FAILED';
+          await this.issues.report({
+            tenantId: row.tenant_id,
+            category: formDelivery ? 'FORM' : 'SMS',
+            issueType,
+            severity: 'WARNING',
+            title: formDelivery ? 'Form delivery failed' : 'SMS delivery failed',
+            message: 'A transactional SMS could not be delivered after retrying.',
+            sourceType: 'SMS_OUTBOX',
+            sourceId: row.id,
+            deduplicationKey: `${issueType}:${row.id}`,
+            relatedAppointmentId: row.appointment_id,
+            metadata: { templateKey: row.template_key, errorCode: lastCode },
+          });
+        }
       }
     }
     return claimed.rows.length;
+  }
+
+  async retryDeadLetter(tenantId: string, smsOutboxId: string, tx?: any) {
+    const dbOrTx = tx ?? getDatabase();
+    const [existing] = await dbOrTx.select().from(smsOutbox).where(and(
+      eq(smsOutbox.id, smsOutboxId),
+      eq(smsOutbox.tenantId, tenantId),
+      inArray(smsOutbox.status, ['DEAD_LETTER', 'FAILED']),
+    )).limit(1);
+    if (!existing) return { retried: false, reason: 'NOT_ELIGIBLE' as const };
+
+    await dbOrTx.update(smsOutbox).set({
+      status: 'PENDING',
+      attemptCount: 0,
+      nextAttemptAt: new Date(),
+      scheduledFor: new Date(),
+      failedAt: null,
+      lastErrorCode: null,
+    }).where(eq(smsOutbox.id, smsOutboxId));
+
+    return { retried: true as const, smsOutboxId };
   }
 }

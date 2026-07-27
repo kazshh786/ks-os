@@ -609,6 +609,32 @@ export class BookingService {
           relatedEntityId: bookingId
         }, tx);
       }
+      if (tenant?.bookingRescheduleEnabled) {
+        const businessRecipients = await tx.select({ id: users.id, email: users.email, name: users.name }).from(users).where(and(
+          eq(users.tenantId, auth.tenantId),
+          eq(users.accountStatus, 'ACTIVE'),
+          or(eq(users.role, 'owner'), eq(users.id, targetStaffId)),
+        ));
+        const localDateTime = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: tenant.timezone }).format(newStart);
+        for (const recipient of businessRecipients) {
+          await this.emailService.enqueueEmail({
+            tenantId: auth.tenantId,
+            recipientEmail: recipient.email,
+            recipientName: recipient.name,
+            replyToEmail: tenant.replyToEmail || undefined,
+            templateKey: 'staff-operational-notification',
+            templateDataJson: {
+              tenantName: tenant.senderDisplayName || tenant.name,
+              tenantPrimaryColor: tenant.primaryColor,
+              staffName: recipient.name,
+              message: `Booking rescheduled: ${booking.serviceName || 'Service'} for ${booking.clientName || booking.clientNameFallback || 'a customer'} is now on ${localDateTime}.`,
+            },
+            idempotencyKey: `business-booking-rescheduled:${bookingId}:${newStart.getTime()}:${recipient.id}`,
+            relatedEntityType: 'appointment',
+            relatedEntityId: bookingId,
+          }, tx);
+        }
+      }
       if(options.notifyCustomer !== false&&tenant?.smsEnabled&&tenant.smsBookingRescheduleEnabled&&booking.clientPhone){const localTime=new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:tenant.timezone}).format(newStart);await this.smsService.enqueue({tenantId:auth.tenantId,clientId:booking.clientId!,appointmentId:bookingId,recipientPhone:booking.clientPhone,templateKey:'booking-rescheduled',templateData:{appointmentDateTime:localTime},idempotencyKey:`sms-reschedule-${bookingId}-${newStart.getTime()}`},tx);if(tenant.smsAppointmentRemindersEnabled){const hours=tenant.smsReminderTiming==='24_and_48_hours_before'?[48,24]:tenant.smsReminderTiming==='none'?[]:[tenant.smsReminderTiming.startsWith('48')?48:24];for(const h of hours){const scheduled=new Date(newStart.getTime()-h*3600000);if(scheduled>new Date())await this.smsService.enqueue({tenantId:auth.tenantId,clientId:booking.clientId!,appointmentId:bookingId,recipientPhone:booking.clientPhone,templateKey:'appointment-reminder',templateData:{appointmentDateTime:localTime},idempotencyKey:`sms-reminder-${bookingId}-${newStart.getTime()}-${h}`,scheduledFor:scheduled,validUntil:newStart},tx);}}}
       if(options.notifyCustomer !== false) await this.enqueueEmailReminders(tx, tenant, booking, bookingId, newStart, String(newStart.getTime()));
     });
@@ -661,6 +687,32 @@ export class BookingService {
             relatedEntityType: 'appointment',
             relatedEntityId: bookingId
           }, tx);
+        }
+        if (tenant?.bookingCancellationEnabled) {
+          const businessRecipients = await tx.select({ id: users.id, email: users.email, name: users.name }).from(users).where(and(
+            eq(users.tenantId, auth.tenantId),
+            eq(users.accountStatus, 'ACTIVE'),
+            or(eq(users.role, 'owner'), eq(users.id, booking.userId)),
+          ));
+          const localDateTime = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: tenant.timezone }).format(booking.startTime);
+          for (const recipient of businessRecipients) {
+            await this.emailService.enqueueEmail({
+              tenantId: auth.tenantId,
+              recipientEmail: recipient.email,
+              recipientName: recipient.name,
+              replyToEmail: tenant.replyToEmail || undefined,
+              templateKey: 'staff-operational-notification',
+              templateDataJson: {
+                tenantName: tenant.senderDisplayName || tenant.name,
+                tenantPrimaryColor: tenant.primaryColor,
+                staffName: recipient.name,
+                message: `Booking cancelled: ${booking.serviceName || 'Service'} for ${booking.clientName || booking.clientNameFallback || 'a customer'} on ${localDateTime} has been cancelled.`,
+              },
+              idempotencyKey: `business-booking-cancelled:${bookingId}:${recipient.id}`,
+              relatedEntityType: 'appointment',
+              relatedEntityId: bookingId,
+            }, tx);
+          }
         }
         if(tenant?.smsEnabled&&tenant.smsBookingCancellationEnabled&&booking.clientPhone) await this.smsService.enqueue({tenantId:auth.tenantId,clientId:booking.clientId!,appointmentId:bookingId,recipientPhone:booking.clientPhone,templateKey:'booking-cancelled',templateData:{appointmentDateTime:new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:tenant.timezone}).format(booking.startTime)},idempotencyKey:`sms-cancel-${bookingId}`},tx);
       }
