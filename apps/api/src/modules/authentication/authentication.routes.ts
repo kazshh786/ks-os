@@ -5,13 +5,33 @@ import {
   InvitationReferenceParamsSchema, PasswordResetRequestSchema, RevokeSessionParamsSchema,
   SelectWorkspaceRequestSchema, WorkspaceSessionSchema,
 } from '@ks-os/contracts';
-import { accountAccessAuditEvents, applicationSessions, getDatabase, users } from '@ks-os/database';
+import {
+  accountAccessAuditEvents, agencySessions, agencyUsers, applicationSessions, getDatabase, users,
+} from '@ks-os/database';
 import { supabase } from '../../lib/supabase.js';
+import { getSupabaseAdmin } from '../../lib/supabase-admin.js';
 import { AccountInvitationService } from './account-invitation.service.js';
 import { AuthenticationService } from './authentication.service.js';
 
 const neutralResetResponse = { success: true, data: { message: 'If an account is eligible, a password reset email will arrive shortly.' } };
 const TenantUserParams = z.object({ tenantId: z.string().uuid(), userReference: z.string().uuid() }).strict();
+const AgencyUserParams = z.object({ userReference: z.string().uuid() }).strict();
+const AdminPasswordSchema = z.object({
+  password: z.string()
+    .min(12)
+    .max(128)
+    .regex(/[a-z]/, 'Password must include a lowercase letter.')
+    .regex(/[A-Z]/, 'Password must include an uppercase letter.')
+    .regex(/\d/, 'Password must include a number.')
+    .regex(/[^A-Za-z0-9]/, 'Password must include a symbol.'),
+  confirmPassword: z.string().min(12).max(128),
+  reason: z.string().trim().min(20).max(500),
+  identityVerified: z.literal(true),
+}).strict().superRefine((input, ctx) => {
+  if (input.password !== input.confirmPassword) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['confirmPassword'], message: 'Password confirmation does not match.' });
+  }
+});
 
 export async function authenticationRoutes(app: FastifyInstance) {
   const service = new AuthenticationService();
@@ -147,6 +167,141 @@ export async function authenticationRoutes(app: FastifyInstance) {
       });
     });
     return { success: true, data: { sent: true, email } };
+  });
+
+  app.post('/api/v1/agency/tenants/:tenantId/users/:userReference/password', { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } }, async request => {
+    const agency = request.requireAgency('tenants.manage');
+    const { tenantId, userReference } = TenantUserParams.parse(request.params);
+    const input = AdminPasswordSchema.parse(request.body);
+    const db = getDatabase();
+    const [target] = await db.select().from(users).where(and(eq(users.tenantId, tenantId), eq(users.publicReference, userReference))).limit(1);
+    if (!target) throw Object.assign(new Error('Business user not found.'), { statusCode: 404, code: 'TENANT_USER_NOT_FOUND' });
+    if (!target.authUserId) throw Object.assign(new Error('This user does not yet have a Supabase login identity.'), { statusCode: 409, code: 'TENANT_USER_NOT_ACTIVATED' });
+
+    const now = new Date();
+    await db.transaction(async tx => {
+      await tx.update(users).set({
+        sessionsValidAfter: now,
+        securityVersion: sql`${users.securityVersion} + 1`,
+        updatedAt: now,
+      }).where(eq(users.id, target.id));
+      await tx.update(applicationSessions).set({ revokedAt: now, revokeReason: 'AGENCY_PASSWORD_SET' }).where(and(
+        eq(applicationSessions.authUserId, target.authUserId!),
+        eq(applicationSessions.applicationContext, 'TENANT'),
+        isNull(applicationSessions.revokedAt),
+      ));
+      await tx.insert(accountAccessAuditEvents).values({
+        authUserId: target.authUserId,
+        agencyUserId: agency.agencyUserId,
+        tenantId,
+        tenantUserId: target.id,
+        applicationContext: 'TENANT',
+        action: 'AGENCY_PASSWORD_SET',
+        outcome: 'REQUESTED',
+        reason: input.reason,
+        requestId: request.id,
+        metadata: { targetRole: target.role, sessionsRevoked: true },
+      });
+    });
+
+    const { error } = await getSupabaseAdmin().auth.admin.updateUserById(target.authUserId, { password: input.password });
+    if (error) {
+      await db.insert(accountAccessAuditEvents).values({
+        authUserId: target.authUserId,
+        agencyUserId: agency.agencyUserId,
+        tenantId,
+        tenantUserId: target.id,
+        applicationContext: 'TENANT',
+        action: 'AGENCY_PASSWORD_SET',
+        outcome: 'FAILED',
+        reason: input.reason,
+        requestId: request.id,
+        metadata: { providerCode: String(error.code || error.name || 'PROVIDER_REJECTED').slice(0, 100), sessionsRevoked: true },
+      });
+      throw Object.assign(new Error('The user password could not be changed.'), { statusCode: 502, code: 'PASSWORD_ADMINISTRATION_FAILED' });
+    }
+
+    await db.insert(accountAccessAuditEvents).values({
+      authUserId: target.authUserId,
+      agencyUserId: agency.agencyUserId,
+      tenantId,
+      tenantUserId: target.id,
+      applicationContext: 'TENANT',
+      action: 'AGENCY_PASSWORD_SET',
+      outcome: 'SUCCESS',
+      reason: input.reason,
+      requestId: request.id,
+      metadata: { targetRole: target.role, sessionsRevoked: true },
+    });
+    return { success: true, data: { updated: true, email: target.emailNormalized, sessionsRevoked: true } };
+  });
+
+  app.post('/api/v1/agency/users/:userReference/password', { config: { rateLimit: { max: 3, timeWindow: '15 minutes' } } }, async request => {
+    const agency = request.requireAgency('agency.users.manage');
+    if (agency.role !== 'PLATFORM_OWNER') {
+      throw Object.assign(new Error('Only a platform owner can change agency-user passwords.'), { statusCode: 403, code: 'AGENCY_FORBIDDEN' });
+    }
+    const { userReference } = AgencyUserParams.parse(request.params);
+    const input = AdminPasswordSchema.parse(request.body);
+    const db = getDatabase();
+    const [target] = await db.select().from(agencyUsers).where(eq(agencyUsers.publicReference, userReference)).limit(1);
+    if (!target) throw Object.assign(new Error('Agency user not found.'), { statusCode: 404, code: 'AGENCY_USER_NOT_FOUND' });
+    if (!target.authUserId) throw Object.assign(new Error('This agency user does not yet have a Supabase login identity.'), { statusCode: 409, code: 'AGENCY_USER_NOT_ACTIVATED' });
+
+    const now = new Date();
+    await db.transaction(async tx => {
+      await tx.update(agencyUsers).set({
+        sessionsValidAfter: now,
+        securityVersion: sql`${agencyUsers.securityVersion} + 1`,
+        updatedAt: now,
+      }).where(eq(agencyUsers.id, target.id));
+      await tx.update(agencySessions).set({ revokedAt: now, revokeReason: 'PLATFORM_OWNER_PASSWORD_SET' }).where(and(
+        eq(agencySessions.agencyUserId, target.id),
+        isNull(agencySessions.revokedAt),
+      ));
+      await tx.update(applicationSessions).set({ revokedAt: now, revokeReason: 'PLATFORM_OWNER_PASSWORD_SET' }).where(and(
+        eq(applicationSessions.authUserId, target.authUserId!),
+        eq(applicationSessions.applicationContext, 'AGENCY'),
+        isNull(applicationSessions.revokedAt),
+      ));
+      await tx.insert(accountAccessAuditEvents).values({
+        authUserId: target.authUserId,
+        agencyUserId: agency.agencyUserId,
+        applicationContext: 'AGENCY',
+        action: 'PLATFORM_OWNER_PASSWORD_SET',
+        outcome: 'REQUESTED',
+        reason: input.reason,
+        requestId: request.id,
+        metadata: { targetAgencyUserId: target.id, targetRole: target.role, sessionsRevoked: true },
+      });
+    });
+
+    const { error } = await getSupabaseAdmin().auth.admin.updateUserById(target.authUserId, { password: input.password });
+    if (error) {
+      await db.insert(accountAccessAuditEvents).values({
+        authUserId: target.authUserId,
+        agencyUserId: agency.agencyUserId,
+        applicationContext: 'AGENCY',
+        action: 'PLATFORM_OWNER_PASSWORD_SET',
+        outcome: 'FAILED',
+        reason: input.reason,
+        requestId: request.id,
+        metadata: { targetAgencyUserId: target.id, providerCode: String(error.code || error.name || 'PROVIDER_REJECTED').slice(0, 100), sessionsRevoked: true },
+      });
+      throw Object.assign(new Error('The agency-user password could not be changed.'), { statusCode: 502, code: 'PASSWORD_ADMINISTRATION_FAILED' });
+    }
+
+    await db.insert(accountAccessAuditEvents).values({
+      authUserId: target.authUserId,
+      agencyUserId: agency.agencyUserId,
+      applicationContext: 'AGENCY',
+      action: 'PLATFORM_OWNER_PASSWORD_SET',
+      outcome: 'SUCCESS',
+      reason: input.reason,
+      requestId: request.id,
+      metadata: { targetAgencyUserId: target.id, targetRole: target.role, sessionsRevoked: true },
+    });
+    return { success: true, data: { updated: true, email: target.emailNormalized, sessionsRevoked: true } };
   });
 
   app.post('/api/v1/auth/password-reset', { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } }, async request => {
