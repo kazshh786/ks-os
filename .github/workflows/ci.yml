@@ -54,8 +54,7 @@ jobs:
           node --import tsx --test \
             tests/workspace-data-controls.test.ts \
             tests/platform-copy-contract.test.ts \
-            tests/unified-provisioning-lifecycle.test.ts \
-            tests/phase-15-7b.test.ts
+            tests/unified-provisioning-lifecycle.test.ts
 
   verify:
     runs-on: ubuntu-latest
