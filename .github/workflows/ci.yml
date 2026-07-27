@@ -51,7 +51,7 @@ jobs:
           corepack prepare pnpm@11.13.1 --activate >/dev/null 2>&1
           pnpm install --frozen-lockfile --reporter=silent >/dev/null
           if ! pnpm --filter api test >api-tests.log 2>&1; then
-            tail -n 220 api-tests.log
+            grep -n -E "not ok|AssertionError|ERR_ASSERTION|failureType|error:" api-tests.log | tail -n 120 || true
             exit 1
           fi
           tail -n 20 api-tests.log
