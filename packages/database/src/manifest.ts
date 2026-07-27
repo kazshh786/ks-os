@@ -46,4 +46,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260727120000_reconcile_site_quality_child_scope_trigger.sql', order: 39, description: 'Reconcile polymorphic Phase 15.8 quality child-scope validation without weakening ownership, digest, or parent-child guarantees' },
   { filename: '20260727130000_phase_15_9_site_publishing_domains.sql', order: 40, description: 'Phase 15.9 immutable publication pointers, governed hostnames, reviewed DNS operations, health evidence, cache invalidation, and rollback history' },
   { filename: '20260727170000_reconcile_agency_audit_columns.sql', order: 41, description: 'Reconcile append-only agency audit columns required by launch, support, recovery, and administrative actions' },
+  { filename: '20260727233000_workspace_hard_delete_and_test_reset.sql', order: 42, description: 'Platform-owner workspace test reset, irreversible tenant purge, private file cleanup, and authentication identity removal support' },
 ];
