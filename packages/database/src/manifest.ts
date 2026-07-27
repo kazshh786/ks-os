@@ -190,4 +190,9 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
     order: 37,
     description: 'Race-safe authoritative public booking creation with PostgreSQL advisory locking',
   },
+  {
+    filename: '20260727130000_canonical_staff_booking_overrides.sql',
+    order: 38,
+    description: 'Canonical staff booking overrides for price and duration in create_public_booking',
+  },
 ];

@@ -134,14 +134,19 @@ export async function calculateAvailability(
   );
   const approvedTimeOff=await db.select({staffUserId:staffTimeOff.staffUserId,startsAt:staffTimeOff.startsAt,endsAt:staffTimeOff.endsAt}).from(staffTimeOff).where(and(eq(staffTimeOff.tenantId,tenantId!),eq(staffTimeOff.status,'APPROVED'),lt(staffTimeOff.startsAt,dayEndUtc),gte(staffTimeOff.endsAt,dayStartUtc)));
 
-  // 5. Query staff pricing overrides
+  // 5. Query staff pricing overrides (scoped to tenant and active staff)
   const pricingOverrides = await db.select({
     userId: staffPricing.userId,
     customPriceInCents: staffPricing.customPriceInCents,
     customDurationMinutes: staffPricing.customDurationMinutes
   })
   .from(staffPricing)
-  .where(eq(staffPricing.serviceId, serviceId));
+  .innerJoin(users, eq(users.id, staffPricing.userId))
+  .where(and(
+    eq(staffPricing.serviceId, serviceId),
+    eq(users.tenantId, tenantId!),
+    eq(users.accountStatus, 'ACTIVE')
+  ));
 
   const now = Date.now();
   const slots: AvailabilitySlot[] = [];
