@@ -36,6 +36,7 @@ import {
   type SiteJobLeaseContext,
   type SiteJobResult,
 } from '@ks-os/site-jobs';
+import { isReviewableGenerationStatus } from '@ks-os/site-generation';
 import {
   SITE_QUALITY_ENGINE_VERSION,
   SITE_QUALITY_VIEWPORTS,
@@ -459,7 +460,7 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
 
   private async assertPreconditions(run: QualityRunContext) {
     if (
-      run.versionGenerationStatus !== 'COMPLETED'
+      !isReviewableGenerationStatus(run.versionGenerationStatus)
       || !run.currentVersionDigest
       || run.currentVersionDigest.length !== 64
       || run.versionStatus === 'SUPERSEDED'

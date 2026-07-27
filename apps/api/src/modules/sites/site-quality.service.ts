@@ -37,6 +37,7 @@ import {
   tenants,
 } from '@ks-os/database';
 import type { SiteJobPayload, SiteJobType } from '@ks-os/site-jobs';
+import { isReviewableGenerationStatus } from '@ks-os/site-generation';
 import {
   CreateSiteQualityRunSchema,
   DEFAULT_PUBLICATION_POLICY_VERSION,
@@ -218,7 +219,7 @@ export class SiteQualityService {
     if (
       !context.contentDigest
       || context.contentDigest.length !== 64
-      || context.generationStatus !== 'COMPLETED'
+      || !isReviewableGenerationStatus(context.generationStatus)
     ) {
       throw fail(
         409,
@@ -1117,7 +1118,8 @@ export class SiteQualityService {
       runSiteVersionDigestSha256: run?.siteVersionDigestSha256,
       currentSiteVersionDigestSha256: context.contentDigest ?? '0'.repeat(64),
       siteVersionComplete: Boolean(
-        context.contentDigest && context.generationStatus === 'COMPLETED',
+        context.contentDigest
+        && isReviewableGenerationStatus(context.generationStatus),
       ),
       siteVersionSuperseded: context.versionStatus === 'SUPERSEDED',
       runStale: Boolean(

@@ -22,6 +22,7 @@ import {
   generateWithControlledRepair,
   generationDigest,
   generationIdempotencyKey,
+  isReviewableGenerationStatus,
   parseSiteGenerationConfig,
   selectGenerationSafeFacts,
   validateGeneratedPage,
@@ -391,6 +392,30 @@ test('lifecycle permits repair and review but never publication', () => {
   assert.doesNotThrow(() => assertGenerationRunTransition('VALIDATING', 'READY_FOR_REVIEW'));
   assert.throws(() => assertGenerationRunTransition('READY_FOR_REVIEW', 'GENERATING'));
   assert.throws(() => assertGenerationRunTransition('READY_FOR_REVIEW', 'PENDING'));
+});
+
+test('only the canonical READY_FOR_REVIEW generation state is quality-reviewable', () => {
+  assert.equal(isReviewableGenerationStatus('READY_FOR_REVIEW'), true);
+  for (const status of [
+    'PENDING',
+    'PREPARING_CONTEXT',
+    'GENERATING',
+    'VALIDATING',
+    'REPAIRING',
+    'FAILED',
+    'CANCEL_REQUESTED',
+    'CANCELLED',
+    'SUPERSEDED',
+    'COMPLETED',
+    null,
+    undefined,
+  ]) {
+    assert.equal(
+      isReviewableGenerationStatus(status),
+      false,
+      `${String(status)} must not be quality-reviewable`,
+    );
+  }
 });
 
 test('idempotency changes with source, blueprint and pack revisions', () => {

@@ -142,8 +142,17 @@ test('all quality mutations require explicit agency capabilities', () => {
   assert.ok(!fulfilment.includes('sites.quality.waive'));
 });
 
-test('service rejects incomplete and superseded versions before enqueue', () => {
-  assert.match(service, /generationStatus !== 'COMPLETED'/);
+test('service and worker use the canonical reviewable generation lifecycle', () => {
+  assert.match(service, /import \{ isReviewableGenerationStatus \} from '@ks-os\/site-generation'/);
+  assert.match(service, /!isReviewableGenerationStatus\(context\.generationStatus\)/);
+  assert.match(worker, /import \{ isReviewableGenerationStatus \} from '@ks-os\/site-generation'/);
+  assert.match(worker, /!isReviewableGenerationStatus\(run\.versionGenerationStatus\)/);
+  assert.doesNotMatch(service, /generationStatus (?:===|!==) 'COMPLETED'/);
+  assert.doesNotMatch(worker, /versionGenerationStatus (?:===|!==) 'COMPLETED'/);
+});
+
+test('service rejects non-reviewable and superseded versions before enqueue', () => {
+  assert.match(service, /!isReviewableGenerationStatus\(context\.generationStatus\)/);
   assert.match(service, /SITE_QUALITY_VERSION_INCOMPLETE/);
   assert.match(service, /versionStatus === 'SUPERSEDED'/);
   assert.match(service, /SITE_QUALITY_VERSION_SUPERSEDED/);
