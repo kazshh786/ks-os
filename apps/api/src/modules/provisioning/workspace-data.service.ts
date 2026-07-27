@@ -8,6 +8,11 @@ const fail = (statusCode: number, code: string, message: string, details?: unkno
 
 const asNumber = (value: unknown) => Number(value || 0);
 
+type StorageObject = {
+  bucket: string;
+  path: string;
+};
+
 export class WorkspaceDataService {
   private readonly db = getDatabase();
   private readonly audit = new AgencyAuditService();
@@ -28,20 +33,83 @@ export class WorkspaceDataService {
     }
   }
 
+  private async storageObjects(tenantId: string, includeFactFinding: boolean): Promise<StorageObject[]> {
+    const query = includeFactFinding
+      ? await this.db.execute(sql`
+          select storage_bucket as bucket, storage_path as path
+          from fact_finding_uploads
+          where tenant_id = ${tenantId}::uuid
+            and storage_bucket is not null
+            and storage_path is not null
+          union all
+          select 'report-exports' as bucket, file_storage_path as path
+          from report_export_jobs
+          where tenant_id = ${tenantId}::uuid
+            and file_storage_path is not null
+        `)
+      : await this.db.execute(sql`
+          select 'report-exports' as bucket, file_storage_path as path
+          from report_export_jobs
+          where tenant_id = ${tenantId}::uuid
+            and file_storage_path is not null
+        `);
+
+    const unique = new Map<string, StorageObject>();
+    for (const row of query.rows as Array<Record<string, unknown>>) {
+      const bucket = String(row.bucket || '').trim();
+      const objectPath = String(row.path || '').trim();
+      if (!bucket || !objectPath) continue;
+      unique.set(`${bucket}:${objectPath}`, { bucket, path: objectPath });
+    }
+    return [...unique.values()];
+  }
+
+  private async removeStorageObjects(objects: StorageObject[]) {
+    if (!objects.length) return { removed: 0 };
+    const byBucket = new Map<string, string[]>();
+    for (const object of objects) {
+      const paths = byBucket.get(object.bucket) || [];
+      paths.push(object.path);
+      byBucket.set(object.bucket, paths);
+    }
+
+    let removed = 0;
+    for (const [bucket, paths] of byBucket) {
+      for (let index = 0; index < paths.length; index += 100) {
+        const chunk = paths.slice(index, index + 100);
+        const { error } = await getSupabaseAdmin().storage.from(bucket).remove(chunk);
+        if (error) {
+          throw fail(
+            502,
+            'WORKSPACE_STORAGE_DELETE_FAILED',
+            'We could not remove every private file. No database records were deleted. Try again.',
+            { bucket, attempted: chunk.length },
+          );
+        }
+        removed += chunk.length;
+      }
+    }
+    return { removed };
+  }
+
   async previewReset(tenantReference: string) {
     const tenant = await this.tenant(tenantReference);
-    const query = await this.db.execute(sql`
-      select
-        (select count(*)::int from appointments where tenant_id = ${tenant.id}::uuid) as appointments,
-        (select count(*)::int from clients where tenant_id = ${tenant.id}::uuid) as clients,
-        (select count(*)::int from checkout_transactions where tenant_id = ${tenant.id}::uuid) as payments,
-        (select count(*)::int from client_form_submissions where tenant_id = ${tenant.id}::uuid) as form_submissions,
-        ((select count(*) from email_outbox where tenant_id = ${tenant.id}::uuid)
-          + (select count(*) from sms_outbox where tenant_id = ${tenant.id}::uuid)
-          + (select count(*) from internal_notifications where tenant_id = ${tenant.id}::uuid))::int as messages,
-        (select count(*)::int from review_invitations where tenant_id = ${tenant.id}::uuid) as review_invitations,
-        (select count(*)::int from waitlist where tenant_id = ${tenant.id}::uuid) as waitlist_entries
-    `);
+    const [query, storedFiles] = await Promise.all([
+      this.db.execute(sql`
+        select
+          (select count(*)::int from appointments where tenant_id = ${tenant.id}::uuid) as appointments,
+          (select count(*)::int from clients where tenant_id = ${tenant.id}::uuid) as clients,
+          (select count(*)::int from checkout_transactions where tenant_id = ${tenant.id}::uuid) as payments,
+          (select count(*)::int from client_form_submissions where tenant_id = ${tenant.id}::uuid) as form_submissions,
+          ((select count(*) from email_outbox where tenant_id = ${tenant.id}::uuid)
+            + (select count(*) from sms_outbox where tenant_id = ${tenant.id}::uuid)
+            + (select count(*) from internal_notifications where tenant_id = ${tenant.id}::uuid))::int as messages,
+          (select count(*)::int from review_invitations where tenant_id = ${tenant.id}::uuid) as review_invitations,
+          (select count(*)::int from waitlist where tenant_id = ${tenant.id}::uuid) as waitlist_entries,
+          (select count(*)::int from report_export_jobs where tenant_id = ${tenant.id}::uuid) as generated_reports
+      `),
+      this.storageObjects(tenant.id, false),
+    ]);
     const row = (query.rows[0] || {}) as Record<string, unknown>;
     return {
       workspace: { id: tenant.id, name: tenant.name },
@@ -53,6 +121,8 @@ export class WorkspaceDataService {
         messages: asNumber(row.messages),
         reviewInvitations: asNumber(row.review_invitations),
         waitlistEntries: asNumber(row.waitlist_entries),
+        generatedReports: asNumber(row.generated_reports),
+        storedFiles: storedFiles.length,
       },
       keeps: [
         'Services and prices',
@@ -73,6 +143,8 @@ export class WorkspaceDataService {
       throw fail(400, 'RESET_CONFIRMATION_MISMATCH', 'Type RESET TEST DATA exactly to continue.');
     }
     const preview = await this.previewReset(tenant.id);
+    const storageObjects = await this.storageObjects(tenant.id, false);
+    const storage = await this.removeStorageObjects(storageObjects);
     const response = await this.db.execute(sql`
       select public.ks_reset_tenant_test_data(${tenant.id}::uuid) as result
     `);
@@ -81,21 +153,28 @@ export class WorkspaceDataService {
       tenantId: tenant.id,
       reason,
       description: 'Test activity was cleared while the configured booking system and website were kept.',
-      metadata: { removed: preview.removes, confirmationPhrase: 'RESET TEST DATA' },
+      metadata: {
+        removed: preview.removes,
+        removedStoredFiles: storage.removed,
+        confirmationPhrase: 'RESET TEST DATA',
+      },
     });
-    return { reset: true, workspace: { id: tenant.id, name: tenant.name }, preview, result };
+    return { reset: true, workspace: { id: tenant.id, name: tenant.name }, preview, result, storage };
   }
 
   async previewHardDelete(tenantReference: string) {
     const tenant = await this.tenant(tenantReference);
-    const query = await this.db.execute(sql`
-      select
-        (select count(*)::int from appointments where tenant_id = ${tenant.id}::uuid) as appointments,
-        (select count(*)::int from clients where tenant_id = ${tenant.id}::uuid) as clients,
-        (select count(*)::int from users where tenant_id = ${tenant.id}::uuid) as users,
-        (select count(*)::int from checkout_transactions where tenant_id = ${tenant.id}::uuid) as payments,
-        (select count(*)::int from sites where tenant_id = ${tenant.id}::uuid) as sites
-    `);
+    const [query, storedFiles] = await Promise.all([
+      this.db.execute(sql`
+        select
+          (select count(*)::int from appointments where tenant_id = ${tenant.id}::uuid) as appointments,
+          (select count(*)::int from clients where tenant_id = ${tenant.id}::uuid) as clients,
+          (select count(*)::int from users where tenant_id = ${tenant.id}::uuid) as users,
+          (select count(*)::int from checkout_transactions where tenant_id = ${tenant.id}::uuid) as payments,
+          (select count(*)::int from sites where tenant_id = ${tenant.id}::uuid) as sites
+      `),
+      this.storageObjects(tenant.id, true),
+    ]);
     const row = (query.rows[0] || {}) as Record<string, unknown>;
     return {
       workspace: {
@@ -110,8 +189,9 @@ export class WorkspaceDataService {
         users: asNumber(row.users),
         payments: asNumber(row.payments),
         sites: asNumber(row.sites),
+        storedFiles: storedFiles.length,
       },
-      warning: 'This permanently removes the workspace, bookings, people, payments, forms, messages, website records and audit history. It cannot be undone.',
+      warning: 'This permanently removes the workspace, bookings, people, payments, forms, messages, private files, website records and audit history. It cannot be undone.',
       confirmationPhrase: 'DELETE NOW',
     };
   }
@@ -127,10 +207,12 @@ export class WorkspaceDataService {
     }
 
     const preview = await this.previewHardDelete(tenant.id);
+    const storageObjects = await this.storageObjects(tenant.id, true);
+    const storage = await this.removeStorageObjects(storageObjects);
     const response = await this.db.execute(sql`
       select public.ks_hard_delete_tenant_workspace(${tenant.id}::uuid) as result
     `);
-    const result = (response.rows[0] as { result?: any } | undefined)?.result || {};
+    const result = (response.rows[0] as { result?: unknown } | undefined)?.result as Record<string, unknown> || {};
     const candidates = Array.isArray(result.candidateAuthUserIds) ? result.candidateAuthUserIds as string[] : [];
     const deletedAuthUserIds: string[] = [];
     const retainedAuthUserIds: string[] = [];
@@ -142,7 +224,7 @@ export class WorkspaceDataService {
           or exists(select 1 from agency_users where auth_user_id = ${authUserId}::uuid)
         ) as still_referenced
       `);
-      if (Boolean((references.rows[0] as any)?.still_referenced)) {
+      if (Boolean((references.rows[0] as Record<string, unknown> | undefined)?.still_referenced)) {
         retainedAuthUserIds.push(authUserId);
         continue;
       }
@@ -162,6 +244,7 @@ export class WorkspaceDataService {
         previousName: tenant.name,
         previousSubdomain: tenant.subdomain,
         removed: preview.removes,
+        removedStoredFiles: storage.removed,
         deletedAuthIdentities: deletedAuthUserIds.length,
         retainedSharedOrFailedAuthIdentities: retainedAuthUserIds.length,
         confirmationPhrase: 'DELETE NOW',
@@ -172,6 +255,7 @@ export class WorkspaceDataService {
       deleted: true,
       workspaceReference: tenant.id,
       removed: preview.removes,
+      storage,
       authIdentities: {
         deleted: deletedAuthUserIds.length,
         retained: retainedAuthUserIds.length,
