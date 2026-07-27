@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const source = readFileSync(new URL('../AgencyPages.tsx', import.meta.url), 'utf8');
+const source = readFileSync(resolve(process.cwd(), 'src/features/agency/AgencyPages.tsx'), 'utf8');
 
 describe('Client Management Workstation user access panel', () => {
   it('shows manual creation next to the invitation workflow', () => {
