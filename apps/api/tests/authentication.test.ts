@@ -61,7 +61,7 @@ test('Supabase administration is server-only and non-persistent', () => {
 });
 
 test('existing Supabase users use the same local invitation flow without duplicate identity creation', () => {
-  assert.match(admin, /findUserByEmail/);
+  assert.match(admin, /findSupabaseUserByEmail/);
   assert.match(admin, /delivery: 'EXISTING_ACCOUNT'/);
   assert.match(invitations, /sendExistingAccountNotice/);
   assert.match(invitations, /INVITATION_EMAIL_MISMATCH/);
