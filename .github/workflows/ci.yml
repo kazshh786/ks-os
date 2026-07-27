@@ -61,8 +61,29 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @ks-os/database build
+      - name: Prepare Supabase roles
+        run: |
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+
+          const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+          await client.connect();
+          try {
+            for (const role of ['anon', 'authenticated', 'service_role']) {
+              const exists = await client.query(`select 1 from pg_roles where rolname = $1`, [role]);
+              if (!exists.rowCount) await client.query(`create role ${role} nologin`);
+            }
+          } finally {
+            await client.end();
+          }
+          NODE
       - name: Apply complete migration history
-        run: node scripts/database/migrate.mjs --apply --allow-non-prod-apply
+        run: |
+          if ! node scripts/database/migrate.mjs --apply --allow-non-prod-apply >migration-smoke.log 2>&1; then
+            tail -n 120 migration-smoke.log
+            exit 1
+          fi
+          tail -n 20 migration-smoke.log
       - name: Exercise workspace data functions
         run: |
           node --input-type=module <<'NODE'
