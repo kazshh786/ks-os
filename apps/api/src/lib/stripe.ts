@@ -7,7 +7,7 @@ export function getStripeClient(): Stripe {
 
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) {
-    throw new Error('STRIPE_SECRET_KEY environment variable is missing.');
+    throw new Error('STRIPE_NOT_CONFIGURED');
   }
 
   stripeClient = new Stripe(secretKey, {
