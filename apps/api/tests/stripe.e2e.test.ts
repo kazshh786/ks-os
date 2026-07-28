@@ -4,6 +4,7 @@ import sinon from 'sinon';
 
 process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_dummy';
 process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
+process.env.FRONTEND_ORIGIN = 'http://localhost:3000';
 
 import { buildApp } from '../src/app.js';
 import { supabase } from '../src/lib/supabase.js';
@@ -15,10 +16,10 @@ import { installTenantAuthFixture } from './helpers/tenant-auth.js';
 
 test('Integration: Stripe Connect API', async (t) => {
   const app = buildApp();
-  
+
   const getClaimsStub = sinon.stub(supabase.auth, 'getClaims');
   const mockUserId = '11111111-1111-1111-1111-111111111111';
-  const mockTenantId = mockUserId; 
+  const mockTenantId = mockUserId;
   installTenantAuthFixture(app, { authUserId: mockUserId, tenantId: mockTenantId });
 
   const dbSelectStub = sinon.stub(getDatabase() as any, 'select');
@@ -29,14 +30,14 @@ test('Integration: Stripe Connect API', async (t) => {
   const mockStripe = {
     accounts: {
       create: sinon.stub(realStripe.accounts, 'create'),
-      retrieve: sinon.stub(realStripe.accounts, 'retrieve')
+      retrieve: sinon.stub(realStripe.accounts, 'retrieve'),
     },
     accountLinks: {
-      create: sinon.stub(realStripe.accountLinks, 'create')
+      create: sinon.stub(realStripe.accountLinks, 'create'),
     },
     webhooks: {
-      constructEvent: sinon.stub(realStripe.webhooks, 'constructEvent')
-    }
+      constructEvent: sinon.stub(realStripe.webhooks, 'constructEvent'),
+    },
   };
 
   const getConnectionStub = sinon.stub(StripeRepository.prototype, 'getConnection');
@@ -51,15 +52,15 @@ test('Integration: Stripe Connect API', async (t) => {
     dbSelectStub.returns({
       from: sinon.stub().returns({
         where: sinon.stub().returns({
-          limit: sinon.stub().resolves([{ role: 'staff' }])
-        })
-      })
+          limit: sinon.stub().resolves([{ role: 'staff' }]),
+        }),
+      }),
     } as any);
 
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/integrations/stripe/connect',
-      headers: { authorization: 'Bearer mock', 'x-ks-test-role': 'staff' }
+      headers: { authorization: 'Bearer mock', 'x-ks-test-role': 'staff' },
     });
 
     assert.strictEqual(response.statusCode, 403);
@@ -67,14 +68,19 @@ test('Integration: Stripe Connect API', async (t) => {
     assert.strictEqual(body.error, 'STRIPE_ACCESS_DENIED');
   });
 
-  await t.test('POST /api/v1/integrations/stripe/connect allows owner and masks id', async () => {
+  await t.test('POST /api/v1/integrations/stripe/connect creates one account and returns a setup link', async () => {
     getClaimsStub.resolves({ data: { claims: { sub: mockUserId } }, error: null } as any);
     dbSelectStub.returns({
       from: sinon.stub().returns({
         where: sinon.stub().returns({
-          limit: sinon.stub().resolves([{ role: 'owner' }])
-        })
-      })
+          limit: sinon.stub().resolves([{
+            role: 'owner',
+            name: 'Test Business',
+            legalBusinessName: 'Test Business Ltd',
+            primaryContactEmail: 'owner@example.test',
+          }]),
+        }),
+      }),
     } as any);
 
     getConnectionStub.resolves(null);
@@ -83,24 +89,35 @@ test('Integration: Stripe Connect API', async (t) => {
       details_submitted: true,
       charges_enabled: true,
       payouts_enabled: true,
-      requirements: {}
+      requirements: {},
+    });
+    mockStripe.accountLinks.create.resolves({
+      url: 'https://connect.stripe.test/setup',
     });
 
     upsertConnectionStub.resolves({
       stripeAccountId: 'acct_1234567890',
-      connectionStatus: 'READY'
+      connectionStatus: 'READY',
     });
 
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/integrations/stripe/connect',
-      headers: { authorization: 'Bearer mock' }
+      headers: { authorization: 'Bearer mock' },
     });
 
     assert.strictEqual(response.statusCode, 200);
     const body = JSON.parse(response.body);
     assert.strictEqual(body.data.stripeAccountId, 'acct_••••7890');
     assert.strictEqual(body.data.connectionStatus, 'READY');
+    assert.strictEqual(body.url, 'https://connect.stripe.test/setup');
+    assert.strictEqual(mockStripe.accounts.create.callCount, 1);
+    assert.strictEqual(mockStripe.accountLinks.create.callCount, 1);
+
+    const linkInput = mockStripe.accountLinks.create.firstCall.args[0];
+    assert.strictEqual(linkInput.account, 'acct_1234567890');
+    assert.strictEqual(linkInput.return_url, 'http://localhost:3000/app/settings/payments/return');
+    assert.strictEqual(linkInput.refresh_url, 'http://localhost:3000/app/settings/payments/refresh');
   });
 
   await t.test('POST /api/v1/webhooks/stripe/connect fails on invalid signature', async () => {
@@ -110,7 +127,7 @@ test('Integration: Stripe Connect API', async (t) => {
       method: 'POST',
       url: '/api/v1/webhooks/stripe/connect',
       headers: { 'stripe-signature': 'invalid', 'content-type': 'application/json' },
-      body: JSON.stringify({ some: 'data' })
+      body: JSON.stringify({ some: 'data' }),
     });
 
     assert.strictEqual(response.statusCode, 401);
@@ -123,20 +140,20 @@ test('Integration: Stripe Connect API', async (t) => {
       id: 'evt_123',
       type: 'account.updated',
       account: 'acct_123',
-      data: { object: { id: 'acct_123' } }
+      data: { object: { id: 'acct_123' } },
     });
 
     dbSelectStub.returns({
       from: sinon.stub().returns({
-        where: sinon.stub().resolves([{ processingStatus: 'PROCESSED' }])
-      })
+        where: sinon.stub().resolves([{ processingStatus: 'PROCESSED' }]),
+      }),
     } as any);
 
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/webhooks/stripe/connect',
       headers: { 'stripe-signature': 'valid', 'content-type': 'application/json' },
-      body: JSON.stringify({ some: 'data' })
+      body: JSON.stringify({ some: 'data' }),
     });
 
     assert.strictEqual(response.statusCode, 200);
@@ -148,21 +165,21 @@ test('Integration: Stripe Connect API', async (t) => {
     const activeState = deriveStripeConnectionStatus({
       details_submitted: true,
       charges_enabled: true,
-      payouts_enabled: true
+      payouts_enabled: true,
     } as any);
     assert.strictEqual(activeState, 'READY');
 
     const pendingState = deriveStripeConnectionStatus({
       details_submitted: true,
       charges_enabled: false,
-      payouts_enabled: false
+      payouts_enabled: false,
     } as any);
     assert.strictEqual(pendingState, 'PENDING_VERIFICATION');
 
     const incompleteState = deriveStripeConnectionStatus({
       details_submitted: false,
       charges_enabled: false,
-      payouts_enabled: false
+      payouts_enabled: false,
     } as any);
     assert.strictEqual(incompleteState, 'ONBOARDING');
   });
