@@ -18,9 +18,24 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres_ci
+          POSTGRES_PASSWORD: postgres_ci_password
+          POSTGRES_DB: ks_os_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       GH_TOKEN: ${{ github.token }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
+      DATABASE_URL: postgresql://postgres_ci:postgres_ci_password@127.0.0.1:5432/ks_os_ci
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
