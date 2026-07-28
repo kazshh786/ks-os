@@ -163,6 +163,7 @@ function CustomQuestion({ question, value, onChange, onUpload, readOnly }: { que
 export function FactFindingForm({ questionnaire, answers, onChange, onSave, onSubmit, onUpload, submitLabel = 'Submit for review', readOnly = false }: Props) {
   const [pageIndex, setPageIndex] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [operationError, setOperationError] = useState('');
   const visibleQuestions = useMemo(() => questionnaire.questions.filter(question => visible(question, answers)).sort((a, b) => Number(a.displayOrder || 0) - Number(b.displayOrder || 0)), [questionnaire.questions, answers]);
   const pages = useMemo(() => pageDefinitions.map(page => ({ ...page, questions: visibleQuestions.filter(question => pageKey(question) === page.key) })).filter(page => page.questions.length), [visibleQuestions]);
   const activePage = pages[Math.min(pageIndex, Math.max(0, pages.length - 1))];
@@ -178,23 +179,49 @@ export function FactFindingForm({ questionnaire, answers, onChange, onSave, onSu
     settings: { showIntroduction: false, showReview: true, completionMessage: 'Thank you. Your information was received.', autosave: true },
   };
   const completion = questionnaire.completion?.completionPercentage ?? Math.round((visibleQuestions.filter(question => answered(answers[question.reference])).length / Math.max(1, visibleQuestions.length)) * 100);
-  const move = async (nextIndex: number) => {
+  const currentAnswerReferences = () => pageQuestions.map(question => question.reference).filter(reference => answered(answers[reference]));
+  const runAction = async (action: () => Promise<void>) => {
+    setOperationError('');
     setBusy(true);
-    try { await onSave(pageQuestions.map(question => question.reference).filter(reference => answered(answers[reference]))); setPageIndex(nextIndex); window.scrollTo({ top: 0, behavior: 'smooth' }); } finally { setBusy(false); }
+    try {
+      await action();
+      return true;
+    } catch (caught) {
+      setOperationError(caught instanceof Error ? caught.message : 'The form action could not be completed. Please try again.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
   };
-  const submit = async () => { if (!onSubmit) return; setBusy(true); try { await onSave(pageQuestions.map(question => question.reference).filter(reference => answered(answers[reference]))); await onSubmit(); } finally { setBusy(false); } };
+  const move = async (nextIndex: number) => {
+    const saved = await runAction(() => onSave(currentAnswerReferences()));
+    if (!saved) return;
+    setPageIndex(nextIndex);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const submit = async () => {
+    if (!onSubmit) return;
+    await runAction(async () => {
+      await onSave(currentAnswerReferences());
+      await onSubmit();
+    });
+  };
+  const guardedUpload = onUpload ? async (question: Question, file: File) => {
+    await runAction(() => onUpload(question, file));
+  } : undefined;
 
   return <div className="space-y-5">
     <header className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
       <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-widest text-violet-300">{questionnaire.tenantName || 'Client onboarding'}</p><h2 className="mt-2 text-2xl font-black">Complete the business intake form</h2><p className="mt-2 max-w-2xl text-sm text-slate-400">The same controlled form powers client self-service and agency-assisted onboarding.</p></div><strong className="rounded-full bg-violet-950 px-3 py-2 text-xs text-violet-200">{completion}% complete</strong></div>
       <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-950"><div className="h-full rounded-full bg-violet-500 transition-all" style={{ width: `${completion}%` }} /></div>
     </header>
+    {operationError && <p role="alert" aria-live="assertive" className="rounded-xl border border-rose-900 bg-rose-950/40 p-4 text-sm font-semibold text-rose-200">{operationError} Your answers remain on this page so you can try again.</p>}
     <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
-      <nav aria-label="Form sections" className="space-y-2">{pages.map((page, index) => <button type="button" key={page.id} onClick={() => setPageIndex(index)} className={`w-full rounded-2xl border p-4 text-left ${index === pageIndex ? 'border-violet-500 bg-violet-950/30' : 'border-slate-800 bg-slate-900'}`}><strong className="text-sm">{page.title}</strong><span className="mt-1 block text-xs text-slate-500">{page.questions.filter(question => answered(answers[question.reference])).length} of {page.questions.length} answered</span></button>)}</nav>
+      <nav aria-label="Form sections" className="space-y-2">{pages.map((page, index) => <button type="button" key={page.id} disabled={busy} onClick={() => setPageIndex(index)} className={`w-full rounded-2xl border p-4 text-left disabled:opacity-50 ${index === pageIndex ? 'border-violet-500 bg-violet-950/30' : 'border-slate-800 bg-slate-900'}`}><strong className="text-sm">{page.title}</strong><span className="mt-1 block text-xs text-slate-500">{page.questions.filter(question => answered(answers[question.reference])).length} of {page.questions.length} answered</span></button>)}</nav>
       <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:p-7"><div className="border-b border-slate-800 pb-5"><p className="text-xs font-black uppercase tracking-widest text-violet-300">Section {pageIndex + 1} of {pages.length}</p><h3 className="mt-2 text-2xl font-black">{activePage?.title}</h3><p className="mt-2 text-sm text-slate-400">{activePage?.description}</p></div>
-        {normalQuestions.length > 0 && <div className="mt-6"><FormRenderer schema={schema} answers={rendererAnswers} readOnly={readOnly} onChange={(key, value) => { const question = normalQuestions.find(item => fieldKey(item.reference) === key); if (question) onChange(question.reference, value); }} /></div>}
-        {customQuestions.length > 0 && <div className="mt-6 space-y-4">{customQuestions.map(question => <CustomQuestion key={question.reference} question={question} value={answers[question.reference]} onChange={value => onChange(question.reference, value)} onUpload={onUpload} readOnly={readOnly} />)}</div>}
-        {!readOnly && <div className="mt-8 flex flex-wrap items-center justify-between gap-3"><button type="button" disabled={pageIndex === 0 || busy} onClick={() => void move(Math.max(0, pageIndex - 1))} className="rounded-xl border border-slate-700 px-4 py-3 text-xs font-black disabled:opacity-30">Previous</button><div className="flex gap-2"><button type="button" disabled={busy} onClick={() => void onSave(pageQuestions.map(question => question.reference).filter(reference => answered(answers[reference])))} className="rounded-xl border border-violet-700 px-4 py-3 text-xs font-black text-violet-200 disabled:opacity-40">Save progress</button>{pageIndex < pages.length - 1 ? <button type="button" disabled={busy} onClick={() => void move(pageIndex + 1)} className="rounded-xl bg-violet-600 px-4 py-3 text-xs font-black disabled:opacity-40">Save and continue</button> : <button type="button" disabled={busy || !onSubmit} onClick={() => void submit()} className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black disabled:opacity-40">{submitLabel}</button>}</div></div>}
+        {normalQuestions.length > 0 && <div className="mt-6"><FormRenderer schema={schema} answers={rendererAnswers} readOnly={readOnly || busy} onChange={(key, value) => { const question = normalQuestions.find(item => fieldKey(item.reference) === key); if (question) onChange(question.reference, value); }} /></div>}
+        {customQuestions.length > 0 && <div className="mt-6 space-y-4">{customQuestions.map(question => <CustomQuestion key={question.reference} question={question} value={answers[question.reference]} onChange={value => onChange(question.reference, value)} onUpload={guardedUpload} readOnly={readOnly || busy} />)}</div>}
+        {!readOnly && <div className="mt-8 flex flex-wrap items-center justify-between gap-3"><button type="button" disabled={pageIndex === 0 || busy} onClick={() => void move(Math.max(0, pageIndex - 1))} className="rounded-xl border border-slate-700 px-4 py-3 text-xs font-black disabled:opacity-30">Previous</button><div className="flex gap-2"><button type="button" disabled={busy} onClick={() => void runAction(() => onSave(currentAnswerReferences()))} className="rounded-xl border border-violet-700 px-4 py-3 text-xs font-black text-violet-200 disabled:opacity-40">{busy ? 'Working…' : 'Save progress'}</button>{pageIndex < pages.length - 1 ? <button type="button" disabled={busy} onClick={() => void move(pageIndex + 1)} className="rounded-xl bg-violet-600 px-4 py-3 text-xs font-black disabled:opacity-40">Save and continue</button> : <button type="button" disabled={busy || !onSubmit} onClick={() => void submit()} className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black disabled:opacity-40">{busy ? 'Submitting…' : submitLabel}</button>}</div></div>}
       </section>
     </div>
   </div>;
