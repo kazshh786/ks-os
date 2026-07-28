@@ -7,6 +7,7 @@ import {
   GripVertical,
   LayoutTemplate,
   Link2,
+  Palette,
   Plus,
   Save,
   Sparkles,
@@ -45,12 +46,13 @@ const theme = {
   cardColor: '#ffffff',
   primaryColor: '#4f46e5',
   textColor: '#0f172a',
-  mutedColor: '#64748b',
+  mutedColor: '#0ea5e9',
   errorColor: '#b91c1c',
   radius: 'large' as const,
   density: 'comfortable' as const,
   progressStyle: 'BAR' as const,
 };
+
 const emptySchema = (): FormSchemaJson => ({
   schemaVersion: 2,
   fields: [],
@@ -145,6 +147,10 @@ export default function FormEditorPage() {
     setSchema(next);
     markDirty();
   }, [schema]);
+
+  const updateTheme = (key: keyof FormSchemaJson['theme'], value: string) => {
+    change({ ...schema, theme: { ...schema.theme, [key]: value } });
+  };
 
   const loadPublicLink = useCallback(async (id: string) => {
     const response = await fetchWithAuth(`/api/v1/forms/${id}/public-link`);
@@ -308,6 +314,7 @@ export default function FormEditorPage() {
       ? `https://${activeTenant.subdomain}.${publicDomain}/form/${title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'form'}`
       : '';
   const isLive = publicLink?.status === 'PUBLISHED';
+  const accentColor = schema.theme.mutedColor;
 
   return <div className="-m-4 min-h-[calc(100vh-7rem)] bg-slate-100">
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
@@ -332,10 +339,10 @@ export default function FormEditorPage() {
         <div className="mt-4 space-y-2">{palette.map(([type, label, descriptionText]) => <button key={type} type="button" draggable onDragStart={event => onPaletteDragStart(event, type)} onClick={() => addField(type)} className="group w-full cursor-grab rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50 active:cursor-grabbing"><div className="flex items-start gap-3"><span className="mt-0.5 rounded-lg bg-slate-100 p-1.5 text-slate-500 group-hover:bg-white group-hover:text-indigo-600"><Plus size={14} /></span><span><span className="block text-sm font-black text-slate-800">{label}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{descriptionText}</span></span></div></button>)}</div>
       </aside>
 
-      <main className="overflow-auto p-4 sm:p-6 lg:p-8">
+      <main className="relative overflow-auto p-4 sm:p-6 lg:p-8" style={{ background: `radial-gradient(circle at top left, ${schema.theme.primaryColor}16, transparent 38%), radial-gradient(circle at top right, ${accentColor}16, transparent 36%), ${schema.theme.backgroundColor}` }}>
         <div className="mx-auto max-w-3xl">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div><p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">Live form canvas</p><h2 className="mt-1 text-xl font-black text-slate-950">Build directly in the customer view</h2></div>
+            <div><p className="text-xs font-black uppercase tracking-[0.18em]" style={{ color: schema.theme.primaryColor }}>Live form canvas</p><h2 className="mt-1 text-xl font-black text-slate-950">Build directly in the customer view</h2></div>
             <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-500">{schema.fields.length} {schema.fields.length === 1 ? 'field' : 'fields'}</span>
           </div>
 
@@ -344,6 +351,7 @@ export default function FormEditorPage() {
               <div className="mb-5 flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em]" style={{ color: schema.theme.primaryColor }}><LayoutTemplate size={16} />Consent form</div>
               <input aria-label="Form title" value={title} onChange={event => { setTitle(event.target.value); markDirty(); }} className="w-full bg-transparent text-3xl font-black tracking-tight text-slate-950 outline-none" />
               <textarea aria-label="Form introduction" value={description} onChange={event => { setDescription(event.target.value); markDirty(); }} placeholder="Add an introduction…" rows={2} className="mt-3 w-full resize-none bg-transparent text-sm leading-6 text-slate-500 outline-none" />
+              <div className="mt-5 h-1.5 w-24 rounded-full" style={{ background: `linear-gradient(90deg, ${schema.theme.primaryColor}, ${accentColor})` }} />
             </div>
 
             <div className="space-y-1 px-4 py-5 sm:px-6 sm:py-7" style={{ background: schema.theme.cardColor }}>
@@ -381,7 +389,20 @@ export default function FormEditorPage() {
           <label className="block text-sm font-bold">Internal field key<input value={selected.key || ''} onChange={event => updateField(selected.id, { key: event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_') })} className="mt-1.5 w-full rounded-xl border border-slate-200 p-2.5 font-mono font-normal" /></label>
         </div>}
 
-        <section className="mt-7 border-t border-slate-200 pt-6"><h3 className="font-black text-slate-950">Form appearance</h3><div className="mt-3 grid grid-cols-3 gap-2">{([['Primary', 'primaryColor'], ['Page', 'backgroundColor'], ['Card', 'cardColor']] as const).map(([label, key]) => <label key={key} className="rounded-xl border border-slate-200 p-2 text-[10px] font-black uppercase tracking-wide text-slate-500"><input type="color" value={schema.theme[key]} onChange={event => change({ ...schema, theme: { ...schema.theme, [key]: event.target.value } })} className="mb-1 h-8 w-full cursor-pointer rounded border-0 bg-transparent" />{label}</label>)}</div></section>
+        <section className="mt-7 border-t border-slate-200 pt-6">
+          <div className="flex items-start gap-3"><Palette className="mt-0.5 h-5 w-5 text-indigo-600" /><div><h3 className="font-black text-slate-950">Brand controls</h3><p className="mt-1 text-xs leading-5 text-slate-500">Use the same primary and accent colours as your booking page, or give this form its own campaign look.</p></div></div>
+          <div className="mt-5 grid grid-cols-2 gap-4">
+            <label className="text-sm font-bold">Primary colour<input aria-label="Primary colour" type="color" value={schema.theme.primaryColor} onChange={event => updateTheme('primaryColor', event.target.value)} className="mt-1 h-12 w-full cursor-pointer rounded-lg border p-1" /></label>
+            <label className="text-sm font-bold">Accent colour<input aria-label="Accent colour" type="color" value={accentColor} onChange={event => updateTheme('mutedColor', event.target.value)} className="mt-1 h-12 w-full cursor-pointer rounded-lg border p-1" /></label>
+          </div>
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Surface colours</p>
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              <label className="text-xs font-bold">Page background<input aria-label="Page background colour" type="color" value={schema.theme.backgroundColor} onChange={event => updateTheme('backgroundColor', event.target.value)} className="mt-1 h-10 w-full cursor-pointer rounded-lg border p-1" /></label>
+              <label className="text-xs font-bold">Form card<input aria-label="Form card colour" type="color" value={schema.theme.cardColor} onChange={event => updateTheme('cardColor', event.target.value)} className="mt-1 h-10 w-full cursor-pointer rounded-lg border p-1" /></label>
+            </div>
+          </div>
+        </section>
         <section className="mt-6"><label className="block text-sm font-bold text-slate-800">Final acknowledgement<textarea value={acknowledgement} onChange={event => { setAcknowledgement(event.target.value); markDirty(); }} rows={4} className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 font-normal" /></label></section>
 
         <section className={`mt-6 rounded-2xl border p-4 ${isLive ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}><div className="flex items-center gap-2"><Link2 size={16} className={isLive ? 'text-emerald-600' : 'text-slate-500'} /><h3 className="text-sm font-black text-slate-900">{isLive ? 'Public form is live' : 'Public form link'}</h3></div><p className="mt-2 break-all text-xs leading-5 text-slate-600">{liveUrl || 'Save the form to create its public address.'}</p>{liveUrl && <div className="mt-3 flex gap-2"><button type="button" onClick={() => void navigator.clipboard.writeText(liveUrl)} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700"><Copy size={14} />Copy</button>{isLive && <a href={liveUrl} target="_blank" rel="noreferrer" className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white"><ExternalLink size={14} />Open live</a>}</div>}</section>
