@@ -17,7 +17,7 @@ concurrency:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17
@@ -45,13 +45,12 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile --silent
-      - run: pnpm --filter site-worker exec playwright install --with-deps chromium
       - run: pnpm build
-      - name: Run tests and publish concise diagnostics
+      - name: Run API tests and publish concise diagnostics
         shell: bash
         run: |
           set +e
-          pnpm test > /tmp/stripe-connect-tests.log 2>&1
+          pnpm --filter api test > /tmp/stripe-connect-tests.log 2>&1
           status=$?
 
           gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
@@ -63,7 +62,7 @@ jobs:
           if [ "$status" -ne 0 ]; then
             {
               echo '<!-- stripe-connect-test-diagnostic -->'
-              echo '### Stripe Connect test diagnostic'
+              echo '### Stripe Connect API test diagnostic'
               echo '```text'
               grep -E '✖|failing tests:|AssertionError|ERR_ASSERTION|actual:|expected:|operator:|test at ' /tmp/stripe-connect-tests.log | tail -n 300
               echo '```'
