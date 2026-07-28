@@ -36,7 +36,7 @@ vi.mock('../features/agency/SupportSessionDialog', () => ({ SupportSessionDialog
 
 function LocationProbe() { const location = useLocation(); return <output aria-label="Current route">{location.pathname}</output>; }
 function renderLayout(path: string) {
-  return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/agency" element={<AgencyLayout />}><Route path="*" element={<><div>Agency page</div><LocationProbe /></>} /></Route></Routes></MemoryRouter>);
+  return render(<MemoryRouter initialEntries={[path]}><LocationProbe /><Routes><Route path="/agency" element={<AgencyLayout />}><Route path="*" element={<div>Agency page</div>} /></Route></Routes></MemoryRouter>);
 }
 
 describe('AgencyLayout', () => {
