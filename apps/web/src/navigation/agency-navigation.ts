@@ -77,6 +77,7 @@ export const managedBusinessNavigation: NavigationGroup[] = [
     items: [
       { id: 'managed-summary', label: 'Workspace overview', href: '/agency/tenants/:tenantId', icon: Home, agencyCapabilitiesAny: ['tenants.read'] },
       { id: 'managed-onboarding', label: 'Setup and launch', href: '/agency/tenants/:tenantId/onboarding', icon: ClipboardCheck, agencyCapabilitiesAny: ['tenants.read'] },
+      { id: 'managed-users', label: 'Users and access', href: '/agency/tenants/:tenantId/users', icon: Users, agencyCapabilitiesAny: ['tenants.read'] },
       { id: 'managed-billing', label: 'Billing and subscription', href: '/agency/tenants/:tenantId/billing', icon: CreditCard, agencyCapabilitiesAny: ['billing.read'] },
       { id: 'managed-features', label: 'Package and features', href: '/agency/tenants/:tenantId/entitlements', icon: Settings2, agencyCapabilitiesAny: ['plans.read'] },
       { id: 'managed-services', label: 'Delivery work', href: '/agency/tenants/:tenantId/fulfilment', icon: FileCheck2, agencyCapabilitiesAny: ['fulfilment.read'] },

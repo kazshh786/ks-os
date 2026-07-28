@@ -52,12 +52,13 @@ describe('AgencyLayout', () => {
     expect(await screen.findByText('Agency home dashboard')).toBeInTheDocument();
   });
 
-  it('moves client management into the sidebar with identity, exit, switching, and support entry', async () => {
+  it('moves client management into the sidebar with identity, users, exit, switching, and support entry', async () => {
     const user = userEvent.setup();
     renderLayout(`/agency/tenants/${tenantOne}/billing`);
     expect(await screen.findByText('Managing business')).toBeInTheDocument();
     expect(screen.getAllByText('North Star Studio').length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: 'Back to all clients' })).toHaveAttribute('href', '/agency/tenants');
+    expect(screen.getByRole('link', { name: 'Users and access' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/users`);
     expect(screen.getByRole('link', { name: 'Billing and subscription' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Package and features' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/entitlements`);
     expect(screen.getByRole('link', { name: 'Technical health' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/health`);
