@@ -84,17 +84,22 @@ FOR EACH ROW
 EXECUTE FUNCTION public.ks_set_published_form_version();
 
 UPDATE public.forms form
-SET published_version_id = latest.id
-FROM LATERAL (
+SET published_version_id = (
   SELECT version.id
   FROM public.form_versions version
   WHERE version.form_id = form.id
     AND version.tenant_id = form.tenant_id
   ORDER BY version.version_number DESC
   LIMIT 1
-) latest
+)
 WHERE form.status = 'PUBLISHED'
-  AND form.published_version_id IS NULL;
+  AND form.published_version_id IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM public.form_versions version
+    WHERE version.form_id = form.id
+      AND version.tenant_id = form.tenant_id
+  );
 
 REVOKE ALL ON FUNCTION public.ks_normalise_public_form_slug(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.ks_assign_public_form_slug() FROM PUBLIC, anon, authenticated;
