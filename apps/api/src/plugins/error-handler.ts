@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ApiError } from '@ks-os/contracts';
 import { ZodError } from 'zod';
 import { CustomerPortalError } from '../modules/customer-portal/customer-portal.errors.js';
+import { PlatformErrorLogService } from '../modules/errors/platform-error-log.service.js';
 
 type ErrorWithStatus = Error & { statusCode?: number; code?: string };
 
@@ -50,13 +51,33 @@ export function publicErrorMessage({ method, statusCode, requestId }: PublicErro
 }
 
 export default function registerErrorHandler(fastify: FastifyInstance) {
-  fastify.setErrorHandler((error: ErrorWithStatus, request: FastifyRequest, reply: FastifyReply) => {
+  const errorLog = new PlatformErrorLogService();
+
+  fastify.setErrorHandler(async (error: ErrorWithStatus, request: FastifyRequest, reply: FastifyReply) => {
+    const isValidation = error instanceof ZodError;
+    const statusCode = isValidation ? 400 : (error.statusCode || 500);
+    const errorCode = isValidation ? 'FORM_INVALID_SCHEMA' : (error.code || 'INTERNAL_SERVER_ERROR');
+    const retryable = statusCode === 409 || statusCode === 429 || statusCode >= 500;
+
+    try {
+      await errorLog.capture(request, error, statusCode, errorCode, retryable);
+    } catch (captureError) {
+      fastify.log.error(
+        { err: captureError, requestId: request.id, correlationId: request.correlationId },
+        'platform error evidence could not be persisted',
+      );
+    }
+
     // CustomerPortalError carries a domain-specific statusCode and stable code.
     // Log at warn level (not error) because these are expected client errors.
     if (error instanceof CustomerPortalError) {
       fastify.log.warn({ code: error.code, statusCode: error.statusCode }, 'Customer portal domain error');
       const response: ApiError = {
-        error: { code: error.code, message: error.message, details: { requestId: request.id } },
+        error: {
+          code: error.code,
+          message: error.message,
+          details: { requestId: request.id, retryable },
+        },
       };
       reply.status(error.statusCode).send(response);
       return;
@@ -67,8 +88,6 @@ export default function registerErrorHandler(fastify: FastifyInstance) {
       'request failed',
     );
 
-    const isValidation = error instanceof ZodError;
-    const statusCode = isValidation ? 400 : (error.statusCode || 500);
     const hasSafeDomainMessage = statusCode < 500 && Boolean(error.message?.trim());
     const message = isValidation
       ? 'Check the highlighted fields and try again.'
@@ -78,11 +97,11 @@ export default function registerErrorHandler(fastify: FastifyInstance) {
 
     const apiErrorResponse: ApiError = {
       error: {
-        code: isValidation ? 'FORM_INVALID_SCHEMA' : (error.code || 'INTERNAL_SERVER_ERROR'),
+        code: errorCode,
         message,
         details: {
           requestId: request.id,
-          retryable: statusCode === 409 || statusCode === 429 || statusCode >= 500,
+          retryable,
         },
       },
     };
