@@ -38,7 +38,9 @@ export async function formsRoutes(app: FastifyInstance) {
   const workspaceForms = new PublicWorkspaceFormsService();
   app.get('/', async request => ({ data: await service.listForms(actor(request)) }));
   app.post('/', async (request, reply) => reply.code(201).send({ data: await service.create(actor(request), FormDraftInputSchema.parse(request.body)) }));
-  app.get('/:formId/public-link', async request => {
+  app.get('/:formId/public-link', {
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async request => {
     const requestActor = actor(request);
     const { formId } = FormIdParamsSchema.parse(request.params);
     return { data: await workspaceForms.getManageLink(requestActor.tenantId, formId) };
