@@ -103,6 +103,10 @@ export class PosStripeService {
       {},
       { stripeAccount: connection.stripeAccountId },
     );
+    if ('deleted' in reader) {
+      throw fail('STRIPE_READER_NOT_FOUND', 'The selected Stripe reader is no longer available.');
+    }
+
     const deviceType = String(reader.device_type || 'unknown').toLowerCase();
     if (MOBILE_READER_TYPES.has(deviceType)) {
       throw fail(
