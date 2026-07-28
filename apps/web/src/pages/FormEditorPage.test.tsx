@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -131,6 +131,25 @@ describe('visual consent form builder', () => {
 
     expect(screen.getByLabelText('Email')).toHaveAttribute('type', 'email');
     expect(screen.getByText('2 fields')).toBeInTheDocument();
+  });
+
+  it('saves the selected primary and accent colours with the form', async () => {
+    const user = userEvent.setup();
+    renderExistingForm();
+
+    await screen.findByLabelText('Full name');
+    fireEvent.change(screen.getByLabelText('Primary colour'), { target: { value: '#112233' } });
+    fireEvent.change(screen.getByLabelText('Accent colour'), { target: { value: '#445566' } });
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+
+    await waitFor(() => expect(updateForm).toHaveBeenCalledWith(formId, expect.objectContaining({
+      schema: expect.objectContaining({
+        theme: expect.objectContaining({
+          primaryColor: '#112233',
+          mutedColor: '#445566',
+        }),
+      }),
+    })));
   });
 
   it('saves the draft, publishes it, and exposes the final tenant form URL', async () => {
