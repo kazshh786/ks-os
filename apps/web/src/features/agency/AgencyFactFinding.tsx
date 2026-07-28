@@ -86,6 +86,8 @@ export function AgencyFactFindingPage() {
       setQuestionnaire(prepared);
       if (mode === 'EMAIL') {
         await agencyFetch(`/fact-finding/questionnaires/${prepared.reference}/invite`, { method: 'POST', body: '{}' });
+        const invited = await agencyFetch(`/fact-finding/questionnaires/${prepared.reference}`);
+        setQuestionnaire(invited);
         setNotice(`Secure intake link queued for ${participantEmail}. You can return here to review progress.`);
       } else {
         await loadManualForm(prepared.reference);
@@ -103,6 +105,35 @@ export function AgencyFactFindingPage() {
       });
     }
     setNotice('Assisted intake progress saved. Every changed answer remains versioned and must still pass agency review.');
+    await loadManualForm(questionnaire.reference);
+  };
+
+  const uploadManual = async (question: any, file: File) => {
+    setError('');
+    const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))]
+      .map(value => value.toString(16).padStart(2, '0')).join('');
+    const data = await agencyFetch(`/fact-finding/questionnaires/${questionnaire.reference}/manual-uploads`, {
+      method: 'POST',
+      body: JSON.stringify({
+        questionReference: question.reference,
+        fileName: file.name,
+        mimeType: file.type,
+        byteSize: file.size,
+        digestSha256: digest,
+        category: question.fieldMapping === 'ASSET.LOGO' ? 'LOGO' : question.fieldMapping === 'ASSET.LOCATION_PHOTO' ? 'LOCATION_PHOTO' : question.fieldMapping === 'ASSET.TEAM_PHOTO' ? 'TEAM_PHOTO' : 'SUPPORTING_DOCUMENT',
+        publicUsePermission: false,
+        aiUsePermission: false,
+        copyrightConfirmed: true,
+        consentStatus: 'NOT_APPLICABLE',
+      }),
+    });
+    const transfer = await fetch(data.signedUploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+    if (!transfer.ok) throw new Error('The private upload could not be transferred.');
+    await agencyFetch(`/fact-finding/questionnaires/${questionnaire.reference}/manual-uploads/${data.reference}/complete`, { method: 'POST', body: '{}' });
+    const answer = [{ reference: data.reference, label: file.name }];
+    setAnswers(current => ({ ...current, [question.reference]: answer }));
+    await agencyFetch(`/fact-finding/questionnaires/${questionnaire.reference}/manual-responses/${question.reference}`, { method: 'PATCH', body: JSON.stringify({ answer }) });
+    setNotice('File verified and stored privately. It still requires an explicit agency asset review before use.');
     await loadManualForm(questionnaire.reference);
   };
 
@@ -144,7 +175,7 @@ export function AgencyFactFindingPage() {
     <div className="flex flex-wrap items-center justify-between gap-3"><button onClick={reset} className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-black text-slate-300">← Exit intake</button><span className="text-xs text-slate-500">Agency-assisted · no email invitation required</span></div>
     {error && <p role="alert" className="rounded-xl border border-rose-900 bg-rose-950/40 p-4 text-sm text-rose-200">{error}</p>}
     {notice && <p role="status" className="rounded-xl border border-emerald-900 bg-emerald-950/40 p-4 text-sm text-emerald-200">{notice}</p>}
-    <FactFindingForm questionnaire={manualForm} answers={answers} onChange={(reference, value) => setAnswers(current => ({ ...current, [reference]: value }))} onSave={saveManualAnswers} onSubmit={submitManual} submitLabel="Submit for agency review" />
+    <FactFindingForm questionnaire={manualForm} answers={answers} onChange={(reference, value) => setAnswers(current => ({ ...current, [reference]: value }))} onSave={saveManualAnswers} onSubmit={submitManual} onUpload={uploadManual} submitLabel="Submit for agency review" />
   </div>;
 
   return <div className="space-y-5">
