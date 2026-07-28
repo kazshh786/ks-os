@@ -18,7 +18,21 @@ export function normaliseBookingSlug(value: string): string {
   const safe = slug.length >= 2 ? slug : 'business';
   return RESERVED_BOOKING_SLUGS.has(safe) ? `book-${safe}`.slice(0, 63) : safe;
 }
+
 export function bookingPublicUrl(origin: string, slug: string, preview = false): string {
+  const configuredDomain = process.env.PUBLIC_WORKSPACE_DOMAIN?.trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+  let workspaceDomain = configuredDomain || null;
+  if (!workspaceDomain) {
+    try {
+      const hostname = new URL(origin).hostname.toLowerCase();
+      if (hostname === 'kasimshah.com' || hostname.endsWith('.kasimshah.com')) workspaceDomain = 'kasimshah.com';
+    } catch {
+      workspaceDomain = null;
+    }
+  }
+  if (workspaceDomain) {
+    return `https://${encodeURIComponent(slug)}.${workspaceDomain}/book${preview ? '?preview=1' : ''}`;
+  }
   const base = origin.replace(/\/$/, '');
   return `${base}/book/${encodeURIComponent(slug)}${preview ? '?preview=1' : ''}`;
 }
