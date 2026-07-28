@@ -69,6 +69,36 @@ export class PublicWorkspaceFormsService {
     return row;
   }
 
+  async getManageLink(tenantId: string, formId: string) {
+    const result = await this.db.execute(sql`
+      SELECT
+        form.id AS form_id,
+        form.public_slug,
+        form.status,
+        tenant.subdomain AS workspace_slug
+      FROM forms form
+      JOIN tenants tenant ON tenant.id = form.tenant_id
+      WHERE form.id = ${formId}::uuid
+        AND form.tenant_id = ${tenantId}::uuid
+      LIMIT 1
+    `);
+    const row = result.rows[0] as {
+      form_id: string;
+      public_slug: string | null;
+      status: string;
+      workspace_slug: string;
+    } | undefined;
+    if (!row) throw fail(404, 'FORM_NOT_FOUND', 'Form not found.');
+    const publicSlug = row.public_slug || 'form';
+    return {
+      formId: row.form_id,
+      publicSlug,
+      workspaceSlug: row.workspace_slug,
+      path: `/form/${publicSlug}`,
+      status: row.status,
+    };
+  }
+
   async getPublic(workspaceSlug: string, formSlug: string) {
     const row = await this.resolvePublished(workspaceSlug, formSlug);
     return {
