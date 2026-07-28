@@ -7,7 +7,7 @@ import pg from 'pg';
 import * as coreSchema from './schema.js';
 import * as errorSchema from './error-schema.js';
 
-const schema = { ...coreSchema, ...errorSchema };
+const schema: typeof coreSchema & typeof errorSchema = { ...coreSchema, ...errorSchema };
 type Database = NodePgDatabase<typeof schema>;
 
 let dbClient: pg.Pool | null = null;
