@@ -8,6 +8,7 @@ import { MobileNavigation } from '../components/navigation/MobileNavigation';
 import { PageHeader } from '../components/navigation/PageHeader';
 import { AdminPasswordDialog } from '../features/agency/AdminPasswordDialog';
 import { agencyFetch, useAgencyAuth } from '../features/agency/AgencyAuth';
+import { AgencyClientWorkspacePage, AgencyClientsPage, AgencyHomePage, AgencyOnboardingPage } from '../features/agency/AgencyOperatingConsole';
 import { ManualTenantUserDialog } from '../features/agency/ManualTenantUserDialog';
 import { SupportSessionDialog } from '../features/agency/SupportSessionDialog';
 import { agencyNavigation, managedBusinessNavigation } from '../navigation/agency-navigation';
@@ -122,6 +123,17 @@ export const AgencyLayout: React.FC = () => {
     <span className="hidden items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-300 md:flex"><ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />{session?.mfa.assuranceLevel.toUpperCase()}</span>
   </div>;
 
+  const tenantWorkspaceRoute = /^\/agency\/tenants\/[0-9a-f-]{36}(?:\/(?:onboarding|fulfilment))?\/?$/i.test(location.pathname);
+  const redesignedContent = (location.pathname === '/agency' || location.pathname === '/agency/overview') && capabilities.includes('analytics.read')
+    ? <AgencyHomePage />
+    : location.pathname === '/agency/tenants' && capabilities.includes('tenants.read')
+      ? <AgencyClientsPage />
+      : location.pathname === '/agency/onboarding' && capabilities.includes('tenants.read')
+        ? <AgencyOnboardingPage />
+        : tenantWorkspaceRoute && capabilities.includes('tenants.read')
+          ? <AgencyClientWorkspacePage />
+          : <Outlet />;
+
   return <div className="flex h-screen min-h-0 overflow-hidden bg-slate-950 font-sans text-white antialiased">
     <div className="hidden h-full shrink-0 lg:block">{sidebar()}</div>
     <MobileNavigation open={mobileOpen} title={tenantId ? 'Client workspace' : 'Agency navigation'} onClose={closeMobile} triggerRef={menuButtonRef}>{sidebar(true)}</MobileNavigation>
@@ -136,7 +148,7 @@ export const AgencyLayout: React.FC = () => {
         notificationHref={capabilities.includes('support.read') ? '/agency/support' : undefined}
         actions={headerActions}
       />
-      <main id="main-content" className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.08),transparent_28%),#020617] p-4 text-slate-100 sm:p-6 lg:p-8"><div className="mx-auto w-full max-w-[1600px]"><Outlet /></div></main>
+      <main id="main-content" className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.08),transparent_28%),#020617] p-4 text-slate-100 sm:p-6 lg:p-8"><div className="mx-auto w-full max-w-[1600px]">{redesignedContent}</div></main>
     </div>
     {tenantId ? <SupportSessionDialog open={supportOpen} tenantId={tenantId} tenantName={tenantName} onClose={() => setSupportOpen(false)} /> : null}
     {tenantId ? <ManualTenantUserDialog open={manualUserOpen} tenantId={tenantId} tenantName={tenantName} onClose={() => setManualUserOpen(false)} onCreated={() => window.location.reload()} /> : null}
