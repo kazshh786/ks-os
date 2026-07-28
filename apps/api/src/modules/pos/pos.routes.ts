@@ -262,8 +262,14 @@ const posRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
+    const tenantId = request.auth!.tenantId;
+    const resolved = await entitlements.resolve(tenantId);
+    if (resolved.entitlements['inventory.enabled']?.enabled !== true) {
+      return reply.send({ success: true, data: [] });
+    }
+
     const { limit, search, inStockOnly } = queryResult.data;
-    const products = await service.getProducts(request.auth!.tenantId, limit, search, inStockOnly);
+    const products = await service.getProducts(tenantId, limit, search, inStockOnly);
     return reply.send({ success: true, data: products });
   });
 
