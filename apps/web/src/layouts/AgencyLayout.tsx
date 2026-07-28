@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CircleHelp, DoorOpen, KeyRound, Plus, ShieldCheck, UserPlus } from 'lucide-react';
+import { ArrowLeft, CircleHelp, DoorOpen, KeyRound, Plus, ShieldCheck, UserPlus } from 'lucide-react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { AccountMenu } from '../components/navigation/AccountMenu';
 import { AppSidebar } from '../components/navigation/AppSidebar';
@@ -28,10 +28,12 @@ export const AgencyLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(collapsedStorageKey) === 'true');
   const [businesses, setBusinesses] = useState<AgencyBusiness[]>([]);
   const [managedBusiness, setManagedBusiness] = useState<AgencyBusiness | null>(null);
+
   const tenantId = location.pathname.match(/^\/agency\/tenants\/([0-9a-f-]{36})(?:\/|$)/i)?.[1];
   const capabilities = session?.capabilities ?? [];
   const groups = useMemo(() => resolveNavigation(tenantId ? managedBusinessNavigation : agencyNavigation, {
-    portal: tenantId ? 'managed-business' : 'agency', agencyCapabilities: capabilities,
+    portal: tenantId ? 'managed-business' : 'agency',
+    agencyCapabilities: capabilities,
   }), [capabilities, tenantId]);
   const parameters = tenantId ? { tenantId } : {};
   const activeItem = findActiveNavigationItem(groups, location.pathname, parameters);
@@ -48,7 +50,7 @@ export const AgencyLayout: React.FC = () => {
       setManagedBusiness(detail.tenant);
       setBusinesses(rows.map((row: AgencyBusiness) => ({ id: row.id, name: row.name, lifecycleStatus: row.lifecycleStatus })));
     }).catch(() => {
-      if (active) setManagedBusiness({ id: tenantId, name: 'Business' });
+      if (active) setManagedBusiness({ id: tenantId, name: 'Client workspace' });
     });
     return () => { active = false; };
   }, [tenantId]);
@@ -63,39 +65,43 @@ export const AgencyLayout: React.FC = () => {
     setMobileOpen(false);
     setPasswordControlOpen(true);
   };
+
   const canStartSupport = capabilities.includes('support.session.start');
   const canManageUsers = capabilities.includes('tenants.manage');
   const canManageAgencyUsers = capabilities.includes('agency.users.manage') && session?.user.role === 'PLATFORM_OWNER';
-  const tenantName = managedBusiness?.name ?? 'Business';
+  const tenantName = managedBusiness?.name ?? 'Client workspace';
   const contextHeader = tenantId
     ? <ManagedBusinessContext tenantId={tenantId} tenantName={tenantName} status={managedBusiness?.lifecycleStatus} businesses={businesses} onSwitch={switchBusiness} />
     : undefined;
-  const supportAction = tenantId && canStartSupport
-    ? <button type="button" onClick={() => setSupportOpen(true)} title={collapsed ? 'Open support workspace' : undefined} className={`flex min-h-11 w-full items-center justify-center rounded-xl bg-amber-400 font-black text-slate-950 hover:bg-amber-300 ${collapsed ? '' : 'gap-2 px-3 text-xs'}`}><DoorOpen aria-hidden="true" className="h-4 w-4" />{!collapsed && 'Open support workspace'}</button>
+
+  const agencyPrimaryAction = capabilities.includes('tenants.manage')
+    ? <Link to="/agency/tenants/new" className={`flex min-h-11 w-full items-center justify-center rounded-xl bg-violet-600 font-black text-white shadow-lg shadow-violet-950/40 transition hover:bg-violet-500 ${collapsed ? '' : 'gap-2 px-3 text-xs'}`} title={collapsed ? 'Add client' : undefined}><Plus aria-hidden="true" className="h-4 w-4" />{!collapsed && 'Add client'}</Link>
     : undefined;
-  const footer = <div className="space-y-1">
-    <a href="mailto:support@ks-os.com" className={`flex min-h-10 items-center rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-900 hover:text-white ${collapsed ? 'justify-center' : 'gap-3 px-3'}`} aria-label="Help and support" title={collapsed ? 'Help and support' : undefined}><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />{!collapsed && 'Help and support'}</a>
-    <AccountMenu displayName={session?.user.displayName ?? 'Agency user'} email={session?.user.email} roleLabel={(session?.user.role ?? 'Agency user').replaceAll('_', ' ')} settingsHref="/agency/settings/security" tone="dark" compact={collapsed} onSignOut={() => void signOut()} />
-  </div>;
+
+  const managedPrimaryAction = tenantId && canStartSupport
+    ? <button type="button" onClick={() => setSupportOpen(true)} className={`flex min-h-11 w-full items-center justify-center rounded-xl bg-amber-400 font-black text-slate-950 shadow-lg shadow-amber-950/20 transition hover:bg-amber-300 ${collapsed ? '' : 'gap-2 px-3 text-xs'}`} title={collapsed ? 'Open support workspace' : undefined}><DoorOpen aria-hidden="true" className="h-4 w-4" />{!collapsed && 'Open support workspace'}</button>
+    : undefined;
 
   const agencySecondaryActions = <div className="space-y-2">
-    <div className="grid grid-cols-2 gap-2">
-      <Link to="/agency/tenants/new" className="flex items-center justify-center gap-1 rounded-lg border border-slate-800 p-2 text-[10px] font-bold text-slate-400 hover:text-white"><Plus aria-hidden="true" className="h-3 w-3" />Business</Link>
-      {capabilities.includes('agency.users.manage') && <Link to="/agency/users/new" className="flex items-center justify-center gap-1 rounded-lg border border-slate-800 p-2 text-[10px] font-bold text-slate-400 hover:text-white"><Plus aria-hidden="true" className="h-3 w-3" />Team member</Link>}
-    </div>
-    {canManageAgencyUsers && <button type="button" onClick={openPasswordControl} className="flex w-full items-center justify-center gap-2 rounded-lg border border-violet-800 bg-violet-950/30 p-2 text-xs font-bold text-violet-200 hover:bg-violet-900/50"><KeyRound aria-hidden="true" className="h-4 w-4" />Agency password control</button>}
+    <Link to="/agency/onboarding" className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 text-xs font-bold text-slate-300 transition hover:border-slate-700 hover:text-white">View onboarding</Link>
+    {canManageAgencyUsers ? <button type="button" onClick={openPasswordControl} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><KeyRound aria-hidden="true" className="h-4 w-4" />Password control</button> : null}
   </div>;
 
   const managedBusinessSecondaryActions = <div className="space-y-2">
-    {canManageUsers && <button type="button" onClick={() => { setMobileOpen(false); setManualUserOpen(true); }} className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 p-2 text-xs font-black text-white hover:bg-violet-500"><UserPlus aria-hidden="true" className="h-4 w-4" />Add user manually</button>}
-    {canManageUsers && <button type="button" onClick={openPasswordControl} className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-800 p-2 text-xs font-bold text-slate-400 hover:text-white"><KeyRound aria-hidden="true" className="h-4 w-4" />User password control</button>}
-    <Link to="/agency/tenants" className="flex items-center justify-center gap-2 rounded-lg border border-slate-800 p-2 text-xs font-bold text-slate-400 hover:text-white"><DoorOpen aria-hidden="true" className="h-4 w-4" />Exit business management</Link>
+    {canManageUsers ? <button type="button" onClick={() => { setMobileOpen(false); setManualUserOpen(true); }} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 text-xs font-bold text-slate-200 transition hover:border-violet-700 hover:text-white"><UserPlus aria-hidden="true" className="h-4 w-4" />Add workspace user</button> : null}
+    {canManageUsers ? <button type="button" onClick={openPasswordControl} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><KeyRound aria-hidden="true" className="h-4 w-4" />User password control</button> : null}
+    <Link to="/agency/tenants" className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><ArrowLeft aria-hidden="true" className="h-4 w-4" />Back to all clients</Link>
+  </div>;
+
+  const footer = <div className="space-y-1">
+    <a href="mailto:support@ks-os.com" className={`flex min-h-10 items-center rounded-xl text-xs font-bold text-slate-500 transition hover:bg-slate-900 hover:text-white ${collapsed ? 'justify-center' : 'gap-3 px-3'}`} aria-label="Help and support" title={collapsed ? 'Help and support' : undefined}><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />{!collapsed && 'Help and support'}</a>
+    <AccountMenu displayName={session?.user.displayName ?? 'Agency user'} email={session?.user.email} roleLabel={(session?.user.role ?? 'Agency user').replaceAll('_', ' ')} settingsHref="/agency/settings/security" tone="dark" compact={collapsed} onSignOut={() => void signOut()} />
   </div>;
 
   const sidebar = (isMobile = false) => <AppSidebar
-    ariaLabel={tenantId ? 'Managed business navigation' : 'Agency navigation'}
-    productName="Agency OS"
-    productCaption="Kasim Shah LTD"
+    ariaLabel={tenantId ? 'Client workspace navigation' : 'Agency navigation'}
+    productName="KS Agency"
+    productCaption={tenantId ? 'Client workspace' : 'Client operations'}
     groups={groups}
     pathname={location.pathname}
     parameters={parameters}
@@ -103,26 +109,37 @@ export const AgencyLayout: React.FC = () => {
     collapsible={!isMobile}
     tone="dark"
     contextHeader={isMobile || !collapsed ? contextHeader : undefined}
-    primaryAction={isMobile && tenantId && canStartSupport
-      ? <button type="button" onClick={() => { setMobileOpen(false); setSupportOpen(true); }} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-amber-400 px-3 text-xs font-black text-slate-950"><DoorOpen aria-hidden="true" className="h-4 w-4" />Open support workspace</button>
-      : supportAction}
+    primaryAction={tenantId ? managedPrimaryAction : agencyPrimaryAction}
     secondaryActions={tenantId ? managedBusinessSecondaryActions : agencySecondaryActions}
-    footer={isMobile
-      ? <div className="space-y-1"><a href="mailto:support@ks-os.com" className="flex min-h-10 items-center gap-3 rounded-xl px-3 text-xs font-bold text-slate-500 hover:bg-slate-900 hover:text-white"><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />Help and support</a><AccountMenu displayName={session?.user.displayName ?? 'Agency user'} email={session?.user.email} roleLabel={(session?.user.role ?? 'Agency user').replaceAll('_', ' ')} settingsHref="/agency/settings/security" tone="dark" onSignOut={() => void signOut()} /></div>
-      : footer}
+    footer={isMobile ? <div className="space-y-1"><a href="mailto:support@ks-os.com" className="flex min-h-10 items-center gap-3 rounded-xl px-3 text-xs font-bold text-slate-500 hover:bg-slate-900 hover:text-white"><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />Help and support</a><AccountMenu displayName={session?.user.displayName ?? 'Agency user'} email={session?.user.email} roleLabel={(session?.user.role ?? 'Agency user').replaceAll('_', ' ')} settingsHref="/agency/settings/security" tone="dark" onSignOut={() => void signOut()} /></div> : footer}
     onToggleCollapsed={toggleCollapsed}
     onNavigate={isMobile ? closeMobile : undefined}
   />;
 
+  const headerActions = <div className="flex items-center gap-2">
+    {!tenantId && capabilities.includes('tenants.manage') ? <Link to="/agency/tenants/new" className="hidden min-h-10 items-center gap-2 rounded-xl bg-violet-600 px-3 text-xs font-black text-white shadow-lg shadow-violet-950/30 transition hover:bg-violet-500 sm:inline-flex"><Plus className="h-4 w-4" />Add client</Link> : null}
+    {tenantId && canStartSupport ? <button type="button" onClick={() => setSupportOpen(true)} className="hidden min-h-10 items-center gap-2 rounded-xl bg-amber-400 px-3 text-xs font-black text-slate-950 transition hover:bg-amber-300 sm:inline-flex"><DoorOpen className="h-4 w-4" />Support access</button> : null}
+    <span className="hidden items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-300 md:flex"><ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />{session?.mfa.assuranceLevel.toUpperCase()}</span>
+  </div>;
+
   return <div className="flex h-screen min-h-0 overflow-hidden bg-slate-950 font-sans text-white antialiased">
     <div className="hidden h-full shrink-0 lg:block">{sidebar()}</div>
-    <MobileNavigation open={mobileOpen} title={tenantId ? 'Managed business navigation' : 'Agency navigation'} onClose={closeMobile} triggerRef={menuButtonRef}>{sidebar(true)}</MobileNavigation>
+    <MobileNavigation open={mobileOpen} title={tenantId ? 'Client workspace' : 'Agency navigation'} onClose={closeMobile} triggerRef={menuButtonRef}>{sidebar(true)}</MobileNavigation>
     <div className="flex min-w-0 flex-1 flex-col">
-      <PageHeader title={activeItem?.label ?? (tenantId ? 'Business management' : 'Agency')} eyebrow={tenantId ? `Managing ${tenantName}` : 'Agency portal'} breadcrumbs={activeItem ? [tenantId ? tenantName : 'Agency', activeItem.label] : undefined} tone="dark" menuButtonRef={menuButtonRef} onOpenNavigation={() => setMobileOpen(true)} notificationHref={capabilities.includes('support.read') ? '/agency/support' : undefined} actions={<span className="hidden items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-300 sm:flex"><ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />{session?.mfa.assuranceLevel.toUpperCase()}</span>} />
-      <main id="main-content" className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-950 p-4 text-slate-100 sm:p-6 lg:p-8"><Outlet /></main>
+      <PageHeader
+        title={activeItem?.label ?? (tenantId ? 'Client workspace' : 'Agency home')}
+        eyebrow={tenantId ? `Managing ${tenantName}` : 'KS Agency command centre'}
+        breadcrumbs={activeItem ? [tenantId ? tenantName : 'Agency', activeItem.label] : undefined}
+        tone="dark"
+        menuButtonRef={menuButtonRef}
+        onOpenNavigation={() => setMobileOpen(true)}
+        notificationHref={capabilities.includes('support.read') ? '/agency/support' : undefined}
+        actions={headerActions}
+      />
+      <main id="main-content" className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.08),transparent_28%),#020617] p-4 text-slate-100 sm:p-6 lg:p-8"><div className="mx-auto w-full max-w-[1600px]"><Outlet /></div></main>
     </div>
-    {tenantId && <SupportSessionDialog open={supportOpen} tenantId={tenantId} tenantName={tenantName} onClose={() => setSupportOpen(false)} />}
-    {tenantId && <ManualTenantUserDialog open={manualUserOpen} tenantId={tenantId} tenantName={tenantName} onClose={() => setManualUserOpen(false)} onCreated={() => window.location.reload()} />}
+    {tenantId ? <SupportSessionDialog open={supportOpen} tenantId={tenantId} tenantName={tenantName} onClose={() => setSupportOpen(false)} /> : null}
+    {tenantId ? <ManualTenantUserDialog open={manualUserOpen} tenantId={tenantId} tenantName={tenantName} onClose={() => setManualUserOpen(false)} onCreated={() => window.location.reload()} /> : null}
     <AdminPasswordDialog open={passwordControlOpen} scope={tenantId ? 'TENANT' : 'AGENCY'} tenantId={tenantId} tenantName={tenantId ? tenantName : undefined} onClose={() => setPasswordControlOpen(false)} />
   </div>;
 };
