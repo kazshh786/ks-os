@@ -35,8 +35,14 @@ const PublicWorkspaceFormParamsSchema = z.object({
 
 export async function formsRoutes(app: FastifyInstance) {
   const service = new FormsService();
+  const workspaceForms = new PublicWorkspaceFormsService();
   app.get('/', async request => ({ data: await service.listForms(actor(request)) }));
   app.post('/', async (request, reply) => reply.code(201).send({ data: await service.create(actor(request), FormDraftInputSchema.parse(request.body)) }));
+  app.get('/:formId/public-link', async request => {
+    const requestActor = actor(request);
+    const { formId } = FormIdParamsSchema.parse(request.params);
+    return { data: await workspaceForms.getManageLink(requestActor.tenantId, formId) };
+  });
   app.get('/:formId', async request => {
     const { formId } = FormIdParamsSchema.parse(request.params);
     return { data: await service.getForm(actor(request), formId) };
