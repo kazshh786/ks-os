@@ -5,13 +5,22 @@ import { getStripeClient } from '../../../lib/stripe.js';
 import { deriveStripeConnectionStatus } from './stripe.mapper.js';
 
 const connectUrl = (kind: 'return' | 'refresh') => {
+  const expectedPath = `/app/settings/payments/${kind}`;
   const configured = kind === 'return'
     ? process.env.STRIPE_CONNECT_RETURN_URL
     : process.env.STRIPE_CONNECT_REFRESH_URL;
-  if (configured) return configured;
+
+  if (configured) {
+    try {
+      const configuredUrl = new URL(configured);
+      if (configuredUrl.pathname === expectedPath) return configuredUrl.toString();
+    } catch {
+      // Fall through to the known application route below.
+    }
+  }
 
   const origin = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
-  return new URL(`/app/settings/payments/${kind}`, origin).toString();
+  return new URL(expectedPath, origin).toString();
 };
 
 export class StripeService {
