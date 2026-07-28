@@ -18,7 +18,7 @@ export async function stripeRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', async (request, reply) => {
     await request.requireAuth();
     if (request.auth?.role !== 'owner') {
-      return reply.status(403).send({ error: { code: 'STRIPE_ACCESS_DENIED', message: 'Only the account owner can manage Stripe.' } });
+      return reply.status(403).send({ error: 'STRIPE_ACCESS_DENIED' });
     }
   });
 
