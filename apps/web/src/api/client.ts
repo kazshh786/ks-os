@@ -28,18 +28,40 @@ export function setDefaultAuthContextOverride(context: ApplicationContext | null
   defaultContextOverride = context;
 }
 
+async function currentAccessToken(): Promise<string | null> {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session) return null;
+  return session.access_token;
+}
+
+async function recoverAccessToken(previousToken: string | null): Promise<string | null> {
+  const storedToken = await currentAccessToken();
+  if (storedToken && storedToken !== previousToken) return storedToken;
+
+  if (!refreshPromise) {
+    const pendingRefresh = (async () => {
+      const { data: { session }, error } = await supabase.auth.refreshSession();
+      if (!error && session) return session.access_token;
+
+      // Another tab or auth listener may have rotated the refresh token first.
+      // Re-read persisted session state rather than revoking a valid browser session.
+      await new Promise(resolve => window.setTimeout(resolve, 50));
+      return currentAccessToken();
+    })();
+    refreshPromise = pendingRefresh;
+    void pendingRefresh.finally(() => {
+      if (refreshPromise === pendingRefresh) refreshPromise = null;
+    });
+  }
+
+  return refreshPromise;
+}
+
 export async function fetchWithAuth(url: string, options: AuthenticatedRequestInit = {}): Promise<Response> {
   const { authContext, ...fetchOptions } = options;
   const context = requestContext(url, authContext);
   const requestUrl = resolveApiUrl(url);
-  const getAccessToken = async (): Promise<string | null> => {
-    // 1. Check current session
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error || !session) return null;
-    return session.access_token;
-  };
-
-  let token = await getAccessToken();
+  let token = await currentAccessToken();
 
   const makeRequest = async (accessToken: string | null) => {
     const headers = new Headers(fetchOptions.headers);
@@ -60,20 +82,9 @@ export async function fetchWithAuth(url: string, options: AuthenticatedRequestIn
   let response = await makeRequest(token);
 
   if (response.status === 401) {
-    if (!refreshPromise) {
-      refreshPromise = (async () => {
-        const { data: { session }, error } = await supabase.auth.refreshSession();
-        if (error || !session) {
-          await supabase.auth.signOut({ scope: 'local' });
-          return null;
-        }
-        return session.access_token;
-      })();
-    }
-    token = await refreshPromise;
-    refreshPromise = null;
-
-    if (token) {
+    const recoveredToken = await recoverAccessToken(token);
+    if (recoveredToken) {
+      token = recoveredToken;
       response = await makeRequest(token);
     }
   }

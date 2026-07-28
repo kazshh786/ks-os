@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { Permission } from '@ks-os/auth';
 import { AuthContext, type AuthContextType } from './useAuth';
 import { fetchWithAuth } from '../api/client';
@@ -11,20 +11,31 @@ const ignoresTenantContext = (pathname: string) => pathname.startsWith('/agency'
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [authState, setAuthState] = useState<State | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
 
   const reload = useCallback(async () => {
+    const isInitialLoad = !hasLoadedRef.current;
     if (ignoresTenantContext(window.location.pathname)) {
       setAuthState(null);
+      hasLoadedRef.current = true;
       setIsLoading(false);
       return;
     }
-    setIsLoading(true);
+    if (isInitialLoad) setIsLoading(true);
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
-      if (error || !session) { setAuthState(null); return; }
+      if (error || !session) {
+        if (isInitialLoad) setAuthState(null);
+        return;
+      }
       const response = await fetchWithAuth('/api/v1/workspace/session', { authContext: 'TENANT' });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body.data) { setAuthState(null); return; }
+      if (!response.ok || !body.data) {
+        // Do not throw away a working browser session because a background
+        // workspace check raced token rotation or the API briefly returned 401.
+        if (isInitialLoad) setAuthState(null);
+        return;
+      }
       const workspace = body.data;
       const business = workspace.business;
       setAuthState({
@@ -41,9 +52,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         memberships: workspace.memberships,
       });
     } catch {
-      setAuthState(null);
+      if (isInitialLoad) setAuthState(null);
     } finally {
-      setIsLoading(false);
+      hasLoadedRef.current = true;
+      if (isInitialLoad) setIsLoading(false);
     }
   }, []);
 
