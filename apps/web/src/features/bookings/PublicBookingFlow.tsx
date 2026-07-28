@@ -111,7 +111,7 @@ interface PublicBookingFlowProps {
 
 const steps = [
   { label: 'Service', shortLabel: 'Service' },
-  { label: 'Date & time', shortLabel: 'Time' },
+  { label: 'Date and time', shortLabel: 'Time' },
   { label: 'Your details', shortLabel: 'Details' },
   { label: 'Confirm', shortLabel: 'Confirm' },
 ] as const;
