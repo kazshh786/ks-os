@@ -89,6 +89,7 @@ import { AgencyBookingSystemPage } from './features/agency/AgencyBookingSystem.j
 import { AgencyProvisioningPage } from './features/agency/AgencyProvisioning.js';
 import { AgencyFactFindingPage } from './features/agency/AgencyFactFinding.js';
 import { SiteStudioPage } from './features/agency/SiteStudioPage.js';
+import AgencyWorkspaceUsersPage from './features/agency/AgencyWorkspaceUsersPage.js';
 import ClientFactFindingPage from './features/fact-finding/ClientFactFindingPage.js';
 
 const ReputationRoute: React.FC<{ children: React.ReactNode; ownerOnly?: boolean }> = ({ children, ownerOnly = false }) => {
@@ -253,6 +254,7 @@ const AppContent: React.FC = () => {
           <Route path="sites/:siteReference/studio" element={<AgencyCapabilityRoute capabilities={['sites.studio.read']}><SiteStudioPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/onboarding" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
+          <Route path="tenants/:tenantId/users" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyWorkspaceUsersPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/billing" element={<AgencyCapabilityRoute capabilities={['billing.read']}><AgencyTenantBillingPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/entitlements" element={<AgencyCapabilityRoute capabilities={['plans.read']}><AgencyTenantEntitlementsPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/fulfilment" element={<AgencyCapabilityRoute capabilities={['fulfilment.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
