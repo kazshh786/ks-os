@@ -11,12 +11,21 @@ import {
   Smartphone,
   Tablet,
 } from 'lucide-react';
-import type { BookingPageResponse, BookingPageUpdate } from '@ks-os/contracts';
+import { BookingPageSlugSchema, type BookingPageResponse, type BookingPageUpdate } from '@ks-os/contracts';
 import { getDataProvider } from '../../data/data-provider.js';
 import { PublicBookingFlow } from '../../features/bookings/PublicBookingFlow.js';
 
 type PreviewWidth = 'desktop' | 'tablet' | 'mobile';
 const previewWidths: Record<PreviewWidth, string> = { desktop: '100%', tablet: '768px', mobile: '390px' };
+
+function sanitiseBookingSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+/, '')
+    .slice(0, 63);
+}
 
 export function BookingPageSettings() {
   const [page, setPage] = useState<BookingPageResponse | null>(null);
@@ -52,13 +61,23 @@ export function BookingPageSettings() {
   if (!page) return <div role="alert" className="rounded-2xl border border-rose-200 bg-white p-8"><h1 className="text-xl font-black">Booking-page settings unavailable</h1><p className="mt-2 text-sm text-slate-600">{error}</p><button onClick={() => void load()} className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white">Try again</button></div>;
 
   const update = <K extends keyof BookingPageResponse>(key: K, value: BookingPageResponse[K]) => setPage(current => current ? { ...current, [key]: value } : current);
+  const slugResult = BookingPageSlugSchema.safeParse(page.publicSlug);
+  const slugIsValid = slugResult.success;
+  const slugChanged = page.publicSlug !== loadedSlug;
+  const editableBookingUrl = `https://${page.publicSlug}.kasimshah.com/book`;
 
   const save = async () => {
-    setSaving(true);
     setMessage('');
     setError('');
+    const validatedSlug = BookingPageSlugSchema.safeParse(page.publicSlug);
+    if (!validatedSlug.success) {
+      setError(validatedSlug.error.issues[0]?.message || 'Enter a valid booking address.');
+      return;
+    }
+
+    setSaving(true);
     const input: BookingPageUpdate = {
-      publicSlug: page.publicSlug,
+      publicSlug: validatedSlug.data,
       title: page.title,
       description: page.description,
       enabled: page.enabled,
@@ -83,7 +102,7 @@ export function BookingPageSettings() {
       const saved = await getDataProvider().updateBookingPageSettings(input);
       setPage(saved);
       setLoadedSlug(saved.publicSlug);
-      setMessage('Booking-page settings saved.');
+      setMessage(slugChanged ? 'Booking address and settings saved.' : 'Booking-page settings saved.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Settings could not be saved.');
     } finally {
@@ -139,16 +158,48 @@ export function BookingPageSettings() {
         <button onClick={() => navigator.clipboard.writeText(page.publicUrl).then(() => setMessage('Booking link copied.'))} className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><Clipboard className="h-4 w-4" />Copy link</button>
         <a href={page.publicUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><ExternalLink className="h-4 w-4" />Open page</a>
         <button onClick={() => void publish()} disabled={saving} className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-black">{page.published ? 'Unpublish' : 'Publish'}</button>
-        <button onClick={() => void save()} disabled={saving} className="rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950">{saving ? 'Saving…' : 'Save changes'}</button>
+        <button onClick={() => void save()} disabled={saving || !slugIsValid} className="rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
       </div>
     </header>
 
     {(message || error) && <p role={error ? 'alert' : 'status'} className={`rounded-xl border p-3 text-sm font-bold ${error ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{error || message}</p>}
 
-    <section className="rounded-2xl border bg-white p-4">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div><p className="text-xs font-black uppercase text-slate-500">Platform booking URL</p><p className="mt-1 break-all font-mono text-sm font-bold text-indigo-700">{page.publicUrl}</p></div>
-        <div className="flex items-center gap-2"><span className={`rounded-full px-3 py-1 text-xs font-black ${page.published && page.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{page.published && page.enabled ? 'Live' : 'Not public'}</span></div>
+    <section className="rounded-2xl border bg-white p-5">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-black uppercase text-slate-500">Platform booking URL</p>
+            {slugChanged && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase text-amber-800">Unsaved change</span>}
+          </div>
+          <label htmlFor="booking-url-slug" className="sr-only">Booking address</label>
+          <div className={`mt-2 flex flex-col overflow-hidden rounded-xl border bg-slate-50 font-mono text-sm font-bold focus-within:ring-2 sm:flex-row ${slugIsValid ? 'border-slate-300 focus-within:border-indigo-500 focus-within:ring-indigo-100' : 'border-rose-300 focus-within:ring-rose-100'}`}>
+            <span className="px-3 pt-3 text-slate-500 sm:py-3 sm:pr-0">https://</span>
+            <input
+              id="booking-url-slug"
+              value={page.publicSlug}
+              onChange={event => update('publicSlug', sanitiseBookingSlug(event.target.value))}
+              onBlur={() => update('publicSlug', page.publicSlug.replace(/-+$/, ''))}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              inputMode="url"
+              maxLength={63}
+              aria-invalid={!slugIsValid}
+              aria-describedby="booking-url-help"
+              className="min-w-0 flex-1 bg-transparent px-3 py-2 text-indigo-700 outline-none sm:px-1 sm:py-3"
+            />
+            <span className="break-all px-3 pb-3 text-slate-500 sm:py-3 sm:pl-0">.kasimshah.com/book</span>
+          </div>
+          <p id="booking-url-help" className={`mt-2 text-xs leading-5 ${slugIsValid ? 'text-slate-500' : 'font-bold text-rose-700'}`}>
+            {slugIsValid
+              ? 'Use lower-case letters, numbers and hyphens. Saving a new address keeps the previous booking link available for 12 months.'
+              : slugResult.error?.issues[0]?.message || 'Enter a valid booking address.'}
+          </p>
+          {slugChanged && slugIsValid && <p className="mt-2 break-all text-xs font-bold text-indigo-700">New address: {editableBookingUrl}</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-3 py-1 text-xs font-black ${page.published && page.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{page.published && page.enabled ? 'Live' : 'Not public'}</span>
+        </div>
       </div>
     </section>
 
