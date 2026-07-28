@@ -53,7 +53,7 @@ export const businessNavigation: NavigationGroup[] = [
     items: [
       { id: 'team', label: 'Team', href: '/app/settings/team', icon: Users, roles: ['owner'], activePrefixes: ['/app/settings/team/'] },
       { id: 'availability', label: 'Availability', href: '/app/settings/availability', icon: Clock3, roles: ['owner'] },
-      { id: 'locations', label: 'Locations & Resources', href: '/app/settings/locations', icon: MapPinned, roles: ['owner'], activePrefixes: ['/app/settings/resources'] },
+      { id: 'locations', label: 'Locations and resources', href: '/app/settings/locations', icon: MapPinned, roles: ['owner'], activePrefixes: ['/app/settings/resources'] },
       { id: 'booking-page', label: 'Booking Page', href: '/app/settings/booking-page', icon: Globe2, roles: ['owner'] },
       { id: 'booking-policies', label: 'Booking Policies', href: '/app/settings/booking/customer-management', icon: ReceiptText, roles: ['owner'] },
       { id: 'integrations', label: 'Integrations', href: '/app/settings/integrations', icon: Plug, roles: ['owner'], activePrefixes: ['/app/settings/integrations/'] },

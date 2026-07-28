@@ -12,6 +12,7 @@ import type { AgencyActor } from '../agency/agency.service.js';
 import { DeliveryContextService } from './delivery-context.service.js';
 import { ProvisioningService } from './provisioning.service.js';
 import { TenantLifecycleService } from './tenant-lifecycle.service.js';
+import { WorkspaceDataService } from './workspace-data.service.js';
 
 const DraftParams = z.object({ draftReference: z.string().uuid() }).strict();
 const RunParams = z.object({ runReference: z.string().uuid() }).strict();
@@ -24,6 +25,15 @@ const RemoveUserBody = z.object({
 const DeleteWorkspaceBody = z.object({
   reason: z.string().trim().min(20).max(500),
   confirmationName: z.string().trim().min(2).max(255),
+}).strict();
+const ResetTestDataBody = z.object({
+  reason: z.string().trim().min(20).max(500),
+  confirmationPhrase: z.literal('RESET TEST DATA'),
+}).strict();
+const HardDeleteWorkspaceBody = z.object({
+  reason: z.string().trim().min(20).max(500),
+  confirmationName: z.string().trim().min(2).max(255),
+  confirmationPhrase: z.literal('DELETE NOW'),
 }).strict();
 
 function actor(request: FastifyRequest, capability: AgencyCapability): AgencyActor {
@@ -44,9 +54,11 @@ export async function agencyProvisioningRoutes(app: FastifyInstance) {
   let instance: ProvisioningService | undefined;
   let deliveryInstance: DeliveryContextService | undefined;
   let lifecycleInstance: TenantLifecycleService | undefined;
+  let workspaceDataInstance: WorkspaceDataService | undefined;
   const service = () => (instance ||= new ProvisioningService());
   const delivery = () => (deliveryInstance ||= new DeliveryContextService());
   const lifecycle = () => (lifecycleInstance ||= new TenantLifecycleService());
+  const workspaceData = () => (workspaceDataInstance ||= new WorkspaceDataService());
 
   app.post('/provisioning-drafts', async (request, reply) => reply.code(201).send({
     data: await service().createDraft(
@@ -124,6 +136,8 @@ export async function agencyProvisioningRoutes(app: FastifyInstance) {
       input.reason,
     ) };
   });
+
+  // Retained for older clients. New agency screens use reset-test-data and hard-delete.
   app.get('/tenants/:tenantReference/deletion-preview', async request => {
     const { tenantReference } = TenantParams.parse(request.params);
     actor(request, 'tenants.read');
@@ -136,6 +150,38 @@ export async function agencyProvisioningRoutes(app: FastifyInstance) {
       actor(request, 'tenants.manage'),
       tenantReference,
       input.confirmationName,
+      input.reason,
+    ) };
+  });
+
+  app.get('/tenants/:tenantReference/test-data-preview', async request => {
+    const { tenantReference } = TenantParams.parse(request.params);
+    actor(request, 'tenants.read');
+    return { data: await workspaceData().previewReset(tenantReference) };
+  });
+  app.post('/tenants/:tenantReference/reset-test-data', async request => {
+    const { tenantReference } = TenantParams.parse(request.params);
+    const input = ResetTestDataBody.parse(request.body);
+    return { data: await workspaceData().resetTestData(
+      actor(request, 'tenants.manage'),
+      tenantReference,
+      input.confirmationPhrase,
+      input.reason,
+    ) };
+  });
+  app.get('/tenants/:tenantReference/hard-delete-preview', async request => {
+    const { tenantReference } = TenantParams.parse(request.params);
+    actor(request, 'tenants.read');
+    return { data: await workspaceData().previewHardDelete(tenantReference) };
+  });
+  app.post('/tenants/:tenantReference/hard-delete', async request => {
+    const { tenantReference } = TenantParams.parse(request.params);
+    const input = HardDeleteWorkspaceBody.parse(request.body);
+    return { data: await workspaceData().hardDelete(
+      actor(request, 'tenants.manage'),
+      tenantReference,
+      input.confirmationName,
+      input.confirmationPhrase,
       input.reason,
     ) };
   });

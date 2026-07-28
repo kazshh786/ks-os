@@ -5,7 +5,9 @@ import test from 'node:test';
 const routes = readFileSync(new URL('../src/modules/provisioning/provisioning.routes.ts', import.meta.url), 'utf8');
 const delivery = readFileSync(new URL('../src/modules/provisioning/delivery-context.service.ts', import.meta.url), 'utf8');
 const lifecycle = readFileSync(new URL('../src/modules/provisioning/tenant-lifecycle.service.ts', import.meta.url), 'utf8');
+const workspaceData = readFileSync(new URL('../src/modules/provisioning/workspace-data.service.ts', import.meta.url), 'utf8');
 const web = readFileSync(new URL('../../web/src/features/agency/AgencyProvisioning.tsx', import.meta.url), 'utf8');
+const controls = readFileSync(new URL('../../web/src/features/agency/WorkspaceDataControls.tsx', import.meta.url), 'utf8');
 
 test('client delivery resolves server-owned plan, brief, template, draft, run and readiness', () => {
   assert.match(routes, /tenants\/:tenantReference\/delivery-context/);
@@ -17,12 +19,12 @@ test('client delivery resolves server-owned plan, brief, template, draft, run an
 });
 
 test('unified delivery makes booking precede the website and exposes both outcomes together', () => {
-  assert.match(web, /Provision booking system and website/);
+  assert.match(web, /Start provisioning/);
   assert.match(web, /Booking system/);
   assert.match(web, /Website draft/);
-  assert.match(web, /Test booking journey/);
+  assert.match(web, /Test booking/);
   assert.match(web, /Open Site Studio/);
-  assert.match(web, /Combined readiness/);
+  assert.match(web, /Delivery readiness/);
 });
 
 test('user removal is a guarded lifecycle action rather than destructive history deletion', () => {
@@ -35,23 +37,25 @@ test('user removal is a guarded lifecycle action rather than destructive history
   assert.doesNotMatch(lifecycle, /delete\(users\)/);
 });
 
-test('unused workspace deletion is platform-owner-only, confirmed and retains a valid audit tombstone', () => {
-  assert.match(routes, /tenants\/:tenantReference\/deletion-preview/);
-  assert.match(routes, /tenants\/:tenantReference\/delete-unused/);
-  assert.match(lifecycle, /actor\.role !== 'PLATFORM_OWNER'/);
-  assert.match(lifecycle, /confirmationName\.trim\(\) !== tenant\.name/);
-  assert.match(lifecycle, /WORKSPACE_WAS_LAUNCHED/);
-  assert.match(lifecycle, /PAYMENT_HISTORY_EXISTS/);
-  assert.match(lifecycle, /lifecycleStatus: 'OFFBOARDED'/);
-  assert.match(lifecycle, /UNUSED_WORKSPACE_TOMBSTONE/);
-  assert.match(lifecycle, /auditTombstoneRetained: true/);
-  assert.doesNotMatch(lifecycle, /lifecycleStatus: 'DELETED'/);
-  assert.doesNotMatch(lifecycle, /delete\(tenants\)/);
+test('platform owner can reset test data or permanently delete any workspace', () => {
+  assert.match(routes, /tenants\/:tenantReference\/test-data-preview/);
+  assert.match(routes, /tenants\/:tenantReference\/reset-test-data/);
+  assert.match(routes, /tenants\/:tenantReference\/hard-delete-preview/);
+  assert.match(routes, /tenants\/:tenantReference\/hard-delete/);
+  assert.match(workspaceData, /actor\.role !== 'PLATFORM_OWNER'/);
+  assert.match(workspaceData, /RESET TEST DATA/);
+  assert.match(workspaceData, /DELETE NOW/);
+  assert.match(workspaceData, /ks_hard_delete_tenant_workspace/);
+  assert.doesNotMatch(workspaceData, /WORKSPACE_WAS_LAUNCHED|APPOINTMENT_HISTORY_EXISTS|PAYMENT_HISTORY_EXISTS/);
 });
 
-test('workspace lifecycle UI clearly separates offboarding from unused-workspace removal', () => {
-  assert.match(web, /Offboard real client/);
-  assert.match(web, /Delete unused workspace/);
-  assert.match(web, /non-identifying audit tombstone/);
-  assert.match(web, /Type[\s\S]*exactly/);
+test('workspace controls clearly separate pausing, offboarding, reset and hard delete', () => {
+  assert.match(controls, /Pause workspace/);
+  assert.match(controls, /Start offboarding/);
+  assert.match(controls, /Reset test data/);
+  assert.match(controls, /Delete workspace/);
+  assert.match(controls, /What stays/);
+  assert.match(controls, /This cannot be undone/);
+  assert.match(controls, /Type <strong[\s\S]*exactly/);
+  assert.doesNotMatch(web, /Delete unused workspace/);
 });

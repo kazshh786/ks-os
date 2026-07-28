@@ -584,7 +584,7 @@ export default function StaffCalendar({ tenant, onLaunchManualBooking, onLaunchC
         <div className="flex gap-2 items-center">
           <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
           <span className="text-amber-800 font-medium">
-            Overbooking & Resource Control: {forceDoubleBook ? '⚠️ Overrides Active (Double bookings are permitted)' : '🔒 Conflicts Blocked (Strict staff & equipment schedules enforced)'}
+            Overbooking & Resource Control: {forceDoubleBook ? '⚠️ Overrides Active (Double bookings are permitted)' : '🔒 Conflicts Blocked (Strict staff and equipment schedules enforced)'}
           </span>
         </div>
         <label className="flex items-center gap-1.5 cursor-pointer select-none">
@@ -753,7 +753,7 @@ export default function StaffCalendar({ tenant, onLaunchManualBooking, onLaunchC
           {/* View Mode 2: Resource Columns */}
           {viewMode === 'resources' && (
             <div className="flex-1 min-w-[500px] flex">
-              {['Private Facial & Lash Suite', 'Standard Barber Chair 1', 'Standard Barber Chair 2'].map((resourceName, idx) => {
+              {['Private Facial and Lash Suite', 'Standard Barber Chair 1', 'Standard Barber Chair 2'].map((resourceName, idx) => {
                 const resourceId = idx === 0 ? 'res-facial-suite' : idx === 1 ? 'res-chair-1' : 'res-chair-2';
                 const resourceBookings = dateBookings.filter(b => b.resourceId === resourceId);
 
