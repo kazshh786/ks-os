@@ -29,7 +29,6 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
   const [showForm, setShowForm] = useState(searchParams.get('add') === '1');
   const nameInput = useRef<HTMLInputElement>(null);
   const locallyCreatedIds = useRef(new Set<string>());
-  const editParam = searchParams.get('edit');
   const isEditing = editingServiceId !== null;
 
   useEffect(() => {
@@ -48,16 +47,6 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
     return () => { active = false; };
   }, [activeTenant]);
 
-  useEffect(() => {
-    if (!editParam || editingServiceId === editParam) return;
-    const service = services.find(item => item.id === editParam);
-    if (!service) return;
-    setEditingServiceId(service.id);
-    setDraft(draftFromService(service));
-    setShowForm(true);
-    window.setTimeout(() => nameInput.current?.focus(), 0);
-  }, [editParam, editingServiceId, services]);
-
   const openCreateForm = () => {
     setError('');
     setEditingServiceId(null);
@@ -72,7 +61,7 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
     setEditingServiceId(service.id);
     setDraft(draftFromService(service));
     setShowForm(true);
-    setSearchParams({ edit: service.id }, { replace: true });
+    setSearchParams({}, { replace: true });
     window.setTimeout(() => nameInput.current?.focus(), 0);
   };
 

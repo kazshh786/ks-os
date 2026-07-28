@@ -71,7 +71,7 @@ describe('ServicesPage', () => {
     expect(await screen.findByRole('heading', { name: 'Consultation' })).toBeInTheDocument();
   });
 
-  it('loads an existing service into the form and saves the changes', async () => {
+  it('loads an existing service into the form, saves the changes, and closes the editor', async () => {
     updateServiceRecord.mockResolvedValue({
       id: 'service-1',
       name: 'Updated signature treatment',
@@ -105,5 +105,7 @@ describe('ServicesPage', () => {
       category: 'Premium',
     }));
     expect(await screen.findByRole('heading', { name: 'Updated signature treatment' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Edit service' })).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
   });
 });
