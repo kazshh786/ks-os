@@ -263,8 +263,15 @@ const posRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { limit, search, inStockOnly } = queryResult.data;
-    const products = await service.getProducts(request.auth!.tenantId, limit, search, inStockOnly);
-    return reply.send({ success: true, data: products });
+    try {
+      const products = await service.getProducts(request.auth!.tenantId, limit, search, inStockOnly);
+      return reply.send({ success: true, data: products });
+    } catch (error: any) {
+      if (errorCode(error, 'PRODUCT_ERROR') === 'ENTITLEMENT_REQUIRED') {
+        return reply.send({ success: true, data: [] });
+      }
+      throw error;
+    }
   });
 
   fastify.get('/api/v1/products/:productId', async (request, reply) => {
