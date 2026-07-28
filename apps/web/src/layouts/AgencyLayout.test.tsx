@@ -13,13 +13,6 @@ const tenants = [
 ];
 const agencyFetch = vi.fn(async (path: string) => {
   if (path === '/tenants') return tenants;
-  if (path === '/analytics') return {
-    revenue: { mrr_minor: 120000, active_subscriptions: 2, at_risk_mrr_minor: 0 },
-    usage: { appointments_30d: 24 },
-    workload: { open_deliverables: 1 },
-    activation: { median_days_to_launch: 6 },
-  };
-  if (path === '/support/overview') return { failedJobs: [] };
   if (path.endsWith('/users')) return [];
   return {
     tenant: tenants.find(tenant => path.includes(tenant.id)) ?? tenants[0],
@@ -33,6 +26,12 @@ const session = {
   mfa: { required: false, assuranceLevel: 'aal2' }, expiresAt: '2099-01-01T00:00:00.000Z',
 };
 vi.mock('../features/agency/AgencyAuth', () => ({ useAgencyAuth: () => ({ session, signOut: vi.fn() }), agencyFetch: (path: string) => agencyFetch(path) }));
+vi.mock('../features/agency/AgencyOperatingConsole', () => ({
+  AgencyHomePage: () => <div>Agency home dashboard</div>,
+  AgencyClientsPage: () => <div>Client portfolio</div>,
+  AgencyOnboardingPage: () => <div>Onboarding board</div>,
+  AgencyClientWorkspacePage: () => <div>Client workspace hub</div>,
+}));
 vi.mock('../features/agency/SupportSessionDialog', () => ({ SupportSessionDialog: ({ open }: { open: boolean }) => open ? <div role="dialog">Support access</div> : null }));
 
 function LocationProbe() { const location = useLocation(); return <output aria-label="Current route">{location.pathname}</output>; }
@@ -50,7 +49,7 @@ describe('AgencyLayout', () => {
     expect(screen.getByRole('link', { name: 'Managed services' })).toHaveAttribute('href', '/agency/fulfilment');
     expect(screen.getByRole('link', { name: 'Audit trail' })).toHaveAttribute('href', '/agency/audit');
     expect(screen.getByRole('link', { name: 'Agency team' })).toHaveAttribute('href', '/agency/users');
-    expect(await screen.findByText('Know what needs attention, then act')).toBeInTheDocument();
+    expect(await screen.findByText('Agency home dashboard')).toBeInTheDocument();
   });
 
   it('moves client management into the sidebar with identity, exit, switching, and support entry', async () => {
