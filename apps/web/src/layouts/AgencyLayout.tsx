@@ -123,14 +123,17 @@ export const AgencyLayout: React.FC = () => {
     <span className="hidden items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-300 md:flex"><ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />{session?.mfa.assuranceLevel.toUpperCase()}</span>
   </div>;
 
-  const tenantWorkspaceRoute = /^\/agency\/tenants\/[0-9a-f-]{36}(?:\/(?:onboarding|fulfilment))?\/?$/i.test(location.pathname);
+  const tenantWorkspaceMatch = location.pathname.match(/^\/agency\/tenants\/[0-9a-f-]{36}(?:\/(onboarding|fulfilment))?\/?$/i);
+  const tenantWorkspaceAllowed = tenantWorkspaceMatch?.[1] === 'fulfilment'
+    ? capabilities.includes('fulfilment.read')
+    : capabilities.includes('tenants.read');
   const redesignedContent = (location.pathname === '/agency' || location.pathname === '/agency/overview') && capabilities.includes('analytics.read')
     ? <AgencyHomePage />
     : location.pathname === '/agency/tenants' && capabilities.includes('tenants.read')
       ? <AgencyClientsPage />
       : location.pathname === '/agency/onboarding' && capabilities.includes('tenants.read')
         ? <AgencyOnboardingPage />
-        : tenantWorkspaceRoute && capabilities.includes('tenants.read')
+        : tenantWorkspaceMatch && tenantWorkspaceAllowed
           ? <AgencyClientWorkspacePage />
           : <Outlet />;
 
