@@ -17,7 +17,7 @@ concurrency:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       GH_TOKEN: ${{ github.token }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -30,6 +30,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile --silent
+      - run: pnpm --filter site-worker exec playwright install --with-deps chromium
       - run: pnpm build
       - name: Run tests and publish concise diagnostics
         shell: bash
@@ -49,7 +50,7 @@ jobs:
               echo '<!-- stripe-connect-test-diagnostic -->'
               echo '### Stripe Connect test diagnostic'
               echo '```text'
-              grep -E -B 10 -A 30 'not ok|FAIL|AssertionError|ERR_ASSERTION|Error:' /tmp/stripe-connect-tests.log | tail -n 260
+              grep -E -B 12 -A 36 'not ok|FAIL|AssertionError|ERR_ASSERTION|Error:' /tmp/stripe-connect-tests.log | tail -n 320
               echo '```'
             } > /tmp/stripe-connect-comment.md
             gh pr comment "$PR_NUMBER" --body-file /tmp/stripe-connect-comment.md
