@@ -56,7 +56,7 @@ export const businessNavigation: NavigationGroup[] = [
       { id: 'locations', label: 'Locations and resources', href: '/app/settings/locations', icon: MapPinned, roles: ['owner'], activePrefixes: ['/app/settings/resources'] },
       { id: 'booking-page', label: 'Booking Page', href: '/app/settings/booking-page', icon: Globe2, roles: ['owner'] },
       { id: 'booking-policies', label: 'Booking Policies', href: '/app/settings/booking/customer-management', icon: ReceiptText, roles: ['owner'] },
-      { id: 'stripe-payments', label: 'Stripe & Payments', href: '/app/settings/payments', icon: CreditCard, roles: ['owner'], activePrefixes: ['/app/settings/payments/'] },
+      { id: 'stripe-payments', label: 'Stripe and Payments', href: '/app/settings/payments', icon: CreditCard, roles: ['owner'], activePrefixes: ['/app/settings/payments/'] },
       { id: 'integrations', label: 'Integrations', href: '/app/settings/integrations', icon: Plug, roles: ['owner'], activePrefixes: ['/app/settings/integrations/'] },
       { id: 'communications', label: 'Communications', href: '/app/settings/communications', icon: MessagesSquare, roles: ['owner'], activePrefixes: ['/app/settings/communications/', '/app/settings/email-history'] },
       { id: 'business-settings', label: 'Business Settings', href: '/app/settings', icon: Settings2, roles: ['owner'] },
