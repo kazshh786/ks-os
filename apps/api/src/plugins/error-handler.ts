@@ -3,6 +3,8 @@ import { ApiError } from '@ks-os/contracts';
 import { ZodError } from 'zod';
 import { CustomerPortalError } from '../modules/customer-portal/customer-portal.errors.js';
 
+type ErrorWithStatus = Error & { statusCode?: number; code?: string };
+
 type PublicErrorContext = {
   method: string;
   statusCode: number;
@@ -20,6 +22,7 @@ export function publicErrorMessage({ method, statusCode, requestId }: PublicErro
   if (statusCode === 403) return 'You do not have permission to do this. Ask a workspace owner for access.';
   if (statusCode === 404) return 'We could not find what you requested. Check the link or return to the previous page.';
   if (statusCode === 409) return 'This changed while you were working. Refresh the page and try again.';
+  if (statusCode === 413) return 'This file is too large. Choose a smaller file and try again.';
   if (statusCode === 429) return 'Too many requests were sent. Wait a moment and try again.';
 
   if ([502, 503, 504].includes(statusCode)) {
@@ -47,7 +50,7 @@ export function publicErrorMessage({ method, statusCode, requestId }: PublicErro
 }
 
 export default function registerErrorHandler(fastify: FastifyInstance) {
-  fastify.setErrorHandler((error: Error & { statusCode?: number; code?: string }, request: FastifyRequest, reply: FastifyReply) => {
+  fastify.setErrorHandler((error: ErrorWithStatus, request: FastifyRequest, reply: FastifyReply) => {
     // CustomerPortalError carries a domain-specific statusCode and stable code.
     // Log at warn level (not error) because these are expected client errors.
     if (error instanceof CustomerPortalError) {
@@ -59,22 +62,28 @@ export default function registerErrorHandler(fastify: FastifyInstance) {
       return;
     }
 
-    fastify.log.error({ err: error, requestId: request.id, correlationId: request.correlationId, route: request.routeOptions.url }, 'request failed');
+    fastify.log.error(
+      { err: error, requestId: request.id, correlationId: request.correlationId, route: request.routeOptions.url },
+      'request failed',
+    );
 
     const isValidation = error instanceof ZodError;
     const statusCode = isValidation ? 400 : (error.statusCode || 500);
-    const safeMessage = error.message || publicErrorMessage({ method: request.method, statusCode, requestId: request.id });
-
-    // Never expose an unhandled server error message because it may contain database details or personal data.
-    const publicMessage = statusCode >= 500
-      ? publicErrorMessage({ method: request.method, statusCode, requestId: request.id })
-      : safeMessage;
+    const hasSafeDomainMessage = statusCode < 500 && Boolean(error.message?.trim());
+    const message = isValidation
+      ? 'Check the highlighted fields and try again.'
+      : hasSafeDomainMessage
+        ? error.message
+        : publicErrorMessage({ method: request.method, statusCode, requestId: request.id });
 
     const apiErrorResponse: ApiError = {
       error: {
         code: isValidation ? 'FORM_INVALID_SCHEMA' : (error.code || 'INTERNAL_SERVER_ERROR'),
-        message: isValidation ? 'Check the information you entered and try again.' : publicMessage,
-        details: { requestId: request.id },
+        message,
+        details: {
+          requestId: request.id,
+          retryable: statusCode === 409 || statusCode === 429 || statusCode >= 500,
+        },
       },
     };
 
