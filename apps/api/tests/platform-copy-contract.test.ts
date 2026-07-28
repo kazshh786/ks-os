@@ -33,7 +33,7 @@ const rules = [
 const globalErrorRules = [
   {
     name: 'Replace generic internal errors with a safe next step.',
-    pattern: /An unexpected internal error occurred\.?|An unexpected error occurred\.?/gi,
+    pattern: /An unexpected(?: internal)? error occurred\.?/gi,
   },
 ] as const;
 
