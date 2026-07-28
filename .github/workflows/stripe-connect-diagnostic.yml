@@ -1,0 +1,49 @@
+name: Stripe Connect diagnostic
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/modules/integrations/stripe/**'
+      - 'apps/web/src/pages/settings/Payments.tsx'
+      - 'apps/web/src/pages/settings/StripeReturn.tsx'
+      - 'apps/web/src/pages/settings/StripeRefresh.tsx'
+      - '.github/workflows/stripe-connect-diagnostic.yml'
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+concurrency:
+  group: stripe-connect-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.13.1 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --silent
+      - name: Run tests and publish concise diagnostics
+        shell: bash
+        run: |
+          set +e
+          pnpm test > /tmp/stripe-connect-tests.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            {
+              echo '<!-- stripe-connect-test-diagnostic -->'
+              echo '### Stripe Connect test diagnostic'
+              echo '```text'
+              grep -E -B 8 -A 24 'not ok|FAIL|AssertionError|ERR_ASSERTION|Error:' /tmp/stripe-connect-tests.log | tail -n 220
+              echo '```'
+            } > /tmp/stripe-connect-comment.md
+            gh pr comment "$PR_NUMBER" --body-file /tmp/stripe-connect-comment.md
+          fi
+          exit $status
