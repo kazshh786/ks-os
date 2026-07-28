@@ -87,7 +87,9 @@ const servicesRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.code(201).send({ success: true, data: serviceResponse(created) });
   });
 
-  fastify.patch('/api/v1/services/:serviceId', async (request, reply) => {
+  fastify.patch('/api/v1/services/:serviceId', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     request.requireAuth();
     if (!canManageServices(request)) {
       return reply.code(403).send({ success: false, error: { code: 'SERVICE_ACCESS_DENIED', message: 'Business settings access is required.' } });
