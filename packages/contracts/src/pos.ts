@@ -59,7 +59,7 @@ export type PosStripePaymentMode = z.infer<typeof PosStripePaymentModeSchema>;
 export const PosStripePaymentConfirmationSchema = z.object({
   mode: PosStripePaymentModeSchema,
   paymentIntentId: z.string().regex(/^pi_[A-Za-z0-9]+$/).optional(),
-  manuallyConfirmed: z.boolean().optional().default(false),
+  manuallyConfirmed: z.boolean().optional(),
   manualReference: z.string().trim().max(255).optional(),
 });
 export type PosStripePaymentConfirmation = z.infer<typeof PosStripePaymentConfirmationSchema>;
