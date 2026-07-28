@@ -1,0 +1,56 @@
+name: Resolve PR 23 conflict
+
+on:
+  push:
+    branches:
+      - agent/stripe-first-pos
+    paths:
+      - .github/workflows/resolve-pr23-conflict.yml
+
+permissions:
+  contents: write
+
+jobs:
+  resolve:
+    if: github.repository == 'kazshh786/ks-os'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/stripe-first-pos
+
+      - name: Merge latest main and resolve manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+
+          set +e
+          git merge origin/main --no-edit
+          merge_status=$?
+          set -e
+
+          if [ "$merge_status" -ne 0 ]; then
+            conflicts="$(git diff --name-only --diff-filter=U)"
+            if [ "$conflicts" != "packages/database/src/manifest.ts" ]; then
+              echo "Unexpected conflicts:"
+              printf '%s\n' "$conflicts"
+              exit 1
+            fi
+
+            git checkout --ours packages/database/src/manifest.ts
+            git add packages/database/src/manifest.ts
+          fi
+
+          git rm .github/workflows/resolve-pr23-conflict.yml
+
+          if git diff --cached --quiet; then
+            echo "No merge changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Merge main into agent/stripe-first-pos"
+          git push origin HEAD:agent/stripe-first-pos
