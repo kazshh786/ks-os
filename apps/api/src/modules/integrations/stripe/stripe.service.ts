@@ -26,6 +26,21 @@ const connectUrl = (kind: 'return' | 'refresh') => {
 export class StripeService {
   private repo = new StripeRepository();
 
+  private async createAccountLink(stripeAccountId: string) {
+    const stripe = getStripeClient();
+    try {
+      const accountLink = await stripe.accountLinks.create({
+        account: stripeAccountId,
+        refresh_url: connectUrl('refresh'),
+        return_url: connectUrl('return'),
+        type: 'account_onboarding',
+      });
+      return accountLink.url;
+    } catch {
+      throw new Error('STRIPE_ONBOARDING_LINK_FAILED');
+    }
+  }
+
   async getConnection(tenantId: string) {
     return this.repo.getConnection(tenantId);
   }
@@ -98,24 +113,12 @@ export class StripeService {
 
   async createOnboardingLink(tenantId: string) {
     const connection = await this.connectAccount(tenantId);
-    const stripe = getStripeClient();
-
-    try {
-      const accountLink = await stripe.accountLinks.create({
-        account: connection.stripeAccountId,
-        refresh_url: connectUrl('refresh'),
-        return_url: connectUrl('return'),
-        type: 'account_onboarding',
-      });
-      return accountLink.url;
-    } catch {
-      throw new Error('STRIPE_ONBOARDING_LINK_FAILED');
-    }
+    return this.createAccountLink(connection.stripeAccountId);
   }
 
   async startOnboarding(tenantId: string) {
     const connection = await this.connectAccount(tenantId);
-    const url = await this.createOnboardingLink(tenantId);
+    const url = await this.createAccountLink(connection.stripeAccountId);
     return { connection, url };
   }
 
