@@ -20,7 +20,7 @@ import { BookingPageService } from '../apps/api/src/modules/bookings/booking-pag
 
 dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
 
-const WORKSPACE_SLUG = 'barebeautykieghley';
+const WORKSPACE_SLUG = 'barebeautykeighley';
 const WORKSPACE_NAME = 'Bare Beauty Keighley';
 const OWNER_EMAIL = 'sidra@barebeautykieghley.co.uk';
 const OWNER_NAME = 'Sidra';
