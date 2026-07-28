@@ -5,13 +5,18 @@ const { fetchWithAuth } = vi.hoisted(() => ({ fetchWithAuth: vi.fn() }));
 
 vi.mock('../../api/client.js', () => ({ fetchWithAuth }));
 
+const jsonResponse = (body: unknown, ok: boolean) => ({
+  ok,
+  json: vi.fn().mockResolvedValue(body),
+});
+
 describe('updateServiceRecord', () => {
   beforeEach(() => {
     fetchWithAuth.mockReset();
   });
 
   it('sends a tenant-authenticated PATCH and maps minor currency units', async () => {
-    fetchWithAuth.mockResolvedValue(new Response(JSON.stringify({
+    fetchWithAuth.mockResolvedValue(jsonResponse({
       data: {
         id: 'service-id',
         name: 'Cut and finish',
@@ -20,7 +25,7 @@ describe('updateServiceRecord', () => {
         price: 4250,
         category: 'Hair',
       },
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    }, true));
 
     const updated = await updateServiceRecord('service-id', {
       name: 'Cut and finish',
@@ -51,9 +56,9 @@ describe('updateServiceRecord', () => {
   });
 
   it('shows the API error message when saving fails', async () => {
-    fetchWithAuth.mockResolvedValue(new Response(JSON.stringify({
+    fetchWithAuth.mockResolvedValue(jsonResponse({
       error: { message: 'The service could not be found.' },
-    }), { status: 404, headers: { 'Content-Type': 'application/json' } }));
+    }, false));
 
     await expect(updateServiceRecord('missing-service', {
       name: 'Missing',
