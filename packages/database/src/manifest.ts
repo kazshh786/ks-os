@@ -49,4 +49,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260727233000_workspace_hard_delete_and_test_reset.sql', order: 42, description: 'Platform-owner workspace test reset, irreversible tenant purge, private file cleanup, and authentication identity removal support' },
   { filename: '20260728010000_platform_error_log.sql', order: 43, description: 'Append-only privacy-minimised platform error evidence with actor, workspace, request, route, origin and stack context' },
   { filename: '20260728030000_default_client_onboarding_fact_find.sql', order: 44, description: 'Seed the recommended active KS OS client onboarding intake used for assisted and self-service fact finding' },
+  { filename: '20260728100000_stripe_first_pos.sql', order: 45, description: 'Set the first inventory-enabled package to £197 for the Stripe-first POS launch' },
 ];
