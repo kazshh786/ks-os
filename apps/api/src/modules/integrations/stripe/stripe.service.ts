@@ -1,12 +1,61 @@
+import { eq } from 'drizzle-orm';
+import { getDatabase, tenants } from '@ks-os/database';
 import { StripeRepository } from './stripe.repository.js';
 import { getStripeClient } from '../../../lib/stripe.js';
 import { deriveStripeConnectionStatus } from './stripe.mapper.js';
 
+const connectUrl = (kind: 'return' | 'refresh') => {
+  const expectedPath = `/app/settings/payments/${kind}`;
+  const configured = kind === 'return'
+    ? process.env.STRIPE_CONNECT_RETURN_URL
+    : process.env.STRIPE_CONNECT_REFRESH_URL;
+
+  if (configured) {
+    try {
+      const configuredUrl = new URL(configured);
+      if (configuredUrl.pathname === expectedPath) return configuredUrl.toString();
+    } catch {
+      // Fall through to the known application route below.
+    }
+  }
+
+  const origin = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
+  return new URL(expectedPath, origin).toString();
+};
+
 export class StripeService {
   private repo = new StripeRepository();
 
+  private async createAccountLink(stripeAccountId: string) {
+    const stripe = getStripeClient();
+    try {
+      const accountLink = await stripe.accountLinks.create({
+        account: stripeAccountId,
+        refresh_url: connectUrl('refresh'),
+        return_url: connectUrl('return'),
+        type: 'account_onboarding',
+      });
+      return accountLink.url;
+    } catch {
+      throw new Error('STRIPE_ONBOARDING_LINK_FAILED');
+    }
+  }
+
   async getConnection(tenantId: string) {
     return this.repo.getConnection(tenantId);
+  }
+
+  async getFreshConnection(tenantId: string) {
+    const connection = await this.repo.getConnection(tenantId);
+    if (!connection) return null;
+
+    try {
+      return await this.syncConnection(tenantId);
+    } catch {
+      // A transient Stripe failure should not make the settings page appear as
+      // disconnected. Return the most recently verified database snapshot.
+      return connection;
+    }
   }
 
   async connectAccount(tenantId: string) {
@@ -14,13 +63,33 @@ export class StripeService {
     const stripe = getStripeClient();
 
     if (!connection) {
+      const db = getDatabase();
+      const [tenant] = await db
+        .select({
+          name: tenants.name,
+          legalBusinessName: tenants.legalBusinessName,
+          primaryContactEmail: tenants.primaryContactEmail,
+        })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+
+      if (!tenant) throw new Error('TENANT_NOT_FOUND');
+
       let account;
       try {
         account = await stripe.accounts.create({
           type: 'standard',
           country: process.env.STRIPE_DEFAULT_CONNECTED_ACCOUNT_COUNTRY || 'GB',
+          email: tenant.primaryContactEmail || undefined,
+          business_profile: {
+            name: tenant.legalBusinessName || tenant.name,
+          },
+          metadata: {
+            ks_os_tenant_id: tenantId,
+          },
         });
-      } catch (err) {
+      } catch {
         throw new Error('STRIPE_ACCOUNT_CREATE_FAILED');
       }
 
@@ -43,23 +112,14 @@ export class StripeService {
   }
 
   async createOnboardingLink(tenantId: string) {
-    const connection = await this.repo.getConnection(tenantId);
-    if (!connection) {
-      throw new Error('STRIPE_CONNECTION_NOT_FOUND');
-    }
+    const connection = await this.connectAccount(tenantId);
+    return this.createAccountLink(connection.stripeAccountId);
+  }
 
-    const stripe = getStripeClient();
-    try {
-      const accountLink = await stripe.accountLinks.create({
-        account: connection.stripeAccountId,
-        refresh_url: process.env.STRIPE_CONNECT_REFRESH_URL,
-        return_url: process.env.STRIPE_CONNECT_RETURN_URL,
-        type: 'account_onboarding',
-      });
-      return accountLink.url;
-    } catch (err) {
-      throw new Error('STRIPE_ONBOARDING_LINK_FAILED');
-    }
+  async startOnboarding(tenantId: string) {
+    const connection = await this.connectAccount(tenantId);
+    const url = await this.createAccountLink(connection.stripeAccountId);
+    return { connection, url };
   }
 
   async syncConnection(tenantId: string) {
@@ -72,13 +132,16 @@ export class StripeService {
     let account;
     try {
       account = await stripe.accounts.retrieve(connection.stripeAccountId);
-    } catch (err) {
+    } catch {
       throw new Error('STRIPE_ACCOUNT_RETRIEVE_FAILED');
     }
 
-    let updated;
+    if ('deleted' in account) {
+      throw new Error('STRIPE_ACCOUNT_RETRIEVE_FAILED');
+    }
+
     try {
-      updated = await this.repo.upsertConnection({
+      return await this.repo.upsertConnection({
         tenantId,
         stripeAccountId: account.id,
         accountType: connection.accountType,
@@ -91,11 +154,9 @@ export class StripeService {
         pastDue: account.requirements?.past_due || [],
         disabledReason: account.requirements?.disabled_reason || null,
       });
-    } catch (err) {
+    } catch {
       throw new Error('STRIPE_SYNC_FAILED');
     }
-
-    return updated;
   }
 
   async createBookingPaymentSession(
@@ -104,15 +165,13 @@ export class StripeService {
     publicBookingReference: string,
     idempotencyKey: string,
     amount: number,
-    currency: string
+    currency: string,
   ) {
     const connection = await this.repo.getConnection(tenantId);
     if (!connection || connection.connectionStatus !== 'READY' || !connection.chargesEnabled) {
       throw new Error('STRIPE_ACCOUNT_NOT_READY');
     }
 
-    const { getDatabase, tenants } = await import('@ks-os/database');
-    const { eq } = await import('drizzle-orm');
     const db = getDatabase();
     const [tenant] = await db.select({ subdomain: tenants.subdomain }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
     if (!tenant) throw new Error('TENANT_NOT_FOUND');

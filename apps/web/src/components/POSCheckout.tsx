@@ -3,11 +3,43 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, Plus, Minus, CreditCard, DollarSign, Wallet, CheckCircle, Percent, Printer, Sparkles, RefreshCw, ShoppingCart, User, AlertTriangle, Calendar } from 'lucide-react';
-import { BusinessTenant, POSItem } from '../data/types.js';
-import { CheckoutCandidate, CheckoutPreviewResponse, Product } from '@ks-os/contracts';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Copy,
+  CreditCard,
+  Loader2,
+  Minus,
+  Package,
+  Plus,
+  Radio,
+  ReceiptText,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  ShoppingBag,
+  Smartphone,
+  Sparkles,
+  UserRound,
+  Wifi,
+  X,
+} from 'lucide-react';
+import type {
+  CheckoutCandidate,
+  CheckoutRequest,
+  CheckoutResponse,
+  PosConfig,
+  PosStripePaymentStatus,
+  PosStripeReader,
+  Product,
+} from '@ks-os/contracts';
+import type { BusinessTenant, POSItem } from '../data/types.js';
 import { getDataProvider } from '../data/data-provider.js';
+import { fetchWithAuth } from '../api/client.js';
 
 interface POSCheckoutProps {
   tenant: BusinessTenant;
@@ -15,702 +47,700 @@ interface POSCheckoutProps {
   onCheckoutCompleted: () => void;
 }
 
+type PaymentChoice = 'READER' | 'TAP_TO_PAY' | 'MANUAL_TERMINAL';
+type PaymentStage = 'choose' | 'instructions' | 'sending' | 'waiting' | 'finalising';
+
+interface PendingStripeSale {
+  paymentIntentId: string;
+  readerId: string;
+  amountInCents: number;
+  appointmentId: string;
+  idempotencyKey: string;
+  tipAmountInCents: number;
+  purchasedProducts: Array<{ productId: string; quantity: number }>;
+}
+
+
+const money = (amountInCents: number, currency = 'GBP') => new Intl.NumberFormat('en-GB', {
+  style: 'currency',
+  currency,
+}).format(amountInCents / 100);
+
+const safeJson = async (response: Response) => response.json().catch(() => ({}));
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetchWithAuth(path, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+  const body = await safeJson(response);
+  if (!response.ok) {
+    throw new Error(body?.error?.message || body?.error || 'The request could not be completed.');
+  }
+  return body as T;
+}
+
 export default function POSCheckout({ tenant, preloadedBooking, onCheckoutCompleted }: POSCheckoutProps) {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [config, setConfig] = useState<PosConfig | null>(null);
   const [candidates, setCandidates] = useState<CheckoutCandidate[]>([]);
-  
-  // Selected appointment state
+  const [products, setProducts] = useState<Product[]>([]);
+  const [readers, setReaders] = useState<PosStripeReader[]>([]);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(preloadedBooking?.id || null);
-  
-  // Cart
+  const [selectedReaderId, setSelectedReaderId] = useState('');
   const [cart, setCart] = useState<POSItem[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  // Tip
-  const [tipPercentage, setTipPercentage] = useState<number | 'custom' | null>(null);
-  const [customTip, setCustomTip] = useState<string>('');
-
-  // Payment Options
-  // Payment Options
-  const [paymentMode, setPaymentMode] = useState<'Cash' | 'ExternalCard' | 'BankTransfer' | 'Other' | 'Split'>('ExternalCard');
-  
-  // External Provider Info
-  const [externalProvider, setExternalProvider] = useState<string>('SUMUP');
-  const [externalProviderName, setExternalProviderName] = useState<string>('');
-  const [externalReference, setExternalReference] = useState<string>('');
-  const [methodDescription, setMethodDescription] = useState<string>('');
-  
-  // Split payments editor
-  const [splitComponents, setSplitComponents] = useState<any[]>([
-    { id: '1', method: 'CASH', amount: '', provider: '', ref: '', customProvider: '', desc: '' },
-    { id: '2', method: 'EXTERNAL_CARD', amount: '', provider: 'SUMUP', ref: '', customProvider: '', desc: '' }
-  ]);
-
-  // Server Authoritative Totals
-  const [serverTotals, setServerTotals] = useState<CheckoutPreviewResponse['data'] | null>(null);
+  const [appointmentSearch, setAppointmentSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [tipPercent, setTipPercent] = useState(0);
+  const [customTip, setCustomTip] = useState('');
+  const [serverTotals, setServerTotals] = useState<{
+    serviceAmountInCents: number;
+    retailAmountInCents: number;
+    tipAmountInCents: number;
+    grandTotalInCents: number;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [error, setError] = useState('');
+  const [basketOpen, setBasketOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentChoice, setPaymentChoice] = useState<PaymentChoice>('READER');
+  const [paymentStage, setPaymentStage] = useState<PaymentStage>('choose');
+  const [paymentMessage, setPaymentMessage] = useState('');
+  const [manualConfirmed, setManualConfirmed] = useState(false);
+  const [manualReference, setManualReference] = useState('');
+  const [completedSale, setCompletedSale] = useState<CheckoutResponse['data'] | null>(null);
 
-  // Execution states
-  const [checkoutState, setCheckoutState] = useState<'idle' | 'loading' | 'insufficient-stock' | 'invalid-split'>('idle');
-  const [printedReceipt, setPrintedReceipt] = useState<any | null>(null);
-  const [externalCardConfirmed, setExternalCardConfirmed] = useState(false);
-  
-  const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+  const mountedRef = useRef(true);
+  const finalisingRef = useRef(false);
+  const checkoutIdempotencyRef = useRef(crypto.randomUUID());
 
-  // Reset confirmation when mode changes
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
+
+  const selectedCandidate = useMemo(
+    () => candidates.find(candidate => candidate.appointmentId === selectedAppointmentId) || null,
+    [candidates, selectedAppointmentId],
+  );
+
+  const purchasedProducts = useMemo(() => cart.map(item => ({
+    productId: item.id,
+    quantity: item.quantity,
+  })), [cart]);
+
+  const localServiceAmount = selectedCandidate?.quotedAmount || 0;
+  const localRetailAmount = cart.reduce((total, item) => total + Math.round(item.price * 100) * item.quantity, 0);
+  const customTipInCents = Math.max(0, Math.round((Number.parseFloat(customTip) || 0) * 100));
+  const tipAmountInCents = customTip
+    ? customTipInCents
+    : Math.round((localServiceAmount + localRetailAmount) * (tipPercent / 100));
+
+  const currency = config?.plan?.currency || tenant.currency || 'GBP';
+  const grandTotal = serverTotals?.grandTotalInCents ?? localServiceAmount + localRetailAmount + tipAmountInCents;
+  const onlineReaders = readers.filter(reader => reader.online && reader.supportsServerDriven);
+
   useEffect(() => {
-    setExternalCardConfirmed(false);
-  }, [paymentMode]);
+    checkoutIdempotencyRef.current = crypto.randomUUID();
+  }, [selectedAppointmentId, purchasedProducts, tipAmountInCents]);
 
-  // Re-generate idempotencyKey if the basket configuration changes
-  useEffect(() => {
-    idempotencyKeyRef.current = crypto.randomUUID();
-  }, [cart, tipPercentage, customTip, selectedAppointmentId, paymentMode, splitComponents, externalProvider, externalProviderName, externalReference, methodDescription]);
+  const loadReaders = async () => {
+    if (!config?.stripe.ready) return;
+    try {
+      const response = await apiRequest<{ success: true; data: PosStripeReader[] }>('/api/v1/pos/stripe/readers');
+      if (!mountedRef.current) return;
+      setReaders(response.data);
+      const preferred = response.data.find(reader => reader.online && reader.supportsServerDriven);
+      setSelectedReaderId(current => current || preferred?.id || '');
+    } catch (readerError) {
+      if (mountedRef.current) setPaymentMessage(readerError instanceof Error ? readerError.message : 'Stripe readers are unavailable.');
+    }
+  };
 
   useEffect(() => {
-    const loadPOSData = async () => {
+    const load = async () => {
+      setIsLoading(true);
+      setError('');
       try {
-        const pListRes = await getDataProvider().searchProducts();
-        setProducts(pListRes.data);
+        const [configResponse, candidateResponse] = await Promise.all([
+          apiRequest<{ success: true; data: PosConfig }>('/api/v1/pos/config'),
+          getDataProvider().getCheckoutAppointments(),
+        ]);
+        if (!mountedRef.current) return;
 
-        if (!preloadedBooking) {
-          const cListRes = await getDataProvider().getCheckoutAppointments();
-          setCandidates(cListRes.data);
-        } else {
-          setSelectedAppointmentId(preloadedBooking.id);
+        setConfig(configResponse.data);
+        setCandidates(candidateResponse.data);
+        if (!selectedAppointmentId && candidateResponse.data.length === 1) {
+          setSelectedAppointmentId(candidateResponse.data[0].appointmentId);
         }
-      } catch (e) {
-        console.error('Failed to load POS data', e);
+
+        if (configResponse.data.inventoryEnabled) {
+          const productResponse = await getDataProvider().searchProducts();
+          if (mountedRef.current) setProducts(productResponse.data);
+        }
+
+        if (configResponse.data.stripe.ready) {
+          const readerResponse = await apiRequest<{ success: true; data: PosStripeReader[] }>('/api/v1/pos/stripe/readers').catch(() => null);
+          if (mountedRef.current && readerResponse) {
+            setReaders(readerResponse.data);
+            const preferred = readerResponse.data.find(reader => reader.online && reader.supportsServerDriven);
+            setSelectedReaderId(preferred?.id || '');
+          }
+        }
+      } catch (loadError) {
+        if (mountedRef.current) setError(loadError instanceof Error ? loadError.message : 'The POS could not be loaded.');
+      } finally {
+        if (mountedRef.current) setIsLoading(false);
       }
     };
-    
-    loadPOSData();
-  }, [tenant, preloadedBooking]);
 
-  const addToCart = (item: Product) => {
-    const existing = cart.find(c => c.id === item.id);
-    if (existing) {
-      if (existing.quantity >= item.stockQuantity) {
-        alert('Cannot exceed available stock.');
-        return;
-      }
-      setCart(cart.map(c => c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c));
-    } else {
-      setCart([
-        ...cart,
-        {
-          id: item.id,
-          name: item.name,
-          type: 'Product',
-          price: item.priceInCents / 100,
-          quantity: 1
-        }
-      ]);
-    }
-  };
+    void load();
+  // selectedAppointmentId is deliberately excluded so loading does not reset a sale.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenant.id]);
 
-  const updateQty = (id: string, delta: number) => {
-    const updated = cart.map(c => {
-      if (c.id === id) {
-        const newQty = c.quantity + delta;
-        
-        // Stock check
-        const p = products.find(prod => prod.id === id);
-        if (p && newQty > p.stockQuantity) {
-          alert('Cannot exceed available stock.');
-          return c;
-        }
-
-        return newQty > 0 ? { ...c, quantity: newQty } : null;
-      }
-      return c;
-    }).filter(Boolean) as POSItem[];
-    setCart(updated);
-  };
-
-  const getTipAmountInCents = () => {
-    if (tipPercentage === 'custom') {
-      return Math.round((parseFloat(customTip) || 0) * 100);
-    }
-    if (tipPercentage && serverTotals) {
-      // Calculate tip based on base totals locally before server confirm if needed
-      // Actually, preview endpoint needs the tip amount. So we send it.
-      // Wait, if it's a percentage, we need to know the subtotal.
-      // Let's compute local subtotal to pass to preview
-      const localSub = cart.reduce((sum, item) => sum + Math.round(item.price * 100 * item.quantity), 0);
-      return Math.round(localSub * (tipPercentage / 100));
-    }
-    return 0;
-  };
-
-  // Preview checkout when cart, tip, or selected appointment changes
   useEffect(() => {
     if (!selectedAppointmentId) {
       setServerTotals(null);
       return;
     }
 
-    const timer = setTimeout(async () => {
+    const timer = window.setTimeout(async () => {
       setIsPreviewing(true);
+      setError('');
       try {
-        const payload = {
+        const response = await getDataProvider().previewCheckout({
           appointmentId: selectedAppointmentId,
-          paymentMethod: paymentMode.toUpperCase() as any,
-          tipAmountInCents: getTipAmountInCents(),
-          purchasedProducts: cart.filter(c => c.type === 'Product').map(c => ({
-            productId: c.id,
-            quantity: c.quantity
-          }))
-        };
-        const res = await getDataProvider().previewCheckout(payload);
-        setServerTotals(res.data);
-      } catch (err: any) {
-        console.error('Preview error:', err);
-        setServerTotals(null);
-      } finally {
-        setIsPreviewing(false);
-      }
-    }, 500); // debounce
-
-    return () => clearTimeout(timer);
-  }, [cart, tipPercentage, customTip, selectedAppointmentId, paymentMode]);
-
-  
-
-  const handleCheckoutSubmit = async () => {
-    if (!selectedAppointmentId || !serverTotals) return;
-    
-    const hasInsufficientStock = cart.some(c => {
-      const p = products.find(prod => prod.id === c.id);
-      return p && c.quantity > p.stockQuantity;
-    });
-
-    if (hasInsufficientStock) {
-      setCheckoutState('insufficient-stock');
-      return;
-    }
-    
-    if (paymentMode === 'Split') {
-      const totalProvided = splitComponents.reduce((sum, c) => sum + Math.round(parseFloat(c.amount || '0') * 100), 0);
-      if (totalProvided !== serverTotals.grandTotalInCents) {
-        setCheckoutState('invalid-split');
-        return;
-      }
-    }
-
-    setCheckoutState('loading');
-    
-    try {
-      const finalMethod = ({ Cash: 'CASH', ExternalCard: 'EXTERNAL_CARD', BankTransfer: 'BANK_TRANSFER', Other: 'OTHER', Split: 'SPLIT' } as const)[paymentMode];
-
-      const payload: any = {
-        idempotencyKey: idempotencyKeyRef.current,
-        appointmentId: selectedAppointmentId,
-        paymentMethod: finalMethod,
-        tipAmountInCents: serverTotals.tipAmountInCents,
-        purchasedProducts: cart.filter(c => c.type === 'Product').map(c => ({
-          productId: c.id,
-          quantity: c.quantity
-        })),
-        paymentComponents: []
-      };
-
-      if (paymentMode === 'Split') {
-        payload.paymentComponents = splitComponents.map(c => ({
-          method: c.method,
-          amountInCents: Math.round(parseFloat(c.amount || '0') * 100),
-          externalProvider: c.method === 'EXTERNAL_CARD' ? c.provider : undefined,
-          externalProviderName: c.method === 'EXTERNAL_CARD' && c.provider === 'OTHER' ? c.customProvider : (c.method === 'OTHER' ? c.customProvider : undefined),
-          externalReference: c.ref || undefined,
-          methodDescription: c.method === 'OTHER' ? c.desc : undefined
-        })).filter((c: any) => c.amountInCents > 0);
-      } else {
-        const comp: any = {
-          method: finalMethod.toUpperCase(),
-          amountInCents: serverTotals.grandTotalInCents
-        };
-        if (paymentMode === 'ExternalCard') {
-          comp.externalProvider = externalProvider;
-          if (externalProvider === 'OTHER') comp.externalProviderName = externalProviderName;
-          comp.externalReference = externalReference || undefined;
-        } else if (paymentMode === 'Other') {
-          comp.methodDescription = methodDescription;
-          comp.externalProviderName = externalProviderName;
-          comp.externalReference = externalReference || undefined;
-        } else if (paymentMode === 'BankTransfer') {
-          comp.externalReference = externalReference || undefined;
+          paymentMethod: 'STRIPE_TERMINAL',
+          tipAmountInCents,
+          purchasedProducts,
+        });
+        if (mountedRef.current) setServerTotals(response.data);
+      } catch (previewError) {
+        if (mountedRef.current) {
+          setServerTotals(null);
+          setError(previewError instanceof Error ? previewError.message : 'The total could not be calculated.');
         }
-        payload.paymentComponents = [comp];
+      } finally {
+        if (mountedRef.current) setIsPreviewing(false);
       }
+    }, 300);
 
-      const res = await getDataProvider().completeCheckout(payload);
-      const summary = res.data;
-      
-      // Use Server-generated Receipt
-      setPrintedReceipt(summary);
-      setCheckoutState('idle');
-      
-      // Dispatch updates
+    return () => window.clearTimeout(timer);
+  }, [selectedAppointmentId, purchasedProducts, tipAmountInCents]);
+
+  const refreshCandidates = async () => {
+    const response = await getDataProvider().getCheckoutAppointments();
+    if (mountedRef.current) setCandidates(response.data);
+  };
+
+  const addProduct = (product: Product) => {
+    setCart(current => {
+      const existing = current.find(item => item.id === product.id);
+      if (existing) {
+        if (existing.quantity >= product.stockQuantity) return current;
+        return current.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+      }
+      if (product.stockQuantity < 1) return current;
+      return [...current, {
+        id: product.id,
+        name: product.name,
+        type: 'Product',
+        price: product.priceInCents / 100,
+        quantity: 1,
+      }];
+    });
+  };
+
+  const updateQuantity = (productId: string, delta: number) => {
+    setCart(current => current.flatMap(item => {
+      if (item.id !== productId) return [item];
+      const product = products.find(candidate => candidate.id === productId);
+      const nextQuantity = item.quantity + delta;
+      if (nextQuantity <= 0) return [];
+      if (product && nextQuantity > product.stockQuantity) return [item];
+      return [{ ...item, quantity: nextQuantity }];
+    }));
+  };
+
+  const finaliseSale = async (
+    stripePayment: NonNullable<CheckoutRequest['stripePayment']>,
+    source?: PendingStripeSale,
+  ) => {
+    if (finalisingRef.current) return;
+    const appointmentId = source?.appointmentId || selectedAppointmentId;
+    if (!appointmentId) return;
+
+    finalisingRef.current = true;
+    setPaymentStage('finalising');
+    setPaymentMessage('Confirming the sale…');
+    setError('');
+
+    try {
+      const response = await getDataProvider().completeCheckout({
+        idempotencyKey: source?.idempotencyKey || checkoutIdempotencyRef.current,
+        appointmentId,
+        paymentMethod: 'STRIPE_TERMINAL',
+        tipAmountInCents: source?.tipAmountInCents ?? tipAmountInCents,
+        purchasedProducts: source?.purchasedProducts || purchasedProducts,
+        stripePayment,
+      });
+      if (!mountedRef.current) return;
+      setCompletedSale(response.data);
+      setPaymentOpen(false);
+      setBasketOpen(false);
       window.dispatchEvent(new CustomEvent('ks-bookings-updated'));
-    } catch (error: any) {
-      setCheckoutState('idle');
-      alert('Checkout failed: ' + (error.message || 'Unknown error'));
+    } catch (checkoutError) {
+      if (mountedRef.current) {
+        setPaymentStage('instructions');
+        setError(checkoutError instanceof Error ? checkoutError.message : 'The sale could not be confirmed.');
+      }
+    } finally {
+      finalisingRef.current = false;
     }
   };
 
-  const handleClearReceipt = () => {
-    setPrintedReceipt(null);
+  const pollStripePayment = async (pending: PendingStripeSale) => {
+    setPaymentOpen(true);
+    setPaymentChoice('READER');
+    setPaymentStage('waiting');
+    setPaymentMessage('Waiting for the customer to complete payment on the Stripe reader…');
+
+    for (let attempt = 0; attempt < 120 && mountedRef.current; attempt += 1) {
+      try {
+        const response = await apiRequest<{ success: true; data: PosStripePaymentStatus }>(
+          `/api/v1/pos/stripe/payment-intents/${encodeURIComponent(pending.paymentIntentId)}`,
+        );
+        if (response.data.succeeded) {
+          setPaymentMessage('Payment approved. Completing the sale…');
+          await finaliseSale({
+            mode: 'AUTOMATED_TERMINAL',
+            paymentIntentId: pending.paymentIntentId,
+          }, pending);
+          return;
+        }
+        if (response.data.failed) {
+              setPaymentStage('instructions');
+          setError(response.data.failureMessage || 'Stripe did not approve the payment.');
+          return;
+        }
+      } catch (statusError) {
+        setPaymentMessage(statusError instanceof Error
+          ? `${statusError.message} Retrying safely…`
+          : 'Checking Stripe again…');
+      }
+      await new Promise(resolve => window.setTimeout(resolve, 1500));
+    }
+
+    if (mountedRef.current) {
+      setPaymentStage('instructions');
+      setError('Stripe is still processing this payment. Use Check payment status before starting another sale.');
+    }
+  };
+
+  const startReaderPayment = async () => {
+    if (!selectedAppointmentId || !serverTotals || !selectedReaderId) return;
+    setPaymentStage('sending');
+    setPaymentMessage(`Sending ${money(serverTotals.grandTotalInCents, currency)} to the Stripe reader…`);
+    setError('');
+
+    try {
+      const idempotencyKey = checkoutIdempotencyRef.current;
+      const response = await apiRequest<{
+        success: true;
+        data: {
+          paymentIntentId: string;
+          readerId: string;
+          amountInCents: number;
+          currency: string;
+          status: string;
+        };
+      }>('/api/v1/pos/stripe/payment-intents', {
+        method: 'POST',
+        body: JSON.stringify({
+          appointmentId: selectedAppointmentId,
+          readerId: selectedReaderId,
+          idempotencyKey,
+          tipAmountInCents,
+          purchasedProducts,
+        }),
+      });
+
+      const pending: PendingStripeSale = {
+        paymentIntentId: response.data.paymentIntentId,
+        readerId: response.data.readerId,
+        amountInCents: response.data.amountInCents,
+        appointmentId: selectedAppointmentId,
+        idempotencyKey,
+        tipAmountInCents,
+        purchasedProducts,
+      };
+      await pollStripePayment(pending);
+    } catch (startError) {
+      setPaymentStage('instructions');
+      setError(startError instanceof Error ? startError.message : 'The reader payment could not be started.');
+    }
+  };
+
+  const confirmManualStripePayment = async () => {
+    if (!manualConfirmed) return;
+    await finaliseSale({
+      mode: paymentChoice === 'TAP_TO_PAY' ? 'TAP_TO_PAY_MANUAL' : 'TERMINAL_MANUAL',
+      manuallyConfirmed: true,
+      manualReference: manualReference.trim() || undefined,
+    });
+  };
+
+  const openPayment = () => {
+    if (!selectedAppointmentId || !serverTotals || !config?.stripe.ready) return;
+    setPaymentChoice(onlineReaders.length > 0 ? 'READER' : 'TAP_TO_PAY');
+    setPaymentStage('choose');
+    setPaymentMessage('');
+    setManualConfirmed(false);
+    setManualReference('');
+    setError('');
+    setPaymentOpen(true);
+  };
+
+  const resetSale = async () => {
+    setCompletedSale(null);
     setCart([]);
-    setTipPercentage(null);
+    setTipPercent(0);
     setCustomTip('');
-    setExternalCardConfirmed(false);
-    setPaymentMode('ExternalCard');
-    setSplitComponents([{ id: '1', method: 'CASH', amount: '', provider: '', ref: '', customProvider: '', desc: '' }, { id: '2', method: 'EXTERNAL_CARD', amount: '', provider: 'SUMUP', ref: '', customProvider: '', desc: '' }]);
-    setExternalProvider('SUMUP');
-    setExternalProviderName('');
-    setExternalReference('');
-    setMethodDescription('');
-    if (!preloadedBooking) {
-      setSelectedAppointmentId(null);
-      getDataProvider().getCheckoutAppointments().then(res => setCandidates(res.data)).catch(console.error);
-    }
-    onCheckoutCompleted();
+    setSelectedAppointmentId(null);
+    setServerTotals(null);
+    setManualConfirmed(false);
+    setManualReference('');
+    checkoutIdempotencyRef.current = crypto.randomUUID();
+    await refreshCandidates().catch(() => undefined);
   };
 
-  // Filters
-  const searchResultsProducts = products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const copyAmount = async () => {
+    const value = (grandTotal / 100).toFixed(2);
+    await navigator.clipboard?.writeText(value).catch(() => undefined);
+    setPaymentMessage(`Copied ${value}`);
+  };
 
-  return (
-    <div className="bg-slate-100 rounded-3xl p-6 border border-slate-200/50 min-h-[500px] font-sans">
-      {printedReceipt ? (
-        /* High-Fidelity Receipt Drawer */
-        <div className="max-w-md mx-auto bg-white rounded-3xl border border-slate-200 shadow-xl p-8 space-y-6">
-          <div className="text-center border-b pb-5">
-            <span className="text-xs font-black uppercase text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
-              Checkout Successful
-            </span>
-            <h3 className="text-xl font-bold text-slate-900 mt-3">{tenant.name}</h3>
-          </div>
+  const filteredCandidates = candidates.filter(candidate => {
+    const query = appointmentSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [candidate.clientName, candidate.serviceName, candidate.staffName]
+      .filter(Boolean)
+      .some(value => value!.toLowerCase().includes(query));
+  });
 
-          <div className="space-y-1.5 text-xs text-slate-500 font-medium">
-            <div className="flex justify-between">
-              <span>Transaction ID:</span>
-              <span className="font-mono text-slate-800 font-bold">{printedReceipt.transactionId.split('-')[0]}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Date / Time:</span>
-              <span className="text-slate-800">{new Date(printedReceipt.date).toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Client Name:</span>
-              <span className="text-slate-800 font-bold">{printedReceipt.appointment.clientName || 'Walk-in'}</span>
-            </div>
-          </div>
+  const filteredProducts = products.filter(product => product.name.toLowerCase().includes(productSearch.trim().toLowerCase()));
 
-          <div className="border-t border-b py-3 divide-y divide-slate-100 text-xs">
-            {printedReceipt.items.map((item: any, idx: number) => (
-              <div key={idx} className="py-2 flex justify-between">
-                <div>
-                  <p className="font-bold text-slate-800">{item.name}</p>
-                  <p className="text-[10px] text-slate-400">Qty: {item.quantity} x £{(item.priceInCents / 100).toFixed(2)}</p>
-                </div>
-                <span className="font-bold text-slate-900">£{(item.totalInCents / 100).toFixed(2)}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="space-y-2 text-xs border-b pb-4">
-            <div className="flex justify-between text-slate-500">
-              <span>Service Amount:</span>
-              <span className="font-bold text-slate-800">£{(printedReceipt.calculation.serviceAmountInCents / 100).toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-slate-500">
-              <span>Retail Amount:</span>
-              <span className="font-bold text-slate-800">£{(printedReceipt.calculation.retailAmountInCents / 100).toFixed(2)}</span>
-            </div>
-            {printedReceipt.calculation.tipAmountInCents > 0 && (
-              <div className="flex justify-between text-slate-500">
-                <span>Employee Tip:</span>
-                <span className="font-bold text-emerald-600">£{(printedReceipt.calculation.tipAmountInCents / 100).toFixed(2)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-slate-900 font-extrabold text-sm pt-2">
-              <span>Grand Total:</span>
-              <span>£{(printedReceipt.calculation.grandTotalInCents / 100).toFixed(2)}</span>
-            </div>
-          </div>
-
-          <div className="bg-slate-50 p-3.5 rounded-2xl text-xs space-y-2">
-            <span className="text-[10px] font-bold text-slate-400 block uppercase">Payment summary</span>
-            <div className="flex justify-between font-semibold">
-              <span>Settled Mode:</span>
-              <span className="text-indigo-700">{printedReceipt.paymentMethod}</span>
-            </div>
-            {printedReceipt.splitAmounts && (
-              <>
-                <div className="flex justify-between text-slate-600">
-                  <span>Cash Portion:</span>
-                  <span>£{(printedReceipt.splitAmounts.cashInCents / 100).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-slate-600">
-                  <span>External Card Portion:</span>
-                  <span>£{(printedReceipt.splitAmounts.cardInCents / 100).toFixed(2)}</span>
-                </div>
-              </>
-            )}
-            <div className="border-t pt-2 text-indigo-600 font-bold flex justify-between">
-              <span>Status:</span>
-              <span>{printedReceipt.paymentStatus}</span>
-            </div>
-          </div>
-
-          <button
-            onClick={handleClearReceipt}
-            className="w-full bg-slate-950 hover:opacity-90 text-white text-xs font-bold py-3 rounded-2xl flex items-center justify-center gap-1.5 shadow"
-          >
-            <Printer className="w-4 h-4" /> Clear & Open Next Sale
-          </button>
+  if (isLoading) {
+    return (
+      <div className="min-h-[560px] rounded-3xl border border-slate-200 bg-white grid place-items-center">
+        <div className="text-center">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-indigo-600" />
+          <p className="mt-3 text-sm font-semibold text-slate-700">Opening your POS…</p>
         </div>
-      ) : (
-        /* POS Main Screen split: catalog on left, register on right */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Left Column: Product & Service Catalog Catalog (7 cols) */}
-          <div className="lg:col-span-7 bg-white rounded-2xl p-5 border border-slate-200/60 shadow-sm flex flex-col h-[520px]">
-            {!selectedAppointmentId ? (
-              // Appointment Selection Mode
-              <div className="flex flex-col h-full">
-                 <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5 mb-4 border-b pb-3">
-                  <Calendar className="w-4 h-4 text-indigo-600" /> Select Appointment to Checkout
-                </h3>
-                {candidates.length === 0 ? (
-                  <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
-                    No active appointments awaiting checkout.
-                  </div>
-                ) : (
-                  <div className="flex-1 overflow-y-auto space-y-2">
-                    {candidates.map(c => (
-                      <div 
-                        key={c.appointmentId} 
-                        onClick={() => setSelectedAppointmentId(c.appointmentId)}
-                        className="p-4 border border-slate-200 rounded-xl hover:bg-indigo-50/30 hover:border-indigo-300 cursor-pointer transition flex justify-between items-center"
-                      >
-                        <div>
-                          <p className="font-bold text-slate-800 text-sm">{c.clientName || 'Walk-in'}</p>
-                          <p className="text-xs text-slate-500 mt-1">{c.serviceName} • {new Date(c.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                        </div>
-                        <span className="text-xs font-bold bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-md">
-                          £{(c.quotedAmount / 100).toFixed(2)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              // Product Selection Mode
-              <div className="flex flex-col h-full">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <ShoppingCart className="w-4 h-4 text-indigo-600" /> Retail Products
-                  </h3>
-                  <button 
-                    onClick={() => {
-                      if (!preloadedBooking) setSelectedAppointmentId(null);
-                    }}
-                    className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full hover:bg-slate-200"
-                  >
-                    Change Appointment
-                  </button>
-                </div>
+      </div>
+    );
+  }
 
-                <div className="relative mb-4">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search products..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-600 focus:outline-none text-xs"
-                  />
-                </div>
-
-                <div className="flex-1 overflow-y-auto space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {searchResultsProducts.map(p => (
-                      <div
-                        key={p.id}
-                        onClick={() => addToCart(p)}
-                        className={`p-3 border rounded-xl cursor-pointer transition text-xs flex justify-between items-center ${
-                          p.stockQuantity > 0 ? 'hover:bg-indigo-50/20 hover:border-indigo-200' : 'opacity-50 cursor-not-allowed'
-                        }`}
-                      >
-                        <div className="truncate pr-2">
-                          <p className="font-bold text-slate-800 truncate">{p.name}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">Stock: {p.stockQuantity} left</p>
-                        </div>
-                        <span className="font-black text-slate-900 shrink-0">£{(p.priceInCents / 100).toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+  if (completedSale) {
+    return (
+      <div className="min-h-[560px] rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:p-8">
+        <div className="mx-auto max-w-xl overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm">
+          <div className="bg-emerald-50 px-6 py-8 text-center">
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-200">
+              <Check className="h-8 w-8" strokeWidth={3} />
+            </div>
+            <h1 className="mt-4 text-2xl font-black text-slate-950">Payment confirmed</h1>
+            <p className="mt-1 text-sm text-slate-600">The sale is complete and the appointment has been closed.</p>
+            <p className="mt-5 text-4xl font-black tracking-tight text-slate-950">
+              {money(completedSale.calculation.grandTotalInCents, currency)}
+            </p>
           </div>
 
-          {/* Right Column: Active Cart & Multi-payment Settlement Drawer (5 cols) */}
-          <div className="lg:col-span-5 bg-white rounded-2xl p-5 border border-slate-200/60 shadow-sm flex flex-col h-[520px]">
-            <h3 className="text-sm font-bold text-slate-900 border-b pb-3 mb-3 flex justify-between items-center">
-              <span>Active Till Cart</span>
-              <span className="text-xs text-indigo-600 font-extrabold">{cart.length} items</span>
-            </h3>
+          <div className="space-y-5 p-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 text-sm">
+              <div>
+                <p className="font-bold text-slate-900">{completedSale.appointment.clientName || 'Walk-in customer'}</p>
+                <p className="text-slate-500">{completedSale.appointment.serviceName}</p>
+              </div>
+              <div className="text-right">
+                <p className="font-semibold text-slate-800">Stripe</p>
+                <p className="font-mono text-xs text-slate-400">{completedSale.transactionId.slice(0, 8)}</p>
+              </div>
+            </div>
 
-            {/* Cart Items Stage */}
-            <div className="flex-1 overflow-y-auto divide-y space-y-2 text-xs">
-              {!selectedAppointmentId && (
-                <div className="text-center py-12 text-slate-400 font-medium">
-                  Select an appointment to begin checkout.
-                </div>
-              )}
-              {selectedAppointmentId && (
-                <div className="py-2 flex justify-between items-center">
-                  <div className="truncate pr-2">
-                    <p className="font-bold text-slate-800 truncate">Service Appointment</p>
-                    <span className="text-[9px] bg-emerald-100 px-1.5 py-0.2 rounded font-semibold text-emerald-700 uppercase">SERVICE</span>
+            <div className="space-y-3">
+              {completedSale.items.map((item, index) => (
+                <div key={`${item.name}-${index}`} className="flex items-center justify-between text-sm">
+                  <div>
+                    <p className="font-semibold text-slate-800">{item.name}</p>
+                    {item.quantity > 1 && <p className="text-xs text-slate-400">Quantity {item.quantity}</p>}
                   </div>
-                  <div className="font-bold text-slate-900">
-                    {serverTotals ? `£${(serverTotals.serviceAmountInCents / 100).toFixed(2)}` : '...'}
-                  </div>
-                </div>
-              )}
-              {cart.map((item) => (
-                <div key={item.id} className="py-2 flex justify-between items-center">
-                  <div className="truncate pr-2">
-                    <p className="font-bold text-slate-800 truncate">{item.name}</p>
-                    <span className="text-[9px] bg-slate-100 px-1.5 py-0.2 rounded font-semibold text-slate-500 uppercase">{item.type}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-lg">
-                      <button onClick={() => updateQty(item.id, -1)} className="p-0.5 hover:bg-slate-200 rounded text-slate-500"><Minus className="w-3.5 h-3.5" /></button>
-                      <span className="font-bold w-4 text-center">{item.quantity}</span>
-                      <button onClick={() => updateQty(item.id, 1)} className="p-0.5 hover:bg-slate-200 rounded text-slate-500"><Plus className="w-3.5 h-3.5" /></button>
-                    </div>
-                    <span className="font-bold text-slate-900 min-w-[40px] text-right">£{(item.price * item.quantity).toFixed(2)}</span>
-                  </div>
+                  <p className="font-bold text-slate-900">{money(item.totalInCents, currency)}</p>
                 </div>
               ))}
-            </div>
-
-            {/* Subtotal, Tips, and Deposits Calc */}
-            <div className="border-t pt-3 space-y-2 text-xs opacity-100 transition-opacity" style={{ opacity: isPreviewing ? 0.5 : 1 }}>
-              <div className="flex justify-between font-bold text-slate-700">
-                <span>Products Subtotal:</span>
-                <span>{serverTotals ? `£${(serverTotals.retailAmountInCents / 100).toFixed(2)}` : '...'}</span>
-              </div>
-
-              {/* Tip Select Button Bar */}
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 block uppercase mb-1">Add Employee Tip</span>
-                <div className="grid grid-cols-4 gap-1">
-                  {[10, 15, 20].map(pct => (
-                    <button
-                      key={pct}
-                      disabled={!selectedAppointmentId}
-                      onClick={() => setTipPercentage(pct)}
-                      className={`p-1 border rounded text-[10px] font-bold text-center ${tipPercentage === pct ? 'border-slate-800 bg-slate-50 text-slate-800' : 'text-slate-500 hover:bg-slate-50'} disabled:opacity-50`}
-                    >
-                      {pct}%
-                    </button>
-                  ))}
-                  <button
-                    disabled={!selectedAppointmentId}
-                    onClick={() => setTipPercentage('custom')}
-                    className={`p-1 border rounded text-[10px] font-bold text-center ${tipPercentage === 'custom' ? 'border-slate-800 bg-slate-50 text-slate-800' : 'text-slate-500 hover:bg-slate-50'} disabled:opacity-50`}
-                  >
-                    Custom
-                  </button>
-                </div>
-                {tipPercentage === 'custom' && (
-                  <input
-                    type="number"
-                    placeholder="Enter tip amount (£)"
-                    value={customTip}
-                    onChange={(e) => setCustomTip(e.target.value)}
-                    className="w-full mt-1.5 p-1 border rounded text-xs"
-                  />
-                )}
-              </div>
-
-              <div className="flex justify-between font-black text-slate-900 border-t pt-2 text-sm">
-                <span>Grand Due:</span>
-                <span className="text-base text-indigo-700">
-                  {serverTotals ? `£${(serverTotals.grandTotalInCents / 100).toFixed(2)}` : '...'}
-                </span>
-              </div>
-            </div>
-
-            {/* Loyalty and multi-payment option tabs */}
-            <div className="border-t pt-3 space-y-2">
-              <span className="text-[10px] font-black text-slate-400 block uppercase">Settlement Configuration</span>
-              
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 bg-slate-100 p-0.5 rounded-xl text-[10px] font-bold">
-                <button type="button" onClick={() => setPaymentMode('ExternalCard')} className={`py-1.5 rounded-lg transition ${paymentMode === 'ExternalCard' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>💳 Card</button>
-                <button type="button" onClick={() => setPaymentMode('Cash')} className={`py-1.5 rounded-lg transition ${paymentMode === 'Cash' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>💵 Cash</button>
-                <button type="button" onClick={() => setPaymentMode('BankTransfer')} className={`py-1.5 rounded-lg transition ${paymentMode === 'BankTransfer' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>🏦 Bank</button>
-                <button type="button" onClick={() => setPaymentMode('Other')} className={`py-1.5 rounded-lg transition ${paymentMode === 'Other' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>📝 Other</button>
-                <button type="button" onClick={() => setPaymentMode('Split')} className={`py-1.5 rounded-lg transition ${paymentMode === 'Split' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>✂️ Split</button>
-              </div>
-
-              
-              {paymentMode === 'ExternalCard' && (
-                <div className="space-y-2 mt-2 text-xs">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[8px] font-bold text-slate-400 uppercase">Provider</label>
-                      <select value={externalProvider} onChange={e => setExternalProvider(e.target.value)} className="w-full p-1.5 border rounded-lg">
-                        <option value="SUMUP">SumUp</option>
-                        <option value="ZETTLE">Zettle</option>
-                        <option value="SQUARE">Square</option>
-                        <option value="WORLDPAY">Worldpay</option>
-                        <option value="BANK_TERMINAL">Bank Terminal</option>
-                        <option value="OTHER">Other...</option>
-                      </select>
-                    </div>
-                    {externalProvider === 'OTHER' && (
-                      <div>
-                        <label className="text-[8px] font-bold text-slate-400 uppercase">Provider Name</label>
-                        <input type="text" value={externalProviderName} onChange={e => setExternalProviderName(e.target.value)} placeholder="e.g. Tyro" className="w-full p-1.5 border rounded-lg focus:outline-none" />
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Receipt/Ref # (Optional)</label>
-                    <input type="text" value={externalReference} onChange={e => setExternalReference(e.target.value)} placeholder="0000" className="w-full p-1.5 border rounded-lg focus:outline-none" />
-                  </div>
-                </div>
-              )}
-
-              {paymentMode === 'BankTransfer' && (
-                <div className="space-y-2 mt-2 text-xs">
-                  <div>
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Bank Reference (Optional)</label>
-                    <input type="text" value={externalReference} onChange={e => setExternalReference(e.target.value)} placeholder="Transfer ref" className="w-full p-1.5 border rounded-lg focus:outline-none" />
-                  </div>
-                </div>
-              )}
-
-              {paymentMode === 'Other' && (
-                <div className="space-y-2 mt-2 text-xs">
-                  <div>
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Method Description</label>
-                    <input type="text" value={methodDescription} onChange={e => setMethodDescription(e.target.value)} placeholder="e.g. Gift Voucher" className="w-full p-1.5 border rounded-lg focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="text-[8px] font-bold text-slate-400 uppercase">Reference (Optional)</label>
-                    <input type="text" value={externalReference} onChange={e => setExternalReference(e.target.value)} placeholder="Voucher code" className="w-full p-1.5 border rounded-lg focus:outline-none" />
-                  </div>
-                </div>
-              )}
-
-              {paymentMode === 'Split' && (
-                <div className="mt-2 space-y-2 text-xs bg-slate-50 p-2 rounded-xl border border-slate-200">
-                  {splitComponents.map((c, idx) => (
-                    <div key={c.id} className="flex flex-col gap-1.5 bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
-                      <div className="flex justify-between items-center">
-                        <select value={c.method} onChange={e => {
-                          const newComps = [...splitComponents];
-                          newComps[idx].method = e.target.value;
-                          if (e.target.value === 'EXTERNAL_CARD' && !newComps[idx].provider) newComps[idx].provider = 'SUMUP';
-                          setSplitComponents(newComps);
-                        }} className="font-bold border-none bg-transparent focus:ring-0 text-xs p-0 text-indigo-700 w-1/2">
-                          <option value="CASH">Cash</option>
-                          <option value="EXTERNAL_CARD">Ext. Card</option>
-                          <option value="BANK_TRANSFER">Bank</option>
-                          <option value="OTHER">Other</option>
-                        </select>
-                        <input
-                          type="number"
-                          placeholder="0.00"
-                          value={c.amount}
-                          onChange={e => {
-                            const newComps = [...splitComponents];
-                            newComps[idx].amount = e.target.value;
-                            setSplitComponents(newComps);
-                          }}
-                          className="w-20 text-right font-mono border-b focus:outline-none"
-                        />
-                      </div>
-                      {c.method === 'EXTERNAL_CARD' && (
-                        <div className="flex gap-2 text-[10px]">
-                          <select value={c.provider} onChange={e => {
-                            const newComps = [...splitComponents];
-                            newComps[idx].provider = e.target.value;
-                            setSplitComponents(newComps);
-                          }} className="border rounded p-1 w-full bg-slate-50">
-                            <option value="SUMUP">SumUp</option>
-                            <option value="ZETTLE">Zettle</option>
-                            <option value="SQUARE">Square</option>
-                            <option value="WORLDPAY">Worldpay</option>
-                            <option value="BANK_TERMINAL">Bank</option>
-                            <option value="OTHER">Other</option>
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => setSplitComponents([...splitComponents, { id: Date.now().toString(), method: 'CASH', amount: '', provider: '', ref: '', customProvider: '', desc: '' }])} className="text-[10px] font-bold text-indigo-600 hover:underline w-full text-center">+ Add split</button>
-                </div>
-              )}
-
-              {paymentMode !== 'Cash' && (
-                <div className="mt-2 text-[10px] text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    id="external_card_confirm"
-                    checked={externalCardConfirmed}
-                    onChange={(e) => setExternalCardConfirmed(e.target.checked)}
-                    className="mt-0.5 cursor-pointer"
-                  />
-                  <label htmlFor="external_card_confirm" className="leading-tight cursor-pointer">
-                    I confirm that the {paymentMode === 'BankTransfer' ? 'bank transfer was received' : paymentMode === 'Split' ? 'split payments are complete' : 'payment was successful'}.
-                  </label>
+              {completedSale.calculation.tipAmountInCents > 0 && (
+                <div className="flex items-center justify-between text-sm text-slate-600">
+                  <span>Tip</span>
+                  <span>{money(completedSale.calculation.tipAmountInCents, currency)}</span>
                 </div>
               )}
             </div>
 
-            {/* Status alerts */}
-            {checkoutState === 'insufficient-stock' && (
-              <div className="mt-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>Cannot proceed: one or more products exceed available stock.</span>
-              </div>
-            )}
-            {checkoutState === 'invalid-split' && (
-              <div className="mt-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>Cannot proceed: Split payment amounts do not equal the grand total due.</span>
-              </div>
-            )}
-
-            {/* Submit checkout button */}
-            <button
-              onClick={handleCheckoutSubmit}
-              disabled={checkoutState === 'loading' || isPreviewing || !serverTotals || !selectedAppointmentId || ((paymentMode !== 'Cash') && !externalCardConfirmed)}
-              className="mt-4 w-full bg-slate-950 text-white font-extrabold text-xs py-3 rounded-2xl hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shadow"
-            >
-              {checkoutState === 'loading' || isPreviewing ? (
-                <span className="flex items-center gap-2">
-                  <span className="animate-spin border-2 border-white border-t-transparent rounded-full w-4 h-4"></span>
-                  Processing...
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5">
-                  <Wallet className="w-4 h-4" /> Finalize Sale & Credit points
-                </span>
-              )}
+            <button type="button" onClick={() => void resetSale()} className="min-h-12 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-200">
+              New sale
+            </button>
+            <button type="button" onClick={onCheckoutCompleted} className="min-h-11 w-full rounded-2xl px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">
+              Back to calendar
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
 
+  const BasketContents = ({ mobile = false }: { mobile?: boolean }) => (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Current sale</p>
+          <h2 className="mt-1 text-lg font-black text-slate-950">{selectedCandidate?.clientName || 'Select a customer'}</h2>
+        </div>
+        {mobile && (
+          <button type="button" onClick={() => setBasketOpen(false)} className="grid h-11 w-11 place-items-center rounded-xl text-slate-500 hover:bg-slate-100" aria-label="Close basket">
+            <X className="h-5 w-5" />
+          </button>
+        )}
+      </div>
+
+      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        {selectedCandidate ? (
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">Service</p>
+                <p className="mt-1 font-bold text-slate-900">{selectedCandidate.serviceName || 'Custom service'}</p>
+                <p className="mt-1 text-xs text-slate-500">With {selectedCandidate.staffName || 'assigned staff'}</p>
+              </div>
+              <p className="font-black text-slate-950">{money(selectedCandidate.quotedAmount, currency)}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">Choose an appointment to begin.</div>
+        )}
+
+        {cart.map(item => (
+          <div key={item.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><Package className="h-5 w-5" /></div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold text-slate-900">{item.name}</p>
+              <p className="text-xs text-slate-500">{money(Math.round(item.price * 100), currency)} each</p>
+            </div>
+            <div className="flex items-center rounded-xl border border-slate-200">
+              <button type="button" onClick={() => updateQuantity(item.id, -1)} className="grid h-10 w-10 place-items-center text-slate-600 hover:bg-slate-50" aria-label={`Remove one ${item.name}`}><Minus className="h-4 w-4" /></button>
+              <span className="w-7 text-center text-sm font-bold text-slate-900">{item.quantity}</span>
+              <button type="button" onClick={() => updateQuantity(item.id, 1)} className="grid h-10 w-10 place-items-center text-slate-600 hover:bg-slate-50" aria-label={`Add one ${item.name}`}><Plus className="h-4 w-4" /></button>
+            </div>
+          </div>
+        ))}
+
+        {selectedCandidate && (
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Add a tip</p>
+            <div className="grid grid-cols-4 gap-2">
+              {[0, 10, 15, 20].map(percent => (
+                <button key={percent} type="button" onClick={() => { setTipPercent(percent); setCustomTip(''); }} className={`min-h-11 rounded-xl border px-2 text-sm font-bold transition ${tipPercent === percent && !customTip ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}>
+                  {percent === 0 ? 'None' : `${percent}%`}
+                </button>
+              ))}
+            </div>
+            <div className="relative mt-2">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-semibold text-slate-400">£</span>
+              <input inputMode="decimal" value={customTip} onChange={event => { setCustomTip(event.target.value.replace(/[^0-9.]/g, '')); setTipPercent(0); }} placeholder="Custom tip" className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-slate-200 bg-white px-5 py-5">
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between text-slate-500"><span>Service</span><span>{money(serverTotals?.serviceAmountInCents || localServiceAmount, currency)}</span></div>
+          {(serverTotals?.retailAmountInCents || localRetailAmount) > 0 && <div className="flex justify-between text-slate-500"><span>Products</span><span>{money(serverTotals?.retailAmountInCents || localRetailAmount, currency)}</span></div>}
+          {(serverTotals?.tipAmountInCents || tipAmountInCents) > 0 && <div className="flex justify-between text-slate-500"><span>Tip</span><span>{money(serverTotals?.tipAmountInCents || tipAmountInCents, currency)}</span></div>}
+          <div className="flex items-end justify-between border-t border-slate-100 pt-3"><span className="font-bold text-slate-700">Total</span><span className="text-3xl font-black tracking-tight text-slate-950">{money(grandTotal, currency)}</span></div>
+        </div>
+
+        {!config?.stripe.ready && (
+          <div className="mt-4 flex gap-2 rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />Stripe Connect must be ready before taking a POS payment.</div>
+        )}
+
+        <button type="button" onClick={openPayment} disabled={!selectedAppointmentId || !serverTotals || isPreviewing || !config?.stripe.ready} className="mt-4 flex min-h-14 w-full items-center justify-between rounded-2xl bg-indigo-600 px-5 text-base font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none">
+          <span>{isPreviewing ? 'Updating total…' : `Take ${money(grandTotal, currency)}`}</span>
+          {isPreviewing ? <Loader2 className="h-5 w-5 animate-spin" /> : <ChevronRight className="h-5 w-5" />}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="relative min-h-[680px] overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 font-sans">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+        <div className="flex items-center gap-3">
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-950 text-white"><ShoppingBag className="h-5 w-5" /></div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg font-black text-slate-950">Point of sale</h1>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-600">{config?.plan?.name || 'Core'}</span>
+            </div>
+            <p className="text-xs text-slate-500">{tenant.name}</p>
+          </div>
+        </div>
+
+        <div className={`flex items-center gap-2 rounded-full px-3 py-2 text-xs font-bold ${config?.stripe.ready ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+          {config?.stripe.ready ? <ShieldCheck className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+          {config?.stripe.ready ? `Stripe connected ${config.stripe.accountIdMasked || ''}` : 'Stripe needs attention'}
+        </div>
+      </header>
+
+      {error && !paymentOpen && (
+        <div className="mx-4 mt-4 flex items-start justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 sm:mx-6">
+          <div className="flex gap-2"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>
+          <button type="button" onClick={() => setError('')} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-rose-100" aria-label="Dismiss error"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_390px]">
+        <main className="space-y-6 p-4 pb-28 sm:p-6 sm:pb-28 lg:pb-6">
+          <section>
+            <div className="mb-3 flex items-end justify-between gap-3">
+              <div><p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-500">Step 1</p><h2 className="mt-1 text-xl font-black text-slate-950">Choose the appointment</h2></div>
+              <span className="text-xs font-semibold text-slate-400">{candidates.length} ready</span>
+            </div>
+
+            <div className="relative mb-3">
+              <Search className="pointer-events-none absolute inset-y-0 left-4 my-auto h-5 w-5 text-slate-400" />
+              <input value={appointmentSearch} onChange={event => setAppointmentSearch(event.target.value)} placeholder="Search customer, service or staff" className="min-h-12 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" />
+            </div>
+
+            {filteredCandidates.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {filteredCandidates.map(candidate => {
+                  const selected = candidate.appointmentId === selectedAppointmentId;
+                  return (
+                    <button key={candidate.appointmentId} type="button" onClick={() => setSelectedAppointmentId(candidate.appointmentId)} className={`min-h-[128px] rounded-2xl border p-4 text-left transition focus:outline-none focus:ring-4 focus:ring-indigo-100 ${selected ? 'border-indigo-600 bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'border-slate-200 bg-white text-slate-900 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm'}`}>
+                      <div className="flex items-start justify-between gap-3"><div className={`grid h-10 w-10 place-items-center rounded-xl ${selected ? 'bg-white/15' : 'bg-slate-100 text-slate-600'}`}><UserRound className="h-5 w-5" /></div>{selected && <CheckCircle2 className="h-5 w-5" />}</div>
+                      <p className="mt-3 truncate text-sm font-black">{candidate.clientName || 'Walk-in customer'}</p>
+                      <div className={`mt-1 flex items-center justify-between gap-3 text-xs ${selected ? 'text-indigo-100' : 'text-slate-500'}`}><span className="truncate">{candidate.serviceName || 'Custom service'}</span><span className="shrink-0 font-bold">{money(candidate.quotedAmount, currency)}</span></div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center"><ReceiptText className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-3 font-bold text-slate-700">No appointments are ready for checkout</p><p className="mt-1 text-sm text-slate-500">Completed, cancelled and already-paid appointments are excluded.</p></div>
+            )}
+          </section>
+
+          {config?.inventoryEnabled ? (
+            <section>
+              <div className="mb-3 flex items-end justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-500">Optional</p><h2 className="mt-1 text-xl font-black text-slate-950">Add retail products</h2></div><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">£197+ inventory</span></div>
+              <div className="relative mb-3"><Search className="pointer-events-none absolute inset-y-0 left-4 my-auto h-5 w-5 text-slate-400" /><input value={productSearch} onChange={event => setProductSearch(event.target.value)} placeholder="Search products" className="min-h-12 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" /></div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {filteredProducts.map(product => (
+                  <button key={product.id} type="button" onClick={() => addProduct(product)} disabled={product.stockQuantity < 1} className="group flex min-h-[104px] items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-slate-100 text-slate-600 transition group-hover:bg-indigo-50 group-hover:text-indigo-600"><Package className="h-5 w-5" /></div>
+                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900">{product.name}</p><div className="mt-1 flex items-center justify-between gap-2 text-xs"><span className="text-slate-400">{product.stockQuantity} in stock</span><span className="font-black text-slate-800">{money(product.priceInCents, currency)}</span></div></div>
+                    <Plus className="h-5 w-5 shrink-0 text-slate-300 transition group-hover:text-indigo-600" />
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <section className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-violet-50 text-violet-600"><Sparkles className="h-5 w-5" /></div>
+              <div className="min-w-0 flex-1"><p className="text-sm font-black text-slate-900">Core stays simple for service businesses</p><p className="mt-1 text-xs leading-5 text-slate-500">Products, stock, barcodes and inventory are completely hidden on Core. They are available from {money(config?.inventoryFromPriceMinor || 19700, 'GBP')}.</p></div>
+            </section>
+          )}
+        </main>
+
+        <aside className="hidden min-h-[680px] border-l border-slate-200 bg-white lg:block"><BasketContents /></aside>
+      </div>
+
+      <div className="fixed inset-x-3 bottom-3 z-30 lg:hidden">
+        <button type="button" onClick={() => setBasketOpen(true)} className="flex min-h-16 w-full items-center justify-between rounded-2xl bg-slate-950 px-5 text-white shadow-2xl shadow-slate-400/40">
+          <div className="flex items-center gap-3 text-left"><div className="grid h-10 w-10 place-items-center rounded-xl bg-white/10"><ShoppingBag className="h-5 w-5" /></div><div><p className="text-xs font-semibold text-slate-300">{selectedAppointmentId ? `${1 + cart.reduce((sum, item) => sum + item.quantity, 0)} items` : 'Build a sale'}</p><p className="font-black">View basket</p></div></div>
+          <span className="text-xl font-black">{money(grandTotal, currency)}</span>
+        </button>
+      </div>
+
+      {basketOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/45 backdrop-blur-sm lg:hidden" role="dialog" aria-modal="true" aria-label="Current sale"><div className="absolute inset-x-0 bottom-0 max-h-[92vh] min-h-[70vh] overflow-hidden rounded-t-3xl bg-white shadow-2xl"><BasketContents mobile /></div></div>
+      )}
+
+      {paymentOpen && (
+        <div className="fixed inset-0 z-[60] grid place-items-end bg-slate-950/50 p-0 backdrop-blur-sm sm:place-items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="payment-title">
+          <div className="max-h-[96vh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:max-w-2xl sm:rounded-3xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-6">
+              <div><p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-500">Stripe payment</p><h2 id="payment-title" className="mt-1 text-xl font-black text-slate-950">Take {money(grandTotal, currency)}</h2></div>
+              <button type="button" onClick={() => paymentStage === 'choose' || paymentStage === 'instructions' ? setPaymentOpen(false) : undefined} disabled={paymentStage === 'sending' || paymentStage === 'waiting' || paymentStage === 'finalising'} className="grid h-11 w-11 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-30" aria-label="Close payment"><X className="h-5 w-5" /></button>
+            </div>
+
+            <div className="space-y-5 p-5 sm:p-6">
+              {error && (
+                <div className="flex items-start justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"><div className="flex gap-2"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div><button type="button" onClick={() => setError('')} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-rose-100" aria-label="Dismiss error"><X className="h-4 w-4" /></button></div>
+              )}
+
+              {paymentStage === 'choose' && (
+                <>
+                  <div><h3 className="font-black text-slate-950">How will the customer pay?</h3><p className="mt-1 text-sm text-slate-500">All card payments use the business's existing Stripe Connect account.</p></div>
+
+                  <div className="space-y-3">
+                    <button type="button" onClick={() => setPaymentChoice('READER')} disabled={onlineReaders.length === 0} className={`flex min-h-[92px] w-full items-center gap-4 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${paymentChoice === 'READER' ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}>
+                      <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-indigo-600 text-white"><CreditCard className="h-5 w-5" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-900">Send to Stripe Terminal</p><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700">Automatic</span></div><p className="mt-1 text-xs leading-5 text-slate-500">The POS sends the exact amount to a supported online Stripe reader and confirms it directly with Stripe.</p></div>{paymentChoice === 'READER' && <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo-600" />}
+                    </button>
+                    <button type="button" onClick={() => setPaymentChoice('TAP_TO_PAY')} className={`flex min-h-[92px] w-full items-center gap-4 rounded-2xl border p-4 text-left transition ${paymentChoice === 'TAP_TO_PAY' ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}>
+                      <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-slate-950 text-white"><Smartphone className="h-5 w-5" /></div><div className="min-w-0 flex-1"><p className="font-black text-slate-900">Tap to Pay in Stripe</p><p className="mt-1 text-xs leading-5 text-slate-500">Enter the displayed amount in the Stripe Dashboard mobile app, take the contactless payment, then confirm it here.</p></div>{paymentChoice === 'TAP_TO_PAY' && <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo-600" />}
+                    </button>
+                    <button type="button" onClick={() => setPaymentChoice('MANUAL_TERMINAL')} className={`flex min-h-[92px] w-full items-center gap-4 rounded-2xl border p-4 text-left transition ${paymentChoice === 'MANUAL_TERMINAL' ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}>
+                      <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-slate-100 text-slate-700"><Radio className="h-5 w-5" /></div><div className="min-w-0 flex-1"><p className="font-black text-slate-900">Enter amount on Stripe terminal</p><p className="mt-1 text-xs leading-5 text-slate-500">Use this when the terminal is not available for automatic handoff. Type the amount on the Stripe device and confirm success here.</p></div>{paymentChoice === 'MANUAL_TERMINAL' && <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo-600" />}
+                    </button>
+                  </div>
+
+                  {paymentChoice === 'READER' && onlineReaders.length > 0 && (
+                    <div><label htmlFor="stripe-reader" className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-400">Stripe reader</label><div className="flex gap-2"><select id="stripe-reader" value={selectedReaderId} onChange={event => setSelectedReaderId(event.target.value)} className="min-h-12 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100">{onlineReaders.map(reader => <option key={reader.id} value={reader.id}>{reader.label}</option>)}</select><button type="button" onClick={() => void loadReaders()} className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-slate-200 text-slate-600 hover:bg-slate-50" aria-label="Refresh readers"><RefreshCw className="h-4 w-4" /></button></div></div>
+                  )}
+
+                  <button type="button" onClick={() => setPaymentStage('instructions')} disabled={paymentChoice === 'READER' && !selectedReaderId} className="flex min-h-14 w-full items-center justify-between rounded-2xl bg-indigo-600 px-5 text-base font-black text-white transition hover:bg-indigo-700 disabled:bg-slate-300">Continue<ChevronRight className="h-5 w-5" /></button>
+                </>
+              )}
+
+              {paymentStage === 'instructions' && paymentChoice === 'READER' && (
+                <>
+                  <button type="button" onClick={() => setPaymentStage('choose')} className="inline-flex min-h-10 items-center gap-2 rounded-xl px-2 text-sm font-bold text-slate-500 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" />Change method</button>
+                  <div className="rounded-3xl bg-slate-950 p-6 text-white"><div className="flex items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/10"><Wifi className="h-5 w-5" /></div><div><p className="text-sm font-semibold text-slate-300">Ready to send</p><p className="font-black">{onlineReaders.find(reader => reader.id === selectedReaderId)?.label || 'Stripe Terminal'}</p></div></div><p className="mt-8 text-sm text-slate-300">Customer total</p><p className="mt-1 text-5xl font-black tracking-tight">{money(grandTotal, currency)}</p><p className="mt-5 text-xs leading-5 text-slate-400">The amount will be created on the connected Stripe account and sent securely to the reader. Do not start a second payment while it is processing.</p></div>
+                  <button type="button" onClick={() => void startReaderPayment()} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 text-base font-black text-white hover:bg-indigo-700"><CreditCard className="h-5 w-5" />Send to reader</button>
+                </>
+              )}
+
+              {paymentStage === 'instructions' && paymentChoice !== 'READER' && (
+                <>
+                  <button type="button" onClick={() => setPaymentStage('choose')} className="inline-flex min-h-10 items-center gap-2 rounded-xl px-2 text-sm font-bold text-slate-500 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" />Change method</button>
+                  <div className="rounded-3xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-violet-50 p-6 text-center"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-indigo-600 text-white">{paymentChoice === 'TAP_TO_PAY' ? <Smartphone className="h-6 w-6" /> : <CreditCard className="h-6 w-6" />}</div><p className="mt-4 text-sm font-bold text-indigo-700">Enter this exact amount in Stripe</p><p className="mt-2 text-5xl font-black tracking-tight text-slate-950">{money(grandTotal, currency)}</p><button type="button" onClick={() => void copyAmount()} className="mx-auto mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-bold text-indigo-700 hover:bg-indigo-50"><Copy className="h-4 w-4" />Copy amount</button></div>
+                  <div className="rounded-2xl border border-slate-200 p-4"><p className="font-black text-slate-900">{paymentChoice === 'TAP_TO_PAY' ? 'In the Stripe Dashboard mobile app' : 'On the Stripe terminal'}</p><ol className="mt-3 space-y-3 text-sm text-slate-600">{(paymentChoice === 'TAP_TO_PAY' ? ['Open the Stripe Dashboard mobile app.', 'Start a new card charge and enter the amount shown above.', 'Choose Tap to Pay and let the customer tap their card or phone.', 'Wait until Stripe displays a successful payment.'] : ['Start a new payment on the Stripe terminal.', 'Enter the amount shown above.', 'Let the customer pay by card or contactless.', 'Wait until the terminal displays a successful payment.']).map((instruction, index) => <li key={instruction} className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-black text-slate-600">{index + 1}</span><span className="pt-0.5">{instruction}</span></li>)}</ol></div>
+                  <label className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition ${manualConfirmed ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 hover:border-slate-300'}`}><input type="checkbox" checked={manualConfirmed} onChange={event => setManualConfirmed(event.target.checked)} className="mt-1 h-5 w-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" /><span><span className="block font-black text-slate-900">Stripe shows the payment as successful</span><span className="mt-1 block text-xs leading-5 text-slate-500">Only confirm after Stripe has approved the payment. This records a staff-confirmed Stripe sale.</span></span></label>
+                  <div><label htmlFor="stripe-reference" className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-400">Stripe reference (optional)</label><input id="stripe-reference" value={manualReference} onChange={event => setManualReference(event.target.value)} placeholder="Payment or receipt reference" className="min-h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" /></div>
+                  <button type="button" onClick={() => void confirmManualStripePayment()} disabled={!manualConfirmed} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-base font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"><Check className="h-5 w-5" />Confirm purchase</button>
+                </>
+              )}
+
+              {(paymentStage === 'sending' || paymentStage === 'waiting' || paymentStage === 'finalising') && (
+                <div className="py-10 text-center"><div className="relative mx-auto h-20 w-20"><div className="absolute inset-0 animate-ping rounded-full bg-indigo-100" /><div className="relative grid h-20 w-20 place-items-center rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-200">{paymentStage === 'waiting' ? <Wifi className="h-8 w-8" /> : <Loader2 className="h-8 w-8 animate-spin" />}</div></div><h3 className="mt-6 text-xl font-black text-slate-950">{paymentStage === 'sending' ? 'Connecting to Stripe' : paymentStage === 'waiting' ? 'Present card on reader' : 'Completing sale'}</h3><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{paymentMessage}</p>{paymentStage === 'waiting' && <div className="mx-auto mt-6 flex max-w-md items-start gap-2 rounded-2xl bg-amber-50 p-4 text-left text-xs leading-5 text-amber-800"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />Do not refresh or start another payment. If the connection drops, this POS will keep checking the same Stripe payment safely.</div>}</div>
+              )}
+
+              {paymentMessage && paymentStage === 'instructions' && <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600"><CheckCircle2 className="h-4 w-4 text-emerald-600" />{paymentMessage}</div>}
+            </div>
+          </div>
         </div>
       )}
     </div>
