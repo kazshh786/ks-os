@@ -1,9 +1,13 @@
 export * from './schema.js';
+export * from './error-schema.js';
 export * from './manifest.js';
 export * from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import * as schema from './schema.js';
+import * as coreSchema from './schema.js';
+import * as errorSchema from './error-schema.js';
+
+const schema = { ...coreSchema, ...errorSchema };
 
 let dbClient: pg.Pool | null = null;
 let database: ReturnType<typeof drizzle<typeof schema>> | null = null;
