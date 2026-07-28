@@ -1,0 +1,64 @@
+name: POS security patch
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/pos-security-patch.yml'
+permissions:
+  contents: write
+jobs:
+  remove-sensitive-browser-storage:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Remove customer-linked POS data from local storage
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/web/src/components/POSCheckout.tsx')
+          text = path.read_text()
+          text = text.replace("\nconst PENDING_PAYMENT_KEY = 'ks-pos-pending-stripe-payment';\n", "\n")
+
+          start_marker = 'const savePendingPayment ='
+          end_marker = 'export default function POSCheckout'
+          if start_marker in text:
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              text = text[:start] + text[end:]
+
+          text = text.replace('      savePendingPayment(null);\n', '')
+          text = text.replace('          savePendingPayment(null);\n', '')
+          text = text.replace('      savePendingPayment(pending);\n', '')
+          text = text.replace(
+              """  useEffect(() => {
+              const pending = readPendingPayment();
+              if (pending) void pollStripePayment(pending);
+            // Run once so an interrupted reader payment is recovered safely.
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, []);
+
+          """,
+              '',
+          )
+          text = text.replace(
+              'A temporary network issue should not create a second payment. Continue polling.',
+              'A temporary network issue should not create a second payment during the active checkout. Continue polling.',
+          )
+          path.write_text(text)
+          PY
+      - name: Commit security patch
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'ks-os automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add apps/web/src/components/POSCheckout.tsx
+          git commit -m 'fix(pos): keep payment recovery data out of browser storage'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
