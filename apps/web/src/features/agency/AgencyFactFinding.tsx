@@ -48,6 +48,11 @@ export function AgencyFactFindingPage() {
     finally { setBusy(false); }
   };
 
+  const startManualAction = () => {
+    setError('');
+    setNotice('');
+  };
+
   const loadManualForm = async (reference: string) => {
     const data = await agencyFetch(`/fact-finding/questionnaires/${reference}/manual-form`);
     setManualForm(data);
@@ -98,6 +103,7 @@ export function AgencyFactFindingPage() {
   };
 
   const saveManualAnswers = async (references: string[]) => {
+    startManualAction();
     for (const reference of [...new Set(references)]) {
       if (answers[reference] === undefined) continue;
       await agencyFetch(`/fact-finding/questionnaires/${questionnaire.reference}/manual-responses/${reference}`, {
@@ -109,7 +115,7 @@ export function AgencyFactFindingPage() {
   };
 
   const uploadManual = async (question: any, file: File) => {
-    setError('');
+    startManualAction();
     const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))]
       .map(value => value.toString(16).padStart(2, '0')).join('');
     const data = await agencyFetch(`/fact-finding/questionnaires/${questionnaire.reference}/manual-uploads`, {
@@ -138,6 +144,7 @@ export function AgencyFactFindingPage() {
   };
 
   const submitManual = async () => {
+    startManualAction();
     await agencyFetch(`/fact-finding/questionnaires/${questionnaire.reference}/submit-manually`, { method: 'POST', body: '{}' });
     setManualForm(null);
     setNotice('Intake submitted for controlled review. Approve each usable fact before building the workspace.');
