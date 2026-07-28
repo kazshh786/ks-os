@@ -15,7 +15,9 @@ vi.mock('../../context/WorkspaceContext', () => ({
 vi.mock('../../data/data-provider', () => ({
   getDataProvider: () => ({ getServices, createService }),
 }));
-vi.mock('./services-api', () => ({ updateServiceRecord }));
+vi.mock('./services-api', () => ({
+  updateServiceRecord: (...args: unknown[]) => updateServiceRecord(...args),
+}));
 
 describe('ServicesPage', () => {
   beforeEach(() => {
