@@ -1,19 +1,16 @@
 import React from 'react';
 import { useWorkspace } from '../context/WorkspaceContext.js';
-import SettingsManager from '../components/SettingsManager.js';
+import BusinessProfileSettings from '../features/settings/BusinessProfileSettings.js';
 
 export const BrandSetupPage: React.FC = () => {
-  const { activeTenant } = useWorkspace();
+  const { activeTenant, refreshWorkspace, loading } = useWorkspace();
 
+  if (loading && !activeTenant) {
+    return <div className="mx-auto max-w-4xl p-8 text-sm text-slate-500" aria-live="polite">Loading business information…</div>;
+  }
   if (!activeTenant) return null;
 
-  return (
-    <SettingsManager
-      tenant={activeTenant}
-      onSettingsUpdated={() => {
-        // Option to reload details if needed
-      }}
-    />
-  );
+  return <BusinessProfileSettings tenant={activeTenant} onSaved={refreshWorkspace} />;
 };
+
 export default BrandSetupPage;
