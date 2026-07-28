@@ -41,6 +41,7 @@ const palette = [
 ] as const;
 
 const choiceTypes = new Set(['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'SELECT']);
+type ThemeColourKey = 'primaryColor' | 'mutedColor' | 'backgroundColor' | 'cardColor';
 const theme = {
   backgroundColor: '#f1f5f9',
   cardColor: '#ffffff',
@@ -148,7 +149,7 @@ export default function FormEditorPage() {
     markDirty();
   }, [schema]);
 
-  const updateTheme = (key: keyof FormSchemaJson['theme'], value: string) => {
+  const updateTheme = (key: ThemeColourKey, value: string) => {
     change({ ...schema, theme: { ...schema.theme, [key]: value } });
   };
 
