@@ -2,8 +2,6 @@
 -- Core remains a services-only £97 package. Growth becomes the first package
 -- with products, stock and inventory at £197 per month.
 
-BEGIN;
-
 UPDATE platform_plan_versions
 SET monthly_price_minor = 19700
 WHERE plan_id = '10000000-0000-4000-8000-000000000002'::uuid
@@ -18,5 +16,3 @@ WHERE entitlement_key = 'inventory.enabled'
     '20000000-0000-4000-8000-000000000003'::uuid
   )
   AND value_json->>'enabled' = 'true';
-
-COMMIT;
