@@ -20,7 +20,7 @@ test('error evidence redacts credentials, contact details and payment-like value
   const redacted = redactErrorText(input);
   assert.doesNotMatch(redacted, /admin:secret|abc\.def\.ghi|customer@example\.com|4242 4242|super-secret-value|token=private/i);
   assert.match(redacted, /REDACTED_CONNECTION/);
-  assert.match(redacted, /REDACTED_AUTHORIZATION/);
+  assert.match(redacted, /Authorization=\[REDACTED\]/i);
   assert.match(redacted, /REDACTED_EMAIL/);
   assert.match(redacted, /REDACTED_PAYMENT_NUMBER/);
 });
