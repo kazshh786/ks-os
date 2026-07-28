@@ -9,6 +9,7 @@ import {
   CreateQuestionnaireTemplateSchema,
   FactAnswerValueSchema,
   FactFindingSessionExchangeSchema,
+  FactFindingUploadSchema,
   PrequalifyQuestionnaireSchema,
   RejectFactResponseSchema,
   RequestClarificationSchema,
@@ -17,10 +18,12 @@ import {
 import type { AgencyActor } from '../agency/agency.service.js';
 import { FactFindingService } from './fact-finding.service.js';
 import { ManualFactFindingService } from './manual-fact-finding.service.js';
+import { ManualFactFindingUploadService } from './manual-fact-finding-upload.service.js';
 
 const ReferenceParams = z.object({ reference: PublicReferenceSchema }).strict();
 const QuestionnaireParams = z.object({ questionnaireReference: PublicReferenceSchema }).strict();
 const QuestionParams = QuestionnaireParams.extend({ questionReference: PublicReferenceSchema });
+const ManualUploadParams = QuestionnaireParams.extend({ uploadReference: PublicReferenceSchema });
 const ResponseParams = z.object({ responseReference: PublicReferenceSchema }).strict();
 const BriefParams = z.object({ briefReference: PublicReferenceSchema }).strict();
 const UploadParams = z.object({ uploadReference: PublicReferenceSchema }).strict();
@@ -45,8 +48,10 @@ function actor(request: FastifyRequest, capability: AgencyCapability): AgencyAct
 export async function agencyFactFindingRoutes(app: FastifyInstance) {
   let instance: FactFindingService | undefined;
   let manualInstance: ManualFactFindingService | undefined;
+  let manualUploadInstance: ManualFactFindingUploadService | undefined;
   const service = () => (instance ||= new FactFindingService());
   const manual = () => (manualInstance ||= new ManualFactFindingService());
+  const manualUploads = () => (manualUploadInstance ||= new ManualFactFindingUploadService());
 
   app.get('/templates', async request => {
     actor(request, 'fact_finding.read');
@@ -119,6 +124,19 @@ export async function agencyFactFindingRoutes(app: FastifyInstance) {
     const { questionnaireReference, questionReference } = QuestionParams.parse(request.params);
     const { answer } = AgencyAnswerSchema.parse(request.body);
     return { data: await manual().save(actor(request, 'fact_finding.manage'), questionnaireReference, questionReference, answer) };
+  });
+  app.post('/questionnaires/:questionnaireReference/manual-uploads', async request => {
+    const { questionnaireReference } = QuestionnaireParams.parse(request.params);
+    return { data: await manualUploads().initiate(
+      actor(request, 'fact_finding.manage'),
+      questionnaireReference,
+      FactFindingUploadSchema.parse(request.body),
+    ) };
+  });
+  app.post('/questionnaires/:questionnaireReference/manual-uploads/:uploadReference/complete', async request => {
+    const { questionnaireReference, uploadReference } = ManualUploadParams.parse(request.params);
+    z.object({}).strict().parse(request.body ?? {});
+    return { data: await manualUploads().complete(actor(request, 'fact_finding.manage'), questionnaireReference, uploadReference) };
   });
   app.post('/questionnaires/:questionnaireReference/submit-manually', async request => {
     const { questionnaireReference } = QuestionnaireParams.parse(request.params);
