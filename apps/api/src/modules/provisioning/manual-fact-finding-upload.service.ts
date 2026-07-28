@@ -6,7 +6,7 @@ import {
   factFindingUploads,
   getDatabase,
 } from '@ks-os/database';
-import type { FactFindingUploadSchema } from '@ks-os/fact-finding';
+import { FactFindingUploadSchema } from '@ks-os/fact-finding';
 import type { z } from 'zod';
 import { getSupabaseAdmin } from '../../lib/supabase-admin.js';
 import { AgencyAuditService, type AgencyActor } from '../agency/agency.service.js';
