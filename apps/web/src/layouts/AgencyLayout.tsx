@@ -85,7 +85,7 @@ export const AgencyLayout: React.FC = () => {
 
   const agencySecondaryActions = <div className="space-y-2">
     <Link to="/agency/onboarding" className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 text-xs font-bold text-slate-300 transition hover:border-slate-700 hover:text-white">View onboarding</Link>
-    {canManageAgencyUsers ? <button type="button" onClick={openPasswordControl} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><KeyRound aria-hidden="true" className="h-4 w-4" />Password control</button> : null}
+    {canManageAgencyUsers ? <button type="button" onClick={openPasswordControl} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><KeyRound aria-hidden="true" className="h-4 w-4" />Agency password control</button> : null}
   </div>;
 
   const managedBusinessSecondaryActions = <div className="space-y-2">
