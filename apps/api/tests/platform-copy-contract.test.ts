@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 const webRoot = fileURLToPath(new URL('../../web/src/', import.meta.url));
+const apiRoot = fileURLToPath(new URL('../src/', import.meta.url));
 
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory).flatMap(entry => {
@@ -29,6 +30,13 @@ const rules = [
   { name: 'Write “and”, not an ampersand, in UI copy.', pattern: /(['"`])[^'"`\n]*\s&\s[^'"`\n]*\1/g },
 ] as const;
 
+const globalErrorRules = [
+  {
+    name: 'Replace generic internal errors with a safe next step.',
+    pattern: /An unexpected(?: internal)? error occurred\.?/gi,
+  },
+] as const;
+
 test('user-facing source follows the platform vocabulary contract', () => {
   const violations: Array<{ file: string; line: number; rule: string; found: string }> = [];
   for (const file of sourceFiles(webRoot)) {
@@ -50,6 +58,32 @@ test('user-facing source follows the platform vocabulary contract', () => {
     violations,
     [],
     `UX writing violations:\n${violations.map(item => `${item.file}:${item.line} — ${item.rule} Found: ${JSON.stringify(item.found)}`).join('\n')}`,
+  );
+});
+
+test('frontend and API source do not use generic internal-error copy', () => {
+  const violations: Array<{ file: string; line: number; rule: string; found: string }> = [];
+  for (const root of [webRoot, apiRoot]) {
+    for (const file of sourceFiles(root)) {
+      const source = readFileSync(file, 'utf8');
+      for (const rule of globalErrorRules) {
+        rule.pattern.lastIndex = 0;
+        for (const match of source.matchAll(rule.pattern)) {
+          const line = source.slice(0, match.index).split('\n').length;
+          violations.push({
+            file: path.relative(fileURLToPath(new URL('../../../', import.meta.url)), file),
+            line,
+            rule: rule.name,
+            found: match[0],
+          });
+        }
+      }
+    }
+  }
+  assert.deepEqual(
+    violations,
+    [],
+    `Generic error-copy violations:\n${violations.map(item => `${item.file}:${item.line} — ${item.rule} Found: ${JSON.stringify(item.found)}`).join('\n')}`,
   );
 });
 
