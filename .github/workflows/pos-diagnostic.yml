@@ -1,0 +1,33 @@
+name: POS diagnostic
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'packages/contracts/**'
+      - '.github/workflows/pos-diagnostic.yml'
+permissions:
+  contents: read
+concurrency:
+  group: pos-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  api-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.13.1 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --silent
+      - name: Build API with concise diagnostics
+        shell: bash
+        run: |
+          set +e
+          pnpm --filter api build > /tmp/pos-api-build.log 2>&1
+          status=$?
+          cat /tmp/pos-api-build.log
+          exit $status
