@@ -44,8 +44,13 @@ export default function ClientFactFindingPage() {
     }
   }, []);
 
-  const save = async (references: string[]) => {
+  const startAction = () => {
     setError('');
+    setNotice('');
+  };
+
+  const save = async (references: string[]) => {
+    startAction();
     for (const reference of [...new Set(references)]) {
       if (answers[reference] === undefined) continue;
       await clientFetch(`/responses/${reference}`, sessionToken, {
@@ -58,7 +63,7 @@ export default function ClientFactFindingPage() {
   };
 
   const upload = async (question: any, file: File) => {
-    setError('');
+    startAction();
     const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))]
       .map(value => value.toString(16).padStart(2, '0')).join('');
     const data = await clientFetch('/uploads', sessionToken, {
@@ -90,7 +95,7 @@ export default function ClientFactFindingPage() {
   };
 
   const submit = async () => {
-    setError('');
+    startAction();
     await clientFetch('/submit', sessionToken, { method: 'POST' });
     sessionStorage.removeItem(SESSION_KEY);
     setSubmitted(true);
@@ -99,6 +104,7 @@ export default function ClientFactFindingPage() {
   const respondToClarification = async (reference: string) => {
     const response = clarificationDrafts[reference]?.trim();
     if (!response) return;
+    startAction();
     await clientFetch(`/clarifications/${reference}/respond`, sessionToken, { method: 'POST', body: JSON.stringify({ response }) });
     setNotice('Your clarification was sent to the agency.');
     await load(sessionToken);
