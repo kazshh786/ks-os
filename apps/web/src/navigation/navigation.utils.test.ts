@@ -79,9 +79,13 @@ describe('route matching', () => {
 
   it('replaces managed-business route parameters and matches exact tenant routes', () => {
     const groups = resolveNavigation(managedBusinessNavigation, { portal: 'managed-business', agencyCapabilities: ['tenants.read', 'billing.read'] });
-    const summary = groups[0].items[0];
+    const summary = groups[0].items.find(item => item.id === 'managed-summary')!;
+    const users = groups[0].items.find(item => item.id === 'managed-users')!;
     expect(navigationHref(summary, { tenantId: 'tenant-1' })).toBe('/agency/tenants/tenant-1');
+    expect(navigationHref(users, { tenantId: 'tenant-1' })).toBe('/agency/tenants/tenant-1/users');
     expect(isNavigationItemActive(summary, '/agency/tenants/tenant-1', { tenantId: 'tenant-1' })).toBe(true);
+    expect(isNavigationItemActive(summary, '/agency/tenants/tenant-1/users', { tenantId: 'tenant-1' })).toBe(false);
+    expect(isNavigationItemActive(users, '/agency/tenants/tenant-1/users', { tenantId: 'tenant-1' })).toBe(true);
     expect(isNavigationItemActive(summary, '/agency/tenants/tenant-1/billing', { tenantId: 'tenant-1' })).toBe(false);
   });
 });
