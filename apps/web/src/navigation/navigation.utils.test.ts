@@ -26,10 +26,18 @@ describe('navigation resolution', () => {
     const groups = resolveNavigation(agencyNavigation, {
       portal: 'agency', agencyCapabilities: ['tenants.read', 'support.read', 'support.session.start'],
     });
-    expect(labels(groups)).toEqual(expect.arrayContaining(['Client businesses', 'Onboarding queue', 'Support', 'Jobs', 'Webhooks', 'Security']));
-    expect(labels(groups)).not.toContain('Overview');
-    expect(labels(groups)).not.toContain('Billing');
-    expect(labels(groups)).not.toContain('Team');
+    expect(labels(groups)).toEqual(expect.arrayContaining([
+      'Clients',
+      'Onboarding',
+      'Support centre',
+      'System issues',
+      'Background jobs',
+      'Integrations and webhooks',
+      'Security',
+    ]));
+    expect(labels(groups)).not.toContain('Home');
+    expect(labels(groups)).not.toContain('Revenue and billing');
+    expect(labels(groups)).not.toContain('Agency team');
   });
 
   it('honours feature flags without leaving an empty group label', () => {
