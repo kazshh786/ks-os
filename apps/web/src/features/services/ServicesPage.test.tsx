@@ -6,6 +6,7 @@ import { ServicesPage } from './ServicesPage';
 
 const getServices = vi.fn();
 const createService = vi.fn();
+const updateServiceRecord = vi.fn();
 const activeTenant = { id: 'tenant-1', name: 'Test business' };
 
 vi.mock('../../context/WorkspaceContext', () => ({
@@ -14,11 +15,13 @@ vi.mock('../../context/WorkspaceContext', () => ({
 vi.mock('../../data/data-provider', () => ({
   getDataProvider: () => ({ getServices, createService }),
 }));
+vi.mock('./services-api', () => ({ updateServiceRecord }));
 
 describe('ServicesPage', () => {
   beforeEach(() => {
     getServices.mockReset();
     createService.mockReset();
+    updateServiceRecord.mockReset();
     getServices.mockResolvedValue([{
       id: 'service-1',
       name: 'Signature treatment',
@@ -64,5 +67,42 @@ describe('ServicesPage', () => {
       category: 'Consultations',
     });
     expect(await screen.findByRole('heading', { name: 'Consultation' })).toBeInTheDocument();
+  });
+
+  it('loads an existing service into the form and saves the changes', async () => {
+    updateServiceRecord.mockResolvedValue({
+      id: 'service-1',
+      name: 'Updated signature treatment',
+      description: 'A complete demo treatment.',
+      durationMin: 60,
+      price: 75,
+      category: 'Premium',
+    });
+    const user = userEvent.setup();
+    render(<MemoryRouter initialEntries={['/app/services']}><ServicesPage /></MemoryRouter>);
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Signature treatment' }));
+    expect(screen.getByRole('heading', { name: 'Edit service' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Service name')).toHaveValue('Signature treatment');
+
+    await user.clear(screen.getByLabelText('Service name'));
+    await user.type(screen.getByLabelText('Service name'), 'Updated signature treatment');
+    await user.clear(screen.getByLabelText('Category'));
+    await user.type(screen.getByLabelText('Category'), 'Premium');
+    await user.clear(screen.getByLabelText('Price (£)'));
+    await user.type(screen.getByLabelText('Price (£)'), '75');
+    await user.clear(screen.getByLabelText('Duration (minutes)'));
+    await user.type(screen.getByLabelText('Duration (minutes)'), '60');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(updateServiceRecord).toHaveBeenCalledWith('service-1', {
+      name: 'Updated signature treatment',
+      description: 'A complete demo treatment.',
+      price: 75,
+      durationMin: 60,
+      category: 'Premium',
+    });
+    expect(await screen.findByRole('heading', { name: 'Updated signature treatment' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Edit service' })).not.toBeInTheDocument();
   });
 });
