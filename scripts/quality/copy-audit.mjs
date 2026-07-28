@@ -1,7 +1,10 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-const webRoot = path.resolve(process.cwd(), 'apps/web/src');
+const repositoryRoot = process.cwd();
+const webRoot = path.resolve(repositoryRoot, 'apps/web/src');
+const appsRoot = path.resolve(repositoryRoot, 'apps');
+const packagesRoot = path.resolve(repositoryRoot, 'packages');
 const offset = Number.parseInt(process.env.COPY_AUDIT_OFFSET || '0', 10);
 const limit = Number.parseInt(process.env.COPY_AUDIT_LIMIT || '1000', 10);
 
@@ -16,7 +19,7 @@ function sourceFiles(directory) {
   });
 }
 
-const rules = [
+const webRules = [
   { name: 'Use “Sign in”, not “Log in”.', pattern: /(['"`])[^'"`\n]*\blog in\b[^'"`\n]*\1/gi },
   { name: 'Use “Sign out”, not “Log out”.', pattern: /(['"`])[^'"`\n]*\blog out\b[^'"`\n]*\1/gi },
   { name: 'Use “Sign in”, not the noun “Login”.', pattern: /(['"`])Login\1|>\s*Login\s*</g },
@@ -28,19 +31,34 @@ const rules = [
   { name: 'Write “and”, not an ampersand, in UI copy.', pattern: /(['"`])[^'"`\n]*\s&\s[^'"`\n]*\1/g },
 ];
 
+const globalRules = [
+  {
+    name: 'Replace generic failure copy with the failed action, recovery step and support reference.',
+    pattern: /An unexpected internal error occurred\.?|An unexpected error occurred\.?/gi,
+  },
+];
+
+const audits = [
+  { root: webRoot, rules: webRules },
+  { root: appsRoot, rules: globalRules },
+  { root: packagesRoot, rules: globalRules },
+];
+
 const violations = [];
-for (const file of sourceFiles(webRoot)) {
-  const source = readFileSync(file, 'utf8');
-  for (const rule of rules) {
-    rule.pattern.lastIndex = 0;
-    for (const match of source.matchAll(rule.pattern)) {
-      const line = source.slice(0, match.index).split('\n').length;
-      violations.push({
-        file: path.relative(webRoot, file),
-        line,
-        rule: rule.name,
-        found: match[0],
-      });
+for (const audit of audits) {
+  for (const file of sourceFiles(audit.root)) {
+    const source = readFileSync(file, 'utf8');
+    for (const rule of audit.rules) {
+      rule.pattern.lastIndex = 0;
+      for (const match of source.matchAll(rule.pattern)) {
+        const line = source.slice(0, match.index).split('\n').length;
+        violations.push({
+          file: path.relative(repositoryRoot, file),
+          line,
+          rule: rule.name,
+          found: match[0],
+        });
+      }
     }
   }
 }
