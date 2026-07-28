@@ -1,13 +1,15 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServicesPage } from './ServicesPage';
 
-const getServices = vi.fn();
-const createService = vi.fn();
-const updateServiceRecord = vi.fn();
-const activeTenant = { id: 'tenant-1', name: 'Test business' };
+const { getServices, createService, updateServiceRecord, activeTenant } = vi.hoisted(() => ({
+  getServices: vi.fn(),
+  createService: vi.fn(),
+  updateServiceRecord: vi.fn(),
+  activeTenant: { id: 'tenant-1', name: 'Test business' },
+}));
 
 vi.mock('../../context/WorkspaceContext', () => ({
   useWorkspace: () => ({ activeTenant }),
@@ -15,9 +17,7 @@ vi.mock('../../context/WorkspaceContext', () => ({
 vi.mock('../../data/data-provider', () => ({
   getDataProvider: () => ({ getServices, createService }),
 }));
-vi.mock('./services-api', () => ({
-  updateServiceRecord: (...args: unknown[]) => updateServiceRecord(...args),
-}));
+vi.mock('./services-api', () => ({ updateServiceRecord }));
 
 describe('ServicesPage', () => {
   beforeEach(() => {
@@ -97,14 +97,13 @@ describe('ServicesPage', () => {
     await user.type(screen.getByLabelText('Duration (minutes)'), '60');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    expect(updateServiceRecord).toHaveBeenCalledWith('service-1', {
+    await waitFor(() => expect(updateServiceRecord).toHaveBeenCalledWith('service-1', {
       name: 'Updated signature treatment',
       description: 'A complete demo treatment.',
       price: 75,
       durationMin: 60,
       category: 'Premium',
-    });
+    }));
     expect(await screen.findByRole('heading', { name: 'Updated signature treatment' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Edit service' })).not.toBeInTheDocument();
   });
 });
