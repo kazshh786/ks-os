@@ -60,7 +60,6 @@ interface PendingStripeSale {
   purchasedProducts: Array<{ productId: string; quantity: number }>;
 }
 
-const PENDING_PAYMENT_KEY = 'ks-pos-pending-stripe-payment';
 
 const money = (amountInCents: number, currency = 'GBP') => new Intl.NumberFormat('en-GB', {
   style: 'currency',
@@ -83,24 +82,6 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return body as T;
 }
-
-const savePendingPayment = (value: PendingStripeSale | null) => {
-  try {
-    if (value) localStorage.setItem(PENDING_PAYMENT_KEY, JSON.stringify(value));
-    else localStorage.removeItem(PENDING_PAYMENT_KEY);
-  } catch {
-    // Checkout continues even when browser storage is unavailable.
-  }
-};
-
-const readPendingPayment = (): PendingStripeSale | null => {
-  try {
-    const raw = localStorage.getItem(PENDING_PAYMENT_KEY);
-    return raw ? JSON.parse(raw) as PendingStripeSale : null;
-  } catch {
-    return null;
-  }
-};
 
 export default function POSCheckout({ tenant, preloadedBooking, onCheckoutCompleted }: POSCheckoutProps) {
   const [config, setConfig] = useState<PosConfig | null>(null);
@@ -306,7 +287,6 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
         purchasedProducts: source?.purchasedProducts || purchasedProducts,
         stripePayment,
       });
-      savePendingPayment(null);
       if (!mountedRef.current) return;
       setCompletedSale(response.data);
       setPaymentOpen(false);
@@ -342,8 +322,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
           return;
         }
         if (response.data.failed) {
-          savePendingPayment(null);
-          setPaymentStage('instructions');
+              setPaymentStage('instructions');
           setError(response.data.failureMessage || 'Stripe did not approve the payment.');
           return;
         }
@@ -360,13 +339,6 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
       setError('Stripe is still processing this payment. Use Check payment status before starting another sale.');
     }
   };
-
-  useEffect(() => {
-    const pending = readPendingPayment();
-    if (pending) void pollStripePayment(pending);
-  // Run once so an interrupted reader payment is recovered safely.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const startReaderPayment = async () => {
     if (!selectedAppointmentId || !serverTotals || !selectedReaderId) return;
@@ -405,7 +377,6 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
         tipAmountInCents,
         purchasedProducts,
       };
-      savePendingPayment(pending);
       await pollStripePayment(pending);
     } catch (startError) {
       setPaymentStage('instructions');
