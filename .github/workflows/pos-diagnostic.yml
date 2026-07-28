@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'apps/api/**'
+      - 'apps/web/**'
       - 'packages/contracts/**'
       - '.github/workflows/pos-diagnostic.yml'
 permissions:
@@ -13,9 +14,9 @@ concurrency:
   group: pos-diagnostic-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  api-build:
+  workspace-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -28,21 +29,21 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile --silent
-      - name: Build API and publish concise diagnostics
+      - name: Build workspace and publish concise diagnostics
         shell: bash
         run: |
           set +e
-          pnpm --filter api build > /tmp/pos-api-build.log 2>&1
+          pnpm build > /tmp/pos-workspace-build.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
             {
-              echo '<!-- pos-api-build-diagnostic -->'
-              echo '### POS API build diagnostic'
+              echo '<!-- pos-workspace-build-diagnostic -->'
+              echo '### POS workspace build diagnostic'
               echo '```text'
-              tail -n 120 /tmp/pos-api-build.log
+              tail -n 160 /tmp/pos-workspace-build.log
               echo '```'
-            } > /tmp/pos-api-comment.md
-            gh pr comment "$PR_NUMBER" --body-file /tmp/pos-api-comment.md
+            } > /tmp/pos-workspace-comment.md
+            gh pr comment "$PR_NUMBER" --body-file /tmp/pos-workspace-comment.md
           fi
-          cat /tmp/pos-api-build.log
+          cat /tmp/pos-workspace-build.log
           exit $status
