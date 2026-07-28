@@ -65,7 +65,7 @@ jobs:
               echo '<!-- stripe-connect-test-diagnostic -->'
               echo '### Stripe Connect test diagnostic'
               echo '```text'
-              grep -E -B 12 -A 36 'not ok|FAIL|AssertionError|ERR_ASSERTION|Error:' /tmp/stripe-connect-tests.log | tail -n 320
+              grep -E '✖|failing tests:|AssertionError|ERR_ASSERTION|actual:|expected:|operator:|test at ' /tmp/stripe-connect-tests.log | tail -n 300
               echo '```'
             } > /tmp/stripe-connect-comment.md
             gh pr comment "$PR_NUMBER" --body-file /tmp/stripe-connect-comment.md
