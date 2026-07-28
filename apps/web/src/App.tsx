@@ -84,6 +84,7 @@ import { ExternalReviewsPage, PublicReviewInvitationPage, ReputationInvitationsP
 import { AgencyAuthProvider, AgencyCapabilityRoute, AgencyGuard, AgencyLoginPage, AgencyMfaPage } from './features/agency/AgencyAuth.js';
 import { AccessDeniedPage, AuthCallbackPage, InvitationAcceptancePage, PasswordRecoveryPage, SecuritySettingsPage, SelectBusinessPage, SessionExpiredPage } from './auth/AuthPages.js';
 import { AgencyAnalyticsPage, AgencyComplianceAuditPage as AgencyAuditPage, AgencyFulfilmentPage, AgencyJobsPage, AgencyOverviewPage, AgencyPlanCreatePage, AgencyPlansPage, AgencySupportPage, AgencyTenantBillingPage, AgencyTenantCreatePage, AgencyTenantDetailPageFixed as AgencyTenantDetailPage, AgencyTenantEntitlementsPage, AgencyTenantHealthPage, AgencyTenantsPage, AgencyUserInvitePage, AgencyUsersPage, AgencyWebhooksPage, AgencyWorkQueuePage } from './features/agency/AgencyPages.js';
+import { AgencyErrorLogPage } from './features/agency/AgencyErrorLogPage.js';
 import { AgencyBookingSystemPage } from './features/agency/AgencyBookingSystem.js';
 import { AgencyProvisioningPage } from './features/agency/AgencyProvisioning.js';
 import { AgencyFactFindingPage } from './features/agency/AgencyFactFinding.js';
@@ -262,6 +263,7 @@ const AppContent: React.FC = () => {
           <Route path="plans/new" element={<AgencyCapabilityRoute capabilities={['plans.manage']}><AgencyPlanCreatePage /></AgencyCapabilityRoute>} />
           <Route path="fulfilment" element={<AgencyCapabilityRoute capabilities={['fulfilment.read']}><AgencyFulfilmentPage /></AgencyCapabilityRoute>} />
           <Route path="support" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencySupportPage /></AgencyCapabilityRoute>} />
+          <Route path="errors" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencyErrorLogPage /></AgencyCapabilityRoute>} />
           <Route path="webhooks" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencyWebhooksPage /></AgencyCapabilityRoute>} />
           <Route path="jobs" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencyJobsPage /></AgencyCapabilityRoute>} />
           <Route path="analytics" element={<AgencyCapabilityRoute capabilities={['analytics.read']}><AgencyAnalyticsPage /></AgencyCapabilityRoute>} />

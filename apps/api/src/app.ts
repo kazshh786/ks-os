@@ -57,6 +57,7 @@ import { agencySiteStudioRoutes } from './modules/sites/site-studio.routes.js';
 import { agencySiteQualityRoutes } from './modules/sites/site-quality.routes.js';
 import { agencySitePublicationRoutes } from './modules/sites/site-publication.routes.js';
 import { agencyProductionBriefRoutes } from './modules/provisioning/production-brief.routes.js';
+import { platformErrorLogRoutes } from './modules/errors/platform-error-log.routes.js';
 
 export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => void } = {}) {
   const fastify = Fastify({
@@ -110,7 +111,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
       ]
     },
     // We assume the API sits behind a local reverse proxy (like Plesk or Nginx).
-    // trustProxy: true tells Fastify to trust the X-Forwarded-For header from the proxy 
+    // trustProxy: true tells Fastify to trust the X-Forwarded-For header from the proxy
     // to determine the real client IP for rate limiting and logging.
     trustProxy: env.TRUST_PROXY,
     // Add global request body size limit (1MB)
@@ -160,6 +161,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
 
   // Agency control plane and commercial billing are isolated from tenant routes.
   fastify.register(agencyRoutes, { prefix: '/api/v1/agency' });
+  fastify.register(platformErrorLogRoutes, { prefix: '/api/v1/agency/errors' });
   fastify.register(complianceRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencySiteRoutes, { prefix: '/api/v1/agency/sites' });
   fastify.register(agencySiteBlueprintRoutes, { prefix: '/api/v1/agency/sites' });

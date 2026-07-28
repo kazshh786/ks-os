@@ -47,4 +47,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260727130000_phase_15_9_site_publishing_domains.sql', order: 40, description: 'Phase 15.9 immutable publication pointers, governed hostnames, reviewed DNS operations, health evidence, cache invalidation, and rollback history' },
   { filename: '20260727170000_reconcile_agency_audit_columns.sql', order: 41, description: 'Reconcile append-only agency audit columns required by launch, support, recovery, and administrative actions' },
   { filename: '20260727233000_workspace_hard_delete_and_test_reset.sql', order: 42, description: 'Platform-owner workspace test reset, irreversible tenant purge, private file cleanup, and authentication identity removal support' },
+  { filename: '20260728010000_platform_error_log.sql', order: 43, description: 'Append-only privacy-minimised platform error evidence with actor, workspace, request, route, origin and stack context' },
 ];
