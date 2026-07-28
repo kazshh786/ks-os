@@ -127,6 +127,9 @@ function affectedUser(row: { agencyUserName: string | null; tenantUserName: stri
 
 export class PlatformErrorLogService {
   async capture(request: FastifyRequest, error: ErrorWithStatus, statusCode: number, errorCode: string, retryable: boolean) {
+    // Unit and API tests run before production migrations are applied. Keep them isolated
+    // unless a focused persistence test explicitly opts in.
+    if (process.env.NODE_TEST_CONTEXT && process.env.ERROR_LOG_TEST_CAPTURE !== '1') return;
     if (!shouldPersistError(request, statusCode)) return;
 
     const route = routeFor(request);
