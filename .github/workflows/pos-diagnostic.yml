@@ -7,6 +7,8 @@ on:
       - '.github/workflows/pos-diagnostic.yml'
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 concurrency:
   group: pos-diagnostic-${{ github.ref }}
   cancel-in-progress: true
@@ -14,6 +16,9 @@ jobs:
   api-build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -23,11 +28,21 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile --silent
-      - name: Build API with concise diagnostics
+      - name: Build API and publish concise diagnostics
         shell: bash
         run: |
           set +e
           pnpm --filter api build > /tmp/pos-api-build.log 2>&1
           status=$?
+          if [ "$status" -ne 0 ]; then
+            {
+              echo '<!-- pos-api-build-diagnostic -->'
+              echo '### POS API build diagnostic'
+              echo '```text'
+              tail -n 120 /tmp/pos-api-build.log
+              echo '```'
+            } > /tmp/pos-api-comment.md
+            gh pr comment "$PR_NUMBER" --body-file /tmp/pos-api-comment.md
+          fi
           cat /tmp/pos-api-build.log
           exit $status
