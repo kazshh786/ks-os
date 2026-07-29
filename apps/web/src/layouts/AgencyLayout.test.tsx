@@ -47,7 +47,8 @@ describe('AgencyLayout', () => {
     renderLayout('/agency/overview');
     expect(screen.getByRole('navigation', { name: 'Agency navigation' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Template library' })).toHaveAttribute('href', '/agency/templates');
+    expect(screen.getByRole('link', { name: 'Design Studio' })).toHaveAttribute('href', '/agency/design-studio');
+    expect(screen.getByRole('link', { name: 'Licensed imports' })).toHaveAttribute('href', '/agency/templates');
     expect(screen.getByRole('link', { name: 'Managed services' })).toHaveAttribute('href', '/agency/fulfilment');
     expect(screen.getByRole('link', { name: 'Audit trail' })).toHaveAttribute('href', '/agency/audit');
     expect(screen.getByRole('link', { name: 'Agency team' })).toHaveAttribute('href', '/agency/users');
