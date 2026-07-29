@@ -23,7 +23,7 @@ export function resolveEffectiveAvailabilityWindows(
   weeklyWindows: AvailabilityWindow[],
   dateOverrides: AvailabilityDateOverride[],
 ): EffectiveAvailabilityWindow[] {
-  return members.flatMap(member => {
+  return members.flatMap<EffectiveAvailabilityWindow>(member => {
     const override = dateOverrides.find(item => item.userId === member.userId);
     if (override) {
       if (!override.enabled) return [];
@@ -32,7 +32,7 @@ export function resolveEffectiveAvailabilityWindows(
         userName: member.userName,
         startTime: override.startTime,
         endTime: override.endTime,
-        source: 'override' as const,
+        source: 'override',
       }];
     }
 
@@ -43,7 +43,7 @@ export function resolveEffectiveAvailabilityWindows(
       userName: member.userName,
       startTime: weekly.startTime,
       endTime: weekly.endTime,
-      source: 'weekly' as const,
+      source: 'weekly',
     }];
   });
 }
