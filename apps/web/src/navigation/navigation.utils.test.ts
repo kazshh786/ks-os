@@ -83,6 +83,7 @@ describe('route matching', () => {
     const groups = resolveNavigation(businessNavigation, { portal: 'business', role: 'owner', permissions: [] });
     expect(findActiveNavigationItem(groups, '/app/reports/finance')?.label).toBe('Reports');
     expect(findActiveNavigationItem(groups, '/app/settings/booking-page')?.label).toBe('Booking Page');
+    expect(findActiveNavigationItem(groups, '/app/bookings')?.label).toBe('Booking Calendar');
   });
 
   it('replaces managed-business route parameters and matches exact tenant routes', () => {
