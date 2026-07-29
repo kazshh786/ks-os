@@ -1,18 +1,21 @@
 export * from './schema.js';
-export * from './booking-schedule-overrides.js';
 export * from './error-schema.js';
+export * from './design-library-schema.js';
+export * from './booking-schedule-overrides.js';
 export * from './manifest.js';
 export * from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as coreSchema from './schema.js';
-import * as bookingScheduleOverrideSchema from './booking-schedule-overrides.js';
 import * as errorSchema from './error-schema.js';
+import * as designLibrarySchema from './design-library-schema.js';
+import * as bookingScheduleOverrideSchema from './booking-schedule-overrides.js';
 
-const schema: typeof coreSchema & typeof bookingScheduleOverrideSchema & typeof errorSchema = {
+const schema: typeof coreSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema = {
   ...coreSchema,
-  ...bookingScheduleOverrideSchema,
   ...errorSchema,
+  ...designLibrarySchema,
+  ...bookingScheduleOverrideSchema,
 };
 type Database = NodePgDatabase<typeof schema>;
 
