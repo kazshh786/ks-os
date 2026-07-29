@@ -46,6 +46,6 @@
   "devDependencies": {
     "@types/pg": "^8.20.0",
     "pg": "^8.22.0",
-    "supabase": "2.109.1"
+    "supabase": "2.110.0"
   }
 }
