@@ -52,4 +52,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260728113000_repair_workspace_test_reset.sql', order: 45, description: 'Repair workspace test reset for Supabase system-trigger restrictions, optional baselined tables, compliance retention, and server-only execution' },
   { filename: '20260728100000_stripe_first_pos.sql', order: 46, description: 'Set the first inventory-enabled package to £197 for the Stripe-first POS launch' },
   { filename: '20260728170000_workspace_public_surface_routes.sql', order: 47, description: 'Assign stable public form slugs and support workspace-hosted booking and form routes' },
+  { filename: '20260729213000_seed_native_design_delivery.sql', order: 48, description: 'Seed the owned KS Native Component System and approved renderer mappings used by one-click design-library delivery' },
 ];
