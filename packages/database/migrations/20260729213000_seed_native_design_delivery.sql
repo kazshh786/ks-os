@@ -3,6 +3,10 @@
 -- The visual choice remains the PR #44 design preset. These records provide the
 -- approved technical layouts and compile-time renderer mappings required by the
 -- existing immutable blueprint, generation, preview and publication pipeline.
+--
+-- Important: template versions must remain mutable while their layouts and child
+-- mappings are assembled. The version is approved only after the complete
+-- registry has been seeded.
 
 DO $$
 DECLARE
@@ -85,7 +89,7 @@ BEGIN
     'e054818e-c185-44fd-b453-010000000002'::uuid,
     source_id,
     1,
-    'APPROVED',
+    'DRAFT',
     jsonb_build_object(
       'name', 'KS Native Component System',
       'kind', 'CONTROLLED_COMPONENT_REGISTRY',
@@ -93,9 +97,9 @@ BEGIN
       'designLibraryVersion', 1
     ),
     repeat('a', 64),
-    actor_id,
-    now(),
-    'APPROVED',
+    NULL,
+    NULL,
+    'PENDING',
     repeat('b', 64),
     'internal://ks-native-component-system/v1',
     'ks-native-registry-1'
@@ -109,13 +113,15 @@ BEGIN
   WHERE template_source_id = source_id AND version_number = 1
   LIMIT 1;
 
-  UPDATE template_versions
-  SET status = 'APPROVED',
-      analysis_status = 'APPROVED',
-      approved_by_agency_user_id = COALESCE(approved_by_agency_user_id, actor_id),
-      approved_at = COALESCE(approved_at, now()),
-      analyser_version = 'ks-native-registry-1'
-  WHERE id = version_id;
+  -- A previously completed seed is already immutable and needs no further work.
+  IF EXISTS (
+    SELECT 1
+    FROM template_versions
+    WHERE id = version_id
+      AND (status = 'APPROVED' OR analysis_status = 'APPROVED')
+  ) THEN
+    RETURN;
+  END IF;
 
   FOR item IN
     SELECT * FROM jsonb_to_recordset(
@@ -229,5 +235,15 @@ BEGIN
         updated_at = now()
     WHERE template_layout_id = layout_id;
   END LOOP;
+
+  -- Approval is the final write. From this point the database immutability
+  -- triggers correctly prevent changes to the version and every child record.
+  UPDATE template_versions
+  SET status = 'APPROVED',
+      analysis_status = 'APPROVED',
+      approved_by_agency_user_id = actor_id,
+      approved_at = now(),
+      analyser_version = 'ks-native-registry-1'
+  WHERE id = version_id;
 END
 $$;
