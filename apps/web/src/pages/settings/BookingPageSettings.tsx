@@ -235,7 +235,7 @@ export function BookingPageSettings() {
             <label className="text-sm font-bold">Deposit %<input type="number" min={0} max={100} value={page.paymentSettings.depositPercentage} onChange={event => update('paymentSettings', { ...page.paymentSettings, depositPercentage: Number(event.target.value) })} className="mt-1 w-full rounded-xl border p-3" /></label>
           </div>
           <label className="mt-4 block text-sm font-bold">Cancellation policy<textarea value={page.cancellationSettings.policyText} onChange={event => update('cancellationSettings', { ...page.cancellationSettings, policyText: event.target.value })} rows={3} className="mt-1 w-full rounded-xl border p-3" /></label>
-          <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><p>Customer cancellation and rescheduling approval rules are managed under <Link className="font-black text-indigo-700 underline" to="/app/settings/customer-booking">Customer booking management</Link>.</p></div>
+          <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><p>Customer cancellation and rescheduling approval rules are managed under <Link className="font-black text-indigo-700 underline" to="/app/settings/booking/customer-management">Customer booking management</Link>.</p></div>
         </section>
 
         <section className="rounded-2xl border bg-white p-5">
