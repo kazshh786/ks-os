@@ -68,6 +68,44 @@ const PublicReferenceSchema = z.string().uuid();
 const SafeNameSchema = z.string().trim().min(2).max(255);
 const SubdomainSchema = z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/);
 
+export const ProvisioningDesignSourceSchema = z.enum([
+  'KS_NATIVE',
+  'GOOGLE_STITCH',
+  'LICENSED_TEMPLATE',
+]);
+export type ProvisioningDesignSource = z.infer<typeof ProvisioningDesignSourceSchema>;
+
+export const ProvisioningDesignPresetKeySchema = z.enum([
+  'NORTHLIGHT',
+  'EDITORIAL',
+  'MODERN',
+  'LUXURY',
+  'WELLNESS',
+  'CLINICAL',
+  'FRIENDLY',
+  'BOLD',
+  'LOCAL',
+  'CREATIVE',
+]);
+export type ProvisioningDesignPresetKey = z.infer<typeof ProvisioningDesignPresetKeySchema>;
+
+export const ProvisioningSectionVariantSchema = z.enum([
+  'editorial',
+  'grid',
+  'split',
+  'compact',
+  'standard',
+  'featured',
+  'quiet',
+]);
+
+export const ProvisioningSiteDesignSchema = z.object({
+  source: ProvisioningDesignSourceSchema.default('KS_NATIVE'),
+  presetKey: ProvisioningDesignPresetKeySchema.default('NORTHLIGHT'),
+  defaultSectionVariant: ProvisioningSectionVariantSchema.default('standard'),
+}).strict();
+export type ProvisioningSiteDesign = z.infer<typeof ProvisioningSiteDesignSchema>;
+
 export const CreateProvisioningDraftSchema = z.object({
   productionBriefReference: PublicReferenceSchema,
   planVersionReference: PublicReferenceSchema,
@@ -77,6 +115,8 @@ export const CreateProvisioningDraftSchema = z.object({
     timezone: z.string().trim().min(1).max(100),
     currency: z.string().regex(/^[A-Z]{3}$/),
   }).strict(),
+  // A technical renderer version remains pinned for integrity. For KS_NATIVE this
+  // reference is resolved by the delivery context and is never exposed as a visual choice.
   templateVersionReference: PublicReferenceSchema,
   pagePlan: z.object({
     requestedPageTypes: z.array(z.enum([
@@ -85,6 +125,11 @@ export const CreateProvisioningDraftSchema = z.object({
       'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE', 'BOOKING',
     ])).max(100),
     preferredLayoutReferences: z.record(PublicReferenceSchema).default({}),
+    design: ProvisioningSiteDesignSchema.default({
+      source: 'KS_NATIVE',
+      presetKey: 'NORTHLIGHT',
+      defaultSectionVariant: 'standard',
+    }),
   }).strict(),
   paymentPreference: z.object({
     allowPayLater: z.boolean(),
