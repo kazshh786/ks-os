@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   InitiateTemplateImportSchema,
@@ -6,6 +7,7 @@ import {
 import { z } from 'zod';
 import type { AgencyActor } from '../agency/agency.service.js';
 import { TemplateImportService } from './template-import.service.js';
+import { ensureTemplateImportBucket } from './template-import-storage.js';
 
 const VersionParamsSchema = z.object({
   versionReference: z.string().uuid(),
@@ -17,6 +19,9 @@ function agencyActor(request: FastifyRequest, capability: AgencyCapability): Age
     agencyUserId: auth.agencyUserId,
     role: auth.role,
     requestId: request.id,
+    ipHash: createHash('sha256')
+      .update(`${process.env.AUDIT_IP_HASH_SECRET || 'local-development'}:${request.ip}`)
+      .digest('hex'),
     sessionId: request.authIdentity?.authSessionId || undefined,
     userAgent: String(request.headers['user-agent'] || '').slice(0, 500) || undefined,
   };
@@ -49,6 +54,7 @@ export async function agencyTemplateImportRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const actor = agencyActor(request, 'sites.templates.manage');
     const input = InitiateTemplateImportSchema.parse(request.body);
+    await ensureTemplateImportBucket();
     const data = await imports().initiate(actor, input);
     return reply.code(201).send({ data });
   });
