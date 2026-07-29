@@ -75,18 +75,40 @@ function overlappingLayout(items: BookingOperationsItem[], timezone: string) {
     booking,
     start: localMinutes(booking.startTime, timezone),
     end: Math.max(localMinutes(booking.startTime, timezone) + slotMinutes, bookingEndMinute(booking, timezone)),
-  }));
+  })).sort((left, right) => left.start - right.start || left.end - right.end || left.booking.id.localeCompare(right.booking.id));
 
-  return rows.map(row => {
-    const overlaps = rows
-      .filter(other => other.start < row.end && other.end > row.start)
-      .sort((left, right) => left.start - right.start || left.end - right.end || left.booking.id.localeCompare(right.booking.id));
-    return {
-      ...row,
-      lane: Math.max(0, overlaps.findIndex(other => other.booking.id === row.booking.id)),
-      laneCount: Math.max(1, overlaps.length),
-    };
-  });
+  const result: Array<(typeof rows)[number] & { lane: number; laneCount: number }> = [];
+  let cluster: typeof rows = [];
+  let clusterEnd = -1;
+
+  const flushCluster = () => {
+    if (!cluster.length) return;
+    const laneEnds: number[] = [];
+    const assigned = cluster.map(row => {
+      let lane = laneEnds.findIndex(end => end <= row.start);
+      if (lane === -1) {
+        lane = laneEnds.length;
+        laneEnds.push(row.end);
+      } else {
+        laneEnds[lane] = row.end;
+      }
+      return { ...row, lane };
+    });
+    const laneCount = Math.max(1, laneEnds.length);
+    result.push(...assigned.map(row => ({ ...row, laneCount })));
+  };
+
+  for (const row of rows) {
+    if (cluster.length && row.start >= clusterEnd) {
+      flushCluster();
+      cluster = [];
+      clusterEnd = -1;
+    }
+    cluster.push(row);
+    clusterEnd = Math.max(clusterEnd, row.end);
+  }
+  flushCluster();
+  return result;
 }
 
 export function BookingScheduleView({ columns, days, bookings, groupBy, density, timezone, onOpen, onCreate, onReschedule }: BookingScheduleViewProps) {
