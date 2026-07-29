@@ -32,6 +32,7 @@ vi.mock('../features/agency/AgencyOperatingConsole', () => ({
   AgencyOnboardingPage: () => <div>Onboarding board</div>,
   AgencyClientWorkspacePage: () => <div>Client workspace hub</div>,
 }));
+vi.mock('../features/agency/AgencyWorkspaceOnboardingPage', () => ({ default: () => <div>Editable onboarding workspace</div> }));
 vi.mock('../features/agency/SupportSessionDialog', () => ({ SupportSessionDialog: ({ open }: { open: boolean }) => open ? <div role="dialog">Support access</div> : null }));
 
 function LocationProbe() { const location = useLocation(); return <output aria-label="Current route">{location.pathname}</output>; }
@@ -66,5 +67,11 @@ describe('AgencyLayout', () => {
     expect(screen.getByRole('button', { name: 'Open support workspace' })).toBeInTheDocument();
     await user.selectOptions(screen.getByRole('combobox', { name: 'Switch managed business' }), tenantTwo);
     await waitFor(() => expect(screen.getByRole('status', { name: 'Current route' })).toHaveTextContent(`/agency/tenants/${tenantTwo}`));
+  });
+
+  it('renders the editable setup and launch workspace on the onboarding route', async () => {
+    renderLayout(`/agency/tenants/${tenantOne}/onboarding`);
+    expect(await screen.findByText('Editable onboarding workspace')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Setup and launch' })).toHaveAttribute('aria-current', 'page');
   });
 });
