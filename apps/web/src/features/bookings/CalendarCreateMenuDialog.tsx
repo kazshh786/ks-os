@@ -65,6 +65,7 @@ export function CalendarCreateMenuDialog({ open, onClose, onChoose }: CalendarCr
           return <button
             key={option.type}
             type="button"
+            aria-label={option.title}
             onClick={() => onChoose(option.type)}
             className="group rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
