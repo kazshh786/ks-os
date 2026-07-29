@@ -93,9 +93,12 @@ describe('AgencyWorkspaceOnboardingManager', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Setup and launch' });
     await user.selectOptions(screen.getByLabelText('Stage status'), 'BLOCKED');
+
+    const blockerField = screen.getByLabelText('What is blocking this stage?');
+    expect(blockerField).toBeRequired();
     await user.click(screen.getByRole('button', { name: 'Save stage' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Explain what is blocking this stage');
+    expect(blockerField).toBeInvalid();
     expect(agencyFetch).not.toHaveBeenCalledWith(expect.stringContaining('/onboarding/SALE_HANDOVER'), expect.objectContaining({ method: 'PATCH' }));
   });
 
