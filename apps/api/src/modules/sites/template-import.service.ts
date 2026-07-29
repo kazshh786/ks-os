@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type {
   InitiateTemplateImport,
   TemplateImportAsset,
@@ -196,7 +196,12 @@ export function inspectTemplateZip(bytes: Buffer): InspectedTemplateArchive {
     }
     const localNameLength = bytes.readUInt16LE(localHeaderOffset + 26);
     const localExtraLength = bytes.readUInt16LE(localHeaderOffset + 28);
-    const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+    const localNameStart = localHeaderOffset + 30;
+    const localNameEnd = localNameStart + localNameLength;
+    if (localNameEnd > bytes.length || bytes.subarray(localNameStart, localNameEnd).toString('utf8') !== rawName) {
+      throw new TemplateIngestionSecurityError('TEMPLATE_ZIP_ENTRY_NAME_MISMATCH', `${relativePath} does not match its local ZIP header.`);
+    }
+    const dataStart = localNameEnd + localExtraLength;
     const dataEnd = dataStart + compressedSize;
     if (dataEnd > bytes.length) {
       throw new TemplateIngestionSecurityError('TEMPLATE_ZIP_ENTRY_TRUNCATED', `${relativePath} is truncated.`);
@@ -256,6 +261,7 @@ export class TemplateImportService {
     const [context] = await this.db.select({
       versionId: templateVersions.id,
       versionReference: templateVersions.publicReference,
+      versionStatus: templateVersions.status,
       artifactDigestSha256: templateVersions.artifactDigestSha256,
       analysisStatus: templateVersions.analysisStatus,
       versionCreatedAt: templateVersions.createdAt,
@@ -274,10 +280,17 @@ export class TemplateImportService {
     return context;
   }
 
-  private async updateImportMetadata(sourceId: string, metadataJson: unknown, patch: Partial<StoredImportMetadata>) {
-    const metadata = record(metadataJson);
+  private async updateImportMetadata(sourceId: string, fallbackMetadataJson: unknown, patch: Partial<StoredImportMetadata>) {
+    const [source] = await this.db.select({ metadataJson: templateSources.metadataJson })
+      .from(templateSources)
+      .where(eq(templateSources.id, sourceId))
+      .limit(1);
+    const metadata = record(source?.metadataJson ?? fallbackMetadataJson);
     const current = parseImportMetadata(metadata[IMPORT_METADATA_KEY]);
-    const next = { ...(current || {}), ...patch, updatedAt: new Date().toISOString() } as StoredImportMetadata;
+    if (!current) {
+      throw fail(409, 'TEMPLATE_IMPORT_METADATA_MISSING', 'Template import metadata could not be updated.');
+    }
+    const next = { ...current, ...patch, updatedAt: new Date().toISOString() } as StoredImportMetadata;
     await this.db.update(templateSources).set({
       metadataJson: { ...metadata, [IMPORT_METADATA_KEY]: next },
       updatedAt: new Date(),
@@ -341,8 +354,9 @@ export class TemplateImportService {
       createdAt: now,
       updatedAt: now,
     };
+    const metadataJson = { ...record(sourceRow.metadataJson), [IMPORT_METADATA_KEY]: importMetadata };
     await this.db.update(templateSources).set({
-      metadataJson: { ...record(sourceRow.metadataJson), [IMPORT_METADATA_KEY]: importMetadata },
+      metadataJson,
       updatedAt: new Date(),
     }).where(eq(templateSources.id, sourceRow.id));
     try {
@@ -364,7 +378,7 @@ export class TemplateImportService {
       });
       return { importReference, sourceReference: source.reference, versionReference: version.reference, uploads };
     } catch (error) {
-      await this.updateImportMetadata(sourceRow.id, sourceRow.metadataJson, { status: 'FAILED', failureCode: 'SIGNED_UPLOAD_URL_FAILED' });
+      await this.updateImportMetadata(sourceRow.id, metadataJson, { status: 'FAILED', failureCode: 'SIGNED_UPLOAD_URL_FAILED' });
       throw error;
     }
   }
@@ -468,7 +482,6 @@ export class TemplateImportService {
     const sources = await this.db.select({
       sourceId: templateSources.id,
       sourceReference: templateSources.publicReference,
-      sourceType: templateSources.sourceType,
       sourceStatus: templateSources.status,
       name: templateSources.name,
       sourceUrl: templateSources.sourceReference,
@@ -483,6 +496,7 @@ export class TemplateImportService {
       const imported = parseImportMetadata(metadata[IMPORT_METADATA_KEY]);
       if (!imported) return null;
       const [version] = await this.db.select({
+        versionStatus: templateVersions.status,
         analysisStatus: templateVersions.analysisStatus,
       }).from(templateVersions)
         .where(and(eq(templateVersions.templateSourceId, source.sourceId), eq(templateVersions.publicReference, imported.versionReference)))
@@ -494,7 +508,7 @@ export class TemplateImportService {
         name: source.name,
         sourceType: 'ENVATO_HTML' as const,
         sourceStatus: source.sourceStatus,
-        importStatus: imported.status,
+        importStatus: version?.versionStatus === 'APPROVED' ? 'APPROVED' as const : imported.status,
         analysisStatus: version?.analysisStatus || 'PENDING',
         industryTags: Array.isArray(metadata.industryTags) ? metadata.industryTags.filter((value): value is string => typeof value === 'string') : [],
         envatoItemUrl: source.sourceUrl || null,
@@ -525,7 +539,7 @@ export class TemplateImportService {
         .where(and(
           eq(templateAnalysisRuns.publicReference, analysis.reference),
           eq(templateAnalysisFindings.severity, 'BLOCKING'),
-          sql`${templateAnalysisFindings.resolvedAt} is null`,
+          isNull(templateAnalysisFindings.resolvedAt),
         ))
       : [{ count: 0 }];
     return {
@@ -535,7 +549,7 @@ export class TemplateImportService {
       name: context.sourceName,
       sourceType: 'ENVATO_HTML' as const,
       sourceStatus: context.sourceStatus,
-      importStatus: metadata.status,
+      importStatus: context.versionStatus === 'APPROVED' ? 'APPROVED' as const : metadata.status,
       analysisStatus: context.analysisStatus,
       industryTags: Array.isArray(record(context.metadataJson).industryTags)
         ? (record(context.metadataJson).industryTags as unknown[]).filter((value): value is string => typeof value === 'string')
