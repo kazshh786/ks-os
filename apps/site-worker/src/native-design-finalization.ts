@@ -201,6 +201,7 @@ export async function applyProvisionedNativeDesign(
   if (sameDesign(current, next)) {
     return {
       contentDigest: latest.contentDigest,
+      presetKey: selected.reference,
       designReference: selected.reference,
       designName: selected.name,
       idempotentReplay: true,
@@ -279,6 +280,7 @@ export async function applyProvisionedNativeDesign(
 
   return {
     contentDigest: prepared.contentDigestSha256,
+    presetKey: selected.reference,
     designReference: selected.reference,
     designName: selected.name,
     snapshotReference,
