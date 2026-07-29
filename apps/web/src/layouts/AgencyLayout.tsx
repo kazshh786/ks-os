@@ -9,6 +9,7 @@ import { PageHeader } from '../components/navigation/PageHeader';
 import { AdminPasswordDialog } from '../features/agency/AdminPasswordDialog';
 import { agencyFetch, useAgencyAuth } from '../features/agency/AgencyAuth';
 import { AgencyClientWorkspacePage, AgencyClientsPage, AgencyHomePage, AgencyOnboardingPage } from '../features/agency/AgencyOperatingConsole';
+import AgencyWorkspaceOnboardingPage from '../features/agency/AgencyWorkspaceOnboardingPage';
 import { ManualTenantUserDialog } from '../features/agency/ManualTenantUserDialog';
 import { SupportSessionDialog } from '../features/agency/SupportSessionDialog';
 import { agencyNavigation, managedBusinessNavigation } from '../navigation/agency-navigation';
@@ -124,7 +125,8 @@ export const AgencyLayout: React.FC = () => {
   </div>;
 
   const tenantWorkspaceMatch = location.pathname.match(/^\/agency\/tenants\/[0-9a-f-]{36}(?:\/(onboarding|fulfilment))?\/?$/i);
-  const tenantWorkspaceAllowed = tenantWorkspaceMatch?.[1] === 'fulfilment'
+  const tenantWorkspaceMode = tenantWorkspaceMatch?.[1];
+  const tenantWorkspaceAllowed = tenantWorkspaceMode === 'fulfilment'
     ? capabilities.includes('fulfilment.read')
     : capabilities.includes('tenants.read');
   const redesignedContent = (location.pathname === '/agency' || location.pathname === '/agency/overview') && capabilities.includes('analytics.read')
@@ -134,7 +136,9 @@ export const AgencyLayout: React.FC = () => {
       : location.pathname === '/agency/onboarding' && capabilities.includes('tenants.read')
         ? <AgencyOnboardingPage />
         : tenantWorkspaceMatch && tenantWorkspaceAllowed
-          ? <AgencyClientWorkspacePage />
+          ? tenantWorkspaceMode === 'onboarding'
+            ? <AgencyWorkspaceOnboardingPage />
+            : <AgencyClientWorkspacePage />
           : <Outlet />;
 
   return <div className="flex h-screen min-h-0 overflow-hidden bg-slate-950 font-sans text-white antialiased">
