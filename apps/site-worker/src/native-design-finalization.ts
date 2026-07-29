@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, getDatabase, inArray } from '@ks-os/database';
 import {
+  designLibraryAssignments,
+  designLibraryItems,
   platformAuditEvents,
   siteRenderSnapshots,
   siteSections,
@@ -11,6 +13,7 @@ import {
   SITE_DESIGN_PRESETS,
   SiteDesignPresetKeySchema,
   SiteStudioSectionVariantSchema,
+  SiteThemeEditorSchema,
   type SiteDesignPresetKey,
   type SiteStudioSectionVariant,
 } from '@ks-os/contracts';
@@ -72,6 +75,87 @@ function sameDesign(left: PublishedSiteSnapshot, right: PublishedSiteSnapshot) {
   return JSON.stringify(leftDesign) === JSON.stringify(rightDesign);
 }
 
+async function resolveDesign(
+  tx: Transaction,
+  tenantId: string,
+  pagePlan: unknown,
+) {
+  const design = record(record(pagePlan).design);
+  const explicitReference = typeof design.libraryItemReference === 'string'
+    ? design.libraryItemReference
+    : null;
+
+  const [custom] = explicitReference
+    ? await tx.select({
+        reference: designLibraryItems.publicReference,
+        name: designLibraryItems.name,
+        theme: designLibraryItems.themeJson,
+        definition: designLibraryItems.definitionJson,
+      }).from(designLibraryItems).where(and(
+        eq(designLibraryItems.publicReference, explicitReference),
+        eq(designLibraryItems.itemKind, 'SITE_THEME'),
+        eq(designLibraryItems.status, 'APPROVED'),
+        eq(designLibraryItems.availableForClientDelivery, true),
+      )).limit(1)
+    : await tx.select({
+        reference: designLibraryItems.publicReference,
+        name: designLibraryItems.name,
+        theme: designLibraryItems.themeJson,
+        definition: designLibraryItems.definitionJson,
+      }).from(designLibraryAssignments)
+        .innerJoin(designLibraryItems, eq(designLibraryAssignments.itemId, designLibraryItems.id))
+        .where(and(
+          eq(designLibraryAssignments.tenantId, tenantId),
+          eq(designLibraryAssignments.status, 'ACTIVE'),
+          eq(designLibraryItems.itemKind, 'SITE_THEME'),
+          eq(designLibraryItems.status, 'APPROVED'),
+          eq(designLibraryItems.availableForClientDelivery, true),
+        ))
+        .orderBy(desc(designLibraryAssignments.assignedAt))
+        .limit(1);
+
+  if (custom) {
+    const theme = SiteThemeEditorSchema.parse(custom.theme);
+    const definition = record(custom.definition);
+    const fallbackResult = SiteStudioSectionVariantSchema.safeParse(
+      definition.defaultSectionVariant ?? design.defaultSectionVariant,
+    );
+    const fallbackVariant = fallbackResult.success ? fallbackResult.data : 'standard';
+    const rawRules = record(definition.variantRules);
+    const variantRules = new Map<string, SiteStudioSectionVariant>();
+    for (const [sectionType, value] of Object.entries(rawRules)) {
+      const parsed = SiteStudioSectionVariantSchema.safeParse(value);
+      if (parsed.success) variantRules.set(sectionType, parsed.data);
+    }
+    return {
+      kind: 'LIBRARY' as const,
+      reference: custom.reference,
+      name: custom.name,
+      theme,
+      fallbackVariant,
+      variantFor(sectionType: string) {
+        return variantRules.get(sectionType) ?? fallbackVariant;
+      },
+    };
+  }
+
+  const presetResult = SiteDesignPresetKeySchema.safeParse(design.presetKey);
+  const presetKey = presetResult.success ? presetResult.data : 'NORTHLIGHT';
+  const preset = SITE_DESIGN_PRESETS.find(item => item.key === presetKey) ?? SITE_DESIGN_PRESETS[0];
+  const fallbackResult = SiteStudioSectionVariantSchema.safeParse(design.defaultSectionVariant);
+  const fallbackVariant = fallbackResult.success ? fallbackResult.data : 'standard';
+  return {
+    kind: 'PRESET' as const,
+    reference: presetKey,
+    name: preset.name,
+    theme: preset.theme,
+    fallbackVariant,
+    variantFor(sectionType: string) {
+      return nativeSectionVariant(presetKey, sectionType, fallbackVariant);
+    },
+  };
+}
+
 export async function applyProvisionedNativeDesign(
   tx: Transaction,
   input: {
@@ -86,11 +170,7 @@ export async function applyProvisionedNativeDesign(
   const design = record(record(input.pagePlan).design);
   if (design.source !== 'KS_NATIVE') return null;
 
-  const presetResult = SiteDesignPresetKeySchema.safeParse(design.presetKey);
-  const presetKey = presetResult.success ? presetResult.data : 'NORTHLIGHT';
-  const preset = SITE_DESIGN_PRESETS.find(item => item.key === presetKey) ?? SITE_DESIGN_PRESETS[0];
-  const fallbackResult = SiteStudioSectionVariantSchema.safeParse(design.defaultSectionVariant);
-  const fallbackVariant = fallbackResult.success ? fallbackResult.data : 'standard';
+  const selected = await resolveDesign(tx, input.tenantId, input.pagePlan);
 
   const [latest] = await tx.select({
     reference: siteRenderSnapshots.publicReference,
@@ -111,15 +191,21 @@ export async function applyProvisionedNativeDesign(
 
   const current = validatePublishedSnapshot(latest.content);
   const next = JSON.parse(JSON.stringify(current)) as PublishedSiteSnapshot;
-  next.theme = { ...preset.theme };
+  next.theme = { ...selected.theme };
   for (const page of next.pages) {
     for (const section of page.sections) {
-      section.variant = nativeSectionVariant(presetKey, section.type, fallbackVariant);
+      section.variant = selected.variantFor(section.type);
     }
   }
 
   if (sameDesign(current, next)) {
-    return { contentDigest: latest.contentDigest, presetKey, idempotentReplay: true };
+    return {
+      contentDigest: latest.contentDigest,
+      presetKey: selected.reference,
+      designReference: selected.reference,
+      designName: selected.name,
+      idempotentReplay: true,
+    };
   }
 
   const snapshotReference = randomUUID();
@@ -133,7 +219,7 @@ export async function applyProvisionedNativeDesign(
   });
 
   const variantByReference = new Map(
-    next.pages.flatMap(page => page.sections.map(section => [section.reference, section.variant ?? fallbackVariant] as const)),
+    next.pages.flatMap(page => page.sections.map(section => [section.reference, section.variant ?? selected.fallbackVariant] as const)),
   );
   const rows = await tx.select({
     id: siteSections.id,
@@ -165,13 +251,13 @@ export async function applyProvisionedNativeDesign(
   });
   await tx.update(siteVersions).set({
     generationContentDigestSha256: prepared.contentDigestSha256,
-    changeSummary: `Generated with the ${preset.name} KS native design system.`,
+    changeSummary: `Generated with the ${selected.name} KS native design system.`,
     updatedAt: new Date(),
   }).where(eq(siteVersions.id, input.versionId));
   await tx.update(tenants).set({
-    primaryColor: preset.theme.primaryColour,
-    secondaryColor: preset.theme.secondaryColour,
-    accentColor: preset.theme.accentColour,
+    primaryColor: selected.theme.primaryColour,
+    secondaryColor: selected.theme.secondaryColour,
+    accentColor: selected.theme.accentColour,
     updatedAt: new Date(),
   }).where(eq(tenants.id, input.tenantId));
   await tx.insert(platformAuditEvents).values({
@@ -183,12 +269,20 @@ export async function applyProvisionedNativeDesign(
     eventCategory: 'WEBSITE',
     sourceComponent: 'site-worker',
     description: 'The selected KS-native design system and controlled component variations were applied before internal review.',
-    metadata: { presetKey, defaultSectionVariant: fallbackVariant, snapshotReference },
+    metadata: {
+      designSource: selected.kind,
+      designReference: selected.reference,
+      designName: selected.name,
+      defaultSectionVariant: selected.fallbackVariant,
+      snapshotReference,
+    },
   });
 
   return {
     contentDigest: prepared.contentDigestSha256,
-    presetKey,
+    presetKey: selected.reference,
+    designReference: selected.reference,
+    designName: selected.name,
     snapshotReference,
     idempotentReplay: false,
   };
