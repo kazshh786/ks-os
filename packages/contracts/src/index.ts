@@ -112,4 +112,5 @@ export * from './booking-operations.js';
 export * from './workspace-plan.js';
 export * from './sites.js';
 export * from './template-intelligence.js';
+export * from './template-import.js';
 export * from './site-blueprints.js';
