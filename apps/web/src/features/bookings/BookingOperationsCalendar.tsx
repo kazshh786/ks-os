@@ -11,7 +11,7 @@ import { useWorkspace } from '../../context/WorkspaceContext.js';
 import { BookingAgendaView } from './BookingAgendaView.js';
 import { BookingMonthView } from './BookingMonthView.js';
 import { BookingQuickView } from './BookingQuickView.js';
-import { BookingScheduleView } from './BookingScheduleView.js';
+import { BookingScheduleView, type ScheduleDropTarget } from './BookingScheduleView.js';
 import { BookingStatusBadge } from './BookingStatusBadge.js';
 import { CreateBookingDialog } from './CreateBookingDialog.js';
 import { BlockTimeDialog } from './BlockTimeDialog.js';
@@ -135,16 +135,16 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
     const anchorElement = document.createElement('a'); anchorElement.href = url; anchorElement.download = `bookings-${dateValue}.csv`; anchorElement.click(); URL.revokeObjectURL(url);
   };
 
-  const dragReschedule = async (booking: BookingOperationsItem, target: { id: string; label: string }) => {
+  const dragReschedule = async (booking: BookingOperationsItem, target: ScheduleDropTarget) => {
     if (booking.status === 'BLOCKED') return;
     const currentDay = localDayKey(booking.startTime, booking.timezone);
+    const currentTime = new Intl.DateTimeFormat('en-GB', { timeZone: booking.timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(booking.startTime));
     const targetStaffId = view === 'staff' ? target.id : booking.staff.id;
-    const targetDay = view === 'staff' ? currentDay : target.id;
-    if (targetStaffId === booking.staff.id && targetDay === currentDay) return;
-    const time = new Intl.DateTimeFormat('en-GB', { timeZone: booking.timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(booking.startTime));
-    const nextStart = fromZonedTime(`${targetDay}T${time}:00`, booking.timezone).toISOString();
-    const description = view === 'staff' ? `${target.label} at ${time}` : `${target.label} at ${time}`;
-    if (!window.confirm(`Reschedule ${booking.customer.name} to ${description}? The customer will be notified.`)) return;
+    const targetDay = target.day;
+    const targetTime = target.time;
+    if (targetStaffId === booking.staff.id && targetDay === currentDay && targetTime === currentTime) return;
+    const nextStart = fromZonedTime(`${targetDay}T${targetTime}:00`, booking.timezone).toISOString();
+    if (!window.confirm(`Reschedule ${booking.customer.name} to ${target.label} at ${targetTime}? The customer will be notified.`)) return;
     setNotice('Rescheduling booking…');
     try {
       await getDataProvider().rescheduleBooking(booking.id, { startTime: nextStart, staffId: targetStaffId, notifyCustomer: true, reason: 'Changed by drag and drop on calendar' });
@@ -193,7 +193,7 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
     {view === 'agenda'
       ? <BookingAgendaView bookings={response.items} onOpen={setSelected} />
       : view === 'month' ? <BookingMonthView from={range.from} to={range.to} bookings={response.items} timezone={activeTenant.timezone} onOpen={setSelected} onSelectDay={day => { window.sessionStorage.setItem('ks-calendar-view', 'day'); updateParams({ date: format(day, 'yyyy-MM-dd'), view: 'day' }); }} />
-        : <BookingScheduleView columns={columns} bookings={response.items} groupBy={groupBy} density={density} timezone={activeTenant.timezone} onOpen={setSelected} onCreate={() => setCreateOpen(true)} onReschedule={(booking, target) => void dragReschedule(booking, target)} />}
+        : <BookingScheduleView columns={columns} days={days} bookings={response.items} groupBy={groupBy} density={density} timezone={activeTenant.timezone} onOpen={setSelected} onCreate={() => setCreateOpen(true)} onReschedule={(booking, target) => void dragReschedule(booking, target)} />}
     <section aria-label="Calendar legend" className="flex flex-wrap gap-2 rounded-2xl border bg-white p-3">{Object.entries(bookingStatusDisplay).map(([status]) => <BookingStatusBadge key={status} status={status as OperationalBookingStatus} compact />)}</section>
 
     <CreateBookingDialog open={createOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} onClose={() => { setCreateOpen(false); if (params.has('create')) updateParams({ create: null }); }} onCreated={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
