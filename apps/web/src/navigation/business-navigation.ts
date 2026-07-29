@@ -1,5 +1,5 @@
 import {
-  BarChart3, Bell, BookOpenCheck, Boxes, Building2, CalendarDays, ClipboardList, ConciergeBell, CreditCard,
+  BarChart3, Bell, Boxes, Building2, CalendarDays, ClipboardList, ConciergeBell, CreditCard,
   FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors, Clock3,
   Plug, ReceiptText, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
 } from 'lucide-react';
@@ -11,8 +11,8 @@ export const businessNavigation: NavigationGroup[] = [
     items: [
       { id: 'dashboard', label: 'Dashboard', href: '/app/dashboard', icon: LayoutDashboard, roles: ['owner'] },
       { id: 'services', label: 'Services', href: '/app/services', icon: Scissors, roles: ['owner'] },
-      { id: 'calendar', label: 'Booking Calendar', href: '/app/calendar', icon: CalendarDays, permissionsAny: ['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL'] },
-      { id: 'bookings', label: 'Bookings', href: '/app/bookings', icon: BookOpenCheck, permissionsAny: ['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL'] },
+      { id: 'calendar', label: 'Booking Calendar', href: '/app/calendar', icon: CalendarDays, permissionsAny: ['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL'], activePrefixes: ['/app/bookings'] },
+      { id: 'tasks', label: 'Tasks', href: '/app/tasks/my', icon: ClipboardList, permissionsAny: ['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL'], activePrefixes: ['/app/tasks'] },
     ],
   },
   {
@@ -43,7 +43,6 @@ export const businessNavigation: NavigationGroup[] = [
   {
     id: 'work', label: 'Work Management',
     items: [
-      { id: 'tasks', label: 'Tasks', href: '/app/tasks/my', icon: ClipboardList, permissionsAny: ['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL'], activePrefixes: ['/app/tasks'] },
       { id: 'automations', label: 'Automations', href: '/app/automations', icon: Workflow, roles: ['owner'], activePrefixes: ['/app/automations/', '/app/automation-runs/'], requiredEntitlement: 'automations.enabled', requiredPlan: 'GROWTH', lockedBenefit: 'Automate confirmations, reminders, forms, rebooking and follow-up work.' },
       { id: 'operations', label: 'Operations', href: '/app/operations', icon: Bell, permissionsAny: ['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE'], activePrefixes: ['/app/operations/'] },
     ],
