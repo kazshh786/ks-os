@@ -49,9 +49,9 @@ describe('BookingOperationsCalendar resilience', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New booking' }));
 
     expect(screen.getByRole('dialog', { name: 'Add to calendar' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Appointment/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Walk-in/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Block time/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Appointment' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Walk-in' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Block time' })).toBeInTheDocument();
   });
 
   it('keeps an empty calendar visible when the booking request fails', async () => {
