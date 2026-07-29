@@ -19,6 +19,11 @@ describe('BookingOperationsCalendar resilience', () => {
     getBookingOperations.mockResolvedValue(empty);
     render(<MemoryRouter><BookingOperationsCalendar /></MemoryRouter>);
     expect(await screen.findByRole('region', { name: 'Booking schedule' })).toHaveTextContent('0 bookings shown');
+    expect(screen.getByRole('group', { name: 'Calendar date views' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Month' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Week' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('combobox', { name: 'More calendar views' })).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
