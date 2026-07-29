@@ -34,6 +34,11 @@ vi.mock('../context/WorkspaceContext.js', () => ({
   }),
 }));
 
+Object.defineProperty(Element.prototype, 'scrollIntoView', {
+  configurable: true,
+  value: vi.fn(),
+});
+
 const formId = '11111111-1111-4111-8111-111111111111';
 const fieldId = '22222222-2222-4222-8222-222222222222';
 const schema = {
