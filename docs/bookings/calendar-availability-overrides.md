@@ -20,6 +20,10 @@ For example, an owner who normally takes Monday off can add an open Monday overr
 
 For a requested date and booking channel, availability uses the date override when one exists. Otherwise it falls back to the recurring weekly channel schedule. Existing appointment conflicts, service eligibility, location eligibility, resources, buffers and approved time off are still applied after the effective schedule is resolved.
 
+## Validation
+
+Automated checks cover channel-specific weekly saves, opening a normal day off, closing a normal workday, out-of-hours mobile availability, override validation and migration registration.
+
 ## Deployment
 
 The change includes an additive `booking_schedule_overrides` migration. Apply it through the normal reviewed database migration process before deploying the API and web changes.
