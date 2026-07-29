@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Clock3, MapPin, Smartphone, UserRound } from 'lucide-react';
 import type { BookingChannel, BookingPageResponse } from '@ks-os/contracts';
@@ -100,8 +100,10 @@ export default function AvailabilityPage() {
         if (!active) return;
         setMembers(rows);
         setBookingPage(settings);
-        const enabled = settings.bookingRules.enabledBookingChannels || ['in_shop'];
-        setChannel(enabled.includes('in_shop') ? 'in_shop' : enabled[0]);
+        const enabled: BookingChannel[] = settings.bookingRules.enabledBookingChannels?.length
+          ? settings.bookingRules.enabledBookingChannels
+          : ['in_shop'];
+        setChannel(enabled.includes('in_shop') ? 'in_shop' : enabled[0] || 'in_shop');
       })
       .catch(() => { if (active) setError('Availability could not be loaded. Please refresh and try again.'); })
       .finally(() => { if (active) setLoading(false); });
@@ -136,6 +138,6 @@ export default function AvailabilityPage() {
   </div>;
 }
 
-function ChannelButton({ icon, title, description, selected, onClick }: { icon: React.ReactNode; title: string; description: string; selected: boolean; onClick: () => void }) {
+function ChannelButton({ icon, title, description, selected, onClick }: { icon: ReactNode; title: string; description: string; selected: boolean; onClick: () => void }) {
   return <button type="button" onClick={onClick} aria-pressed={selected} className={`flex items-center gap-3 rounded-xl border p-4 text-left transition ${selected ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-100' : 'border-transparent hover:bg-slate-50'}`}><span className={selected ? 'text-indigo-700' : 'text-slate-500'}>{icon}</span><span><span className="block text-sm font-black text-slate-950">{title}</span><span className="mt-0.5 block text-xs text-slate-500">{description}</span></span></button>;
 }
