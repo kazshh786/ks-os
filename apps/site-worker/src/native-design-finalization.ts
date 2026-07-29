@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, getDatabase, inArray } from '@ks-os/database';
 import {
   platformAuditEvents,
   siteRenderSnapshots,
@@ -25,7 +25,8 @@ const record = (value: unknown): Record<string, unknown> =>
     ? value as Record<string, unknown>
     : {};
 
-type Transaction = Parameters<Parameters<ReturnType<typeof import('@ks-os/database').getDatabase>['transaction']>[0]>[0];
+type Database = ReturnType<typeof getDatabase>;
+type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 const EDITORIAL_PRESETS = new Set<SiteDesignPresetKey>(['EDITORIAL', 'LUXURY', 'CREATIVE']);
 const STRUCTURED_PRESETS = new Set<SiteDesignPresetKey>(['MODERN', 'CLINICAL']);
