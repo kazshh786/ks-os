@@ -34,6 +34,11 @@ vi.mock('../context/WorkspaceContext.js', () => ({
   }),
 }));
 
+Object.defineProperty(Element.prototype, 'scrollIntoView', {
+  configurable: true,
+  value: vi.fn(),
+});
+
 const formId = '11111111-1111-4111-8111-111111111111';
 const fieldId = '22222222-2222-4222-8222-222222222222';
 const schema = {
@@ -72,6 +77,18 @@ const schema = {
     completionMessage: 'Thank you.',
     autosave: true,
   },
+};
+
+const incompleteConsentSchema = {
+  ...schema,
+  fields: [{
+    ...schema.fields[0],
+    key: 'treatment_consent',
+    type: 'CONSENT_CHECKBOX',
+    label: 'Treatment consent',
+    description: undefined,
+    sensitiveClassification: 'CONSENT',
+  }],
 };
 
 function apiResponse(status = 'DRAFT') {
@@ -150,6 +167,55 @@ describe('visual consent form builder', () => {
         }),
       }),
     })));
+  });
+
+  it('saves an incomplete consent form as a draft', async () => {
+    getForm.mockResolvedValue({
+      id: formId,
+      title: 'Treatment consent',
+      description: '',
+      acknowledgementText: '',
+      fieldsJson: incompleteConsentSchema,
+      draftRevision: 1,
+      status: 'DRAFT',
+    });
+    const user = userEvent.setup();
+    renderExistingForm();
+
+    await screen.findByText('Treatment consent');
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+
+    await waitFor(() => expect(updateForm).toHaveBeenCalledWith(formId, expect.objectContaining({
+      acknowledgementText: '',
+      schema: expect.objectContaining({
+        fields: expect.arrayContaining([expect.objectContaining({ type: 'CONSENT_CHECKBOX', description: undefined })]),
+      }),
+    })));
+    expect(await screen.findByText('Draft saved')).toBeInTheDocument();
+    expect(publishForm).not.toHaveBeenCalled();
+  });
+
+  it('saves first and shows exact publish blockers instead of losing incomplete work', async () => {
+    getForm.mockResolvedValue({
+      id: formId,
+      title: 'Treatment consent',
+      description: '',
+      acknowledgementText: '',
+      fieldsJson: incompleteConsentSchema,
+      draftRevision: 1,
+      status: 'DRAFT',
+    });
+    const user = userEvent.setup();
+    renderExistingForm();
+
+    await screen.findByText('Treatment consent');
+    await user.click(screen.getByRole('button', { name: 'Save and publish' }));
+
+    await waitFor(() => expect(updateForm).toHaveBeenCalled());
+    expect(publishForm).not.toHaveBeenCalled();
+    expect(await screen.findByText('Draft saved — finish these before publishing')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /needs the consent wording/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add the final acknowledgement/i })).toBeInTheDocument();
   });
 
   it('saves the draft, publishes it, and exposes the final tenant form URL', async () => {

@@ -1,30 +1,39 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import {
   CheckCircle2,
   Clipboard,
   ExternalLink,
   Globe2,
   LockKeyhole,
+  MapPin,
   Monitor,
   Palette,
   ShieldCheck,
   Smartphone,
   Tablet,
 } from 'lucide-react';
-import { BookingPageSlugSchema, type BookingPageResponse, type BookingPageUpdate } from '@ks-os/contracts';
+import { BookingPageSlugSchema, type BookingChannel, type BookingPageResponse, type BookingPageUpdate } from '@ks-os/contracts';
 import { getDataProvider } from '../../data/data-provider.js';
 import { PublicBookingFlow } from '../../features/bookings/PublicBookingFlow.js';
 
 type PreviewWidth = 'desktop' | 'tablet' | 'mobile';
 const previewWidths: Record<PreviewWidth, string> = { desktop: '100%', tablet: '768px', mobile: '390px' };
+const minimumCustomerWindowDays = 42;
 
 function sanitiseBookingSlug(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+/, '')
-    .slice(0, 63);
+  return value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/-+/g, '-').replace(/^-+/, '').slice(0, 63);
+}
+
+function normalisePage(settings: BookingPageResponse): BookingPageResponse {
+  return {
+    ...settings,
+    bookingRules: {
+      ...settings.bookingRules,
+      maximumFutureDays: Math.max(minimumCustomerWindowDays, settings.bookingRules.maximumFutureDays || minimumCustomerWindowDays),
+      enabledBookingChannels: settings.bookingRules.enabledBookingChannels?.length ? settings.bookingRules.enabledBookingChannels : ['in_shop'],
+    },
+  };
 }
 
 export function BookingPageSettings() {
@@ -43,7 +52,7 @@ export function BookingPageSettings() {
     setLoading(true);
     setError('');
     try {
-      const settings = await getDataProvider().getBookingPageSettings();
+      const settings = normalisePage(await getDataProvider().getBookingPageSettings());
       setPage(settings);
       setLoadedSlug(settings.publicSlug);
       setCustomDomain(settings.customDomain || '');
@@ -65,6 +74,19 @@ export function BookingPageSettings() {
   const slugIsValid = slugResult.success;
   const slugChanged = page.publicSlug !== loadedSlug;
   const editableBookingUrl = `https://${page.publicSlug}.kasimshah.com/book`;
+  const enabledChannels = page.bookingRules.enabledBookingChannels || ['in_shop'];
+
+  const toggleChannel = (channel: BookingChannel, enabled: boolean) => {
+    const next = enabled
+      ? [...new Set([...enabledChannels, channel])]
+      : enabledChannels.filter(item => item !== channel);
+    if (!next.length) {
+      setError('Keep at least one appointment type available.');
+      return;
+    }
+    setError('');
+    update('bookingRules', { ...page.bookingRules, enabledBookingChannels: next });
+  };
 
   const save = async () => {
     setMessage('');
@@ -74,7 +96,6 @@ export function BookingPageSettings() {
       setError(validatedSlug.error.issues[0]?.message || 'Enter a valid booking address.');
       return;
     }
-
     setSaving(true);
     const input: BookingPageUpdate = {
       publicSlug: validatedSlug.data,
@@ -91,7 +112,11 @@ export function BookingPageSettings() {
       allowedLocationIds: page.allowedLocationIds,
       allowedServiceIds: page.allowedServiceIds,
       allowedStaffIds: page.allowedStaffIds,
-      bookingRules: page.bookingRules,
+      bookingRules: {
+        ...page.bookingRules,
+        maximumFutureDays: Math.max(minimumCustomerWindowDays, page.bookingRules.maximumFutureDays),
+        enabledBookingChannels: enabledChannels.length ? enabledChannels : ['in_shop'],
+      },
       paymentSettings: page.paymentSettings,
       intakeFormSettings: page.intakeFormSettings,
       cancellationSettings: page.cancellationSettings,
@@ -99,7 +124,7 @@ export function BookingPageSettings() {
       analyticsSettings: page.analyticsSettings,
     };
     try {
-      const saved = await getDataProvider().updateBookingPageSettings(input);
+      const saved = normalisePage(await getDataProvider().updateBookingPageSettings(input));
       setPage(saved);
       setLoadedSlug(saved.publicSlug);
       setMessage(slugChanged ? 'Booking address and settings saved.' : 'Booking-page settings saved.');
@@ -114,7 +139,7 @@ export function BookingPageSettings() {
     setSaving(true);
     setError('');
     try {
-      const saved = await getDataProvider().setBookingPagePublished(!page.published);
+      const saved = normalisePage(await getDataProvider().setBookingPagePublished(!page.published));
       setPage(saved);
       setMessage(saved.published ? 'Booking page published.' : 'Booking page unpublished.');
     } catch (cause) {
@@ -129,7 +154,7 @@ export function BookingPageSettings() {
     setError('');
     try {
       const result = await getDataProvider().configureBookingCustomDomain(customDomain || null);
-      setPage(result.page);
+      setPage(normalisePage(result.page));
       setDomainInstructions(result.verification);
       setMessage(customDomain ? 'Domain saved. Complete DNS verification before it can receive traffic.' : 'Custom domain removed.');
     } catch (cause) {
@@ -151,8 +176,8 @@ export function BookingPageSettings() {
     <header className="flex flex-col justify-between gap-4 rounded-3xl bg-slate-950 p-6 text-white lg:flex-row lg:items-end">
       <div>
         <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-300">Online booking</p>
-        <h1 className="mt-2 text-3xl font-black">Universal booking experience</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">Every business uses the same platform-controlled booking layout, components and conversion flow. Only the logo and colour scheme change.</p>
+        <h1 className="mt-2 text-3xl font-black">Booking page and customer choices</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">Control the public address, branding, appointment types, booking window and payment rules from one place.</p>
       </div>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => navigator.clipboard.writeText(page.publicUrl).then(() => setMessage('Booking link copied.'))} className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><Clipboard className="h-4 w-4" />Copy link</button>
@@ -167,67 +192,50 @@ export function BookingPageSettings() {
     <section className="rounded-2xl border bg-white p-5">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xs font-black uppercase text-slate-500">Platform booking URL</p>
-            {slugChanged && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase text-amber-800">Unsaved change</span>}
-          </div>
+          <div className="flex flex-wrap items-center gap-2"><p className="text-xs font-black uppercase text-slate-500">Platform booking URL</p>{slugChanged && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase text-amber-800">Unsaved change</span>}</div>
           <label htmlFor="booking-url-slug" className="sr-only">Booking address</label>
           <div className={`mt-2 flex flex-col overflow-hidden rounded-xl border bg-slate-50 font-mono text-sm font-bold focus-within:ring-2 sm:flex-row ${slugIsValid ? 'border-slate-300 focus-within:border-indigo-500 focus-within:ring-indigo-100' : 'border-rose-300 focus-within:ring-rose-100'}`}>
             <span className="px-3 pt-3 text-slate-500 sm:py-3 sm:pr-0">https://</span>
-            <input
-              id="booking-url-slug"
-              value={page.publicSlug}
-              onChange={event => update('publicSlug', sanitiseBookingSlug(event.target.value))}
-              onBlur={() => update('publicSlug', page.publicSlug.replace(/-+$/, ''))}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              inputMode="url"
-              maxLength={63}
-              aria-invalid={!slugIsValid}
-              aria-describedby="booking-url-help"
-              className="min-w-0 flex-1 bg-transparent px-3 py-2 text-indigo-700 outline-none sm:px-1 sm:py-3"
-            />
+            <input id="booking-url-slug" value={page.publicSlug} onChange={event => update('publicSlug', sanitiseBookingSlug(event.target.value))} onBlur={() => update('publicSlug', page.publicSlug.replace(/-+$/, ''))} autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="url" maxLength={63} aria-invalid={!slugIsValid} aria-describedby="booking-url-help" className="min-w-0 flex-1 bg-transparent px-3 py-2 text-indigo-700 outline-none sm:px-1 sm:py-3" />
             <span className="break-all px-3 pb-3 text-slate-500 sm:py-3 sm:pl-0">.kasimshah.com/book</span>
           </div>
-          <p id="booking-url-help" className={`mt-2 text-xs leading-5 ${slugIsValid ? 'text-slate-500' : 'font-bold text-rose-700'}`}>
-            {slugIsValid
-              ? 'Use lower-case letters, numbers and hyphens. Saving a new address keeps the previous booking link available for 12 months.'
-              : slugResult.error?.issues[0]?.message || 'Enter a valid booking address.'}
-          </p>
+          <p id="booking-url-help" className={`mt-2 text-xs leading-5 ${slugIsValid ? 'text-slate-500' : 'font-bold text-rose-700'}`}>{slugIsValid ? 'Use lower-case letters, numbers and hyphens. Saving a new address keeps the previous booking link available for 12 months.' : slugResult.error?.issues[0]?.message || 'Enter a valid booking address.'}</p>
           {slugChanged && slugIsValid && <p className="mt-2 break-all text-xs font-bold text-indigo-700">New address: {editableBookingUrl}</p>}
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`rounded-full px-3 py-1 text-xs font-black ${page.published && page.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{page.published && page.enabled ? 'Live' : 'Not public'}</span>
-        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-black ${page.published && page.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{page.published && page.enabled ? 'Live' : 'Not public'}</span>
       </div>
     </section>
 
-    <div className="grid gap-5 2xl:grid-cols-[420px_minmax(0,1fr)]">
+    <div className="grid gap-5 2xl:grid-cols-[440px_minmax(0,1fr)]">
       <div className="space-y-5">
         <section className="rounded-2xl border bg-white p-5">
-          <div className="flex items-start gap-3"><Palette className="mt-0.5 h-5 w-5 text-indigo-600" /><div><h2 className="text-lg font-black">Brand controls</h2><p className="mt-1 text-xs leading-5 text-slate-500">These are the only visual settings. Typography, spacing, steps, cards, summary and payment handoff stay identical across every business.</p></div></div>
+          <div className="flex items-start gap-3"><Palette className="mt-0.5 h-5 w-5 text-indigo-600" /><div><h2 className="text-lg font-black">Brand controls</h2><p className="mt-1 text-xs leading-5 text-slate-500">Logo and colour controls apply immediately to the live preview.</p></div></div>
           <div className="mt-5 grid gap-4">
             <label className="text-sm font-bold">Logo URL<input type="url" value={page.logoUrl || ''} onChange={event => update('logoUrl', event.target.value || null)} placeholder="https://…" className="mt-1 w-full rounded-xl border p-3" /></label>
-            <div className="grid grid-cols-2 gap-4">
-              <label className="text-sm font-bold">Primary colour<input type="color" value={page.theme.primaryColor} onChange={event => update('theme', { ...page.theme, primaryColor: event.target.value })} className="mt-1 h-12 w-full rounded-lg border p-1" /></label>
-              <label className="text-sm font-bold">Accent colour<input type="color" value={page.theme.accentColor} onChange={event => update('theme', { ...page.theme, accentColor: event.target.value })} className="mt-1 h-12 w-full rounded-lg border p-1" /></label>
-            </div>
+            <div className="grid grid-cols-2 gap-4"><label className="text-sm font-bold">Primary colour<input type="color" value={page.theme.primaryColor} onChange={event => update('theme', { ...page.theme, primaryColor: event.target.value })} className="mt-1 h-12 w-full rounded-lg border p-1" /></label><label className="text-sm font-bold">Accent colour<input type="color" value={page.theme.accentColor} onChange={event => update('theme', { ...page.theme, accentColor: event.target.value })} className="mt-1 h-12 w-full rounded-lg border p-1" /></label></div>
             <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={page.enabled} onChange={event => update('enabled', event.target.checked)} />Accept bookings through the platform URL</label>
           </div>
-          <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-xs leading-5 text-indigo-950"><div className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p><strong>Platform standard:</strong> business name, live services, staff, locations and prices come from verified workspace data. Visual page copy and layout are not tenant-editable.</p></div></div>
         </section>
 
         <section className="rounded-2xl border bg-white p-5">
-          <div className="flex items-start gap-3"><LockKeyhole className="mt-0.5 h-5 w-5 text-indigo-600" /><div><h2 className="text-lg font-black">Booking and payment rules</h2><p className="mt-1 text-xs leading-5 text-slate-500">Operational rules can change without changing the universal customer experience.</p></div></div>
+          <div className="flex items-start gap-3"><MapPin className="mt-0.5 h-5 w-5 text-indigo-600" /><div><h2 className="text-lg font-black">Appointment types</h2><p className="mt-1 text-xs leading-5 text-slate-500">Only enabled appointment types appear to customers. When one type is enabled, the customer skips this choice entirely.</p></div></div>
+          <div className="mt-4 grid gap-3">
+            <ChannelToggle title="At the business" description="Customers visit one of your active locations." checked={enabledChannels.includes('in_shop')} onChange={checked => toggleChannel('in_shop', checked)} />
+            <ChannelToggle title="Mobile appointments" description="Your team travels to the address supplied by the customer." checked={enabledChannels.includes('mobile')} onChange={checked => toggleChannel('mobile', checked)} />
+          </div>
+          <Link to="/app/settings/availability" className="mt-4 inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-black text-indigo-800">Set separate hours for each appointment type</Link>
+        </section>
+
+        <section className="rounded-2xl border bg-white p-5">
+          <div className="flex items-start gap-3"><LockKeyhole className="mt-0.5 h-5 w-5 text-indigo-600" /><div><h2 className="text-lg font-black">Booking and payment rules</h2><p className="mt-1 text-xs leading-5 text-slate-500">Customers can always browse at least six weeks of dates.</p></div></div>
           <div className="mt-5 grid grid-cols-2 gap-4">
             <label className="text-sm font-bold">Minimum notice (minutes)<input type="number" min={0} value={page.bookingRules.minimumNoticeMinutes} onChange={event => update('bookingRules', { ...page.bookingRules, minimumNoticeMinutes: Number(event.target.value) })} className="mt-1 w-full rounded-xl border p-3" /></label>
-            <label className="text-sm font-bold">Future window (days)<input type="number" min={1} max={730} value={page.bookingRules.maximumFutureDays} onChange={event => update('bookingRules', { ...page.bookingRules, maximumFutureDays: Number(event.target.value) })} className="mt-1 w-full rounded-xl border p-3" /></label>
+            <label className="text-sm font-bold">Future booking window (days)<input type="number" min={minimumCustomerWindowDays} max={730} value={page.bookingRules.maximumFutureDays} onChange={event => update('bookingRules', { ...page.bookingRules, maximumFutureDays: Math.max(minimumCustomerWindowDays, Number(event.target.value)) })} className="mt-1 w-full rounded-xl border p-3" /><span className="mt-1 block text-xs font-normal text-slate-500">Minimum 42 days.</span></label>
             <label className="text-sm font-bold">Payment requirement<select value={page.paymentSettings.mode} onChange={event => update('paymentSettings', { ...page.paymentSettings, mode: event.target.value as BookingPageResponse['paymentSettings']['mode'] })} className="mt-1 w-full rounded-xl border bg-white p-3"><option value="NONE">No payment</option><option value="PAY_LATER">Pay later</option><option value="DEPOSIT">Deposit</option><option value="FULL">Full payment</option><option value="CUSTOMER_CHOICE">Customer choice</option></select></label>
             <label className="text-sm font-bold">Deposit %<input type="number" min={0} max={100} value={page.paymentSettings.depositPercentage} onChange={event => update('paymentSettings', { ...page.paymentSettings, depositPercentage: Number(event.target.value) })} className="mt-1 w-full rounded-xl border p-3" /></label>
           </div>
           <label className="mt-4 block text-sm font-bold">Cancellation policy<textarea value={page.cancellationSettings.policyText} onChange={event => update('cancellationSettings', { ...page.cancellationSettings, policyText: event.target.value })} rows={3} className="mt-1 w-full rounded-xl border p-3" /></label>
-          <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><p>When payment is due, the booking flow hands the customer to Stripe Checkout. Card details never pass through KS OS forms.</p></div>
+          <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><p>Customer cancellation and rescheduling approval rules are managed under <Link className="font-black text-indigo-700 underline" to="/app/settings/booking/customer-management">Customer booking management</Link>.</p></div>
         </section>
 
         <section className="rounded-2xl border bg-white p-5">
@@ -243,20 +251,15 @@ export function BookingPageSettings() {
       </div>
 
       <section className="min-w-0 rounded-2xl border bg-slate-100 p-3">
-        <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Universal live preview</p><p className="text-sm text-slate-600">Interactions are isolated from booking creation.</p></div>
-          <div className="flex rounded-lg border bg-white p-1">
-            <button onClick={() => setPreviewWidth('desktop')} aria-label="Desktop preview" aria-pressed={previewWidth === 'desktop'} className={`rounded-md p-2 ${previewWidth === 'desktop' ? 'bg-slate-900 text-white' : ''}`}><Monitor className="h-4 w-4" /></button>
-            <button onClick={() => setPreviewWidth('tablet')} aria-label="Tablet preview" aria-pressed={previewWidth === 'tablet'} className={`rounded-md p-2 ${previewWidth === 'tablet' ? 'bg-slate-900 text-white' : ''}`}><Tablet className="h-4 w-4" /></button>
-            <button onClick={() => setPreviewWidth('mobile')} aria-label="Mobile preview" aria-pressed={previewWidth === 'mobile'} className={`rounded-md p-2 ${previewWidth === 'mobile' ? 'bg-slate-900 text-white' : ''}`}><Smartphone className="h-4 w-4" /></button>
-          </div>
-        </header>
-        <div className="mx-auto overflow-auto rounded-xl bg-slate-50 p-2 transition-all" style={{ maxWidth: previewWidths[previewWidth] }}>
-          <PublicBookingFlow slug={loadedSlug} preview pageOverride={pageOverride} />
-        </div>
+        <header className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Universal live preview</p><p className="text-sm text-slate-600">Interactions are isolated from booking creation.</p></div><div className="flex rounded-lg border bg-white p-1"><button onClick={() => setPreviewWidth('desktop')} aria-label="Desktop preview" aria-pressed={previewWidth === 'desktop'} className={`rounded-md p-2 ${previewWidth === 'desktop' ? 'bg-slate-900 text-white' : ''}`}><Monitor className="h-4 w-4" /></button><button onClick={() => setPreviewWidth('tablet')} aria-label="Tablet preview" aria-pressed={previewWidth === 'tablet'} className={`rounded-md p-2 ${previewWidth === 'tablet' ? 'bg-slate-900 text-white' : ''}`}><Tablet className="h-4 w-4" /></button><button onClick={() => setPreviewWidth('mobile')} aria-label="Mobile preview" aria-pressed={previewWidth === 'mobile'} className={`rounded-md p-2 ${previewWidth === 'mobile' ? 'bg-slate-900 text-white' : ''}`}><Smartphone className="h-4 w-4" /></button></div></header>
+        <div className="mx-auto overflow-auto rounded-xl bg-slate-50 p-2 transition-all" style={{ maxWidth: previewWidths[previewWidth] }}><PublicBookingFlow slug={loadedSlug} preview pageOverride={pageOverride} /></div>
       </section>
     </div>
   </main>;
+}
+
+function ChannelToggle({ title, description, checked, onChange }: { title: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return <label className={`flex cursor-pointer items-start justify-between gap-4 rounded-2xl border p-4 transition ${checked ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white'}`}><span><span className="block text-sm font-black text-slate-950">{title}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{description}</span></span><input type="checkbox" checked={checked} onChange={event => onChange(event.target.checked)} className="mt-1 h-5 w-5 rounded" /></label>;
 }
 
 export default BookingPageSettings;

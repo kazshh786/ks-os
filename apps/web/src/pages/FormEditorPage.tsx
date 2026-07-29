@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import {
+  AlertCircle,
   ArrowLeft,
   CheckCircle2,
   Copy,
@@ -15,7 +16,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
-import type { FormField, FormSchemaJson } from '@ks-os/contracts';
+import { FormSchemaJsonSchema, type FormField, type FormSchemaJson } from '@ks-os/contracts';
 import { fetchWithAuth } from '../api/client.js';
 import { useWorkspace } from '../context/WorkspaceContext.js';
 import { getDataProvider } from '../data/data-provider.js';
@@ -32,6 +33,7 @@ const palette = [
   ['MULTIPLE_CHOICE', 'Checkboxes', 'Choose several answers'],
   ['SELECT', 'Dropdown', 'Compact choice list'],
   ['CONSENT_CHECKBOX', 'Consent statement', 'Explicit acknowledgement'],
+  ['TERMS_ACCEPTANCE', 'Terms acceptance', 'Required agreement to written terms'],
   ['SIGNATURE', 'Signature', 'Electronic signature field'],
   ['FILE_UPLOAD', 'File upload', 'Photos and supporting files'],
   ['RATING', 'Rating', 'A one-to-five score'],
@@ -42,6 +44,10 @@ const palette = [
 
 const choiceTypes = new Set(['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'SELECT']);
 type ThemeColourKey = 'primaryColor' | 'mutedColor' | 'backgroundColor' | 'cardColor';
+type DragSource = { kind: 'palette'; type: string } | { kind: 'field'; index: number } | null;
+type PublicLink = { formId: string; publicSlug: string; workspaceSlug: string; path: string; status: string };
+type PublishIssue = { key: string; message: string; fieldId?: string };
+
 const theme = {
   backgroundColor: '#f1f5f9',
   cardColor: '#ffffff',
@@ -69,9 +75,6 @@ const emptySchema = (): FormSchemaJson => ({
   },
 });
 
-type DragSource = { kind: 'palette'; type: string } | { kind: 'field'; index: number } | null;
-type PublicLink = { formId: string; publicSlug: string; workspaceSlug: string; path: string; status: string };
-
 function makeField(type: string, index: number): FormField {
   const label = palette.find(item => item[0] === type)?.[1] || 'Question';
   const field: FormField = {
@@ -84,7 +87,7 @@ function makeField(type: string, index: number): FormField {
     hidden: false,
     width: '100',
     validation: {},
-    sensitiveClassification: type === 'CONSENT_CHECKBOX' ? 'CONSENT' : type === 'SIGNATURE' ? 'PERSONAL' : 'STANDARD',
+    sensitiveClassification: ['CONSENT_CHECKBOX', 'TERMS_ACCEPTANCE'].includes(type) ? 'CONSENT' : type === 'SIGNATURE' ? 'PERSONAL' : 'STANDARD',
     translations: {},
     accessibility: {},
   };
@@ -92,6 +95,11 @@ function makeField(type: string, index: number): FormField {
   if (type === 'CONSENT_CHECKBOX') {
     field.label = 'Treatment consent';
     field.description = 'I confirm that I understand the treatment, possible risks and aftercare guidance, and I consent to proceed.';
+    field.required = true;
+  }
+  if (type === 'TERMS_ACCEPTANCE') {
+    field.label = 'Terms and conditions';
+    field.description = 'I have read and agree to the terms and conditions shown above.';
     field.required = true;
   }
   if (type === 'SIGNATURE') field.label = 'Your electronic signature';
@@ -109,18 +117,44 @@ function normalise(value: unknown): FormSchemaJson {
     fields: (source?.fields || []).map((field, index) => ({
       ...field,
       key: field.key || `field_${index + 1}`,
+      label: field.label || '',
       width: field.width || '100',
       validation: field.validation || {},
       sensitiveClassification: field.sensitiveClassification || 'STANDARD',
       translations: field.translations || {},
       accessibility: field.accessibility || {},
-    })),
+    })) as FormField[],
     pages: source?.pages || [],
     sections: source?.sections || [],
     logic: source?.logic || [],
     theme: { ...theme, ...source?.theme },
     settings: { ...base.settings, ...source?.settings },
   } as FormSchemaJson;
+}
+
+function publishIssuesFor(schema: FormSchemaJson, acknowledgement: string): PublishIssue[] {
+  const issues: PublishIssue[] = [];
+  const result = FormSchemaJsonSchema.safeParse(schema);
+  if (!result.success) {
+    result.error.issues.forEach((issue, issueIndex) => {
+      const fieldIndex = issue.path[0] === 'fields' && typeof issue.path[1] === 'number' ? issue.path[1] : undefined;
+      const field = fieldIndex === undefined ? undefined : schema.fields[fieldIndex];
+      const label = field?.label.trim() || `Field ${(fieldIndex ?? 0) + 1}`;
+      const path = issue.path.map(String).join('.');
+      let message = issue.message;
+      if (path.endsWith('.label')) message = `${label} needs a question or heading.`;
+      else if (path.endsWith('.description') && field?.type === 'CONSENT_CHECKBOX') message = `${label} needs the consent wording clients will accept.`;
+      else if (path.endsWith('.options') || issue.message.toLowerCase().includes('option')) message = `${label} needs at least two completed choices.`;
+      else if (path.endsWith('.key')) message = `${label} needs a valid internal field key.`;
+      else if (issue.message === 'At least one input field is required') message = 'Add at least one question customers can answer.';
+      else if (issue.message === 'Field keys must be unique') message = 'Each field needs a unique internal field key.';
+      issues.push({ key: `${path}:${issueIndex}`, message, fieldId: field?.id });
+    });
+  }
+  if (!acknowledgement.trim()) {
+    issues.push({ key: 'acknowledgement', message: 'Add the final acknowledgement customers sign before submitting.' });
+  }
+  return [...new Map(issues.map(issue => [`${issue.fieldId || 'form'}:${issue.message}`, issue])).values()];
 }
 
 export default function FormEditorPage() {
@@ -139,19 +173,20 @@ export default function FormEditorPage() {
   const [dragSource, setDragSource] = useState<DragSource>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [publicLink, setPublicLink] = useState<PublicLink | null>(null);
+  const [publishIssues, setPublishIssues] = useState<PublishIssue[]>([]);
   const history = useRef<FormSchemaJson[]>([]);
   const loaded = useRef(false);
 
-  const markDirty = () => setStatus('Unsaved changes');
+  const markDirty = useCallback(() => {
+    setStatus('Unsaved changes');
+    setPublishIssues([]);
+  }, []);
   const change = useCallback((next: FormSchemaJson) => {
     history.current = [...history.current.slice(-49), schema];
     setSchema(next);
     markDirty();
-  }, [schema]);
-
-  const updateTheme = (key: ThemeColourKey, value: string) => {
-    change({ ...schema, theme: { ...schema.theme, [key]: value } });
-  };
+  }, [markDirty, schema]);
+  const updateTheme = (key: ThemeColourKey, value: string) => change({ ...schema, theme: { ...schema.theme, [key]: value } });
 
   const loadPublicLink = useCallback(async (id: string) => {
     const response = await fetchWithAuth(`/api/v1/forms/${id}/public-link`);
@@ -190,7 +225,6 @@ export default function FormEditorPage() {
     ...schema,
     fields: schema.fields.map(field => field.id === id ? { ...field, ...patch } as FormField : field),
   });
-
   const addField = (type: string, index = schema.fields.length) => {
     const field = makeField(type, schema.fields.length + 1);
     const fields = [...schema.fields];
@@ -198,7 +232,6 @@ export default function FormEditorPage() {
     change({ ...schema, fields });
     setSelectedId(field.id);
   };
-
   const duplicateField = (field: FormField, index: number) => {
     const copy = {
       ...field,
@@ -211,42 +244,35 @@ export default function FormEditorPage() {
     change({ ...schema, fields });
     setSelectedId(copy.id);
   };
-
   const removeField = (id: string) => {
-    if (schema.fields.length === 1) {
-      setStatus('A form needs at least one answer field.');
-      return;
-    }
     if (!window.confirm('Delete this field?')) return;
     const fields = schema.fields.filter(field => field.id !== id);
     change({ ...schema, fields });
     setSelectedId(fields[0]?.id);
   };
-
   const onPaletteDragStart = (event: DragEvent, type: string) => {
     setDragSource({ kind: 'palette', type });
     event.dataTransfer.effectAllowed = 'copy';
     event.dataTransfer.setData('text/plain', `palette:${type}`);
   };
-
   const onFieldDragStart = (event: DragEvent, index: number) => {
     setDragSource({ kind: 'field', index });
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', `field:${index}`);
   };
-
   const dropAt = (event: DragEvent, index: number) => {
     event.preventDefault();
     if (!dragSource) return;
-    if (dragSource.kind === 'palette') {
-      addField(dragSource.type, index);
-    } else {
+    if (dragSource.kind === 'palette') addField(dragSource.type, index);
+    else {
       const fields = [...schema.fields];
       const [moved] = fields.splice(dragSource.index, 1);
-      const adjustedIndex = dragSource.index < index ? index - 1 : index;
-      fields.splice(adjustedIndex, 0, moved);
-      change({ ...schema, fields });
-      setSelectedId(moved.id);
+      if (moved) {
+        const adjustedIndex = dragSource.index < index ? index - 1 : index;
+        fields.splice(adjustedIndex, 0, moved);
+        change({ ...schema, fields });
+        setSelectedId(moved.id);
+      }
     }
     setDragSource(null);
     setDropIndex(null);
@@ -280,7 +306,7 @@ export default function FormEditorPage() {
   }, [currentFormId, loadPublicLink, navigate, payload, revision]);
 
   const save = useCallback(async () => {
-    setStatus('Saving…');
+    setStatus('Saving draft…');
     try {
       await persistDraft();
       setStatus('Draft saved');
@@ -289,13 +315,28 @@ export default function FormEditorPage() {
     }
   }, [persistDraft]);
 
+  const focusIssue = (issue: PublishIssue) => {
+    if (!issue.fieldId) return;
+    setSelectedId(issue.fieldId);
+    window.requestAnimationFrame(() => document.querySelector(`[data-form-field-id="${issue.fieldId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  };
+
   const publish = async () => {
-    setStatus('Saving and publishing…');
+    setStatus('Saving draft…');
     try {
       const id = await persistDraft();
+      const issues = publishIssuesFor(schema, acknowledgement);
+      if (issues.length) {
+        setPublishIssues(issues);
+        focusIssue(issues[0]);
+        setStatus(`Draft saved · ${issues.length} ${issues.length === 1 ? 'item' : 'items'} to fix before publishing`);
+        return;
+      }
+      setStatus('Publishing…');
       await getDataProvider().publishForm(id);
       const link = await loadPublicLink(id);
       setPublicLink({ ...link, status: 'PUBLISHED' });
+      setPublishIssues([]);
       setStatus('Published');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Publish failed');
@@ -316,6 +357,7 @@ export default function FormEditorPage() {
       : '';
   const isLive = publicLink?.status === 'PUBLISHED';
   const accentColor = schema.theme.mutedColor;
+  const statusIsError = status.toLowerCase().includes('failed') || status.toLowerCase().includes('fix before');
 
   return <div className="-m-4 min-h-[calc(100vh-7rem)] bg-slate-100">
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
@@ -323,7 +365,7 @@ export default function FormEditorPage() {
         <button type="button" onClick={() => navigate('/app/forms')} aria-label="Back to consent forms" className="rounded-xl border border-slate-200 p-2.5 text-slate-600 hover:bg-slate-50"><ArrowLeft size={18} /></button>
         <div className="min-w-48 flex-1">
           <input aria-label="Form name" value={title} onChange={event => { setTitle(event.target.value); markDirty(); }} className="w-full bg-transparent text-lg font-black text-slate-950 outline-none" />
-          <div className="mt-0.5 flex items-center gap-2 text-xs font-bold"><span className={status === 'Published' ? 'text-emerald-700' : status.includes('failed') || status.includes('required') ? 'text-rose-700' : 'text-slate-500'}>{status}</span>{isLive && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Live</span>}</div>
+          <div className="mt-0.5 flex items-center gap-2 text-xs font-bold"><span className={status === 'Published' ? 'text-emerald-700' : statusIsError ? 'text-rose-700' : 'text-slate-500'}>{status}</span>{isLive && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Live</span>}</div>
         </div>
         <button type="button" disabled={!history.current.length} onClick={() => { const prior = history.current.pop(); if (prior) { setSchema(prior); markDirty(); } }} className="rounded-xl border border-slate-200 p-2.5 text-slate-600 disabled:opacity-30" aria-label="Undo"><Undo2 size={18} /></button>
         <button type="button" onClick={() => void save()} className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-black text-slate-800 hover:bg-slate-50"><Save size={17} />Save draft</button>
@@ -347,6 +389,11 @@ export default function FormEditorPage() {
             <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-500">{schema.fields.length} {schema.fields.length === 1 ? 'field' : 'fields'}</span>
           </div>
 
+          {publishIssues.length > 0 && <section role="alert" className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
+            <div className="flex gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div className="min-w-0"><h3 className="font-black text-amber-950">Draft saved — finish these before publishing</h3><p className="mt-1 text-sm text-amber-800">Your work is safe. Select an item to jump to the field that needs attention.</p></div></div>
+            <div className="mt-4 grid gap-2">{publishIssues.map(issue => <button key={issue.key} type="button" onClick={() => focusIssue(issue)} className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-left text-sm font-bold text-amber-950 hover:border-amber-400">{issue.message}</button>)}</div>
+          </section>}
+
           <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl shadow-slate-200/60" style={{ color: schema.theme.textColor }}>
             <div className="border-b border-slate-100 px-6 py-7 sm:px-8" style={{ background: schema.theme.cardColor }}>
               <div className="mb-5 flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em]" style={{ color: schema.theme.primaryColor }}><LayoutTemplate size={16} />Consent form</div>
@@ -357,16 +404,16 @@ export default function FormEditorPage() {
 
             <div className="space-y-1 px-4 py-5 sm:px-6 sm:py-7" style={{ background: schema.theme.cardColor }}>
               {schema.fields.map((field, index) => {
-                const key = field.key || field.id;
+                const answerKey = field.key || field.id;
                 return <Fragment key={field.id}>
                   <div onDragOver={event => { event.preventDefault(); setDropIndex(index); }} onDragLeave={() => setDropIndex(current => current === index ? null : current)} onDrop={event => dropAt(event, index)} className={`h-3 rounded-full transition ${dropIndex === index ? 'my-2 h-12 border-2 border-dashed border-indigo-400 bg-indigo-50' : ''}`} aria-hidden />
-                  <article onClick={() => setSelectedId(field.id)} className={`group relative rounded-2xl border p-5 transition ${selectedId === field.id ? 'border-indigo-500 bg-indigo-50/20 ring-4 ring-indigo-100' : 'border-transparent hover:border-slate-200 hover:bg-slate-50/60'}`}>
+                  <article data-form-field-id={field.id} onClick={() => setSelectedId(field.id)} className={`group relative rounded-2xl border p-5 transition ${selectedId === field.id ? 'border-indigo-500 bg-indigo-50/20 ring-4 ring-indigo-100' : 'border-transparent hover:border-slate-200 hover:bg-slate-50/60'}`}>
                     <div className="absolute -left-3 top-5 flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-1 opacity-0 shadow-sm transition group-hover:opacity-100 focus-within:opacity-100">
-                      <button type="button" draggable onDragStart={event => onFieldDragStart(event, index)} onDragEnd={() => { setDragSource(null); setDropIndex(null); }} className="cursor-grab rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 active:cursor-grabbing" aria-label={`Drag ${field.label}`}><GripVertical size={16} /></button>
-                      <button type="button" onClick={event => { event.stopPropagation(); duplicateField(field, index); }} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-indigo-600" aria-label={`Duplicate ${field.label}`}><Copy size={15} /></button>
-                      <button type="button" onClick={event => { event.stopPropagation(); removeField(field.id); }} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label={`Delete ${field.label}`}><Trash2 size={15} /></button>
+                      <button type="button" draggable onDragStart={event => onFieldDragStart(event, index)} onDragEnd={() => { setDragSource(null); setDropIndex(null); }} className="cursor-grab rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 active:cursor-grabbing" aria-label={`Drag ${field.label || `field ${index + 1}`}`}><GripVertical size={16} /></button>
+                      <button type="button" onClick={event => { event.stopPropagation(); duplicateField(field, index); }} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-indigo-600" aria-label={`Duplicate ${field.label || `field ${index + 1}`}`}><Copy size={15} /></button>
+                      <button type="button" onClick={event => { event.stopPropagation(); removeField(field.id); }} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label={`Delete ${field.label || `field ${index + 1}`}`}><Trash2 size={15} /></button>
                     </div>
-                    <FormFieldControl field={field} value={answers[key]} onChange={value => setAnswers(current => ({ ...current, [key]: value }))} builderMode />
+                    <FormFieldControl field={field} value={answers[answerKey]} onChange={value => setAnswers(current => ({ ...current, [answerKey]: value }))} builderMode />
                   </article>
                 </Fragment>;
               })}
@@ -384,7 +431,7 @@ export default function FormEditorPage() {
           <label className="block text-sm font-bold text-slate-800">Question or heading<input value={selected.label} onChange={event => updateField(selected.id, { label: event.target.value })} className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 font-normal outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" /></label>
           <label className="block text-sm font-bold text-slate-800">Description or consent wording<textarea value={selected.description || ''} onChange={event => updateField(selected.id, { description: event.target.value || undefined })} rows={4} className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 font-normal outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" /></label>
           {!['HEADING', 'INFORMATION', 'DIVIDER'].includes(selected.type) && <label className="block text-sm font-bold text-slate-800">Placeholder<input value={selected.placeholder || ''} onChange={event => updateField(selected.id, { placeholder: event.target.value || undefined })} className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 font-normal" /></label>}
-          {choiceTypes.has(selected.type) && <section className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4"><div className="flex items-center justify-between"><div><h3 className="font-black text-indigo-950">Choices</h3><p className="text-xs text-indigo-700">Edit the available answers.</p></div><button type="button" onClick={() => updateField(selected.id, { options: [...(selected.options || []), { id: crypto.randomUUID(), label: `Option ${(selected.options?.length || 0) + 1}` }] })} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-indigo-700 shadow-sm"><Plus size={14} className="inline" /> Add</button></div><div className="mt-3 space-y-2">{selected.options?.map((option, optionIndex) => <div key={option.id} className="flex gap-2"><input aria-label={`Choice ${optionIndex + 1}`} value={option.label} onChange={event => updateField(selected.id, { options: selected.options!.map(item => item.id === option.id ? { ...item, label: event.target.value } : item) })} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white p-2.5 text-sm" /><button type="button" disabled={(selected.options?.length || 0) <= 2} onClick={() => updateField(selected.id, { options: selected.options!.filter(item => item.id !== option.id) })} aria-label={`Remove ${option.label}`} className="rounded-xl border border-slate-200 bg-white p-2.5 text-rose-700 disabled:opacity-30"><Trash2 size={16} /></button></div>)}</div></section>}
+          {choiceTypes.has(selected.type) && <section className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4"><div className="flex items-center justify-between"><div><h3 className="font-black text-indigo-950">Choices</h3><p className="text-xs text-indigo-700">Drafts can be incomplete. Publishing requires two completed choices.</p></div><button type="button" onClick={() => updateField(selected.id, { options: [...(selected.options || []), { id: crypto.randomUUID(), label: `Option ${(selected.options?.length || 0) + 1}` }] })} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-indigo-700 shadow-sm"><Plus size={14} className="inline" /> Add</button></div><div className="mt-3 space-y-2">{selected.options?.map((option, optionIndex) => <div key={option.id} className="flex gap-2"><input aria-label={`Choice ${optionIndex + 1}`} value={option.label} onChange={event => updateField(selected.id, { options: selected.options!.map(item => item.id === option.id ? { ...item, label: event.target.value } : item) })} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white p-2.5 text-sm" /><button type="button" onClick={() => updateField(selected.id, { options: selected.options!.filter(item => item.id !== option.id) })} aria-label={`Remove ${option.label || `choice ${optionIndex + 1}`}`} className="rounded-xl border border-slate-200 bg-white p-2.5 text-rose-700"><Trash2 size={16} /></button></div>)}</div></section>}
           {!['HEADING', 'INFORMATION', 'DIVIDER'].includes(selected.type) && <label className="flex items-center justify-between rounded-2xl border border-slate-200 p-4 text-sm font-bold"><span><span className="block text-slate-900">Required answer</span><span className="mt-0.5 block text-xs font-normal text-slate-500">Clients cannot submit without it.</span></span><input type="checkbox" checked={selected.required} onChange={event => updateField(selected.id, { required: event.target.checked })} className="h-5 w-5 rounded text-indigo-600" /></label>}
           <div className="grid grid-cols-2 gap-3"><label className="text-sm font-bold">Width<select value={selected.width} onChange={event => updateField(selected.id, { width: event.target.value as FormField['width'] })} className="mt-1.5 w-full rounded-xl border border-slate-200 p-2.5 font-normal">{['50', '100'].map(value => <option key={value} value={value}>{value}%</option>)}</select></label><label className="text-sm font-bold">Data type<select value={selected.sensitiveClassification} onChange={event => updateField(selected.id, { sensitiveClassification: event.target.value as FormField['sensitiveClassification'] })} className="mt-1.5 w-full rounded-xl border border-slate-200 p-2.5 font-normal"><option value="STANDARD">Standard</option><option value="PERSONAL">Personal</option><option value="SENSITIVE">Sensitive</option><option value="MEDICAL">Medical</option><option value="CONSENT">Consent</option></select></label></div>
           <label className="block text-sm font-bold">Internal field key<input value={selected.key || ''} onChange={event => updateField(selected.id, { key: event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_') })} className="mt-1.5 w-full rounded-xl border border-slate-200 p-2.5 font-mono font-normal" /></label>

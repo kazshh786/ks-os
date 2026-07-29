@@ -53,6 +53,9 @@ export const BookingPageThemeSchema = z.object({
 }).strict();
 export type BookingPageTheme = z.infer<typeof BookingPageThemeSchema>;
 
+export const BookingChannelSchema = z.enum(['in_shop', 'mobile']);
+export type BookingChannel = z.infer<typeof BookingChannelSchema>;
+
 const bookingRulesSchema = z.object({
   minimumNoticeMinutes: z.number().int().min(0).max(525_600).default(60),
   maximumFutureDays: z.number().int().min(1).max(730).default(90),
@@ -60,6 +63,7 @@ const bookingRulesSchema = z.object({
   allowAnyStaff: z.boolean().default(true),
   allowGuestBooking: z.boolean().default(true),
   customerNotesEnabled: z.boolean().default(true),
+  enabledBookingChannels: z.array(BookingChannelSchema).min(1).max(2).default(['in_shop']),
 }).strict();
 
 const paymentSettingsSchema = z.object({
@@ -191,7 +195,7 @@ export const BookingOperationsItemSchema = z.object({
   service: z.object({ id: z.string().uuid().nullable(), name: z.string(), durationMinutes: z.number().int().nonnegative() }),
   staff: z.object({ id: z.string().uuid(), name: z.string() }),
   location: z.object({ id: z.string().uuid().nullable(), name: z.string().nullable() }),
-  bookingChannel: z.enum(['in_shop', 'mobile']),
+  bookingChannel: BookingChannelSchema,
   paymentStatus: z.string(),
   quotedAmount: z.number().int().nonnegative(),
   intakeStatus: z.enum(['NOT_REQUIRED', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE']),
@@ -225,7 +229,7 @@ export const CreateBookingHoldSchema = z.object({
   locationId: z.string().uuid().nullable().optional(),
   resourceId: z.string().uuid().nullable().optional(),
   startTime: z.string().datetime(),
-  bookingChannel: z.enum(['in_shop', 'mobile']).default('in_shop'),
+  bookingChannel: BookingChannelSchema.default('in_shop'),
   idempotencyKey: z.string().uuid(),
 }).strict();
 export type CreateBookingHold = z.infer<typeof CreateBookingHoldSchema>;
