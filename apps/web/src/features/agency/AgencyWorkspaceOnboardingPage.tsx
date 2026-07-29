@@ -1,4 +1,4 @@
 export {
-  AgencyWorkspaceOnboardingManager as AgencyWorkspaceOnboardingPage,
-  AgencyWorkspaceOnboardingManager as default,
-} from './AgencyWorkspaceOnboardingManager';
+  AgencyWorkspaceLaunchPipeline as AgencyWorkspaceOnboardingPage,
+  AgencyWorkspaceLaunchPipeline as default,
+} from './AgencyWorkspaceLaunchPipeline';
