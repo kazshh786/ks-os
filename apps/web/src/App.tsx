@@ -89,6 +89,7 @@ import { AgencyBookingSystemPage } from './features/agency/AgencyBookingSystem.j
 import { AgencyProvisioningPage } from './features/agency/AgencyProvisioning.js';
 import { AgencyFactFindingPage } from './features/agency/AgencyFactFinding.js';
 import AgencyTemplateLibraryPage from './features/agency/AgencyTemplateLibraryPage.js';
+import AgencyDesignStudioPage from './features/agency/AgencyDesignStudioPage.js';
 import { SiteStudioPage } from './features/agency/SiteStudioPage.js';
 import AgencyWorkspaceUsersPage from './features/agency/AgencyWorkspaceUsersPage.js';
 import ClientFactFindingPage from './features/fact-finding/ClientFactFindingPage.js';
@@ -183,8 +184,6 @@ const AppContent: React.FC = () => {
           <Route path="settings/integrations" element={<RoleRoute allowedRoles={['owner']}><Integrations /></RoleRoute>} />
           <Route path="calendar" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL']}><StaffCalendarPage /></RoleRoute>} />
           <Route path="bookings" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL']}><BookingListPage /></RoleRoute>} />
-          
-          {/* Phase 3: Reception Desk is now connected */}
           <Route path="reception" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="BOOKINGS_CREATE"><ReceptionPage /></RoleRoute>} />
           <Route path="clients/*" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="CLIENTS_VIEW_BASIC"><ClientCRMPage /></RoleRoute>} />
           <Route path="pos" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="POS_USE"><POSCheckoutPage /></RoleRoute>} />
@@ -227,8 +226,6 @@ const AppContent: React.FC = () => {
           <Route path="tasks" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL']}><TasksPage /></RoleRoute>} />
           <Route path="tasks/my" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL']}><TasksPage /></RoleRoute>} />
           <Route path="tasks/:taskId" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL']}><TaskDetailPage /></RoleRoute>} />
-          
-          {/* Finance Routes */}
           <Route path="finance" element={<RoleRoute allowedRoles={['owner']}><FinanceOverviewPage /></RoleRoute>} />
           <Route path="finance/payouts" element={<RoleRoute allowedRoles={['owner']}><PayoutsListPage /></RoleRoute>} />
           <Route path="finance/payouts/:payoutId" element={<RoleRoute allowedRoles={['owner']}><PayoutDetailPage /></RoleRoute>} />
@@ -252,6 +249,7 @@ const AppContent: React.FC = () => {
           <Route path="bookings" element={<AgencyBookingSystemPage />} />
           <Route path="provisioning" element={<AgencyCapabilityRoute capabilities={['provisioning.read']}><AgencyProvisioningPage /></AgencyCapabilityRoute>} />
           <Route path="fact-finding" element={<AgencyCapabilityRoute capabilities={['fact_finding.read']}><AgencyFactFindingPage /></AgencyCapabilityRoute>} />
+          <Route path="design-studio" element={<AgencyCapabilityRoute capabilities={['sites.templates.read']}><AgencyDesignStudioPage /></AgencyCapabilityRoute>} />
           <Route path="templates" element={<AgencyCapabilityRoute capabilities={['sites.templates.read']}><AgencyTemplateLibraryPage /></AgencyCapabilityRoute>} />
           <Route path="sites/:siteReference/studio" element={<AgencyCapabilityRoute capabilities={['sites.studio.read']}><SiteStudioPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
