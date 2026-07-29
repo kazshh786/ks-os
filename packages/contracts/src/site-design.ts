@@ -1,16 +1,8 @@
 import { z } from 'zod';
 
 export const SiteDesignPresetKeySchema = z.enum([
-  'NORTHLIGHT',
-  'EDITORIAL',
-  'MODERN',
-  'LUXURY',
-  'WELLNESS',
-  'CLINICAL',
-  'FRIENDLY',
-  'BOLD',
-  'LOCAL',
-  'CREATIVE',
+  'NORTHLIGHT', 'EDITORIAL', 'MODERN', 'LUXURY', 'WELLNESS',
+  'CLINICAL', 'FRIENDLY', 'BOLD', 'LOCAL', 'CREATIVE',
 ]);
 export type SiteDesignPresetKey = z.infer<typeof SiteDesignPresetKeySchema>;
 
@@ -41,16 +33,9 @@ export const UpdateSiteStudioThemeSchema = z.object({
 export type UpdateSiteStudioTheme = z.infer<typeof UpdateSiteStudioThemeSchema>;
 
 export const SiteStudioSectionVariantSchema = z.enum([
-  'editorial',
-  'grid',
-  'split',
-  'compact',
-  'standard',
-  'featured',
-  'quiet',
+  'editorial', 'grid', 'split', 'compact', 'standard', 'featured', 'quiet',
 ]);
 export type SiteStudioSectionVariant = z.infer<typeof SiteStudioSectionVariantSchema>;
-
 export const UpdateSiteStudioSectionVariantSchema = z.object({
   variant: SiteStudioSectionVariantSchema,
 }).strict();
@@ -63,147 +48,48 @@ export interface SiteDesignPreset {
   theme: SiteThemeEditor;
 }
 
+const preset = (
+  key: SiteDesignPresetKey,
+  name: string,
+  description: string,
+  bestFor: string[],
+  colours: Pick<SiteThemeEditor,
+    'primaryColour' | 'secondaryColour' | 'accentColour' | 'backgroundColour'
+    | 'surfaceColour' | 'textColour' | 'mutedTextColour' | 'borderColour'>,
+  options: Omit<SiteThemeEditor, keyof typeof colours>,
+): SiteDesignPreset => ({ key, name, description, bestFor, theme: { ...colours, ...options } });
+
 export const SITE_DESIGN_PRESETS: readonly SiteDesignPreset[] = [
-  {
-    key: 'NORTHLIGHT',
-    name: 'Northlight',
-    description: 'Calm, trustworthy and spacious with a strong service-led hierarchy.',
-    bestFor: ['Appointment businesses', 'Consultants', 'Professional services'],
-    theme: {
-      primaryColour: '#16324F', secondaryColour: '#365E71', accentColour: '#A64F2A',
-      backgroundColour: '#F8FAFC', surfaceColour: '#FFFFFF', textColour: '#172025',
-      mutedTextColour: '#4B5563', borderColour: '#D7DEE5', headingFontKey: 'SYSTEM_SERIF',
-      bodyFontKey: 'SYSTEM_SANS', radiusScale: 'LARGE', spacingDensity: 'AIRY',
-      containerWidth: 'STANDARD', buttonStyle: 'SOLID', imageStyle: 'ROUNDED',
-      motionPreference: 'REDUCED',
-    },
-  },
-  {
-    key: 'EDITORIAL',
-    name: 'Editorial',
-    description: 'Warm, considered and content-rich with magazine-inspired typography.',
-    bestFor: ['Creative studios', 'Coaches', 'Premium personal brands'],
-    theme: {
-      primaryColour: '#2B2118', secondaryColour: '#6B5B4D', accentColour: '#A14D2F',
-      backgroundColour: '#FBF7F2', surfaceColour: '#FFFFFF', textColour: '#211A15',
-      mutedTextColour: '#5F574F', borderColour: '#DED5CB', headingFontKey: 'EDITORIAL_SERIF',
-      bodyFontKey: 'SYSTEM_SERIF', radiusScale: 'SMALL', spacingDensity: 'AIRY',
-      containerWidth: 'NARROW', buttonStyle: 'OUTLINE', imageStyle: 'EDITORIAL',
-      motionPreference: 'REDUCED',
-    },
-  },
-  {
-    key: 'MODERN',
-    name: 'Modern',
-    description: 'Crisp, efficient and product-like with clear actions and compact scanning.',
-    bestFor: ['Technology', 'Agencies', 'B2B services'],
-    theme: {
-      primaryColour: '#111827', secondaryColour: '#334155', accentColour: '#2563EB',
-      backgroundColour: '#F8FAFC', surfaceColour: '#FFFFFF', textColour: '#111827',
-      mutedTextColour: '#475569', borderColour: '#CBD5E1', headingFontKey: 'SYSTEM_SANS',
-      bodyFontKey: 'SYSTEM_SANS', radiusScale: 'MEDIUM', spacingDensity: 'COMFORTABLE',
-      containerWidth: 'WIDE', buttonStyle: 'SOLID', imageStyle: 'ROUNDED',
-      motionPreference: 'REDUCED',
-    },
-  },
-  {
-    key: 'LUXURY',
-    name: 'Luxury',
-    description: 'Refined and premium with restrained colour, generous whitespace and elegant imagery.',
-    bestFor: ['Aesthetics', 'Luxury services', 'Boutique hospitality'],
-    theme: {
-      primaryColour: '#241A2A', secondaryColour: '#5B4766', accentColour: '#9B6A2F',
-      backgroundColour: '#FCFAF7', surfaceColour: '#FFFFFF', textColour: '#211822',
-      mutedTextColour: '#5E5662', borderColour: '#DED6E0', headingFontKey: 'EDITORIAL_SERIF',
-      bodyFontKey: 'SYSTEM_SANS', radiusScale: 'SMALL', spacingDensity: 'AIRY',
-      containerWidth: 'STANDARD', buttonStyle: 'OUTLINE', imageStyle: 'EDITORIAL',
-      motionPreference: 'REDUCED',
-    },
-  },
-  {
-    key: 'WELLNESS',
-    name: 'Wellness',
-    description: 'Natural, reassuring and human with soft surfaces and relaxed spacing.',
-    bestFor: ['Wellbeing', 'Therapy', 'Holistic services'],
-    theme: {
-      primaryColour: '#193B36', secondaryColour: '#416A62', accentColour: '#A84E31',
-      backgroundColour: '#F4FAF8', surfaceColour: '#FFFFFF', textColour: '#15312D',
-      mutedTextColour: '#49615D', borderColour: '#CFE0DC', headingFontKey: 'SYSTEM_SERIF',
-      bodyFontKey: 'SYSTEM_SANS', radiusScale: 'LARGE', spacingDensity: 'AIRY',
-      containerWidth: 'STANDARD', buttonStyle: 'SOFT', imageStyle: 'ROUNDED',
-      motionPreference: 'REDUCED',
-    },
-  },
-  {
-    key: 'CLINICAL',
-    name: 'Clinical',
-    description: 'Clear, precise and credible with high legibility and predictable information patterns.',
-    bestFor: ['Clinics', 'Healthcare', 'Regulated services'],
-    theme: {
-      primaryColour: '#12344A', secondaryColour: '#316A82', accentColour: '#007A6F',
-      backgroundColour: '#F7FBFD', surfaceColour: '#FFFFFF', textColour: '#102A3A',
-      mutedTextColour: '#45626F', borderColour: '#C9DCE5', headingFontKey: 'SYSTEM_SANS',
-      bodyFontKey: 'SYSTEM_SANS', radiusScale: 'SMALL', spacingDensity: 'COMFORTABLE',
-      containerWidth: 'STANDARD', buttonStyle: 'SOLID', imageStyle: 'SQUARE',
-      motionPreference: 'NONE',
-    },
-  },
-  {
-    key: 'FRIENDLY',
-    name: 'Friendly',
-    description: 'Approachable and welcoming with rounded forms, warm neutrals and obvious actions.',
-    bestFor: ['Family services', 'Education', 'Community organisations'],
-    theme: {
-      primaryColour: '#3C2A21', secondaryColour: '#775548', accentColour: '#B84A3A',
-      backgroundColour: '#FFF8F4', surfaceColour: '#FFFFFF', textColour: '#33251F',
-      mutedTextColour: '#66534A', borderColour: '#E8D6CE', headingFontKey: 'SYSTEM_SANS',
-      bodyFontKey: 'SYSTEM_SANS', radiusScale: 'LARGE', spacingDensity: 'COMFORTABLE',
-      containerWidth: 'STANDARD', buttonStyle: 'SOFT', imageStyle: 'ROUNDED',
-      motionPreference: 'REDUCED',
-    },
-  },
-  {
-    key: 'BOLD',
-    name: 'Bold',
-    description: 'Direct and high-impact with strong contrast, large type and decisive conversion points.',
-    bestFor: ['Trades', 'Fitness', 'Campaign landing pages'],
-    theme: {
-      primaryColour: '#191919', secondaryColour: '#3D3D3D', accentColour: '#A63D20',
-      backgroundColour: '#FAFAF7', surfaceColour: '#FFFFFF', textColour: '#181818',
-      mutedTextColour: '#555555', borderColour: '#D9D9D4', headingFontKey: 'SYSTEM_SANS',
-      bodyFontKey: 'SYSTEM_SANS', radiusScale: 'NONE', spacingDensity: 'COMFORTABLE',
-      containerWidth: 'WIDE', buttonStyle: 'SOLID', imageStyle: 'SQUARE',
-      motionPreference: 'STANDARD',
-    },
-  },
-  {
-    key: 'LOCAL',
-    name: 'Local',
-    description: 'Practical and familiar with location, trust and contact information prioritised.',
-    bestFor: ['Local services', 'Trades', 'Multi-location businesses'],
-    theme: {
-      primaryColour: '#183B2B', secondaryColour: '#496B54', accentColour: '#A34E2D',
-      backgroundColour: '#F8FBF7', surfaceColour: '#FFFFFF', textColour: '#173126',
-      mutedTextColour: '#52645A', borderColour: '#D5E1D8', headingFontKey: 'SYSTEM_SERIF',
-      bodyFontKey: 'SYSTEM_SANS', radiusScale: 'MEDIUM', spacingDensity: 'COMFORTABLE',
-      containerWidth: 'STANDARD', buttonStyle: 'SOLID', imageStyle: 'ROUNDED',
-      motionPreference: 'REDUCED',
-    },
-  },
-  {
-    key: 'CREATIVE',
-    name: 'Creative',
-    description: 'Expressive and flexible with distinctive colour, asymmetric layouts and visual storytelling.',
-    bestFor: ['Portfolios', 'Design studios', 'Events and culture'],
-    theme: {
-      primaryColour: '#2A1F4F', secondaryColour: '#51407A', accentColour: '#B54B78',
-      backgroundColour: '#FAF8FF', surfaceColour: '#FFFFFF', textColour: '#211A3B',
-      mutedTextColour: '#5A536E', borderColour: '#DDD7EA', headingFontKey: 'EDITORIAL_SERIF',
-      bodyFontKey: 'SYSTEM_SANS', radiusScale: 'MEDIUM', spacingDensity: 'AIRY',
-      containerWidth: 'WIDE', buttonStyle: 'SOFT', imageStyle: 'EDITORIAL',
-      motionPreference: 'STANDARD',
-    },
-  },
+  preset('NORTHLIGHT', 'Northlight', 'Calm, trustworthy and spacious with a strong service-led hierarchy.', ['Appointment businesses', 'Consultants', 'Professional services'],
+    { primaryColour: '#16324F', secondaryColour: '#365E71', accentColour: '#A64F2A', backgroundColour: '#F8FAFC', surfaceColour: '#FFFFFF', textColour: '#172025', mutedTextColour: '#4B5563', borderColour: '#D7DEE5' },
+    { headingFontKey: 'SYSTEM_SERIF', bodyFontKey: 'SYSTEM_SANS', radiusScale: 'LARGE', spacingDensity: 'AIRY', containerWidth: 'STANDARD', buttonStyle: 'SOLID', imageStyle: 'ROUNDED', motionPreference: 'REDUCED' }),
+  preset('EDITORIAL', 'Editorial', 'Warm, considered and content-rich with magazine-inspired typography.', ['Creative studios', 'Coaches', 'Premium personal brands'],
+    { primaryColour: '#2B2118', secondaryColour: '#6B5B4D', accentColour: '#A14D2F', backgroundColour: '#FBF7F2', surfaceColour: '#FFFFFF', textColour: '#211A15', mutedTextColour: '#5F574F', borderColour: '#DED5CB' },
+    { headingFontKey: 'EDITORIAL_SERIF', bodyFontKey: 'SYSTEM_SERIF', radiusScale: 'SMALL', spacingDensity: 'AIRY', containerWidth: 'NARROW', buttonStyle: 'OUTLINE', imageStyle: 'EDITORIAL', motionPreference: 'REDUCED' }),
+  preset('MODERN', 'Modern', 'Crisp, efficient and product-like with clear actions and compact scanning.', ['Technology', 'Agencies', 'B2B services'],
+    { primaryColour: '#111827', secondaryColour: '#334155', accentColour: '#2563EB', backgroundColour: '#F8FAFC', surfaceColour: '#FFFFFF', textColour: '#111827', mutedTextColour: '#475569', borderColour: '#CBD5E1' },
+    { headingFontKey: 'SYSTEM_SANS', bodyFontKey: 'SYSTEM_SANS', radiusScale: 'MEDIUM', spacingDensity: 'COMFORTABLE', containerWidth: 'WIDE', buttonStyle: 'SOLID', imageStyle: 'ROUNDED', motionPreference: 'REDUCED' }),
+  preset('LUXURY', 'Luxury', 'Refined and premium with restrained colour, generous whitespace and elegant imagery.', ['Aesthetics', 'Luxury services', 'Boutique hospitality'],
+    { primaryColour: '#241A2A', secondaryColour: '#5B4766', accentColour: '#9B6A2F', backgroundColour: '#FCFAF7', surfaceColour: '#FFFFFF', textColour: '#211822', mutedTextColour: '#5E5662', borderColour: '#DED6E0' },
+    { headingFontKey: 'EDITORIAL_SERIF', bodyFontKey: 'SYSTEM_SANS', radiusScale: 'SMALL', spacingDensity: 'AIRY', containerWidth: 'STANDARD', buttonStyle: 'OUTLINE', imageStyle: 'EDITORIAL', motionPreference: 'REDUCED' }),
+  preset('WELLNESS', 'Wellness', 'Natural, reassuring and human with soft surfaces and relaxed spacing.', ['Wellbeing', 'Therapy', 'Holistic services'],
+    { primaryColour: '#193B36', secondaryColour: '#416A62', accentColour: '#A84E31', backgroundColour: '#F4FAF8', surfaceColour: '#FFFFFF', textColour: '#15312D', mutedTextColour: '#49615D', borderColour: '#CFE0DC' },
+    { headingFontKey: 'SYSTEM_SERIF', bodyFontKey: 'SYSTEM_SANS', radiusScale: 'LARGE', spacingDensity: 'AIRY', containerWidth: 'STANDARD', buttonStyle: 'SOFT', imageStyle: 'ROUNDED', motionPreference: 'REDUCED' }),
+  preset('CLINICAL', 'Clinical', 'Clear, precise and credible with high legibility and predictable information patterns.', ['Clinics', 'Healthcare', 'Regulated services'],
+    { primaryColour: '#12344A', secondaryColour: '#316A82', accentColour: '#007A6F', backgroundColour: '#F7FBFD', surfaceColour: '#FFFFFF', textColour: '#102A3A', mutedTextColour: '#45626F', borderColour: '#C9DCE5' },
+    { headingFontKey: 'SYSTEM_SANS', bodyFontKey: 'SYSTEM_SANS', radiusScale: 'SMALL', spacingDensity: 'COMFORTABLE', containerWidth: 'STANDARD', buttonStyle: 'SOLID', imageStyle: 'SQUARE', motionPreference: 'NONE' }),
+  preset('FRIENDLY', 'Friendly', 'Approachable and welcoming with rounded forms, warm neutrals and obvious actions.', ['Family services', 'Education', 'Community organisations'],
+    { primaryColour: '#3C2A21', secondaryColour: '#775548', accentColour: '#B84A3A', backgroundColour: '#FFF8F4', surfaceColour: '#FFFFFF', textColour: '#33251F', mutedTextColour: '#66534A', borderColour: '#E8D6CE' },
+    { headingFontKey: 'SYSTEM_SANS', bodyFontKey: 'SYSTEM_SANS', radiusScale: 'LARGE', spacingDensity: 'COMFORTABLE', containerWidth: 'STANDARD', buttonStyle: 'SOFT', imageStyle: 'ROUNDED', motionPreference: 'REDUCED' }),
+  preset('BOLD', 'Bold', 'Direct and high-impact with strong contrast, large type and decisive conversion points.', ['Trades', 'Fitness', 'Campaign landing pages'],
+    { primaryColour: '#191919', secondaryColour: '#3D3D3D', accentColour: '#A63D20', backgroundColour: '#FAFAF7', surfaceColour: '#FFFFFF', textColour: '#181818', mutedTextColour: '#555555', borderColour: '#D9D9D4' },
+    { headingFontKey: 'SYSTEM_SANS', bodyFontKey: 'SYSTEM_SANS', radiusScale: 'NONE', spacingDensity: 'COMFORTABLE', containerWidth: 'WIDE', buttonStyle: 'SOLID', imageStyle: 'SQUARE', motionPreference: 'STANDARD' }),
+  preset('LOCAL', 'Local', 'Practical and familiar with location, trust and contact information prioritised.', ['Local services', 'Trades', 'Multi-location businesses'],
+    { primaryColour: '#183B2B', secondaryColour: '#496B54', accentColour: '#A34E2D', backgroundColour: '#F8FBF7', surfaceColour: '#FFFFFF', textColour: '#173126', mutedTextColour: '#52645A', borderColour: '#D5E1D8' },
+    { headingFontKey: 'SYSTEM_SERIF', bodyFontKey: 'SYSTEM_SANS', radiusScale: 'MEDIUM', spacingDensity: 'COMFORTABLE', containerWidth: 'STANDARD', buttonStyle: 'SOLID', imageStyle: 'ROUNDED', motionPreference: 'REDUCED' }),
+  preset('CREATIVE', 'Creative', 'Expressive and flexible with distinctive colour, asymmetric layouts and visual storytelling.', ['Portfolios', 'Design studios', 'Events and culture'],
+    { primaryColour: '#2A1F4F', secondaryColour: '#51407A', accentColour: '#B54B78', backgroundColour: '#FAF8FF', surfaceColour: '#FFFFFF', textColour: '#211A3B', mutedTextColour: '#5A536E', borderColour: '#DDD7EA' },
+    { headingFontKey: 'EDITORIAL_SERIF', bodyFontKey: 'SYSTEM_SANS', radiusScale: 'MEDIUM', spacingDensity: 'AIRY', containerWidth: 'WIDE', buttonStyle: 'SOFT', imageStyle: 'EDITORIAL', motionPreference: 'STANDARD' }),
 ] as const;
 
 function channel(value: number) {
@@ -221,9 +107,8 @@ function luminance(hex: string) {
 export function siteColourContrastRatio(first: string, second: string) {
   const firstLuminance = luminance(first);
   const secondLuminance = luminance(second);
-  const lighter = Math.max(firstLuminance, secondLuminance);
-  const darker = Math.min(firstLuminance, secondLuminance);
-  return (lighter + 0.05) / (darker + 0.05);
+  return (Math.max(firstLuminance, secondLuminance) + 0.05)
+    / (Math.min(firstLuminance, secondLuminance) + 0.05);
 }
 
 export function siteThemeAccessibilityIssues(theme: SiteThemeEditor) {
@@ -234,7 +119,6 @@ export function siteThemeAccessibilityIssues(theme: SiteThemeEditor) {
     ['White text and primary actions', '#FFFFFF', theme.primaryColour, 4.5],
     ['White text and secondary surfaces', '#FFFFFF', theme.secondaryColour, 4.5],
     ['Primary focus indicator and page background', theme.primaryColour, theme.backgroundColour, 3],
-    ['Borders and page background', theme.borderColour, theme.backgroundColour, 1.5],
   ] as const;
   return checks.flatMap(([label, foreground, background, minimum]) => {
     const ratio = siteColourContrastRatio(foreground, background);
@@ -243,5 +127,5 @@ export function siteThemeAccessibilityIssues(theme: SiteThemeEditor) {
 }
 
 export function siteDesignPreset(key: SiteDesignPresetKey) {
-  return SITE_DESIGN_PRESETS.find(preset => preset.key === key) ?? SITE_DESIGN_PRESETS[0];
+  return SITE_DESIGN_PRESETS.find(item => item.key === key) ?? SITE_DESIGN_PRESETS[0];
 }
