@@ -172,12 +172,13 @@ export default function AgencyTemplateLibraryPage() {
         {canManage ? <button type="button" onClick={() => setWizardOpen(true)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-violet-600 px-5 text-sm font-black text-white shadow-lg shadow-violet-950/40 transition hover:bg-violet-500"><Plus className="h-5 w-5" />Import template</button> : null}
       </div>
       <div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
+        {([
           ['Templates', metrics.total, Archive],
           ['Needs review', metrics.reviewing, AlertTriangle],
           ['Ready to use', metrics.ready, CheckCircle2],
           ['Layouts detected', metrics.layouts, LayoutTemplate],
-        ].map(([label, value, Icon]) => <div key={String(label)} className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur"><div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-400">{String(label)}</span><Icon className="h-4 w-4 text-violet-300" /></div><p className="mt-2 text-2xl font-black text-white">{String(value)}</p></div>)}
+        ] as Array<[string, number, React.ComponentType<{ className?: string }>]>)
+          .map(([label, value, Icon]) => <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur"><div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-400">{label}</span><Icon className="h-4 w-4 text-violet-300" /></div><p className="mt-2 text-2xl font-black text-white">{value}</p></div>)}
       </div>
     </section>
 
