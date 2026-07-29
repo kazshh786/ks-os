@@ -22,7 +22,7 @@ const agencyFetch = vi.fn(async (path: string) => {
 });
 const session = {
   authenticated: true, context: 'AGENCY', user: { email: 'operator@example.com', displayName: 'Agency Operator', role: 'PLATFORM_OWNER' },
-  capabilities: ['agency.users.manage', 'tenants.read', 'tenants.manage', 'plans.read', 'plans.manage', 'billing.read', 'billing.manage', 'support.read', 'support.session.start', 'support.retry', 'fulfilment.read', 'fulfilment.manage', 'analytics.read', 'audit.read'],
+  capabilities: ['agency.users.manage', 'tenants.read', 'tenants.manage', 'plans.read', 'plans.manage', 'billing.read', 'billing.manage', 'support.read', 'support.session.start', 'support.retry', 'fulfilment.read', 'fulfilment.manage', 'analytics.read', 'audit.read', 'sites.templates.read', 'sites.templates.manage'],
   mfa: { required: false, assuranceLevel: 'aal2' }, expiresAt: '2099-01-01T00:00:00.000Z',
 };
 vi.mock('../features/agency/AgencyAuth', () => ({ useAgencyAuth: () => ({ session, signOut: vi.fn() }), agencyFetch: (path: string) => agencyFetch(path) }));
@@ -47,6 +47,7 @@ describe('AgencyLayout', () => {
     renderLayout('/agency/overview');
     expect(screen.getByRole('navigation', { name: 'Agency navigation' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Template library' })).toHaveAttribute('href', '/agency/templates');
     expect(screen.getByRole('link', { name: 'Managed services' })).toHaveAttribute('href', '/agency/fulfilment');
     expect(screen.getByRole('link', { name: 'Audit trail' })).toHaveAttribute('href', '/agency/audit');
     expect(screen.getByRole('link', { name: 'Agency team' })).toHaveAttribute('href', '/agency/users');
