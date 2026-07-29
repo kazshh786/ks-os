@@ -17,7 +17,10 @@ export function StaffCalendarPage() {
   const setAvailabilityOpen = (open: boolean) => {
     const next = new URLSearchParams(params);
     if (open) next.set('availability', '1');
-    else next.delete('availability');
+    else {
+      next.delete('availability');
+      window.dispatchEvent(new CustomEvent('ks-availability-updated'));
+    }
     setParams(next, { replace: true });
   };
 
