@@ -30,8 +30,8 @@ vi.mock('../features/agency/AgencyOperatingConsole', () => ({
   AgencyHomePage: () => <div>Agency home dashboard</div>,
   AgencyClientsPage: () => <div>Client portfolio</div>,
   AgencyOnboardingPage: () => <div>Onboarding board</div>,
-  AgencyClientWorkspacePage: () => <div>Client workspace hub</div>,
 }));
+vi.mock('../features/agency/AgencyClientWorkspaceOverviewPage', () => ({ default: () => <div>Client performance overview</div> }));
 vi.mock('../features/agency/AgencyWorkspaceOnboardingPage', () => ({ default: () => <div>Editable onboarding workspace</div> }));
 vi.mock('../features/agency/SupportSessionDialog', () => ({ SupportSessionDialog: ({ open }: { open: boolean }) => open ? <div role="dialog">Support access</div> : null }));
 
@@ -70,9 +70,17 @@ describe('AgencyLayout', () => {
     await waitFor(() => expect(screen.getByRole('status', { name: 'Current route' })).toHaveTextContent(`/agency/tenants/${tenantTwo}`));
   });
 
-  it('renders the editable setup and launch workspace on the onboarding route', async () => {
+  it('renders a performance dashboard on the workspace overview route', async () => {
+    renderLayout(`/agency/tenants/${tenantOne}`);
+    expect(await screen.findByText('Client performance overview')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Workspace overview' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByText('Editable onboarding workspace')).not.toBeInTheDocument();
+  });
+
+  it('renders the editable setup and launch workspace only on the onboarding route', async () => {
     renderLayout(`/agency/tenants/${tenantOne}/onboarding`);
     expect(await screen.findByText('Editable onboarding workspace')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Setup and launch' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByText('Client performance overview')).not.toBeInTheDocument();
   });
 });
