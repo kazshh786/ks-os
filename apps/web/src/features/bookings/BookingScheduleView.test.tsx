@@ -37,7 +37,7 @@ function dataTransfer() {
 function setGridBounds(element: HTMLElement) {
   Object.defineProperty(element, 'getBoundingClientRect', {
     configurable: true,
-    value: () => ({ top: 0, left: 0, right: 200, bottom: 768, width: 200, height: 768, x: 0, y: 0, toJSON: () => ({}) }),
+    value: () => ({ top: 0, left: 0, right: 200, bottom: 1296, width: 200, height: 1296, x: 0, y: 0, toJSON: () => ({}) }),
   });
 }
 
@@ -60,7 +60,7 @@ function overlapBooking({ id, customerId, name, startTime, endTime }: { id: stri
 }
 
 describe('BookingScheduleView time grid', () => {
-  it('shows hourly labels and positions bookings in day columns', () => {
+  it('shows a full-day grid, core hours and the selected day', () => {
     render(<BookingScheduleView
       columns={days}
       days={days}
@@ -68,14 +68,19 @@ describe('BookingScheduleView time grid', () => {
       groupBy="day"
       density="comfortable"
       timezone="UTC"
+      selectedDay="2026-07-30"
+      onSelectDay={vi.fn()}
       onOpen={vi.fn()}
       onCreate={vi.fn()}
       onReschedule={vi.fn()}
     />);
 
     expect(screen.getByRole('region', { name: 'Booking schedule' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Calendar times')).toHaveTextContent('08:00');
+    expect(screen.getByLabelText('Calendar times')).toHaveTextContent('00:00');
+    expect(screen.getByLabelText('Calendar times')).toHaveTextContent('07:00');
     expect(screen.getByLabelText('Calendar times')).toHaveTextContent('20:00');
+    expect(screen.getByRole('button', { name: /Thu 30/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Selected day focused availability hours')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /09:00 Alice Jones/i })).toBeInTheDocument();
   });
 
@@ -88,6 +93,8 @@ describe('BookingScheduleView time grid', () => {
       groupBy="day"
       density="comfortable"
       timezone="UTC"
+      selectedDay="2026-07-30"
+      onSelectDay={vi.fn()}
       onOpen={vi.fn()}
       onCreate={vi.fn()}
       onReschedule={onReschedule}
@@ -99,9 +106,9 @@ describe('BookingScheduleView time grid', () => {
     const transfer = dataTransfer();
 
     fireEvent.dragStart(card, { dataTransfer: transfer });
-    dispatchDrag(target, 'dragover', 160, transfer);
+    dispatchDrag(target, 'dragover', 567, transfer);
     expect(screen.getByText('Move to 10:30')).toBeInTheDocument();
-    dispatchDrag(target, 'drop', 160, transfer);
+    dispatchDrag(target, 'drop', 567, transfer);
 
     expect(onReschedule).toHaveBeenCalledWith(booking, expect.objectContaining({
       id: '2026-07-30',
@@ -134,6 +141,8 @@ describe('BookingScheduleView time grid', () => {
       groupBy="day"
       density="comfortable"
       timezone="UTC"
+      selectedDay="2026-07-29"
+      onSelectDay={vi.fn()}
       onOpen={vi.fn()}
       onCreate={vi.fn()}
       onReschedule={vi.fn()}
@@ -157,6 +166,8 @@ describe('BookingScheduleView time grid', () => {
       groupBy="staff"
       density="comfortable"
       timezone="UTC"
+      selectedDay="2026-07-29"
+      onSelectDay={vi.fn()}
       onOpen={vi.fn()}
       onCreate={vi.fn()}
       onReschedule={vi.fn()}

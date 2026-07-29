@@ -13,10 +13,10 @@ vi.mock('./CreateBookingDialog', () => ({ CreateBookingDialog: () => null }));
 vi.mock('./BlockTimeDialog', () => ({ BlockTimeDialog: () => null }));
 vi.mock('./BookingQuickView', () => ({ BookingQuickView: () => null }));
 
- describe('BookingOperationsCalendar resilience', () => {
+describe('BookingOperationsCalendar resilience', () => {
   beforeEach(() => { sessionStorage.clear(); getBookingOperations.mockReset(); });
 
-  it('renders a focused calendar workspace with search, filters, views and footer stats', async () => {
+  it('renders a focused calendar workspace with search, filters, views and anchored footer stats', async () => {
     getBookingOperations.mockResolvedValue(empty);
     render(<MemoryRouter><BookingOperationsCalendar /></MemoryRouter>);
 
@@ -35,8 +35,23 @@ vi.mock('./BookingQuickView', () => ({ BookingQuickView: () => null }));
     expect(screen.getByRole('button', { name: 'Week' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'false');
 
-    expect(screen.getByRole('region', { name: 'Calendar summary' })).toBeInTheDocument();
+    const summary = screen.getByRole('region', { name: 'Calendar summary' });
+    expect(summary).toBeInTheDocument();
+    expect(summary.closest('footer')).toHaveAttribute('data-anchored', 'viewport-bottom');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('offers appointment, walk-in and block time from one new booking chooser', async () => {
+    getBookingOperations.mockResolvedValue(empty);
+    render(<MemoryRouter><BookingOperationsCalendar /></MemoryRouter>);
+
+    await screen.findByRole('region', { name: 'Booking schedule' });
+    fireEvent.click(screen.getByRole('button', { name: 'New booking' }));
+
+    expect(screen.getByRole('dialog', { name: 'Add to calendar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Appointment' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Walk-in' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Block time' })).toBeInTheDocument();
   });
 
   it('keeps an empty calendar visible when the booking request fails', async () => {

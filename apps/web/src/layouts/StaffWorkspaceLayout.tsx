@@ -31,6 +31,7 @@ export const StaffWorkspaceLayout: React.FC = () => {
   const canCreateBooking = auth.role === 'owner' || auth.permissions.includes('BOOKINGS_CREATE');
   const publicBookingUrl = `${window.location.origin}/book/${auth.tenantSubdomain}`;
   const accountName = auth.email?.split('@')[0] || 'Business account';
+  const isCalendarWorkspace = location.pathname === '/app/calendar';
 
   const toggleCollapsed = () => {
     setCollapsed(value => {
@@ -81,21 +82,26 @@ export const StaffWorkspaceLayout: React.FC = () => {
     onNavigate={isMobile ? closeMobile : undefined}
   />;
 
-  return <div className="flex h-screen min-h-0 overflow-hidden bg-slate-50 font-sans text-slate-950 antialiased">
+  const workspaceHeader = <PageHeader
+    title={activeItem?.label ?? 'Workspace'}
+    eyebrow={auth.tenantName}
+    breadcrumbs={activeItem ? [auth.tenantName, activeItem.label] : [auth.tenantName]}
+    menuButtonRef={menuButtonRef}
+    onOpenNavigation={() => setMobileOpen(true)}
+    notificationHref={groups.some(group => group.items.some(item => item.id === 'operations')) ? '/app/operations' : undefined}
+    actions={<>{auth.memberships.length > 1 && <label className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 sm:flex"><Store aria-hidden="true" className="h-4 w-4 text-slate-500" /><span className="sr-only">Switch business</span><select value={auth.businessReference} onChange={event => void switchWorkspace(event.target.value)} className="max-w-40 border-0 bg-transparent py-2 text-xs font-bold focus:shadow-none">{auth.memberships.map(membership => <option key={membership.businessReference} value={membership.businessReference}>{membership.businessName}</option>)}</select></label>}</>}
+  />;
+
+  return <div
+    className="flex h-screen min-h-0 overflow-hidden bg-slate-50 font-sans text-slate-950 antialiased"
+    style={{ '--workspace-sidebar-width': collapsed ? '76px' : '272px' } as React.CSSProperties}
+  >
     <div className="hidden h-full shrink-0 lg:block">{sidebar()}</div>
     <MobileNavigation open={mobileOpen} title="Business navigation" onClose={closeMobile} triggerRef={menuButtonRef}>{sidebar(true)}</MobileNavigation>
     <div className="flex min-w-0 flex-1 flex-col">
       <SupportModeBanner />
-      <PageHeader
-        title={activeItem?.label ?? 'Workspace'}
-        eyebrow={auth.tenantName}
-        breadcrumbs={activeItem ? [auth.tenantName, activeItem.label] : [auth.tenantName]}
-        menuButtonRef={menuButtonRef}
-        onOpenNavigation={() => setMobileOpen(true)}
-        notificationHref={groups.some(group => group.items.some(item => item.id === 'operations')) ? '/app/operations' : undefined}
-        actions={<>{auth.memberships.length > 1 && <label className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 sm:flex"><Store aria-hidden="true" className="h-4 w-4 text-slate-500" /><span className="sr-only">Switch business</span><select value={auth.businessReference} onChange={event => void switchWorkspace(event.target.value)} className="max-w-40 border-0 bg-transparent py-2 text-xs font-bold focus:shadow-none">{auth.memberships.map(membership => <option key={membership.businessReference} value={membership.businessReference}>{membership.businessName}</option>)}</select></label>}</>}
-      />
-      <main id="main-content" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 lg:p-8"><Outlet /></main>
+      {isCalendarWorkspace ? <div className="lg:hidden">{workspaceHeader}</div> : workspaceHeader}
+      <main id="main-content" className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${isCalendarWorkspace ? 'p-0' : 'p-4 sm:p-6 lg:p-8'}`}><Outlet /></main>
     </div>
   </div>;
 };
