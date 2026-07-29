@@ -41,6 +41,13 @@ function setGridBounds(element: HTMLElement) {
   });
 }
 
+function dispatchDrag(element: HTMLElement, type: 'dragover' | 'drop', clientY: number, transfer: ReturnType<typeof dataTransfer>) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clientY', { value: clientY });
+  Object.defineProperty(event, 'dataTransfer', { value: transfer });
+  fireEvent(element, event);
+}
+
 describe('BookingScheduleView time grid', () => {
   it('shows hourly labels and positions bookings in day columns', () => {
     render(<BookingScheduleView
@@ -81,9 +88,9 @@ describe('BookingScheduleView time grid', () => {
     const transfer = dataTransfer();
 
     fireEvent.dragStart(card, { dataTransfer: transfer });
-    fireEvent.dragOver(target, { dataTransfer: transfer, clientY: 160 });
+    dispatchDrag(target, 'dragover', 160, transfer);
     expect(screen.getByText('Move to 10:30')).toBeInTheDocument();
-    fireEvent.drop(target, { dataTransfer: transfer, clientY: 160 });
+    dispatchDrag(target, 'drop', 160, transfer);
 
     expect(onReschedule).toHaveBeenCalledWith(booking, expect.objectContaining({
       id: '2026-07-30',
