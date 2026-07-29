@@ -8,7 +8,8 @@ import { MobileNavigation } from '../components/navigation/MobileNavigation';
 import { PageHeader } from '../components/navigation/PageHeader';
 import { AdminPasswordDialog } from '../features/agency/AdminPasswordDialog';
 import { agencyFetch, useAgencyAuth } from '../features/agency/AgencyAuth';
-import { AgencyClientWorkspacePage, AgencyClientsPage, AgencyHomePage, AgencyOnboardingPage } from '../features/agency/AgencyOperatingConsole';
+import AgencyClientWorkspaceOverviewPage from '../features/agency/AgencyClientWorkspaceOverviewPage';
+import { AgencyClientsPage, AgencyHomePage, AgencyOnboardingPage } from '../features/agency/AgencyOperatingConsole';
 import AgencyWorkspaceOnboardingPage from '../features/agency/AgencyWorkspaceOnboardingPage';
 import { ManualTenantUserDialog } from '../features/agency/ManualTenantUserDialog';
 import { SupportSessionDialog } from '../features/agency/SupportSessionDialog';
@@ -124,21 +125,18 @@ export const AgencyLayout: React.FC = () => {
     <span className="hidden items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-300 md:flex"><ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />{session?.mfa.assuranceLevel.toUpperCase()}</span>
   </div>;
 
-  const tenantWorkspaceMatch = location.pathname.match(/^\/agency\/tenants\/[0-9a-f-]{36}(?:\/(onboarding|fulfilment))?\/?$/i);
+  const tenantWorkspaceMatch = location.pathname.match(/^\/agency\/tenants\/[0-9a-f-]{36}(?:\/(onboarding))?\/?$/i);
   const tenantWorkspaceMode = tenantWorkspaceMatch?.[1];
-  const tenantWorkspaceAllowed = tenantWorkspaceMode === 'fulfilment'
-    ? capabilities.includes('fulfilment.read')
-    : capabilities.includes('tenants.read');
   const redesignedContent = (location.pathname === '/agency' || location.pathname === '/agency/overview') && capabilities.includes('analytics.read')
     ? <AgencyHomePage />
     : location.pathname === '/agency/tenants' && capabilities.includes('tenants.read')
       ? <AgencyClientsPage />
       : location.pathname === '/agency/onboarding' && capabilities.includes('tenants.read')
         ? <AgencyOnboardingPage />
-        : tenantWorkspaceMatch && tenantWorkspaceAllowed
+        : tenantWorkspaceMatch && capabilities.includes('tenants.read')
           ? tenantWorkspaceMode === 'onboarding'
             ? <AgencyWorkspaceOnboardingPage />
-            : <AgencyClientWorkspacePage />
+            : <AgencyClientWorkspaceOverviewPage />
           : <Outlet />;
 
   return <div className="flex h-screen min-h-0 overflow-hidden bg-slate-950 font-sans text-white antialiased">

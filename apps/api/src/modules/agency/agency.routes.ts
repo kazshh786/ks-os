@@ -4,10 +4,11 @@ import { z } from 'zod';
 import {
   AgencyRoleSchema, BillingExceptionSchema, BillingPlanChangeSchema, CreateAgencyTenantSchema,
   CreateBillingRequestSchema, CreateDeliverableSchema, CreateEntitlementOverrideSchema, CreatePlanVersionSchema,
-  SafeRetrySchema, StartSupportSessionSchema, SupportNoteSchema, UpdateAgencyTenantSchema,
+  DashboardOverviewQuerySchema, SafeRetrySchema, StartSupportSessionSchema, SupportNoteSchema, UpdateAgencyTenantSchema,
   UpdateDeliverableSchema, UpdateOnboardingStageSchema, UpdateTenantOnboardingSchema,
 } from '@ks-os/contracts';
 import { AgencyAuditService, AgencyService, type AgencyActor } from './agency.service.js';
+import { AgencyTenantOverviewService } from './agency-tenant-overview.service.js';
 import { GoCardlessWebhookService } from './gocardless.service.js';
 import { AgencyExportsService } from './agency-exports.service.js';
 import { AgencyBookingService } from './agency-booking.service.js';
@@ -24,6 +25,7 @@ function actor(request:FastifyRequest,capability?:Parameters<FastifyRequest['req
 export async function agencyRoutes(app:FastifyInstance){const service=new AgencyService();
   const agencyBooking = new AgencyBookingService();
   const manualTenantUsers = new ManualTenantUserService();
+  const tenantOverview = new AgencyTenantOverviewService();
   app.get('/session',{config:{rateLimit:{max:20,timeWindow:'1 minute'}}},async(request,reply)=>{
     if(!request.agencyAuth)return reply.code(401).send({success:false,error:{code:'AGENCY_UNAUTHENTICATED',message:'No valid agency session found.'}});
     const session=request.agencyAuth;return{success:true,data:{authenticated:true,context:'AGENCY',user:{email:session.email,displayName:session.displayName,role:session.role},mfa:{required:session.mfaRequired,assuranceLevel:session.assuranceLevel},capabilities:session.capabilities,expiresAt:session.expiresAt}};
@@ -68,6 +70,7 @@ export async function agencyRoutes(app:FastifyInstance){const service=new Agency
     }
   });
   app.get('/tenants/:tenantId',async r=>{const{tenantId}=TenantId.parse(r.params);actor(r,'tenants.read');return{data:await service.getTenant(tenantId)};});
+  app.get('/tenants/:tenantId/overview',async r=>{const{tenantId}=TenantId.parse(r.params);actor(r,'tenants.read');return{data:await tenantOverview.overview(tenantId,DashboardOverviewQuerySchema.parse(r.query))};});
   app.patch('/tenants/:tenantId',async r=>{const{tenantId}=TenantId.parse(r.params);return{data:await service.updateTenant(actor(r,'tenants.manage'),tenantId,UpdateAgencyTenantSchema.parse(r.body))};});
   for(const action of ['suspend','reactivate','offboard'] as const)app.post(`/tenants/:tenantId/${action}`,async r=>{const{tenantId}=TenantId.parse(r.params);const parsed=SafeRetrySchema.safeParse(r.body);const reason=parsed.success?parsed.data.reason:'Confirmed through the agency tenant lifecycle control';return{data:await service.changeLifecycle(actor(r,'tenants.manage'),tenantId,action.toUpperCase() as any,reason)};});
 
