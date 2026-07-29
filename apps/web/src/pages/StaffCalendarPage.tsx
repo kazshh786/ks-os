@@ -1,15 +1,17 @@
 import { Clock3 } from 'lucide-react';
 import { useSearchParams } from 'react-router';
 import { useAuth } from '../auth';
+import { useWorkspace } from '../context/WorkspaceContext.js';
 import { BookingOperationsCalendar } from '../features/bookings/BookingOperationsCalendar.js';
 import { CalendarAvailabilityDialog } from '../features/bookings/CalendarAvailabilityDialog.js';
 
 export function StaffCalendarPage() {
   const { role } = useAuth();
+  const { activeTenant } = useWorkspace();
   const [params, setParams] = useSearchParams();
   const availabilityOpen = role === 'owner' && params.get('availability') === '1';
   const selectedDate = params.get('date') || new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: activeTenant?.timezone || 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
 
   const setAvailabilityOpen = (open: boolean) => {
