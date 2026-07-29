@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { eachDayOfInterval, format } from 'date-fns';
 import { fromZonedTime } from 'date-fns-tz';
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Clock3, ConciergeBell, Copy, Download, ExternalLink, Filter, MoreHorizontal, Plus, RefreshCw, Search, Settings2, Share2, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Clock3, ConciergeBell, Copy, Download, ExternalLink, Filter, Plus, RefreshCw, Search, Settings2, Share2, SlidersHorizontal } from 'lucide-react';
 import type { BookingOperationsItem, BookingOperationsQuery, BookingOperationsResponse, OperationalBookingStatus } from '@ks-os/contracts';
 import type { Service, Staff } from '../../data/types.js';
 import { getDataProvider } from '../../data/data-provider.js';
@@ -28,6 +28,11 @@ type BookingDensity = 'compact' | 'comfortable' | 'detailed';
 type IntakeStatus = NonNullable<BookingOperationsQuery['intakeStatuses']>[number];
 const validDensities = new Set<BookingDensity>(['compact', 'comfortable', 'detailed']);
 const validIntakeStatuses = new Set<IntakeStatus>(['NOT_REQUIRED', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE']);
+const primaryCalendarViews: Array<{ value: Extract<CalendarView, 'month' | 'week' | 'day'>; label: string }> = [
+  { value: 'month', label: 'Month' },
+  { value: 'week', label: 'Week' },
+  { value: 'day', label: 'Day' },
+];
 
 export function BookingOperationsCalendar({ initialView = 'week', tenantOverride = null }: BookingOperationsCalendarProps) {
   const { activeTenant: workspaceTenant } = useWorkspace();
@@ -168,8 +173,15 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
         </div>
       </div>
       <div className="mt-5 flex flex-col gap-3 border-t pt-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-1"><button onClick={() => setAnchor(moveCalendarAnchor(anchor, view, -1))} aria-label="Previous calendar period" className="rounded-lg border p-2"><ChevronLeft className="h-4 w-4" /></button><button onClick={() => setAnchor(new Date())} className="rounded-lg border px-3 py-2 text-xs font-black">Today</button><button onClick={() => setAnchor(moveCalendarAnchor(anchor, view, 1))} aria-label="Next calendar period" className="rounded-lg border p-2"><ChevronRight className="h-4 w-4" /></button><input type="date" aria-label="Calendar date" value={dateValue} onChange={event => updateParams({ date: event.target.value })} className="ml-1 rounded-lg border p-2 text-xs font-bold" /></div>
-        <div className="flex flex-wrap items-center gap-2"><select aria-label="Calendar view" value={view} onChange={event => changeView(event.target.value as CalendarView)} className="min-h-10 rounded-lg border bg-white px-3 text-xs font-bold">{calendarViews.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select><select aria-label="Display density" value={density} onChange={event => changeDensity(event.target.value as typeof density)} className="min-h-10 rounded-lg border bg-white px-3 text-xs font-bold"><option value="compact">Compact</option><option value="comfortable">Comfortable</option><option value="detailed">Detailed</option></select><Link to={view === 'agenda' ? '/app/calendar' : '/app/bookings'} className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-xs font-bold"><CalendarDays className="h-4 w-4" />{view === 'agenda' ? 'Calendar view' : 'List view'}</Link></div>
+        <div className="flex flex-wrap items-center gap-1"><button onClick={() => setAnchor(moveCalendarAnchor(anchor, view, -1))} aria-label="Previous calendar period" className="rounded-lg border p-2"><ChevronLeft className="h-4 w-4" /></button><button onClick={() => setAnchor(new Date())} className="rounded-lg border px-3 py-2 text-xs font-black">Today</button><button onClick={() => setAnchor(moveCalendarAnchor(anchor, view, 1))} aria-label="Next calendar period" className="rounded-lg border p-2"><ChevronRight className="h-4 w-4" /></button><input type="date" aria-label="Calendar date" value={dateValue} onChange={event => updateParams({ date: event.target.value })} className="ml-1 rounded-lg border p-2 text-xs font-bold" /></div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Calendar date views" className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+            {primaryCalendarViews.map(option => <button key={option.value} type="button" aria-pressed={view === option.value} onClick={() => changeView(option.value)} className={`min-h-8 rounded-lg px-3 text-xs font-black transition ${view === option.value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-white hover:text-slate-950'}`}>{option.label}</button>)}
+          </div>
+          <select aria-label="More calendar views" value={view} onChange={event => changeView(event.target.value as CalendarView)} className="min-h-10 rounded-lg border bg-white px-3 text-xs font-bold">{calendarViews.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+          <select aria-label="Display density" value={density} onChange={event => changeDensity(event.target.value as typeof density)} className="min-h-10 rounded-lg border bg-white px-3 text-xs font-bold"><option value="compact">Compact</option><option value="comfortable">Comfortable</option><option value="detailed">Detailed</option></select>
+          <Link to={view === 'agenda' ? '/app/calendar' : '/app/bookings'} className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-xs font-bold"><CalendarDays className="h-4 w-4" />{view === 'agenda' ? 'Calendar view' : 'List view'}</Link>
+        </div>
       </div>
       <form onSubmit={event => { event.preventDefault(); updateParams({ search: searchValue || null }); }} className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_repeat(6,minmax(120px,auto))]">
         <label className="relative"><span className="sr-only">Search bookings</span><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={searchValue} onChange={event => setSearchValue(event.target.value)} placeholder="Customer, email, phone, reference…" className="min-h-10 w-full rounded-lg border pl-9 pr-3 text-sm" /></label>
