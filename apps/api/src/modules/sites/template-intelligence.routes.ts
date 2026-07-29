@@ -15,6 +15,7 @@ import {
 } from '@ks-os/contracts';
 import { z } from 'zod';
 import type { AgencyActor } from '../agency/agency.service.js';
+import { agencyTemplateImportRoutes } from './template-import.routes.js';
 import { TemplateIntelligenceService } from './template-intelligence.service.js';
 
 const SourceParamsSchema = z.object({
@@ -57,6 +58,7 @@ function agencyActor(
 }
 
 export async function agencyTemplateIntelligenceRoutes(app: FastifyInstance) {
+  await agencyTemplateImportRoutes(app);
   let service: TemplateIntelligenceService | undefined;
   const templates = () => {
     service ||= new TemplateIntelligenceService();

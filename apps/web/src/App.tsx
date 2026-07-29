@@ -88,6 +88,7 @@ import { AgencyErrorLogPage } from './features/agency/AgencyErrorLogPage.js';
 import { AgencyBookingSystemPage } from './features/agency/AgencyBookingSystem.js';
 import { AgencyProvisioningPage } from './features/agency/AgencyProvisioning.js';
 import { AgencyFactFindingPage } from './features/agency/AgencyFactFinding.js';
+import AgencyTemplateLibraryPage from './features/agency/AgencyTemplateLibraryPage.js';
 import { SiteStudioPage } from './features/agency/SiteStudioPage.js';
 import AgencyWorkspaceUsersPage from './features/agency/AgencyWorkspaceUsersPage.js';
 import ClientFactFindingPage from './features/fact-finding/ClientFactFindingPage.js';
@@ -251,6 +252,7 @@ const AppContent: React.FC = () => {
           <Route path="bookings" element={<AgencyBookingSystemPage />} />
           <Route path="provisioning" element={<AgencyCapabilityRoute capabilities={['provisioning.read']}><AgencyProvisioningPage /></AgencyCapabilityRoute>} />
           <Route path="fact-finding" element={<AgencyCapabilityRoute capabilities={['fact_finding.read']}><AgencyFactFindingPage /></AgencyCapabilityRoute>} />
+          <Route path="templates" element={<AgencyCapabilityRoute capabilities={['sites.templates.read']}><AgencyTemplateLibraryPage /></AgencyCapabilityRoute>} />
           <Route path="sites/:siteReference/studio" element={<AgencyCapabilityRoute capabilities={['sites.studio.read']}><SiteStudioPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/onboarding" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
