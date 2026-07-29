@@ -1,4 +1,4 @@
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import {
   getDatabase,
   locations,
@@ -9,12 +9,16 @@ import {
   provisioningRuns,
   services,
   sites,
+  templateLayoutPageTypes,
+  templateLayoutRenderers,
+  templateLayouts,
   templateSources,
   templateVersions,
   tenantPlanAssignments,
   tenants,
   users,
 } from '@ks-os/database';
+import { SITE_DESIGN_PRESETS } from '@ks-os/contracts';
 import { ProvisioningService } from './provisioning.service.js';
 
 const fail = (statusCode: number, code: string, message: string) =>
@@ -44,6 +48,15 @@ function labels(value: unknown): string[] {
   source.forEach(visit);
   return [...new Set(output)];
 }
+
+const REQUIRED_NATIVE_PAGE_TYPES = [
+  'HOME',
+  'SERVICE_HUB',
+  'ABOUT',
+  'CONTACT',
+  'POLICIES',
+  'BOOKING',
+] as const;
 
 export class DeliveryContextService {
   private readonly provisioning: ProvisioningService;
@@ -77,7 +90,7 @@ export class DeliveryContextService {
       throw fail(404, 'TENANT_NOT_FOUND', 'The client workspace was not found.');
     }
 
-    const [planRows, briefRows, templateRows, draftRows, runRows, siteRows, canonical] = await Promise.all([
+    const [planRows, briefRows, templateRows, nativeRows, draftRows, runRows, siteRows, canonical] = await Promise.all([
       this.db.select({
         versionReference: platformPlanVersions.id,
         key: platformPlans.key,
@@ -106,8 +119,31 @@ export class DeliveryContextService {
         sourceType: templateSources.sourceType,
       }).from(templateVersions)
         .innerJoin(templateSources, eq(templateVersions.templateSourceId, templateSources.id))
-        .where(and(eq(templateVersions.status, 'APPROVED'), eq(templateVersions.analysisStatus, 'APPROVED')))
+        .where(and(
+          eq(templateVersions.status, 'APPROVED'),
+          eq(templateVersions.analysisStatus, 'APPROVED'),
+          inArray(templateSources.sourceType, ['ENVATO_HTML', 'GOOGLE_STITCH']),
+        ))
         .orderBy(desc(templateVersions.createdAt)).limit(50),
+      this.db.select({
+        versionReference: templateVersions.publicReference,
+        pageType: templateLayoutPageTypes.pageType,
+        rendererStatus: templateLayoutRenderers.rendererStatus,
+      }).from(templateVersions)
+        .innerJoin(templateSources, eq(templateVersions.templateSourceId, templateSources.id))
+        .innerJoin(templateLayouts, eq(templateLayouts.templateVersionId, templateVersions.id))
+        .innerJoin(templateLayoutPageTypes, eq(templateLayoutPageTypes.templateLayoutId, templateLayouts.id))
+        .innerJoin(templateLayoutRenderers, eq(templateLayoutRenderers.templateLayoutId, templateLayouts.id))
+        .where(and(
+          eq(templateSources.sourceReference, 'ks-native-component-system'),
+          eq(templateSources.sourceType, 'INTERNAL'),
+          eq(templateSources.status, 'APPROVED'),
+          eq(templateVersions.status, 'APPROVED'),
+          eq(templateVersions.analysisStatus, 'APPROVED'),
+          eq(templateLayouts.status, 'APPROVED'),
+          eq(templateLayoutRenderers.rendererStatus, 'READY'),
+          isNotNull(templateLayoutPageTypes.approvedAt),
+        )),
       this.db.select({ reference: provisioningDrafts.publicReference })
         .from(provisioningDrafts).where(eq(provisioningDrafts.tenantId, tenant.id))
         .orderBy(desc(provisioningDrafts.createdAt)).limit(1),
@@ -128,6 +164,11 @@ export class DeliveryContextService {
     const draft = draftRows[0] ? await this.provisioning.getDraft(draftRows[0].reference) : null;
     const run = runRows[0] ? await this.provisioning.getRun(runRows[0].reference) : null;
     const readiness = await this.provisioning.readiness(tenant.agencyReference);
+    const nativePageTypes = new Set(nativeRows.map(row => row.pageType));
+    const nativeTemplateReady = Boolean(
+      nativeRows[0]?.versionReference
+      && REQUIRED_NATIVE_PAGE_TYPES.every(pageType => nativePageTypes.has(pageType)),
+    );
 
     return {
       tenant,
@@ -138,6 +179,14 @@ export class DeliveryContextService {
         status: brief.status,
         readyForProvisioning: record(brief.readiness).readyForProvisioning === true,
       } : null,
+      designLibrary: {
+        defaultSource: 'KS_NATIVE',
+        defaultPresetKey: 'NORTHLIGHT',
+        nativeTemplateReady,
+        nativeTemplateVersionReference: nativeTemplateReady ? nativeRows[0].versionReference : null,
+        presets: SITE_DESIGN_PRESETS,
+        sectionVariants: ['editorial', 'grid', 'split', 'compact', 'standard', 'featured', 'quiet'],
+      },
       approvedTemplates: templateRows.map(item => ({
         ...item,
         label: `${item.sourceName} · version ${item.version}`,
