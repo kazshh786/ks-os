@@ -48,6 +48,17 @@ function dispatchDrag(element: HTMLElement, type: 'dragover' | 'drop', clientY: 
   fireEvent(element, event);
 }
 
+function overlapBooking({ id, customerId, name, startTime, endTime }: { id: string; customerId: string; name: string; startTime: string; endTime: string }): BookingOperationsItem {
+  return {
+    ...booking,
+    id,
+    reference: `BK-${id.slice(0, 4)}`,
+    startTime,
+    endTime,
+    customer: { ...booking.customer, id: customerId, name },
+  };
+}
+
 describe('BookingScheduleView time grid', () => {
   it('shows hourly labels and positions bookings in day columns', () => {
     render(<BookingScheduleView
@@ -98,6 +109,44 @@ describe('BookingScheduleView time grid', () => {
       time: '10:30',
       label: 'Thu 30',
     }));
+  });
+
+  it('uses one consistent lane count for a staggered overlap cluster', () => {
+    const second = overlapBooking({
+      id: '66666666-6666-4666-8666-666666666666',
+      customerId: '77777777-7777-4777-8777-777777777777',
+      name: 'Bilal Khan',
+      startTime: '2026-07-29T09:30:00.000Z',
+      endTime: '2026-07-29T10:30:00.000Z',
+    });
+    const third = overlapBooking({
+      id: '88888888-8888-4888-8888-888888888888',
+      customerId: '99999999-9999-4999-8999-999999999999',
+      name: 'Chloe Smith',
+      startTime: '2026-07-29T10:00:00.000Z',
+      endTime: '2026-07-29T11:00:00.000Z',
+    });
+
+    render(<BookingScheduleView
+      columns={days}
+      days={days}
+      bookings={[booking, second, third]}
+      groupBy="day"
+      density="comfortable"
+      timezone="UTC"
+      onOpen={vi.fn()}
+      onCreate={vi.fn()}
+      onReschedule={vi.fn()}
+    />);
+
+    const wrappers = [
+      screen.getByRole('button', { name: /Alice Jones/i }).parentElement,
+      screen.getByRole('button', { name: /Bilal Khan/i }).parentElement,
+      screen.getByRole('button', { name: /Chloe Smith/i }).parentElement,
+    ];
+
+    expect(wrappers.every(wrapper => wrapper?.style.width === 'calc(50% - 6px)')).toBe(true);
+    expect(new Set(wrappers.map(wrapper => wrapper?.style.left)).size).toBe(2);
   });
 
   it('combines days and team members into resource columns', () => {
