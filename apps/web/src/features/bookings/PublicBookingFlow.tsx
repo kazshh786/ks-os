@@ -17,6 +17,7 @@ import {
   MapPin,
   Phone,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   UserRound,
   Wallet,
@@ -238,7 +239,9 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
   const dates = Array.from({ length: Math.min(7, maximumFutureDays - weekStartOffset) }, (_, index) => addDays(firstBookableDate, weekStartOffset + index));
   const dateMinimum = format(firstBookableDate, 'yyyy-MM-dd');
   const dateMaximum = format(addDays(firstBookableDate, maximumFutureDays - 1), 'yyyy-MM-dd');
-  const visibleChannels = (catalog?.bookingChannels || []).filter(channel => (page?.bookingRules.enabledBookingChannels?.length ? page.bookingRules.enabledBookingChannels : ['in_shop']).includes(channel.id));
+  const enabledChannels: BookingChannel[] = page?.bookingRules.enabledBookingChannels?.length ? page.bookingRules.enabledBookingChannels : ['in_shop'];
+  const catalogChannels = catalog?.bookingChannels?.length ? catalog.bookingChannels : [{ id: 'in_shop' as const, label: 'At the business' }, { id: 'mobile' as const, label: 'Mobile appointment' }];
+  const visibleChannels = catalogChannels.filter(channel => enabledChannels.includes(channel.id));
   const effectivePaymentMode = service?.requiresDeposit ? 'deposit_required' : page?.paymentSettings.mode === 'FULL' ? 'pay_now' : page?.paymentSettings.mode === 'DEPOSIT' ? 'deposit_required' : page?.paymentSettings.mode === 'CUSTOMER_CHOICE' ? paymentChoice : 'pay_later';
   const depositPercentage = Math.min(100, Math.max(0, page?.paymentSettings.depositPercentage || 0));
   const quotedPrice = slot?.price ?? service?.price ?? 0;
@@ -267,9 +270,11 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
       const preselectedService = data.services.find(item => item.publicReference === requestedService);
       const preselectedLocation = data.locations?.find(item => item.publicReference === requestedLocation);
       const preselectedStaff = data.staff.find(item => item.publicReference === requestedStaff);
-      const channels = data.page?.bookingRules.enabledBookingChannels?.length ? data.page.bookingRules.enabledBookingChannels : ['in_shop'];
+      const channels: BookingChannel[] = data.page?.bookingRules.enabledBookingChannels?.length
+        ? data.page.bookingRules.enabledBookingChannels
+        : ['in_shop'];
       setCatalog(data);
-      setBookingChannel(channels[0]);
+      setBookingChannel(channels[0] || 'in_shop');
       setServiceId(preselectedService?.id || '');
       setLocationId(preselectedLocation?.id || data.locations?.find(item => item.isPrimary)?.id || data.locations?.[0]?.id || '');
       setStaffId(preselectedStaff?.id || (data.page?.bookingRules.allowAnyStaff !== false ? 'any' : data.staff.find(member => member.accountRole === 'owner')?.id || data.staff[0]?.id || ''));
@@ -283,6 +288,11 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
     }).catch(() => { if (active) setLoadError('Error loading this booking page. Please try again.'); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [slug]);
+
+  useEffect(() => {
+    const first = visibleChannels[0]?.id;
+    if (first && !visibleChannels.some(channel => channel.id === bookingChannel)) setBookingChannel(first);
+  }, [bookingChannel, visibleChannels]);
 
   useEffect(() => {
     if (!serviceId || !date) { setSlots([]); return; }
