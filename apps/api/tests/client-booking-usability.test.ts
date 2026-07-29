@@ -100,9 +100,11 @@ test('customer booking UI enforces six weeks and filters disabled channels', () 
   assert.match(source, /Next week/);
 });
 
-test('availability saves one appointment channel at a time', () => {
-  const source = fs.readFileSync(path.resolve(process.cwd(), '../web/src/features/team/AvailabilityPage.tsx'), 'utf8');
+test('calendar availability modal saves one appointment channel at a time', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), '../web/src/features/bookings/CalendarAvailabilityDialog.tsx'), 'utf8');
   assert.match(source, /updateTeamMemberBookingChannels\(member\.id, \{ channel, schedule \}\)/);
   assert.match(source, /channel === 'in_shop'/);
+  assert.match(source, /booking-schedule-overrides/);
+  assert.match(source, /item\.date === nextOverride\.date && item\.channel === channel/);
   assert.doesNotMatch(source, /channel: 'mobile', schedule \}\),\s*\]/);
 });

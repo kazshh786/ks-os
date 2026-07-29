@@ -1,11 +1,12 @@
 import { and, count, desc, eq, gte, inArray, ne, sql } from 'drizzle-orm';
 import {
-  accountAccessAuditEvents, accountInvitations, appointments, applicationSessions, bookingChannelSchedules, getDatabase, services,
-  staffSchedules, staffServiceAssignments, users,
+  accountAccessAuditEvents, accountInvitations, appointments, applicationSessions, bookingChannelSchedules,
+  bookingScheduleOverrides, getDatabase, services, staffSchedules, staffServiceAssignments, users,
 } from '@ks-os/database';
 import type {
   CreateTeamInvitationRequest, StaffLifecycleAction, UpdateBookingChannelScheduleRequest,
-  UpdateStaffProfileRequest, UpdateStaffScheduleRequest, UpdateStaffServicesRequest,
+  UpdateBookingScheduleOverridesRequest, UpdateStaffProfileRequest, UpdateStaffScheduleRequest,
+  UpdateStaffServicesRequest,
 } from '@ks-os/contracts';
 import { AccountInvitationService } from '../authentication/account-invitation.service.js';
 import { EntitlementService } from '../agency/agency.service.js';
@@ -50,14 +51,32 @@ export class TeamService {
 
   async get(actor: Actor, id: string) {
     const member = await this.resolveMember(actor, id);
-    const [assignedServices, schedule, channels] = await Promise.all([
+    const [assignedServices, schedule, channels, overrides] = await Promise.all([
       this.db.select({ serviceId: staffServiceAssignments.serviceId, name: services.name }).from(staffServiceAssignments)
         .innerJoin(services, and(eq(services.id, staffServiceAssignments.serviceId), eq(services.tenantId, actor.tenantId)))
         .where(and(eq(staffServiceAssignments.tenantId, actor.tenantId), eq(staffServiceAssignments.staffUserId, member.id), eq(staffServiceAssignments.isActive, true))),
       this.db.select().from(staffSchedules).where(and(eq(staffSchedules.tenantId, actor.tenantId), eq(staffSchedules.userId, member.id))),
       this.db.select().from(bookingChannelSchedules).where(and(eq(bookingChannelSchedules.tenantId, actor.tenantId), eq(bookingChannelSchedules.userId, member.id))),
+      this.db.select().from(bookingScheduleOverrides).where(and(eq(bookingScheduleOverrides.tenantId, actor.tenantId), eq(bookingScheduleOverrides.userId, member.id))),
     ]);
-    return { ...member, id: member.publicReference, assignedServices, schedule, bookingChannels: channels };
+    return {
+      ...member,
+      id: member.publicReference,
+      assignedServices,
+      schedule,
+      bookingChannels: channels,
+      bookingOverrides: overrides
+        .map(row => ({
+          id: row.id,
+          date: row.overrideDate,
+          channel: row.bookingChannel,
+          enabled: row.enabled,
+          startTime: row.startTime,
+          endTime: row.endTime,
+          note: row.note,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date) || a.channel.localeCompare(b.channel)),
+    };
   }
 
   async invite(actor: Actor, input: CreateTeamInvitationRequest) {
@@ -121,6 +140,24 @@ export class TeamService {
       await tx.delete(bookingChannelSchedules).where(and(eq(bookingChannelSchedules.tenantId, actor.tenantId), eq(bookingChannelSchedules.userId, member.id), eq(bookingChannelSchedules.bookingChannel, input.channel)));
       const rows = input.schedule.filter(item => item.enabled).map(item => ({ tenantId: actor.tenantId, userId: member.id, bookingChannel: input.channel, dayOfWeek: item.dayOfWeek, startTime: item.startTime, endTime: item.endTime }));
       if (rows.length) await tx.insert(bookingChannelSchedules).values(rows);
+    });
+    return this.get(actor, id);
+  }
+
+  async updateOverrides(actor: Actor, id: string, input: UpdateBookingScheduleOverridesRequest) {
+    const member = await this.resolveMember(actor, id);
+    await this.db.transaction(async tx => {
+      await tx.delete(bookingScheduleOverrides).where(and(eq(bookingScheduleOverrides.tenantId, actor.tenantId), eq(bookingScheduleOverrides.userId, member.id)));
+      if (input.overrides.length) await tx.insert(bookingScheduleOverrides).values(input.overrides.map(item => ({
+        tenantId: actor.tenantId,
+        userId: member.id,
+        bookingChannel: item.channel,
+        overrideDate: item.date,
+        enabled: item.enabled,
+        startTime: item.enabled ? item.startTime! : null,
+        endTime: item.enabled ? item.endTime! : null,
+        note: item.note?.trim() || null,
+      })));
     });
     return this.get(actor, id);
   }
