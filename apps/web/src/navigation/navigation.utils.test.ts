@@ -8,16 +8,24 @@ const labels = (groups: ReturnType<typeof resolveNavigation>) => groups.flatMap(
 describe('navigation resolution', () => {
   it('shows the complete business administration navigation to an owner', () => {
     const groups = resolveNavigation(businessNavigation, { portal: 'business', role: 'owner', permissions: [] });
-    expect(labels(groups)).toEqual(expect.arrayContaining(['Dashboard', 'Booking Calendar', 'Finance', 'Team', 'Business Settings']));
+    expect(labels(groups)).toEqual(expect.arrayContaining(['Dashboard', 'Booking Calendar', 'Tasks', 'Finance', 'Team', 'Business Settings']));
+    expect(labels(groups)).not.toContain('Bookings');
     expect(groups.every(group => group.items.length > 0)).toBe(true);
+  });
+
+  it('promotes tasks into the primary navigation after the calendar', () => {
+    const primary = businessNavigation.find(group => group.id === 'primary');
+    expect(primary?.items.map(item => item.label)).toEqual(['Dashboard', 'Services', 'Booking Calendar', 'Tasks']);
+    expect(businessNavigation.find(group => group.id === 'work')?.items.map(item => item.label)).toEqual(['Automations', 'Operations']);
   });
 
   it('only shows staff destinations granted by capabilities and removes empty groups', () => {
     const groups = resolveNavigation(businessNavigation, {
       portal: 'business', role: 'staff', permissions: ['BOOKINGS_VIEW_OWN', 'TASKS_VIEW_OWN'],
     });
-    expect(labels(groups)).toEqual(['Booking Calendar', 'Bookings', 'Tasks', 'Security']);
+    expect(labels(groups)).toEqual(['Booking Calendar', 'Tasks', 'Security']);
     expect(labels(groups)).not.toContain('Dashboard');
+    expect(labels(groups)).not.toContain('Bookings');
     expect(labels(groups)).not.toContain('Finance');
     expect(groups.map(group => group.label)).not.toContain('Growth');
   });
