@@ -44,6 +44,7 @@ import { externalApiRoutes, integrationRoutes, publicCalendarRoutes } from './mo
 import { bookingPageSettingsRoutes } from './modules/bookings/booking-page.routes.js';
 import { agencySiteRoutes } from './modules/sites/site.routes.js';
 import { agencyTemplateIntelligenceRoutes } from './modules/sites/template-intelligence.routes.js';
+import { agencyDesignLibraryRoutes } from './modules/sites/design-library.routes.js';
 import { agencySiteBlueprintRoutes } from './modules/sites/site-blueprint.routes.js';
 import { agencySiteJobRoutes } from './modules/sites/site-job.routes.js';
 import { agencyKnowledgePackRoutes } from './modules/sites/knowledge-pack.routes.js';
@@ -170,6 +171,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(agencySiteGenerationRoutes, { prefix: '/api/v1/agency/sites' });
   fastify.register(agencySiteReviewRoutes, { prefix: '/api/v1/agency/sites' });
   fastify.register(agencyTemplateIntelligenceRoutes, { prefix: '/api/v1/agency' });
+  fastify.register(agencyDesignLibraryRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencyFactFindingRoutes, { prefix: '/api/v1/agency/fact-finding' });
   fastify.register(agencyProvisioningRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencySiteStudioRoutes, { prefix: '/api/v1/agency/sites' });
