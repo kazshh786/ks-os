@@ -161,7 +161,16 @@ const FormDraftSchemaJsonSchema = z.object({
   logic: z.array(RuleSchema).max(200).default([]),
   theme: ThemeSchema.default({}),
   settings: SettingsSchema,
-}).strict();
+}).strict().superRefine((schema, context) => {
+  const ids = schema.fields.map(field => field.id);
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: 'custom', path: ['fields'], message: 'Field IDs must be unique' });
+  }
+  const completedKeys = schema.fields.map(field => field.key).filter((value): value is string => Boolean(value));
+  if (new Set(completedKeys).size !== completedKeys.length) {
+    context.addIssue({ code: 'custom', path: ['fields'], message: 'Completed field keys must be unique' });
+  }
+});
 
 export const FormDraftInputSchema = z.object({
   title: text(255).min(1),
