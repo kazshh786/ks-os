@@ -1,6 +1,6 @@
 import {
   BarChart3, Bell, Boxes, Building2, CalendarDays, ClipboardList, ConciergeBell, CreditCard,
-  FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors, Clock3,
+  FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors,
   Plug, ReceiptText, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
 } from 'lucide-react';
 import type { NavigationGroup } from './navigation.types';
@@ -51,7 +51,6 @@ export const businessNavigation: NavigationGroup[] = [
     id: 'admin', label: 'Administration',
     items: [
       { id: 'team', label: 'Team', href: '/app/settings/team', icon: Users, roles: ['owner'], activePrefixes: ['/app/settings/team/'] },
-      { id: 'availability', label: 'Availability', href: '/app/settings/availability', icon: Clock3, roles: ['owner'] },
       { id: 'locations', label: 'Locations and resources', href: '/app/settings/locations', icon: MapPinned, roles: ['owner'], activePrefixes: ['/app/settings/resources'] },
       { id: 'booking-page', label: 'Booking Page', href: '/app/settings/booking-page', icon: Globe2, roles: ['owner'] },
       { id: 'booking-policies', label: 'Booking Policies', href: '/app/settings/booking/customer-management', icon: ReceiptText, roles: ['owner'] },
