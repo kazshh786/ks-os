@@ -27,6 +27,7 @@ import {
   users,
 } from '@ks-os/database';
 import type { ProvisioningStepKey } from '@ks-os/workspace-provisioning';
+import { applyProvisionedNativeDesign } from './native-design-finalization.js';
 
 type Database = ReturnType<typeof getDatabase>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -73,6 +74,7 @@ export async function finalizeProvisionedWorkspace(database: Database, generatio
     provisioningRunId: provisioningRuns.id,
     provisioningRunReference: provisioningRuns.publicReference,
     provisioningDraftId: provisioningRuns.provisioningDraftId,
+    pagePlan: provisioningDrafts.pagePlanJson,
     tenantId: provisioningRuns.tenantId,
     siteId: provisioningRuns.siteId,
     siteReference: sites.publicReference,
@@ -94,6 +96,7 @@ export async function finalizeProvisionedWorkspace(database: Database, generatio
     agencyEmail: agencyUsers.emailNormalized,
   }).from(siteGenerationRuns)
     .innerJoin(provisioningRuns, eq(siteGenerationRuns.provisioningRunId, provisioningRuns.id))
+    .innerJoin(provisioningDrafts, eq(provisioningRuns.provisioningDraftId, provisioningDrafts.id))
     .innerJoin(sites, eq(siteGenerationRuns.siteId, sites.id))
     .innerJoin(siteVersions, eq(siteGenerationRuns.siteVersionId, siteVersions.id))
     .innerJoin(siteBlueprints, eq(siteGenerationRuns.blueprintId, siteBlueprints.id))
@@ -129,6 +132,16 @@ export async function finalizeProvisionedWorkspace(database: Database, generatio
     }
     await completeStep(tx, context, 'VALIDATE_NATIVE_BOOKING', [context.siteReference], 'Canonical native booking records and structured booking actions were validated.');
 
+    const nativeDesign = await applyProvisionedNativeDesign(tx, {
+      tenantId: context.tenantId,
+      siteId,
+      siteReference: context.siteReference,
+      versionId,
+      agencyUserId: context.agencyUserId,
+      pagePlan: context.pagePlan,
+    });
+    const reviewDigest = nativeDesign?.contentDigest ?? generationDigest;
+
     let [cycle] = await tx.select({ id: siteReviewCycles.id, reference: siteReviewCycles.publicReference })
       .from(siteReviewCycles).where(eq(siteReviewCycles.provisioningRunId, context.provisioningRunId)).limit(1);
     if (!cycle) {
@@ -143,7 +156,7 @@ export async function finalizeProvisionedWorkspace(database: Database, generatio
         knowledgePackId: context.knowledgePackId,
         knowledgePackSemanticVersion: context.knowledgePackSemanticVersion,
         provisioningRunId: context.provisioningRunId,
-        pinnedContentDigestSha256: generationDigest,
+        pinnedContentDigestSha256: reviewDigest,
         status: 'INTERNAL_REVIEW',
         reviewScope: 'FULL_SITE',
         reviewRevision: 1,
@@ -202,9 +215,12 @@ export async function finalizeProvisionedWorkspace(database: Database, generatio
       actorType: 'SYSTEM',
       targetType: 'SITE_REVIEW_CYCLE',
       targetPublicReference: cycle.reference,
-      safeMetadataJson: { provisioningRunReference: context.provisioningRunReference },
+      safeMetadataJson: {
+        provisioningRunReference: context.provisioningRunReference,
+        nativeDesignPreset: nativeDesign?.presetKey ?? null,
+      },
     });
-    await completeStep(tx, context, 'CREATE_INTERNAL_REVIEW', [cycle.reference], 'An internal agency review cycle was created for the generated draft.');
+    await completeStep(tx, context, 'CREATE_INTERNAL_REVIEW', [cycle.reference], 'An internal agency review cycle was created for the generated and styled draft.');
 
     let [session] = await tx.select({ id: siteReviewSessions.id, reference: siteReviewSessions.publicReference })
       .from(siteReviewSessions).where(and(
@@ -246,7 +262,7 @@ export async function finalizeProvisionedWorkspace(database: Database, generatio
       .where(eq(sites.id, siteId));
     await tx.update(siteVersions).set({ status: 'INTERNAL_REVIEW', updatedAt: new Date() })
       .where(eq(siteVersions.id, versionId));
-    await completeStep(tx, context, 'MARK_READY', [context.siteReference], 'The provisioned workspace and website draft are ready for internal agency review.');
+    await completeStep(tx, context, 'MARK_READY', [context.siteReference], 'The provisioned workspace and native-designed website draft are ready for internal agency review.');
 
     await tx.insert(platformAuditEvents).values({
       agencyUserId: context.agencyUserId,
@@ -261,6 +277,7 @@ export async function finalizeProvisionedWorkspace(database: Database, generatio
         siteReference: context.siteReference,
         generationRunReference: context.generationRunReference,
         reviewReference: cycle.reference,
+        nativeDesignPreset: nativeDesign?.presetKey ?? null,
         published: false,
       },
     });
