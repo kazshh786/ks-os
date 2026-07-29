@@ -7,8 +7,11 @@ import {
   AssignDesignLibraryThemeSchema,
   DesignLibraryListQuerySchema,
   DesignLibraryService,
-  GenerateDesignLibraryItemSchema,
 } from './design-library.service.js';
+import {
+  DesignLibraryKnowledgeService,
+  DesignStudioGenerateRequestSchema,
+} from './design-library-knowledge.service.js';
 
 const ItemParamsSchema = z.object({ reference: z.string().uuid() }).strict();
 
@@ -28,14 +31,23 @@ function agencyActor(request: FastifyRequest, capability: AgencyCapability): Age
 
 export async function agencyDesignLibraryRoutes(app: FastifyInstance) {
   let service: DesignLibraryService | undefined;
+  let knowledgeService: DesignLibraryKnowledgeService | undefined;
   const library = () => {
     service ||= new DesignLibraryService();
     return service;
   };
+  const knowledge = () => {
+    knowledgeService ||= new DesignLibraryKnowledgeService();
+    return knowledgeService;
+  };
 
   app.get('/design-library/config', async request => {
     agencyActor(request, 'sites.templates.read');
-    return { data: library().config() };
+    const [base, governedKnowledge] = await Promise.all([
+      Promise.resolve(library().config()),
+      knowledge().config(),
+    ]);
+    return { data: { ...base, knowledge: governedKnowledge } };
   });
 
   app.get('/design-library', async request => {
@@ -54,8 +66,11 @@ export async function agencyDesignLibraryRoutes(app: FastifyInstance) {
     config: { rateLimit: { max: 12, timeWindow: '1 hour' } },
   }, async (request, reply) => {
     const actor = agencyActor(request, 'sites.templates.manage');
-    const input = GenerateDesignLibraryItemSchema.parse(request.body);
-    const data = await library().generate(actor, input);
+    const input = DesignStudioGenerateRequestSchema.parse(request.body);
+    const prepared = await knowledge().prepare(input);
+    const generated = await library().generate(actor, prepared.generationInput);
+    await knowledge().pinResult(generated.reference, prepared.provenance);
+    const data = await library().get(generated.reference);
     return reply.code(201).send({ data });
   });
 
