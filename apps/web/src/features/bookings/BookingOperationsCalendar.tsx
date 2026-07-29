@@ -3,9 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { eachDayOfInterval, format } from 'date-fns';
 import { fromZonedTime } from 'date-fns-tz';
 import {
-  AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, ConciergeBell,
-  Copy, Download, ExternalLink, Filter, MoreHorizontal, Plus, RefreshCw, Search, Settings2,
-  Share2, SlidersHorizontal, X,
+  AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Copy, Download,
+  ExternalLink, Filter, MoreHorizontal, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, X,
 } from 'lucide-react';
 import type { BookingOperationsItem, BookingOperationsQuery, BookingOperationsResponse, OperationalBookingStatus } from '@ks-os/contracts';
 import type { Service, Staff } from '../../data/types.js';
@@ -17,6 +16,7 @@ import { BookingMonthView } from './BookingMonthView.js';
 import { BookingQuickView } from './BookingQuickView.js';
 import { BookingScheduleView, type ScheduleDropTarget } from './BookingScheduleView.js';
 import { BookingStatusBadge } from './BookingStatusBadge.js';
+import { CalendarCreateMenuDialog, type CalendarCreateType } from './CalendarCreateMenuDialog.js';
 import { CreateBookingDialog } from './CreateBookingDialog.js';
 import { BlockTimeDialog } from './BlockTimeDialog.js';
 import { bookingStatusDisplay, calendarRange, calendarViews, type CalendarView, localDayKey, moveCalendarAnchor, rangeLabel } from './booking-display.js';
@@ -62,7 +62,8 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<BookingOperationsItem | null>(null);
-  const [createOpen, setCreateOpen] = useState(params.get('create') === '1');
+  const [createMenuOpen, setCreateMenuOpen] = useState(params.get('create') === '1');
+  const [createOpen, setCreateOpen] = useState(false);
   const [walkInOpen, setWalkInOpen] = useState(params.get('walkin') === '1');
   const [blockOpen, setBlockOpen] = useState(params.get('block') === '1');
   const [filtersOpen, setFiltersOpen] = useState(() => advancedFilterKeys.some(key => params.has(key)));
@@ -141,6 +142,13 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
     advancedFilterKeys.forEach(key => next.delete(key));
     setParams(next, { replace: true });
   };
+  const chooseCreateType = (type: CalendarCreateType) => {
+    setCreateMenuOpen(false);
+    if (params.has('create')) updateParams({ create: null });
+    if (type === 'booking') setCreateOpen(true);
+    if (type === 'walk-in') setWalkInOpen(true);
+    if (type === 'block') setBlockOpen(true);
+  };
   const filterCount = advancedFilterKeys.filter(key => params.has(key)).length;
   const locations = Array.from(new Map(response.items.filter(item => item.location.id).map(item => [item.location.id!, item.location.name || 'Location'])).entries())
     .map(([id, name]) => ({ id, name }));
@@ -212,8 +220,8 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
     }
   };
 
-  return <main className="flex min-h-[calc(100vh-7rem)] flex-col gap-3" aria-busy={loading}>
-    <header className="sticky top-0 z-40 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+  return <main className="relative flex min-h-full flex-col bg-slate-50 pb-24" aria-busy={loading}>
+    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur sm:px-4">
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
           <div className="min-w-0 xl:w-64">
@@ -257,13 +265,11 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
               </div>}
             </div>
 
-            <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white shadow-sm hover:bg-indigo-700"><Plus className="h-4 w-4" />New booking</button>
+            <button type="button" onClick={() => setCreateMenuOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white shadow-sm hover:bg-indigo-700"><Plus className="h-4 w-4" />New booking</button>
 
             <div className="relative">
               <button type="button" onClick={() => { setActionsOpen(value => !value); setViewMenuOpen(false); }} aria-expanded={actionsOpen} aria-label="More calendar actions" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700"><MoreHorizontal className="h-5 w-5" /></button>
               {actionsOpen && <div className="absolute right-0 z-50 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
-                <button type="button" onClick={() => { setWalkInOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold hover:bg-slate-50"><ConciergeBell className="h-4 w-4" />Add walk-in</button>
-                <button type="button" onClick={() => { setBlockOpen(true); setActionsOpen(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold hover:bg-slate-50"><Clock3 className="h-4 w-4" />Block time</button>
                 <button type="button" onClick={() => void publicPage('open')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold hover:bg-slate-50"><ExternalLink className="h-4 w-4" />Open booking page</button>
                 <button type="button" onClick={() => void publicPage('copy')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold hover:bg-slate-50"><Copy className="h-4 w-4" />Copy booking link</button>
                 <Link to="/app/settings/booking-page" onClick={() => setActionsOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold hover:bg-slate-50"><Settings2 className="h-4 w-4" />Booking page settings</Link>
@@ -298,26 +304,47 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
       </div>
     </header>
 
-    {notice && <p role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm font-semibold text-indigo-900">{notice}</p>}
-    {error && <div role="alert" className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"><span><strong>Bookings could not be refreshed.</strong> The calendar remains available with {response.items.length ? 'the last loaded schedule' : 'an empty schedule'}. <span className="text-amber-800">{error}</span></span><button onClick={() => void load()} className="shrink-0 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white">Try again</button></div>}
-    {loading && <p role="status" className="sr-only">Refreshing booking calendar</p>}
+    <div className="space-y-3 px-3 pt-3 sm:px-4">
+      {notice && <p role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm font-semibold text-indigo-900">{notice}</p>}
+      {error && <div role="alert" className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"><span><strong>Bookings could not be refreshed.</strong> The calendar remains available with {response.items.length ? 'the last loaded schedule' : 'an empty schedule'}. <span className="text-amber-800">{error}</span></span><button onClick={() => void load()} className="shrink-0 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white">Try again</button></div>}
+      {loading && <p role="status" className="sr-only">Refreshing booking calendar</p>}
 
-    <section className="min-h-0 flex-1" aria-label="Calendar workspace">
-      {view === 'agenda'
-        ? <BookingAgendaView bookings={response.items} onOpen={setSelected} />
-        : view === 'month'
-          ? <BookingMonthView from={range.from} to={range.to} bookings={response.items} timezone={activeTenant.timezone} onOpen={setSelected} onSelectDay={day => { window.sessionStorage.setItem('ks-calendar-view', 'day'); updateParams({ date: format(day, 'yyyy-MM-dd'), view: 'day' }); }} />
-          : <BookingScheduleView columns={columns} days={days} bookings={response.items} groupBy={groupBy} density={density} timezone={activeTenant.timezone} onOpen={setSelected} onCreate={() => setCreateOpen(true)} onReschedule={(booking, target) => void dragReschedule(booking, target)} />}
-    </section>
-
-    <footer className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 xl:flex-row xl:items-center xl:justify-between">
-      <section aria-label="Calendar summary" className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {summaryItems.map(([label, value]) => <article key={label} className="flex items-baseline gap-1.5"><span className="text-lg font-black text-slate-950">{value}</span><span className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</span></article>)}
+      <section aria-label="Calendar workspace">
+        {view === 'agenda'
+          ? <BookingAgendaView bookings={response.items} onOpen={setSelected} />
+          : view === 'month'
+            ? <BookingMonthView from={range.from} to={range.to} bookings={response.items} timezone={activeTenant.timezone} onOpen={setSelected} onSelectDay={day => { window.sessionStorage.setItem('ks-calendar-view', 'day'); updateParams({ date: format(day, 'yyyy-MM-dd'), view: 'day' }); }} />
+            : <BookingScheduleView
+              columns={columns}
+              days={days}
+              bookings={response.items}
+              groupBy={groupBy}
+              density={density}
+              timezone={activeTenant.timezone}
+              selectedDay={dateValue}
+              onSelectDay={day => updateParams({ date: day })}
+              onOpen={setSelected}
+              onCreate={() => setCreateMenuOpen(true)}
+              onReschedule={(booking, target) => void dragReschedule(booking, target)}
+            />}
       </section>
-      <section aria-label="Calendar legend" className="flex flex-wrap gap-1.5">{Object.entries(bookingStatusDisplay).map(([status]) => <BookingStatusBadge key={status} status={status as OperationalBookingStatus} compact />)}</section>
+    </div>
+
+    <footer className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 px-3 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.10)] backdrop-blur lg:left-[var(--workspace-sidebar-width)]" data-anchored="viewport-bottom">
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+        <section aria-label="Calendar summary" className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          {summaryItems.map(([label, value]) => <article key={label} className="flex items-baseline gap-1.5"><span className="text-base font-black text-slate-950">{value}</span><span className="text-[9px] font-black uppercase tracking-wide text-slate-500">{label}</span></article>)}
+        </section>
+        <section aria-label="Calendar legend" className="flex flex-wrap gap-1.5">{Object.entries(bookingStatusDisplay).map(([status]) => <BookingStatusBadge key={status} status={status as OperationalBookingStatus} compact />)}</section>
+      </div>
     </footer>
 
-    <CreateBookingDialog open={createOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} onClose={() => { setCreateOpen(false); if (params.has('create')) updateParams({ create: null }); }} onCreated={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
+    <CalendarCreateMenuDialog
+      open={createMenuOpen}
+      onClose={() => { setCreateMenuOpen(false); if (params.has('create')) updateParams({ create: null }); }}
+      onChoose={chooseCreateType}
+    />
+    <CreateBookingDialog open={createOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} onClose={() => setCreateOpen(false)} onCreated={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <CreateBookingDialog mode="walk-in" open={walkInOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} onClose={() => { setWalkInOpen(false); if (params.has('walkin')) updateParams({ walkin: null }); }} onCreated={() => { setNotice('Walk-in checked in and added to the calendar.'); window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <BlockTimeDialog open={blockOpen} timezone={activeTenant.timezone} staff={staff} initialDate={dateValue} onClose={() => { setBlockOpen(false); if (params.has('block')) updateParams({ block: null }); }} onCreated={() => { setNotice('Time blocked successfully.'); window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <BookingQuickView booking={selected} staff={staff} onClose={() => setSelected(null)} onChanged={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} onCheckout={booking => navigate('/app/pos', { state: { booking } })} />
