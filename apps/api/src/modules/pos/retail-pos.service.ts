@@ -162,7 +162,7 @@ export class RetailPosService {
     const trustedComponents = stripeCheckout.trustedComponents;
 
     try {
-      const summary = await this.db.transaction(async tx => {
+      const summary: RetailSaleSummary = await this.db.transaction(async tx => {
         const existingInside = await this.findExistingSale(tenantId, payload.idempotencyKey, tx);
         if (existingInside) return this.idempotentSummary(existingInside);
 
@@ -245,7 +245,7 @@ export class RetailPosService {
         `);
         const transaction = insertedResult.rows[0] as any;
 
-        const insertedComponents = [];
+        const insertedComponents: NonNullable<RetailSaleSummary['paymentComponents']> = [];
         for (const component of finalComponents as PaymentComponentInput[]) {
           const isStripe = component.method === 'STRIPE_TERMINAL';
           const [inserted] = await tx.insert(checkoutPaymentComponents).values({
@@ -264,8 +264,14 @@ export class RetailPosService {
             staffUserId: authUserId,
           }).returning();
           insertedComponents.push({
-            ...inserted,
+            id: inserted.id,
+            method: component.method,
+            amountInCents: inserted.amountInCents,
             verificationSource: inserted.verificationSource as 'PROVIDER_CONFIRMED' | 'STAFF_CONFIRMED',
+            ...(inserted.externalProvider ? { externalProvider: inserted.externalProvider } : {}),
+            ...(inserted.externalProviderName ? { externalProviderName: inserted.externalProviderName } : {}),
+            ...(inserted.externalReference ? { externalReference: inserted.externalReference } : {}),
+            ...(inserted.methodDescription ? { methodDescription: inserted.methodDescription } : {}),
           });
         }
 
@@ -283,7 +289,7 @@ export class RetailPosService {
           paymentStatus: transaction.payment_status,
           date: new Date(transaction.created_at).toISOString(),
           items: receiptItems,
-        } satisfies RetailSaleSummary;
+        };
       });
 
       return { summary, idempotent: summary.items.length === 0 };
