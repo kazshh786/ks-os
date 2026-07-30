@@ -1,0 +1,43 @@
+name: Apply booking empty-state boundary copy fix
+
+on:
+  push:
+    branches:
+      - agent/booking-empty-state-date
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/booking-empty-state-date
+          fetch-depth: 0
+
+      - name: Apply guarded source edit
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("apps/web/src/features/bookings/PublicBookingFlow.tsx")
+          source = path.read_text()
+          old = "{canChooseAnyStaff ? 'Try the next date, or check availability across the whole team.' : 'Try the next date or choose another day.'}"
+          new = "{canTryNextDate ? (canChooseAnyStaff ? 'Try the next date, or check availability across the whole team.' : 'Try the next date or choose another day.') : (canChooseAnyStaff ? 'Choose another day, or check availability across the whole team.' : 'Choose another date to keep looking.')}"
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f"Expected exactly one guarded match, found {count}")
+          path.write_text(source.replace(old, new, 1))
+
+      - name: Commit component change
+        run: |
+          rm .github/workflows/apply-booking-empty-state-boundary-copy.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/features/bookings/PublicBookingFlow.tsx .github/workflows/apply-booking-empty-state-boundary-copy.yml
+          git diff --cached --check
+          git commit -m "Handle last-date booking recovery copy"
+          git push origin HEAD:agent/booking-empty-state-date
