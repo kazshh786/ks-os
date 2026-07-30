@@ -48,12 +48,25 @@ test('message lifecycle responses include channel delivery state', () => {
   assert.equal(parsed.status, 'QUEUED');
 });
 
-test('omnichannel migration is registered and keeps data API-only', () => {
+test('omnichannel migration is registered, durable and API-only', () => {
   const entry = MIGRATION_MANIFEST.find(item => item.filename === '20260730223000_omnichannel_conversations.sql');
   assert.equal(entry?.order, 53);
   const migration = readFileSync(new URL('../../../packages/database/migrations/20260730223000_omnichannel_conversations.sql', import.meta.url), 'utf8');
   assert.match(migration, /'HARDWARE','COMMUNICATION'/);
   assert.match(migration, /credentials_reference uuid REFERENCES integration_connections\(id\)/);
+  assert.match(migration, /attempt_count integer NOT NULL DEFAULT 0/);
+  assert.match(migration, /next_attempt_at timestamptz NOT NULL DEFAULT now\(\)/);
+  assert.match(migration, /conversation_messages_delivery_queue_idx/);
   assert.match(migration, /ALTER TABLE conversations ENABLE ROW LEVEL SECURITY/);
   assert.match(migration, /REVOKE ALL ON communication_channels, conversations, conversation_messages, conversation_attachments FROM anon, authenticated/);
+});
+
+test('provider webhooks require signatures and worker execution is protected', () => {
+  const appSource = readFileSync(new URL('../src/app.ts', import.meta.url), 'utf8');
+  const metaSource = readFileSync(new URL('../src/modules/webhooks/meta/meta-webhook.routes.ts', import.meta.url), 'utf8');
+  const conversationRoutes = readFileSync(new URL('../src/modules/conversations/conversation.routes.ts', import.meta.url), 'utf8');
+  assert.match(appSource, /\/api\/v1\/webhooks\/meta/);
+  assert.match(metaSource, /x-hub-signature-256/);
+  assert.match(metaSource, /timingSafeEqual/);
+  assert.match(conversationRoutes, /CONVERSATION_WORKER_SECRET/);
 });
