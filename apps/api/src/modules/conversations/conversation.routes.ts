@@ -12,6 +12,7 @@ import {
   UpdateConversationSchema,
 } from '@ks-os/contracts';
 import { ConversationChannelService } from './conversation-channel.service.js';
+import { ConversationDeliveryService } from './conversation-delivery.service.js';
 import { ConversationService } from './conversation.service.js';
 
 const inboxPermissions = new Set(['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE']);
@@ -36,6 +37,7 @@ const actor = (request: FastifyRequest) => {
 export async function conversationRoutes(app: FastifyInstance) {
   const service = new ConversationService();
   const channelService = new ConversationChannelService();
+  const deliveryService = new ConversationDeliveryService();
 
   app.get('/', async request => {
     const query = ConversationListQuerySchema.parse(request.query);
@@ -45,6 +47,15 @@ export async function conversationRoutes(app: FastifyInstance) {
   app.get('/channels', async request => {
     const currentActor = actor(request);
     return CommunicationChannelListResponseSchema.parse({ data: await channelService.list(currentActor.tenantId) });
+  });
+
+  app.post('/worker/run', async request => {
+    const supplied = request.headers.authorization?.replace(/^Bearer\s+/i, '');
+    if (!process.env.CONVERSATION_WORKER_SECRET || supplied !== process.env.CONVERSATION_WORKER_SECRET) {
+      throw Object.assign(new Error('Unauthorized'), { statusCode: 401, code: 'UNAUTHENTICATED' });
+    }
+    const requestedLimit = Number((request.query as { limit?: string }).limit || 20);
+    return { data: await deliveryService.process(Number.isFinite(requestedLimit) ? requestedLimit : 20) };
   });
 
   app.get('/:conversationId', async request => {
