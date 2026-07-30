@@ -16,7 +16,7 @@ const actor = (request: FastifyRequest) => {
   request.requireAuth();
   return {
     tenantId: request.auth!.tenantId,
-    userId: request.auth!.authUserId,
+    userId: request.auth!.tenantUserId,
     role: request.auth!.role,
   } as const;
 };
