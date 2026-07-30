@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, Loader2, Plus, Rocket, X } from 'lucide-react';
 import { useSearchParams } from 'react-router';
 import { agencyFetch, useAgencyAuth } from './AgencyAuth';
-import { AgencyWorkspaceLaunchPipeline } from './AgencyWorkspaceLaunchPipeline';
+import { AgencyFocusedLaunchJourney } from './AgencyFocusedLaunchJourney';
 import { WorkspaceDataControls } from './WorkspaceDataControls';
 
 const isRemovedWorkspace = (tenant: any) => tenant.lifecycleStatus === 'OFFBOARDED'
@@ -41,7 +41,7 @@ function SelectedClientLaunchWorkspace({ tenantId, onBack }: { tenantId: string;
   const isPlatformOwner = session?.user.role === 'PLATFORM_OWNER';
 
   return <div className="space-y-6">
-    <AgencyWorkspaceLaunchPipeline tenantIdOverride={tenantId} onBack={onBack} />
+    <AgencyFocusedLaunchJourney tenantIdOverride={tenantId} onBack={onBack} />
     {error ? <p role="alert" className="rounded-xl border border-rose-800 bg-rose-950/35 p-4 text-sm text-rose-200">{error}</p> : null}
     {notice ? <p role="status" className="rounded-xl border border-emerald-800 bg-emerald-950/35 p-4 text-sm text-emerald-200">{notice}</p> : null}
     {tenant ? <WorkspaceDataControls
