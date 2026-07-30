@@ -6,16 +6,25 @@ const calendarWorkspaceStyles = `
     --ks-calendar-toolbar-height: 0px;
     height: 100%;
     min-height: 0;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: clip;
+    overflow-y: visible;
     background: #f5f6f8;
   }
 
   .ks-calendar-workspace-frame > main {
     min-height: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: visible;
     padding-bottom: 0 !important;
     background: #f5f6f8;
   }
 
   .ks-calendar-workspace-frame > main > div {
+    min-width: 0;
+    max-width: 100%;
     padding: 0 !important;
   }
 
@@ -30,10 +39,15 @@ const calendarWorkspaceStyles = `
 
   .ks-calendar-workspace-frame section[aria-label='Calendar workspace'] {
     min-height: calc(100% - var(--ks-calendar-toolbar-height));
+    min-width: 0;
+    max-width: 100%;
   }
 
   .ks-calendar-workspace-frame section[aria-label='Booking schedule'] {
     min-height: calc(100% - var(--ks-calendar-toolbar-height));
+    min-width: 0;
+    max-width: 100%;
+    overflow: visible;
     border-left: 0 !important;
     border-right: 0 !important;
     border-radius: 0 !important;
@@ -49,31 +63,48 @@ const calendarWorkspaceStyles = `
     position: sticky !important;
     top: var(--ks-calendar-toolbar-height) !important;
     width: 100%;
+    max-width: 100%;
     min-width: 0;
     overflow-x: hidden !important;
     overflow-y: hidden !important;
     overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .ks-calendar-workspace-frame [data-calendar-column-header='true']::-webkit-scrollbar {
+    display: none;
   }
 
   .ks-calendar-workspace-frame [data-calendar-grid-scroll='true'] {
     width: 100%;
+    max-width: 100%;
     min-width: 0;
     overflow-x: auto !important;
-    overflow-y: visible !important;
+    overflow-y: hidden !important;
     overscroll-behavior-x: contain;
+    scrollbar-gutter: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
   }
 
   .ks-calendar-workspace-frame section[aria-label='Booking schedule'] > footer {
     display: none;
   }
 
+  .ks-calendar-workspace-frame section[aria-label='Booking schedule'] [aria-label='Calendar times'],
+  .ks-calendar-workspace-frame section[aria-label='Booking schedule'] [role='gridcell'] {
+    box-sizing: border-box;
+  }
+
   .ks-calendar-workspace-frame section[aria-label='Booking schedule'] [role='gridcell'] {
     background-color: #f5f6f8 !important;
+    background-position: top left !important;
+    background-origin: border-box;
   }
 
   .ks-calendar-workspace-frame section[aria-label='Booking schedule'] [aria-label^='At-business availability'] {
     border-color: #dbe2ea !important;
-    background-color: rgba(255, 255, 255, 0.7) !important;
+    background-color: rgba(255, 255, 255, 0.58) !important;
     color: #334155 !important;
   }
 
@@ -85,14 +116,42 @@ const calendarWorkspaceStyles = `
   }
 
   .ks-calendar-workspace-frame [data-calendar-toolbar-row='true'] {
-    flex-direction: row !important;
+    display: flex !important;
+    flex-flow: row wrap !important;
     align-items: center !important;
     justify-content: flex-start !important;
+    gap: 0.5rem !important;
+    min-width: 0;
+  }
+
+  .ks-calendar-workspace-frame [data-calendar-toolbar-row='true'] > :first-child {
+    min-width: 0;
   }
 
   .ks-calendar-workspace-frame [data-calendar-refresh='true'] {
     margin-left: auto !important;
     align-self: center !important;
+  }
+
+  @media (max-width: 767px) {
+    .ks-calendar-workspace-frame [data-calendar-toolbar-row='true'] > :first-child {
+      flex: 1 1 100%;
+      width: 100%;
+    }
+
+    .ks-calendar-workspace-frame [data-calendar-refresh='true'] {
+      margin-left: auto !important;
+    }
+
+    .ks-calendar-workspace-frame [data-calendar-column-header='true'] header {
+      padding-left: 0.5rem !important;
+      padding-right: 0.5rem !important;
+    }
+
+    .ks-calendar-workspace-frame section[aria-label='Booking schedule'] [aria-label='Calendar times'] span {
+      right: 0.375rem !important;
+      font-size: 0.625rem !important;
+    }
   }
 `;
 
@@ -136,7 +195,12 @@ export function CalendarWorkspaceFrame({ children }: { children: ReactNode }) {
       if (toolbar) frame.style.setProperty('--ks-calendar-toolbar-height', `${Math.ceil(toolbar.getBoundingClientRect().height)}px`);
     };
 
-    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncToolbarHeight);
+    const syncLayout = () => {
+      syncToolbarHeight();
+      syncHorizontalScroll();
+    };
+
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncLayout);
 
     const bindCalendarElements = () => {
       const calendarMain = frame.querySelector(':scope > main') as HTMLElement | null;
@@ -175,14 +239,14 @@ export function CalendarWorkspaceFrame({ children }: { children: ReactNode }) {
     };
 
     bindCalendarElements();
-    window.addEventListener('resize', syncToolbarHeight);
+    window.addEventListener('resize', syncLayout);
     const mutationObserver = new MutationObserver(bindCalendarElements);
     mutationObserver.observe(frame, { childList: true, subtree: true });
 
     return () => {
       mutationObserver.disconnect();
       resizeObserver?.disconnect();
-      window.removeEventListener('resize', syncToolbarHeight);
+      window.removeEventListener('resize', syncLayout);
       gridScroll?.removeEventListener('scroll', syncHorizontalScroll);
       columnHeader?.removeAttribute('data-calendar-column-header');
       gridScroll?.removeAttribute('data-calendar-grid-scroll');
