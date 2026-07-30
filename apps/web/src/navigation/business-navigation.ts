@@ -18,6 +18,7 @@ export const businessNavigation: NavigationGroup[] = [
   {
     id: 'customer-operations', label: 'Customer Operations',
     items: [
+      { id: 'inbox', label: 'Inbox', href: '/app/operations', icon: MessagesSquare, permissionsAny: ['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE'], activePrefixes: ['/app/operations/'] },
       { id: 'customers', label: 'Customers', href: '/app/clients', icon: Users, permissionsAny: ['CLIENTS_VIEW_BASIC'], activePrefixes: ['/app/clients/'] },
       { id: 'forms', label: 'Forms', href: '/app/forms', icon: FormInput, permissionsAny: ['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE'], activePrefixes: ['/app/forms/', '/app/form-submissions/'] },
     ],
@@ -43,7 +44,7 @@ export const businessNavigation: NavigationGroup[] = [
     id: 'work', label: 'Work Management',
     items: [
       { id: 'automations', label: 'Automations', href: '/app/automations', icon: Workflow, roles: ['owner'], activePrefixes: ['/app/automations/', '/app/automation-runs/'], requiredEntitlement: 'automations.enabled', requiredPlan: 'GROWTH', lockedBenefit: 'Automate confirmations, reminders, forms, rebooking and follow-up work.' },
-      { id: 'operations', label: 'Operations', href: '/app/operations', icon: Bell, permissionsAny: ['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE'], activePrefixes: ['/app/operations/'] },
+      { id: 'operations', label: 'System issues', href: '/app/operations?view=system', icon: Bell, permissionsAny: ['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE'], activePrefixes: [] },
     ],
   },
   {
