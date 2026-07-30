@@ -114,3 +114,10 @@ test('calendar availability modal saves one appointment channel at a time', () =
   assert.match(source, /item\.date === nextOverride\.date && item\.channel === channel/);
   assert.doesNotMatch(source, /channel: 'mobile', schedule \}\),\s*\]/);
 });
+
+test('availability keeps staff eligible when a location has no explicit staff mappings', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), 'src/modules/availability/availability.service.ts'), 'utf8');
+  assert.match(source, /const locationStaffRows = options\.locationId/);
+  assert.match(source, /const locationStaff = locationStaffRows\.length/);
+  assert.doesNotMatch(source, /const locationStaff = options\.locationId/);
+});
