@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS communication_channels (
   external_account_id varchar(255),
   status varchar(20) NOT NULL DEFAULT 'DISCONNECTED' CHECK (status IN ('CONNECTED','ATTENTION','DISCONNECTED')),
   capabilities text[] NOT NULL DEFAULT '{}',
-  credentials_reference varchar(255),
+  credentials_reference uuid REFERENCES integration_connections(id) ON DELETE SET NULL,
   metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
   connected_at timestamptz,
   last_health_check_at timestamptz,
@@ -96,5 +96,16 @@ CREATE TABLE IF NOT EXISTS conversation_attachments (
 
 CREATE INDEX IF NOT EXISTS conversation_attachments_message_idx
   ON conversation_attachments(message_id);
+
+ALTER TABLE communication_channels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversation_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversation_attachments ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON communication_channels, conversations, conversation_messages, conversation_attachments FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON communication_channels, conversations, conversation_messages, conversation_attachments TO service_role;
+
+COMMENT ON COLUMN communication_channels.credentials_reference IS 'References an integration_connections row whose encrypted token material is never returned by conversation APIs.';
+COMMENT ON COLUMN conversation_attachments.storage_key IS 'Private object-store key; download access must be mediated by an authenticated tenant-scoped API.';
 
 COMMIT;
