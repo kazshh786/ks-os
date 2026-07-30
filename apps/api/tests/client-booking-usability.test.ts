@@ -121,3 +121,12 @@ test('availability keeps staff eligible when a location has no explicit staff ma
   assert.match(source, /const locationStaff = locationStaffRows\.length/);
   assert.doesNotMatch(source, /const locationStaff = options\.locationId/);
 });
+
+test('availability reads the production staff pricing columns', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), 'src/modules/availability/availability.service.ts'), 'utf8');
+  assert.match(source, /staff_user_id as "staffUserId"/);
+  assert.match(source, /price_override as "priceOverride"/);
+  assert.match(source, /where tenant_id =/);
+  assert.doesNotMatch(source, /staffPricing\.userId/);
+  assert.doesNotMatch(source, /customDurationMinutes/);
+});
