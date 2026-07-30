@@ -98,6 +98,12 @@ test('customer booking UI enforces six weeks and filters disabled channels', () 
   assert.match(source, /type="date"/);
   assert.match(source, /Previous week/);
   assert.match(source, /Next week/);
+  assert.match(source, /No availability on \{selectedDateLabel\}/);
+  assert.match(source, /const tryNextDate = \(\) =>/);
+  assert.match(source, /const canChooseAnyStaff =/);
+  assert.match(source, /See anyone available/);
+  assert.match(source, /Choose another date to keep looking\./);
+  assert.match(source, /aria-live="polite"/);
 });
 
 test('calendar availability modal saves one appointment channel at a time', () => {
