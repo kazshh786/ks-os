@@ -41,14 +41,17 @@ describe('BookingOperationsCalendar resilience', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('offers appointment, walk-in and block time from one new booking chooser', async () => {
+  it('offers appointment, walk-in and block time from one new booking chooser above sticky controls', async () => {
     getBookingOperations.mockResolvedValue(empty);
     render(<MemoryRouter><BookingOperationsCalendar /></MemoryRouter>);
 
     await screen.findByRole('region', { name: 'Booking schedule' });
     fireEvent.click(screen.getByRole('button', { name: 'New booking' }));
 
-    expect(screen.getByRole('dialog', { name: 'Add to calendar' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Add to calendar' });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog.parentElement).toHaveAttribute('data-calendar-dialog-layer', 'true');
+    expect(dialog.parentElement).toHaveClass('z-[100]');
     expect(screen.getByRole('button', { name: 'Appointment' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Walk-in' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Block time' })).toBeInTheDocument();
