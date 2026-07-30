@@ -130,3 +130,11 @@ test('availability reads the production staff pricing columns', () => {
   assert.doesNotMatch(source, /staffPricing\.userId/);
   assert.doesNotMatch(source, /customDurationMinutes/);
 });
+
+test('public availability omits empty optional query values', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), '../web/src/data/data-provider.ts'), 'utf8');
+  assert.match(source, /withSanitisedPublicAvailability/);
+  assert.match(source, /Object\.entries\(input \?\? \{\}\)/);
+  assert.match(source, /value !== undefined && value !== null && value !== ''/);
+  assert.match(source, /currentProvider = withSanitisedPublicAvailability\(provider\)/);
+});
