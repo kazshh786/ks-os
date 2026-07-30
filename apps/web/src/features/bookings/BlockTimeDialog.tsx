@@ -30,7 +30,7 @@ export function BlockTimeDialog({ open, timezone, staff, initialDate, onClose, o
       setError(cause instanceof Error && cause.message === 'SLOT_UNAVAILABLE' ? 'That time overlaps another booking or blocked period.' : cause instanceof Error ? cause.message : 'Could not block this time.');
     } finally { setSaving(false); }
   };
-  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 sm:items-center sm:p-6">
+  return <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/50 sm:items-center sm:p-6" data-calendar-dialog-layer="true">
     <section role="dialog" aria-modal="true" aria-labelledby="block-time-title" className="w-full max-w-xl rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
       <header className="flex justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Calendar availability</p><h2 id="block-time-title" className="mt-1 text-2xl font-black">Block out time</h2><p className="mt-1 text-sm text-slate-500">Customers and staff cannot book over this period.</p></div><button type="button" onClick={onClose} aria-label="Close block time" className="rounded-lg border p-2"><X className="h-5 w-5" /></button></header>
       <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2">
