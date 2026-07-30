@@ -48,7 +48,7 @@ export function CalendarCreateMenuDialog({ open, onClose, onChoose }: CalendarCr
 
   if (!open) return null;
 
-  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-6" role="presentation">
+  return <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-6" role="presentation" data-calendar-dialog-layer="true">
     <section role="dialog" aria-modal="true" aria-labelledby="calendar-create-title" className="w-full max-w-2xl rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
       <header className="flex items-start justify-between gap-4">
         <div>
