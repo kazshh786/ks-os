@@ -3,6 +3,13 @@ import { communicationChannels, getDatabase } from '@ks-os/database';
 import type { ConversationChannel } from '@ks-os/contracts';
 import { isSmsConfigured } from '../../lib/twilio.js';
 
+const metaConfigured = () => Boolean(
+  process.env.META_APP_ID
+  && process.env.META_APP_SECRET
+  && process.env.META_GRAPH_VERSION
+  && process.env.META_WEBHOOK_VERIFY_TOKEN,
+);
+
 const channelDefinitions: Array<{
   channel: ConversationChannel;
   provider: string;
@@ -23,17 +30,17 @@ const channelDefinitions: Array<{
   {
     channel: 'WHATSAPP', provider: 'META', displayName: 'WhatsApp',
     capabilities: ['MESSAGES', 'TEMPLATES', 'BOOKING_LINKS', 'FORMS', 'PAYMENTS'],
-    configured: () => Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET),
+    configured: metaConfigured,
   },
   {
     channel: 'INSTAGRAM', provider: 'META', displayName: 'Instagram',
     capabilities: ['MESSAGES', 'COMMENTS', 'PUBLISHING', 'BOOKING_LINKS'],
-    configured: () => Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET),
+    configured: metaConfigured,
   },
   {
     channel: 'FACEBOOK', provider: 'META', displayName: 'Facebook',
     capabilities: ['MESSAGES', 'COMMENTS', 'PUBLISHING', 'BOOKING_LINKS'],
-    configured: () => Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET),
+    configured: metaConfigured,
   },
 ];
 
