@@ -74,15 +74,21 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
   reply_to_message_id uuid REFERENCES conversation_messages(id) ON DELETE SET NULL,
   external_message_id varchar(255),
   error_code varchar(120),
+  attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
   metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
   sent_at timestamptz,
   delivered_at timestamptz,
   read_at timestamptz,
+  failed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS conversation_messages_conversation_created_idx
   ON conversation_messages(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS conversation_messages_delivery_queue_idx
+  ON conversation_messages(status, next_attempt_at)
+  WHERE status = 'QUEUED';
 CREATE UNIQUE INDEX IF NOT EXISTS conversation_messages_tenant_channel_external_unique
   ON conversation_messages(tenant_id, channel_type, external_message_id)
   WHERE external_message_id IS NOT NULL;
