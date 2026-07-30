@@ -6,6 +6,25 @@ export const ConversationPrioritySchema = z.enum(['LOW', 'NORMAL', 'HIGH', 'URGE
 export const ConversationDirectionSchema = z.enum(['INBOUND', 'OUTBOUND', 'INTERNAL']);
 export const ConversationMessageStatusSchema = z.enum(['RECEIVED', 'QUEUED', 'SENT', 'DELIVERED', 'READ', 'FAILED']);
 export const ConversationSenderTypeSchema = z.enum(['CUSTOMER', 'STAFF', 'AUTOMATION', 'SYSTEM']);
+export const CommunicationChannelStatusSchema = z.enum(['CONNECTED', 'ATTENTION', 'DISCONNECTED']);
+
+export const CommunicationChannelConnectionSchema = z.object({
+  id: z.string().uuid().nullable(),
+  channel: ConversationChannelSchema,
+  provider: z.string(),
+  displayName: z.string(),
+  status: CommunicationChannelStatusSchema,
+  capabilities: z.array(z.string()),
+  externalAccountId: z.string().nullable(),
+  connectedAt: z.string().datetime().nullable(),
+  lastHealthCheckAt: z.string().datetime().nullable(),
+  providerConfigured: z.boolean(),
+  setupMessage: z.string(),
+}).strict();
+
+export const CommunicationChannelListResponseSchema = z.object({
+  data: z.array(CommunicationChannelConnectionSchema),
+}).strict();
 
 export const ConversationBookingContextSchema = z.object({
   appointmentId: z.string().uuid(),
@@ -110,6 +129,7 @@ export const UpdateConversationSchema = z.object({
 }).strict().refine(value => Object.keys(value).length > 0, { message: 'At least one update is required' });
 
 export type ConversationChannel = z.infer<typeof ConversationChannelSchema>;
+export type CommunicationChannelConnection = z.infer<typeof CommunicationChannelConnectionSchema>;
 export type ConversationStatus = z.infer<typeof ConversationStatusSchema>;
 export type ConversationPriority = z.infer<typeof ConversationPrioritySchema>;
 export type ConversationListItem = z.infer<typeof ConversationListItemSchema>;
