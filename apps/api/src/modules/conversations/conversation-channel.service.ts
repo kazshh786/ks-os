@@ -37,6 +37,7 @@ const channelDefinitions: Array<{
   },
 ];
 
+const statusRank: Record<string, number> = { CONNECTED: 3, ATTENTION: 2, DISCONNECTED: 1 };
 const iso = (value: Date | string | null | undefined) => value ? new Date(value).toISOString() : null;
 
 export class ConversationChannelService {
@@ -60,7 +61,7 @@ export class ConversationChannelService {
     const activeByType = new Map<string, typeof rows[number]>();
     for (const row of rows) {
       const existing = activeByType.get(row.channel);
-      if (!existing || existing.status !== 'CONNECTED') activeByType.set(row.channel, row);
+      if (!existing || (statusRank[row.status] || 0) > (statusRank[existing.status] || 0)) activeByType.set(row.channel, row);
     }
 
     return channelDefinitions.map(definition => {
@@ -69,9 +70,11 @@ export class ConversationChannelService {
       const status = row?.status === 'CONNECTED' || row?.status === 'ATTENTION' ? row.status : 'DISCONNECTED';
       const setupMessage = status === 'CONNECTED'
         ? `${row?.displayName || definition.displayName} is connected and available to the inbox.`
-        : !providerConfigured
-          ? `${definition.provider} platform credentials must be configured before a business can connect this channel.`
-          : `The platform is ready for a business owner to connect ${definition.displayName}.`;
+        : status === 'ATTENTION'
+          ? `${row?.displayName || definition.displayName} needs reauthorisation or a provider health check before messages can be sent.`
+          : !providerConfigured
+            ? `${definition.provider} platform credentials must be configured before a business can connect this channel.`
+            : `The platform is ready for a business owner to connect ${definition.displayName}.`;
       return {
         id: row?.id || null,
         channel: definition.channel,
