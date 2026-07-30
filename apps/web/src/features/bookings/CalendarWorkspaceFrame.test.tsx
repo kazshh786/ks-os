@@ -32,7 +32,7 @@ describe('CalendarWorkspaceFrame', () => {
     vi.unstubAllGlobals();
   });
 
-  it('pins and synchronises the date row while keeping hour rules visible through business hours', () => {
+  it('uses one vertical scroller and keeps the header, time grid and mobile controls aligned', () => {
     render(<>
       <CalendarWorkspaceFrame>
         <main>
@@ -49,6 +49,7 @@ describe('CalendarWorkspaceFrame', () => {
                   <div>
                     <div data-testid="column-header">Sticky dates</div>
                     <div data-testid="grid-scroll">
+                      <aside aria-label="Calendar times"><span>09:00</span></aside>
                       <div role="gridcell">
                         <div aria-label="At-business availability 09:00 to 17:00"><span>Shop hours</span></div>
                       </div>
@@ -74,6 +75,7 @@ describe('CalendarWorkspaceFrame', () => {
 
     Object.defineProperty(gridScroll, 'scrollLeft', { configurable: true, writable: true, value: 280 });
     fireEvent.scroll(gridScroll);
+    fireEvent(window, new Event('resize'));
 
     expect(frame).toHaveStyle({ '--ks-calendar-toolbar-height': '184px' });
     expect(columnHeader).toHaveAttribute('data-calendar-column-header', 'true');
@@ -83,9 +85,13 @@ describe('CalendarWorkspaceFrame', () => {
     expect(refreshButton).toHaveAttribute('data-calendar-refresh', 'true');
     expect(availabilityButton.parentElement).toBe(toolbarRow);
     expect(styles).toContain('top: var(--ks-calendar-toolbar-height) !important');
-    expect(styles).toContain('display: contents !important');
-    expect(styles).toContain('background-color: rgba(255, 255, 255, 0.7) !important');
-    expect(styles).toContain('background-color: #f5f6f8 !important');
+    expect(styles).toContain('overflow-x: clip');
+    expect(styles).toContain('overflow-y: hidden !important');
+    expect(styles).not.toContain('overflow-y: visible !important');
+    expect(styles).toContain('background-position: top left !important');
+    expect(styles).toContain('background-color: rgba(255, 255, 255, 0.58) !important');
+    expect(styles).toContain('@media (max-width: 767px)');
+    expect(styles).toContain('flex: 1 1 100%');
     expect(screen.getByText('Sticky dates')).toBeInTheDocument();
   });
 });
