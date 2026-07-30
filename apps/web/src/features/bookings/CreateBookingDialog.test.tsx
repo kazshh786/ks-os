@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreateBookingDialog } from './CreateBookingDialog.js';
 
@@ -40,7 +40,7 @@ describe('CreateBookingDialog walk-in mode', () => {
     vi.useRealTimers();
   });
 
-  it('keeps the dialog above calendar chrome and allows a walk-in without contact details', async () => {
+  it('keeps the dialog above calendar chrome and allows a walk-in without contact details', () => {
     render(<CreateBookingDialog
       open
       mode="walk-in"
@@ -65,7 +65,7 @@ describe('CreateBookingDialog walk-in mode', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Check in walk-in' }));
 
-    await waitFor(() => expect(createStaffBooking).toHaveBeenCalledTimes(1));
+    expect(createStaffBooking).toHaveBeenCalledTimes(1);
     expect(createStaffBooking).toHaveBeenCalledWith(expect.objectContaining({
       walkIn: true,
       notifyCustomer: false,
