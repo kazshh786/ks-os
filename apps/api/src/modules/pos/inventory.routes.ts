@@ -12,12 +12,12 @@ const codeFor = (error: any) => error?.code || error?.name || 'INVENTORY_OPERATI
 const inventoryRoutes: FastifyPluginAsync = async fastify => {
   const service = new InventoryService();
 
-  fastify.addHook('preHandler', async request => {
+  fastify.addHook('preHandler', async (request, reply) => {
     request.requireAuth();
     if (request.auth!.role !== 'owner') {
-      const error = new Error('Only workspace owners can manage inventory.') as Error & { code?: string };
-      error.code = 'INVENTORY_ACCESS_DENIED';
-      throw error;
+      return reply.status(403).send({
+        error: { code: 'INVENTORY_ACCESS_DENIED', message: 'Only workspace owners can manage inventory.' },
+      });
     }
   });
 
