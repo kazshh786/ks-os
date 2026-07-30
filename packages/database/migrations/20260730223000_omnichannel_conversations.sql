@@ -1,5 +1,10 @@
 BEGIN;
 
+ALTER TABLE integration_connections DROP CONSTRAINT IF EXISTS integration_kind_check;
+ALTER TABLE integration_connections
+  ADD CONSTRAINT integration_kind_check
+  CHECK (kind IN ('CALENDAR','ACCOUNTING','AUTOMATION','HARDWARE','COMMUNICATION'));
+
 CREATE TABLE IF NOT EXISTS communication_channels (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
