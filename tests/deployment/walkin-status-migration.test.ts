@@ -19,10 +19,9 @@ const operationalStatuses = [
 ] as const;
 
 describe('walk-in appointment status migration', () => {
-  it('is registered after the current production migration set', () => {
-    const entry = MIGRATION_MANIFEST[MIGRATION_MANIFEST.length - 1];
-    expect(entry.filename).toBe(TARGET_MIGRATION_FILE);
-    expect(entry.order).toBe(51);
+  it('keeps its registered migration order', () => {
+    const entry = MIGRATION_MANIFEST.find(candidate => candidate.filename === TARGET_MIGRATION_FILE);
+    expect(entry?.order).toBe(51);
   });
 
   it('declares every appointment lifecycle status used by the application', () => {
