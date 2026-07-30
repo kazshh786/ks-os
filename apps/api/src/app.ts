@@ -30,6 +30,7 @@ import { teamInvitationAcceptanceRoutes, teamRoutes } from './modules/team/team.
 import reportsRoutes from './modules/reports/reports.routes.js';
 import { teamOperationsRoutes } from './modules/team-operations/team-operations.routes.js';
 import { operationsReconciliationRoutes, operationsRoutes } from './modules/operations/operations.routes.js';
+import { conversationRoutes } from './modules/conversations/conversation.routes.js';
 import { reportingRoutes, reportingWorkerRoutes } from './modules/reporting/reporting.routes.js';
 import advancedAnalyticsRoutes from './modules/analytics/advanced-analytics.routes.js';
 import { taskRoutes, taskWorkerRoutes } from './modules/tasks/task.routes.js';
@@ -221,6 +222,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(reportsRoutes);
   fastify.register(teamOperationsRoutes, { prefix: '/api/v1' });
   fastify.register(operationsRoutes, { prefix: '/api/v1/operations/issues' });
+  fastify.register(conversationRoutes, { prefix: '/api/v1/conversations' });
   fastify.register(operationsReconciliationRoutes, { prefix: '/api/v1/internal/operations-reconciliation' });
   fastify.register(reportingRoutes);
   fastify.register(reportingWorkerRoutes, { prefix: '/api/v1/internal/report-worker' });
