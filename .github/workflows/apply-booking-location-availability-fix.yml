@@ -1,0 +1,71 @@
+name: Apply booking location availability fix
+
+on:
+  push:
+    branches:
+      - fix/booking-location-availability
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/booking-location-availability
+          fetch-depth: 0
+      - name: Patch availability fallback and regression test
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('apps/api/src/modules/availability/availability.service.ts')
+          service = service_path.read_text()
+          old = """  const locationStaff = options.locationId
+            ? new Set((await db.select({ staffUserId: staffLocations.staffUserId }).from(staffLocations).where(and(
+              eq(staffLocations.tenantId, tenantId!),
+              eq(staffLocations.locationId, options.locationId),
+            ))).map((row: { staffUserId: string }) => row.staffUserId))
+            : null;
+          """
+          new = """  const locationStaffRows = options.locationId
+            ? await db.select({ staffUserId: staffLocations.staffUserId }).from(staffLocations).where(and(
+              eq(staffLocations.tenantId, tenantId!),
+              eq(staffLocations.locationId, options.locationId),
+            ))
+            : [];
+          const locationStaff = locationStaffRows.length
+            ? new Set(locationStaffRows.map((row: { staffUserId: string }) => row.staffUserId))
+            : null;
+          """
+          if old not in service:
+              raise SystemExit('Expected location staff filter block was not found')
+          service_path.write_text(service.replace(old, new, 1))
+
+          test_path = Path('apps/api/tests/client-booking-usability.test.ts')
+          test_source = test_path.read_text()
+          marker = "availability keeps staff eligible when a location has no explicit staff mappings"
+          if marker not in test_source:
+              test_source += """
+
+          test('availability keeps staff eligible when a location has no explicit staff mappings', () => {
+            const source = fs.readFileSync(path.resolve(process.cwd(), 'src/modules/availability/availability.service.ts'), 'utf8');
+            assert.match(source, /const locationStaffRows = options\\.locationId/);
+            assert.match(source, /const locationStaff = locationStaffRows\\.length/);
+            assert.doesNotMatch(source, /const locationStaff = options\\.locationId/);
+          });
+          """
+              test_path.write_text(test_source)
+
+          Path('.github/workflows/apply-booking-location-availability-fix.yml').unlink()
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/modules/availability/availability.service.ts apps/api/tests/client-booking-usability.test.ts .github/workflows/apply-booking-location-availability-fix.yml
+          git commit -m "fix: allow availability without location mappings"
+          git push origin fix/booking-location-availability
