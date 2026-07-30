@@ -155,6 +155,12 @@ export const CreateProvisioningDraftSchema = z.object({
       'ABOUT', 'TEAM_HUB', 'TEAM_DETAIL', 'CONTACT', 'FAQ', 'POLICIES', 'RESULTS',
       'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE', 'BOOKING',
     ])).max(100),
+    /**
+     * The default launch selects the strongest ten marketing pages justified by
+     * verified client data. Functional booking and required policy pages do not
+     * consume this target.
+     */
+    targetMarketingPageCount: z.number().int().min(1).max(30).default(10),
     preferredLayoutReferences: z.record(PublicReferenceSchema).default({}),
     design: ProvisioningSiteDesignSchema.default({
       source: 'KS_NATIVE',
@@ -174,6 +180,7 @@ export const StartProvisioningRunSchema = z.object({
   provisioningDraftReference: PublicReferenceSchema,
   idempotencyKey: z.string().trim().min(16).max(160).regex(/^[A-Za-z0-9:_-]+$/),
 }).strict();
+export type StartProvisioningRun = z.infer<typeof StartProvisioningRunSchema>;
 
 export const ProvisioningActionReasonSchema = z.object({
   reason: z.string().trim().min(8).max(500),
