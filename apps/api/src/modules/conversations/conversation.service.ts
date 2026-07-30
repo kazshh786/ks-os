@@ -310,7 +310,7 @@ export class ConversationService {
       actor.tenantId,
       conversation.appointmentId,
       paymentContext.publicReference,
-      `conversation-payment-${conversationId}-${randomUUID()}`,
+      randomUUID(),
       paymentContext.amount,
       paymentContext.currency,
     );
