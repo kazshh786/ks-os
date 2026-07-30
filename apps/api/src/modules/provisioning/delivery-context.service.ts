@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import {
+  designLibraryAssignments,
   designLibraryItems,
   getDatabase,
   knowledgePacks,
@@ -98,6 +99,7 @@ export class DeliveryContextService {
       templateRows,
       nativeRows,
       themeRows,
+      assignedThemeRows,
       knowledgeRows,
       draftRows,
       runRows,
@@ -173,6 +175,27 @@ export class DeliveryContextService {
         eq(designLibraryItems.availableForClientDelivery, true),
       )).orderBy(desc(designLibraryItems.isSystem), desc(designLibraryItems.updatedAt)).limit(100),
       this.db.select({
+        reference: designLibraryItems.publicReference,
+        name: designLibraryItems.name,
+        description: designLibraryItems.description,
+        theme: designLibraryItems.themeJson,
+        preview: designLibraryItems.previewJson,
+        previewImageUrl: designLibraryItems.previewImageUrl,
+        tags: designLibraryItems.tagsJson,
+        isSystem: designLibraryItems.isSystem,
+        assignedAt: designLibraryAssignments.assignedAt,
+      }).from(designLibraryAssignments)
+        .innerJoin(designLibraryItems, eq(designLibraryAssignments.itemId, designLibraryItems.id))
+        .where(and(
+          eq(designLibraryAssignments.tenantId, tenant.id),
+          eq(designLibraryAssignments.status, 'ACTIVE'),
+          eq(designLibraryItems.itemKind, 'SITE_THEME'),
+          eq(designLibraryItems.status, 'APPROVED'),
+          eq(designLibraryItems.availableForClientDelivery, true),
+        ))
+        .orderBy(desc(designLibraryAssignments.assignedAt))
+        .limit(1),
+      this.db.select({
         reference: knowledgePacks.publicReference,
         name: knowledgePacks.name,
         semanticVersion: knowledgePacks.semanticVersion,
@@ -212,6 +235,14 @@ export class DeliveryContextService {
       && REQUIRED_NATIVE_PAGE_TYPES.every(pageType => nativePageTypes.has(pageType)),
     );
     const knowledgeReady = knowledgeRows.length === 1;
+    const assignedTheme = assignedThemeRows[0]
+      ? {
+          ...assignedThemeRows[0],
+          theme: record(assignedThemeRows[0].theme),
+          preview: record(assignedThemeRows[0].preview),
+          tags: Array.isArray(assignedThemeRows[0].tags) ? assignedThemeRows[0].tags : [],
+        }
+      : null;
 
     return {
       tenant,
@@ -242,6 +273,7 @@ export class DeliveryContextService {
         defaultPresetKey: 'NORTHLIGHT',
         nativeTemplateReady,
         nativeTemplateVersionReference: nativeTemplateReady ? nativeRows[0].versionReference : null,
+        assignedTheme,
         presets: SITE_DESIGN_PRESETS,
         themes: themeRows.map(item => ({
           ...item,
