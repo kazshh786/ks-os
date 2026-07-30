@@ -155,6 +155,7 @@ export function generateTenantSitemap(snapshot: PublishedSiteSnapshot): string {
     .filter((page) =>
       page.active
       && page.indexable
+      && page.seo.index
       && page.canonical
       && page.pageType !== 'BOOKING'
       && !isReserved(page.path),
@@ -169,7 +170,9 @@ export function generateTenantRobots(input: {
   snapshot?: PublishedSiteSnapshot;
   allowIndexing: boolean;
 }): string {
-  if (!input.allowIndexing || !input.snapshot) {
+  const hasIndexableContent = Boolean(input.snapshot?.pages.some(page =>
+    page.active && page.indexable && page.seo.index && page.pageType !== 'BOOKING'));
+  if (!input.allowIndexing || !input.snapshot || !hasIndexableContent) {
     return 'User-agent: *\nDisallow: /\n';
   }
   return [
