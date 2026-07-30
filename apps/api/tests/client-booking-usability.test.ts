@@ -102,6 +102,7 @@ test('customer booking UI enforces six weeks and filters disabled channels', () 
   assert.match(source, /const tryNextDate = \(\) =>/);
   assert.match(source, /const canChooseAnyStaff =/);
   assert.match(source, /See anyone available/);
+  assert.match(source, /Choose another date to keep looking\./);
   assert.match(source, /aria-live="polite"/);
 });
 
