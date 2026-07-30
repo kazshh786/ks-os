@@ -13,7 +13,7 @@ import { fetchWithAuth } from '../../api/client.js';
 import { useWorkspace } from '../../context/WorkspaceContext.js';
 import { BookingAgendaView } from './BookingAgendaView.js';
 import { BookingMonthView } from './BookingMonthView.js';
-import { BookingQuickView } from './BookingQuickView.js';
+import { BookingQuickView, type ProposedBookingReschedule } from './BookingQuickView.js';
 import { BookingScheduleView, type ScheduleDropTarget } from './BookingScheduleView.js';
 import { BookingStatusBadge } from './BookingStatusBadge.js';
 import { CalendarCreateMenuDialog, type CalendarCreateType } from './CalendarCreateMenuDialog.js';
@@ -62,6 +62,7 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<BookingOperationsItem | null>(null);
+  const [pendingReschedule, setPendingReschedule] = useState<ProposedBookingReschedule | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(params.get('create') === '1');
   const [createOpen, setCreateOpen] = useState(false);
   const [walkInOpen, setWalkInOpen] = useState(params.get('walkin') === '1');
@@ -136,6 +137,10 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
     window.sessionStorage.setItem('ks-calendar-density', nextDensity);
     setDensity(nextDensity);
   };
+  const openBooking = (booking: BookingOperationsItem) => {
+    setPendingReschedule(null);
+    setSelected(booking);
+  };
   const setAnchor = (next: Date) => updateParams({ date: format(next, 'yyyy-MM-dd') });
   const clearAdvancedFilters = () => {
     const next = new URLSearchParams(params);
@@ -194,7 +199,7 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
     setActionsOpen(false);
   };
 
-  const dragReschedule = async (booking: BookingOperationsItem, target: ScheduleDropTarget) => {
+  const dragReschedule = (booking: BookingOperationsItem, target: ScheduleDropTarget) => {
     if (booking.status === 'BLOCKED') return;
     const currentDay = localDayKey(booking.startTime, booking.timezone);
     const currentTime = new Intl.DateTimeFormat('en-GB', {
@@ -204,20 +209,12 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
     const targetDay = target.day;
     const targetTime = target.time;
     if (targetStaffId === booking.staff.id && targetDay === currentDay && targetTime === currentTime) return;
-    const nextStart = fromZonedTime(`${targetDay}T${targetTime}:00`, booking.timezone).toISOString();
-    if (!window.confirm(`Reschedule ${booking.customer.name} to ${target.label} at ${targetTime}? The customer will be notified.`)) return;
-    setNotice('Rescheduling booking…');
-    try {
-      await getDataProvider().rescheduleBooking(booking.id, {
-        startTime: nextStart, staffId: targetStaffId, notifyCustomer: true, reason: 'Changed by drag and drop on calendar',
-      });
-      setNotice('Booking rescheduled successfully.');
-      await load(true);
-    } catch (cause) {
-      setNotice(cause instanceof Error && cause.message === 'SLOT_UNAVAILABLE'
-        ? 'That time overlaps another booking. No change was saved.'
-        : cause instanceof Error ? cause.message : 'The booking could not be rescheduled.');
-    }
+    setPendingReschedule({
+      startTime: fromZonedTime(`${targetDay}T${targetTime}:00`, booking.timezone).toISOString(),
+      staffId: targetStaffId,
+      targetLabel: `${target.label} at ${targetTime}`,
+    });
+    setSelected(booking);
   };
 
   return <main className="relative flex min-h-full flex-col bg-slate-50 pb-24" aria-busy={loading}>
@@ -311,9 +308,9 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
 
       <section aria-label="Calendar workspace">
         {view === 'agenda'
-          ? <BookingAgendaView bookings={response.items} onOpen={setSelected} />
+          ? <BookingAgendaView bookings={response.items} onOpen={openBooking} />
           : view === 'month'
-            ? <BookingMonthView from={range.from} to={range.to} bookings={response.items} timezone={activeTenant.timezone} onOpen={setSelected} onSelectDay={day => { window.sessionStorage.setItem('ks-calendar-view', 'day'); updateParams({ date: format(day, 'yyyy-MM-dd'), view: 'day' }); }} />
+            ? <BookingMonthView from={range.from} to={range.to} bookings={response.items} timezone={activeTenant.timezone} onOpen={openBooking} onSelectDay={day => { window.sessionStorage.setItem('ks-calendar-view', 'day'); updateParams({ date: format(day, 'yyyy-MM-dd'), view: 'day' }); }} />
             : <BookingScheduleView
               columns={columns}
               days={days}
@@ -323,9 +320,9 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
               timezone={activeTenant.timezone}
               selectedDay={dateValue}
               onSelectDay={day => updateParams({ date: day })}
-              onOpen={setSelected}
+              onOpen={openBooking}
               onCreate={() => setCreateMenuOpen(true)}
-              onReschedule={(booking, target) => void dragReschedule(booking, target)}
+              onReschedule={dragReschedule}
             />}
       </section>
     </div>
@@ -347,6 +344,13 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
     <CreateBookingDialog open={createOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} onClose={() => setCreateOpen(false)} onCreated={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <CreateBookingDialog mode="walk-in" open={walkInOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} onClose={() => { setWalkInOpen(false); if (params.has('walkin')) updateParams({ walkin: null }); }} onCreated={() => { setNotice('Walk-in checked in and added to the calendar.'); window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <BlockTimeDialog open={blockOpen} timezone={activeTenant.timezone} staff={staff} initialDate={dateValue} onClose={() => { setBlockOpen(false); if (params.has('block')) updateParams({ block: null }); }} onCreated={() => { setNotice('Time blocked successfully.'); window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
-    <BookingQuickView booking={selected} staff={staff} onClose={() => setSelected(null)} onChanged={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} onCheckout={booking => navigate('/app/pos', { state: { booking } })} />
+    <BookingQuickView
+      booking={selected}
+      staff={staff}
+      initialReschedule={pendingReschedule}
+      onClose={() => { setSelected(null); setPendingReschedule(null); }}
+      onChanged={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }}
+      onCheckout={booking => navigate('/app/pos', { state: { booking } })}
+    />
   </main>;
 }
