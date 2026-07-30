@@ -1,7 +1,7 @@
 import {
-  BarChart3, Bell, Boxes, Building2, CalendarDays, ClipboardList, ConciergeBell, CreditCard,
+  BarChart3, Bell, Boxes, Building2, CalendarDays, ClipboardList, CreditCard,
   FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors,
-  Plug, ReceiptText, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
+  Plug, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
 } from 'lucide-react';
 import type { NavigationGroup } from './navigation.types';
 
@@ -18,7 +18,6 @@ export const businessNavigation: NavigationGroup[] = [
   {
     id: 'customer-operations', label: 'Customer Operations',
     items: [
-      { id: 'walk-in-desk', label: 'Walk-in Desk', href: '/app/calendar?walkin=1', icon: ConciergeBell, permissionsAny: ['BOOKINGS_CREATE'] },
       { id: 'customers', label: 'Customers', href: '/app/clients', icon: Users, permissionsAny: ['CLIENTS_VIEW_BASIC'], activePrefixes: ['/app/clients/'] },
       { id: 'forms', label: 'Forms', href: '/app/forms', icon: FormInput, permissionsAny: ['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE'], activePrefixes: ['/app/forms/', '/app/form-submissions/'] },
     ],
@@ -52,8 +51,7 @@ export const businessNavigation: NavigationGroup[] = [
     items: [
       { id: 'team', label: 'Team', href: '/app/settings/team', icon: Users, roles: ['owner'], activePrefixes: ['/app/settings/team/'] },
       { id: 'locations', label: 'Locations and resources', href: '/app/settings/locations', icon: MapPinned, roles: ['owner'], activePrefixes: ['/app/settings/resources'] },
-      { id: 'booking-page', label: 'Booking Page', href: '/app/settings/booking-page', icon: Globe2, roles: ['owner'] },
-      { id: 'booking-policies', label: 'Booking Policies', href: '/app/settings/booking/customer-management', icon: ReceiptText, roles: ['owner'] },
+      { id: 'booking-page', label: 'Booking Page', href: '/app/settings/booking-page', icon: Globe2, roles: ['owner'], activePrefixes: ['/app/settings/booking/customer-management'] },
       { id: 'stripe-payments', label: 'Stripe and Payments', href: '/app/settings/payments', icon: CreditCard, roles: ['owner'], activePrefixes: ['/app/settings/payments/'] },
       { id: 'integrations', label: 'Integrations', href: '/app/settings/integrations', icon: Plug, roles: ['owner'], activePrefixes: ['/app/settings/integrations/'] },
       { id: 'communications', label: 'Communications', href: '/app/settings/communications', icon: MessagesSquare, roles: ['owner'], activePrefixes: ['/app/settings/communications/', '/app/settings/email-history'] },
