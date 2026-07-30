@@ -27,11 +27,18 @@ const booking: BookingOperationsItem = {
 
 describe('BookingCard', () => {
   for (const density of ['compact', 'comfortable', 'detailed'] as const) {
-    it(`keeps customer and service visible in ${density} density`, () => {
+    it(`keeps a 30 minute customer and service on one line in ${density} density`, () => {
       render(<BookingCard booking={booking} density={density} timeGrid onOpen={vi.fn()} />);
-      expect(screen.getByText(/Aisha Khan/)).toBeInTheDocument();
-      expect(screen.getByText(/Gel manicure/)).toBeInTheDocument();
-      expect(screen.getByRole('button')).toHaveAccessibleName(/Aisha Khan, Gel manicure/i);
+      const card = screen.getByRole('button');
+      expect(card).toHaveAttribute('data-booking-card-layout', 'single-line');
+      expect(card).toHaveTextContent('Aisha Khan');
+      expect(card).toHaveTextContent('Gel manicure');
+      expect(card).toHaveAccessibleName(/Aisha Khan, Gel manicure/i);
     });
   }
+
+  it('returns to the stacked layout when the appointment has enough height', () => {
+    render(<BookingCard booking={{ ...booking, endTime: '2026-07-30T10:00:00.000Z' }} density="comfortable" timeGrid onOpen={vi.fn()} />);
+    expect(screen.getByRole('button')).toHaveAttribute('data-booking-card-layout', 'stacked');
+  });
 });
