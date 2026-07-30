@@ -163,11 +163,18 @@ export type BookingStatusResponse = z.infer<typeof BookingStatusResponseSchema>;
 // STAFF MUTATIONS
 // ============================================================================
 
+export const StaffCustomerBookingDetailsSchema = z.object({
+  name: z.string().trim().min(2).max(255),
+  email: z.union([z.string().trim().email().max(255), z.literal('')]).optional(),
+  phone: z.union([z.string().trim().min(7).max(30), z.literal('')]).optional(),
+}).strict();
+export type StaffCustomerBookingDetails = z.infer<typeof StaffCustomerBookingDetailsSchema>;
+
 export const StaffCreateBookingRequestSchema = z.object({
   serviceId: z.string().uuid(),
   staffId: z.string().uuid(),
   startTime: z.string().datetime(),
-  client: CustomerBookingDetailsSchema,
+  client: StaffCustomerBookingDetailsSchema,
   bookingChannel: z.enum(['in_shop', 'mobile']),
   mobileAddress: MobileAddressSchema.optional().nullable(),
   paymentMode: z.enum(['pay_later', 'pay_now', 'deposit_required']),
@@ -180,6 +187,12 @@ export const StaffCreateBookingRequestSchema = z.object({
   confirmPastBooking: z.boolean().default(false),
   walkIn: z.boolean().default(false),
 }).strict().superRefine((value, context) => {
+  if (!value.walkIn && !value.client.email?.trim()) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['client', 'email'], message: 'An email address is required for an appointment.' });
+  }
+  if (!value.walkIn && !value.client.phone?.trim()) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['client', 'phone'], message: 'A phone number is required for an appointment.' });
+  }
   if (value.bookingChannel === 'mobile' && !value.mobileAddress) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['mobileAddress'], message: 'An appointment address is required for mobile bookings.' });
   }
