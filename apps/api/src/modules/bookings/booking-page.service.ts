@@ -328,9 +328,22 @@ export class BookingPageService {
       await tx.update(bookingHolds).set({ status: 'EXPIRED', releasedAt: new Date() }).where(and(eq(bookingHolds.status, 'ACTIVE'), lt(bookingHolds.expiresAt, new Date())));
       const [existing] = await tx.select().from(bookingHolds).where(and(eq(bookingHolds.bookingPageId, page.id), eq(bookingHolds.idempotencyKey, input.idempotencyKey))).limit(1);
       if (existing) return this.holdResponse(existing, rawToken);
-      const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: tenant.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(input.startTime));
+      const localDateParts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tenant.timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date(input.startTime));
+    const year = localDateParts.find(part => part.type === 'year')?.value;
+    const month = localDateParts.find(part => part.type === 'month')?.value;
+    const day = localDateParts.find(part => part.type === 'day')?.value;
+    if (!year || !month || !day) {
+      throw Object.assign(new Error('The selected appointment date could not be read.'), { code: 'INVALID_HOLD_REQUEST', statusCode: 400 });
+    }
+    const localDate = `${year}-${month}-${day}`;
       const availability = await calculateAvailability({ tenantId: tenant.id, serviceId: input.serviceId, staffId: input.staffId, date: localDate, bookingChannel: input.bookingChannel }, { locationId: input.locationId, resourceId: input.resourceId, database: tx });
-      const slot = availability.slots.find(item => item.staffId === input.staffId && item.start === input.startTime);
+      const requestedStart = new Date(input.startTime).getTime();
+    const slot = availability.slots.find(item => item.staffId === input.staffId && new Date(item.start).getTime() === requestedStart);
       if (!slot) throw Object.assign(new Error('That time is no longer available.'), { code: 'SLOT_UNAVAILABLE', statusCode: 409 });
       const [conflictingHold] = await tx.select({ id: bookingHolds.id }).from(bookingHolds).where(and(
         eq(bookingHolds.tenantId, tenant.id), eq(bookingHolds.staffUserId, input.staffId), eq(bookingHolds.status, 'ACTIVE'), gt(bookingHolds.expiresAt, new Date()), lt(bookingHolds.startTime, new Date(slot.end)), gt(bookingHolds.endTime, new Date(slot.start)),

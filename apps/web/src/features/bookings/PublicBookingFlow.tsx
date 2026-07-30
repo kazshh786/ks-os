@@ -327,7 +327,15 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
     try {
       const nextHold = preview ? { id: crypto.randomUUID(), token: 'preview-token-preview-token-preview-token', startTime: nextSlot.start, endTime: nextSlot.end, expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(), remainingSeconds: 600 } : await provider.createBookingHold(slug, { serviceId, staffId: nextSlot.staffId, locationId: locationId || null, startTime: nextSlot.start, bookingChannel, idempotencyKey: crypto.randomUUID() });
       setSlot(nextSlot); setHold(nextHold); setStep(2); track('TIME_SELECTED', { serviceId, staffId: nextSlot.staffId, locationId: locationId || undefined }); window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch { setError('That time was just reserved by someone else. Choose another available time.'); setSlots(current => current.filter(item => item.start !== nextSlot.start || item.staffId !== nextSlot.staffId)); }
+    } catch (cause) {
+      const code = cause instanceof Error ? cause.message : '';
+      if (code === 'SLOT_UNAVAILABLE' || code === 'SLOT_HELD') {
+        setError('That time was just reserved by someone else. Choose another available time.');
+        setSlots(current => current.filter(item => item.start !== nextSlot.start || item.staffId !== nextSlot.staffId));
+      } else {
+        setError('We could not reserve this time right now. Refresh availability and try again.');
+      }
+    }
   };
   const submit = async () => {
     if (!service || !slot || !hold || !name || !email || !phone || (bookingChannel === 'mobile' && (!addressLine1 || !addressCity || !addressPostcode))) return;

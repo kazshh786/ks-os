@@ -104,6 +104,9 @@ test('customer booking UI enforces six weeks and filters disabled channels', () 
   assert.match(source, /See anyone available/);
   assert.match(source, /Choose another date to keep looking\./);
   assert.match(source, /aria-live="polite"/);
+  assert.match(source, /cause instanceof Error/);
+  assert.match(source, /code === 'SLOT_UNAVAILABLE' \|\| code === 'SLOT_HELD'/);
+  assert.match(source, /We could not reserve this time right now\. Refresh availability and try again\./);
 });
 
 test('calendar availability modal saves one appointment channel at a time', () => {
@@ -137,4 +140,13 @@ test('public availability omits empty optional query values', () => {
   assert.match(source, /Object\.entries\(input \?\? \{\}\)/);
   assert.match(source, /value !== undefined && value !== null && value !== ''/);
   assert.match(source, /currentProvider = withSanitisedPublicAvailability\(provider\)/);
+});
+
+
+test('booking holds derive the business-local date without locale-dependent text', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), 'src/modules/bookings/booking-page.service.ts'), 'utf8');
+  assert.match(source, /formatToParts\(new Date\(input\.startTime\)\)/);
+  assert.match(source, /const localDate = `\$\{year\}-\$\{month\}-\$\{day\}`/);
+  assert.match(source, /new Date\(item\.start\)\.getTime\(\) === requestedStart/);
+  assert.doesNotMatch(source, /Intl\.DateTimeFormat\('en-CA'.*\.format\(new Date\(input\.startTime\)\)/s);
 });
