@@ -13,10 +13,11 @@ describe('navigation resolution', () => {
     expect(groups.every(group => group.items.length > 0)).toBe(true);
   });
 
-  it('promotes tasks into the primary navigation after the calendar', () => {
+  it('promotes tasks after the calendar and places the inbox with customer operations', () => {
     const primary = businessNavigation.find(group => group.id === 'primary');
     expect(primary?.items.map(item => item.label)).toEqual(['Dashboard', 'Services', 'Booking Calendar', 'Tasks']);
-    expect(businessNavigation.find(group => group.id === 'work')?.items.map(item => item.label)).toEqual(['Automations', 'Operations']);
+    expect(businessNavigation.find(group => group.id === 'customer-operations')?.items.map(item => item.label)).toEqual(['Inbox', 'Customers', 'Forms']);
+    expect(businessNavigation.find(group => group.id === 'work')?.items.map(item => item.label)).toEqual(['Automations']);
   });
 
   it('only shows staff destinations granted by capabilities and removes empty groups', () => {
