@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InventoryPage } from './InventoryPage.js';
 
-const fetchWithAuth = vi.fn();
+const { fetchWithAuth } = vi.hoisted(() => ({ fetchWithAuth: vi.fn() }));
 
 vi.mock('../../api/client.js', () => ({ fetchWithAuth }));
 vi.mock('./WorkspacePlanContext.js', () => ({
