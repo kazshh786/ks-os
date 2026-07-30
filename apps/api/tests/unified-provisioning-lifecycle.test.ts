@@ -7,7 +7,7 @@ const delivery = readFileSync(new URL('../src/modules/provisioning/delivery-cont
 const lifecycle = readFileSync(new URL('../src/modules/provisioning/tenant-lifecycle.service.ts', import.meta.url), 'utf8');
 const workspaceData = readFileSync(new URL('../src/modules/provisioning/workspace-data.service.ts', import.meta.url), 'utf8');
 const web = readFileSync(new URL('../../web/src/features/agency/AgencyProvisioning.tsx', import.meta.url), 'utf8');
-const launch = readFileSync(new URL('../../web/src/features/agency/AgencyWorkspaceLaunchPipeline.tsx', import.meta.url), 'utf8');
+const launch = readFileSync(new URL('../../web/src/features/agency/AgencyFocusedLaunchJourney.tsx', import.meta.url), 'utf8');
 const controls = readFileSync(new URL('../../web/src/features/agency/WorkspaceDataControls.tsx', import.meta.url), 'utf8');
 
 test('client delivery resolves server-owned plan, brief, template, draft, run and readiness', () => {
@@ -19,11 +19,12 @@ test('client delivery resolves server-owned plan, brief, template, draft, run an
   assert.doesNotMatch(web, /Locked production brief reference|Active plan version reference|Approved template version reference/);
 });
 
-test('unified delivery builds booking and website together and exposes review and launch outcomes', () => {
-  assert.match(web, /AgencyWorkspaceLaunchPipeline/);
+test('focused delivery presents one launch journey and one recommended next action', () => {
+  assert.match(web, /AgencyFocusedLaunchJourney/);
+  assert.match(launch, /Setup and onboarding/);
+  assert.match(launch, /Recommended next action/);
+  assert.match(launch, /selectedStageId/);
   assert.match(launch, /Build booking and website/);
-  assert.match(launch, /Booking setup/);
-  assert.match(launch, /Native booking/);
   assert.match(launch, /Open staging/);
   assert.match(launch, /Open Site Studio/);
   assert.match(launch, /Launch readiness/);
