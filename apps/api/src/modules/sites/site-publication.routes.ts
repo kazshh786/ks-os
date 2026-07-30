@@ -68,7 +68,7 @@ export async function agencySitePublicationRoutes(app: FastifyInstance) {
     const { siteReference } = SiteParams.parse(request.params);
     const agencyActor = actor(request, 'sites.domains.create');
     const { hostname } = CreateCustomDomain.parse(request.body);
-    return reply.code(201).send({ data: await service().createCustom(agencyActor, siteReference, hostname) });
+    return reply.code(201).send({ data: await service().createManagedCustom(agencyActor, siteReference, hostname) });
   });
   app.get('/:siteReference/domains/:domainReference', async request => {
     const { siteReference, domainReference } = DomainParams.parse(request.params);
