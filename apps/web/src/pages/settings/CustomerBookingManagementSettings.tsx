@@ -20,7 +20,7 @@ const noticeLabel = (minutes: number) => minutes === 0 ? 'No minimum notice'
   : minutes < 1440 ? `${minutes / 60} hours`
     : `${minutes / 1440} day${minutes === 1440 ? '' : 's'}`;
 
-export default function CustomerBookingManagementSettings() {
+export default function CustomerBookingManagementSettings({ embedded = false }: { embedded?: boolean }) {
   const [settings, setSettings] = useState<CustomerBookingPolicySettings>();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -35,8 +35,8 @@ export default function CustomerBookingManagementSettings() {
     catch { setError('The policies could not be saved. Please try again.'); }
     finally { setSaving(false); }
   };
-  return <section className="mx-auto max-w-3xl space-y-5">
-    <div><h1 className="text-2xl font-black text-slate-900">Customer booking management</h1><p className="mt-1 text-sm text-slate-600">Control when customers may cancel or reschedule online. These defaults are operational settings, not legal advice.</p></div>
+  return <section className={embedded ? 'space-y-5' : 'mx-auto max-w-3xl space-y-5'}>
+    {!embedded && <div><h1 className="text-2xl font-black text-slate-900">Customer booking management</h1><p className="mt-1 text-sm text-slate-600">Control when customers may cancel or reschedule online. These defaults are operational settings, not legal advice.</p></div>}
     <form onSubmit={save} className="space-y-5 rounded-2xl border bg-white p-5 shadow-sm">
       <fieldset className="space-y-3"><legend className="font-bold text-slate-900">Online actions</legend>
         <Toggle label="Allow customers to cancel online" checked={settings.customerCancellationEnabled} onChange={(value) => update('customerCancellationEnabled', value)} />
