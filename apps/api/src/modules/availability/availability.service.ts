@@ -72,11 +72,14 @@ export async function calculateAvailability(
       eq(users.bookingEnabled, true),
     ));
 
-  const locationStaff = options.locationId
-    ? new Set((await db.select({ staffUserId: staffLocations.staffUserId }).from(staffLocations).where(and(
+  const locationStaffRows = options.locationId
+    ? await db.select({ staffUserId: staffLocations.staffUserId }).from(staffLocations).where(and(
       eq(staffLocations.tenantId, tenantId!),
       eq(staffLocations.locationId, options.locationId),
-    ))).map((row: { staffUserId: string }) => row.staffUserId))
+    ))
+    : [];
+  const locationStaff = locationStaffRows.length
+    ? new Set(locationStaffRows.map((row: { staffUserId: string }) => row.staffUserId))
     : null;
 
   const members = eligibleMembers.filter((member: { userId: string }) => {
