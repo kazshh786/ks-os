@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   CreditCard,
   FileCheck2,
+  FilePlus2,
   Headphones,
   Home,
   LayoutTemplate,
@@ -37,6 +38,7 @@ export const agencyNavigation: NavigationGroup[] = [
     items: [
       { id: 'fact-finding', label: 'Fact finding', href: '/agency/fact-finding', icon: ListChecks, agencyCapabilitiesAny: ['fact_finding.read'] },
       { id: 'provisioning', label: 'Website delivery', href: '/agency/provisioning', icon: WandSparkles, agencyCapabilitiesAny: ['provisioning.read'] },
+      { id: 'service-pages', label: 'Service page opportunities', href: '/agency/service-pages', icon: FilePlus2, agencyCapabilitiesAny: ['sites.studio.read'] },
       { id: 'design-studio', label: 'Design Studio', href: '/agency/design-studio', icon: WandSparkles, agencyCapabilitiesAny: ['sites.templates.read'] },
       { id: 'template-library', label: 'Licensed imports', href: '/agency/templates', icon: LayoutTemplate, agencyCapabilitiesAny: ['sites.templates.read'] },
       { id: 'services', label: 'Managed services', href: '/agency/fulfilment', icon: FileCheck2, agencyCapabilitiesAny: ['fulfilment.read'] },
