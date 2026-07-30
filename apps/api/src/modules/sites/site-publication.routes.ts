@@ -4,9 +4,10 @@ import { PublicReferenceSchema, type AgencyCapability } from '@ks-os/contracts';
 import { PublicationReasonSchema } from '@ks-os/site-publishing';
 import { z } from 'zod';
 import type { AgencyActor } from '../agency/agency.service.js';
-import { SitePublicationService } from './site-publication.service.js';
+import { UnifiedSitePublicationService } from './unified-site-publication.service.js';
 
 const SiteParams = z.object({ siteReference: PublicReferenceSchema }).strict();
+const DomainParams = SiteParams.extend({ domainReference: PublicReferenceSchema }).strict();
 const CreatePublication = z.object({
   siteVersionReference: PublicReferenceSchema,
   qualityRunReference: PublicReferenceSchema,
@@ -31,7 +32,8 @@ function actor(request: FastifyRequest, capability: AgencyCapability): AgencyAct
 }
 
 export async function agencySitePublicationRoutes(app: FastifyInstance) {
-  const service = () => new SitePublicationService();
+  let instance: UnifiedSitePublicationService | undefined;
+  const service = () => (instance ||= new UnifiedSitePublicationService());
   app.get('/:siteReference/publications', async request => {
     const { siteReference } = SiteParams.parse(request.params);
     actor(request, 'sites.publications.read');
@@ -66,6 +68,19 @@ export async function agencySitePublicationRoutes(app: FastifyInstance) {
     const { siteReference } = SiteParams.parse(request.params);
     const agencyActor = actor(request, 'sites.domains.create');
     const { hostname } = CreateCustomDomain.parse(request.body);
-    return reply.code(202).send({ data: await service().createCustom(agencyActor, siteReference, hostname) });
+    return reply.code(201).send({ data: await service().createCustom(agencyActor, siteReference, hostname) });
+  });
+  app.get('/:siteReference/domains/:domainReference', async request => {
+    const { siteReference, domainReference } = DomainParams.parse(request.params);
+    actor(request, 'sites.domains.read');
+    return { data: await service().domainDetails(siteReference, domainReference) };
+  });
+  app.post('/:siteReference/domains/:domainReference/verify-and-promote', async request => {
+    const { siteReference, domainReference } = DomainParams.parse(request.params);
+    return { data: await service().verifyAndPromoteCustom(
+      actor(request, 'sites.domains.create'),
+      siteReference,
+      domainReference,
+    ) };
   });
 }
