@@ -28,11 +28,11 @@ const calendarWorkspaceStyles = `
   }
 
   .ks-calendar-workspace-frame section[aria-label='Calendar workspace'] {
-    min-height: calc(100vh - var(--ks-calendar-toolbar-height));
+    min-height: calc(100% - var(--ks-calendar-toolbar-height));
   }
 
   .ks-calendar-workspace-frame section[aria-label='Booking schedule'] {
-    min-height: calc(100vh - var(--ks-calendar-toolbar-height));
+    min-height: calc(100% - var(--ks-calendar-toolbar-height));
     border-left: 0 !important;
     border-right: 0 !important;
     border-radius: 0 !important;
