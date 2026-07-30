@@ -34,10 +34,10 @@ function clock(value: unknown): string | null {
   return match ? `${match[1]}:${match[2]}` : null;
 }
 
-function priceText(minor: number): string {
+function priceText(minor: number, currency: string): string {
   return new Intl.NumberFormat('en-GB', {
     style: 'currency',
-    currency: 'GBP',
+    currency,
   }).format(Math.max(0, minor) / 100);
 }
 
@@ -195,7 +195,7 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
           name: live.name,
           shortDescription: live.description?.trim() || service.shortDescription,
           durationMinutes: live.duration > 0 ? live.duration : service.durationMinutes,
-          priceText: priceText(Math.max(0, live.price - live.discount)),
+          priceText: priceText(Math.max(0, live.price - live.discount), tenant.currency),
           bookingEnabled: live.active && eligible.has(live.reference),
         };
       }),
