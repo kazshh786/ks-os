@@ -38,12 +38,14 @@ type VercelConfigResponse = {
 
 export class UnifiedSitePublicationService extends SitePublicationService {
   private readonly audit = new AgencyAuditService();
+  private readonly managedDb: Database;
 
   constructor(
-    private readonly database: Database = getDatabase(),
+    database: Database = getDatabase(),
     private readonly environment: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
   ) {
     super(database);
+    this.managedDb = database;
   }
 
   private providerConfig() {
@@ -77,7 +79,7 @@ export class UnifiedSitePublicationService extends SitePublicationService {
   }
 
   private async siteContext(siteReference: string) {
-    const result = await this.database.execute(sql<{
+    const result = await this.managedDb.execute(sql<{
       site_id: string;
       tenant_id: string;
       tenant_reference: string;
@@ -97,7 +99,7 @@ export class UnifiedSitePublicationService extends SitePublicationService {
     const hostname = normalizeCustomHostname(hostnameInput);
     const context = await this.siteContext(siteReference);
     const existing = rowsOf<{ public_reference: string; site_id: string; status: string }>(
-      await this.database.execute(sql`
+      await this.managedDb.execute(sql`
         select public_reference, site_id, status from site_domains
         where hostname = ${hostname} and status <> 'REMOVED'
         limit 1
@@ -122,7 +124,7 @@ export class UnifiedSitePublicationService extends SitePublicationService {
 
     const domainReference = randomUUID();
     const planReference = randomUUID();
-    await this.database.transaction(async tx => {
+    await this.managedDb.transaction(async tx => {
       await tx.execute(sql`
         insert into site_domains (
           public_reference, tenant_id, site_id, hostname, domain_type, domain_role,
@@ -185,7 +187,7 @@ export class UnifiedSitePublicationService extends SitePublicationService {
   async verifyAndPromoteCustom(actor: AgencyActor, siteReference: string, domainReference: string) {
     const context = await this.siteContext(siteReference);
     const domain = rowsOf<{ hostname: string; domain_type: string }>(
-      await this.database.execute(sql`
+      await this.managedDb.execute(sql`
         select hostname, domain_type from site_domains
         where public_reference = ${domainReference}::uuid
           and site_id = ${context.site_id}::uuid
@@ -205,7 +207,7 @@ export class UnifiedSitePublicationService extends SitePublicationService {
     const config = await this.vercel(`/v6/domains/${encodeURIComponent(domain.hostname)}/config`) as VercelConfigResponse;
     const ready = verified.verified === true && config.misconfigured === false;
     if (!ready) {
-      await this.database.execute(sql`
+      await this.managedDb.execute(sql`
         update site_domains set
           status = 'DNS_REVIEW_REQUIRED',
           ownership_status = ${verified.verified ? 'VERIFIED' : 'CHALLENGE_PENDING'},
@@ -216,7 +218,7 @@ export class UnifiedSitePublicationService extends SitePublicationService {
       return { ...(await this.domainDetails(siteReference, domainReference)), ready: false };
     }
 
-    await this.database.transaction(async tx => {
+    await this.managedDb.transaction(async tx => {
       await tx.execute(sql`
         update site_domains set domain_role = 'ALIAS', is_primary = false, updated_at = now()
         where site_id = ${context.site_id}::uuid
@@ -243,7 +245,7 @@ export class UnifiedSitePublicationService extends SitePublicationService {
   async domainDetails(siteReference: string, domainReference: string) {
     const context = await this.siteContext(siteReference);
     const domain = rowsOf<Record<string, unknown>>(
-      await this.database.execute(sql`
+      await this.managedDb.execute(sql`
         select
           domain.public_reference as reference,
           domain.hostname,
@@ -262,7 +264,7 @@ export class UnifiedSitePublicationService extends SitePublicationService {
     )[0];
     if (!domain) throw fail(404, 'SITE_DOMAIN_NOT_FOUND', 'The hostname could not be found.');
     const records = rowsOf<Record<string, unknown>>(
-      await this.database.execute(sql`
+      await this.managedDb.execute(sql`
         select
           record_type as "type",
           record_name as "name",
