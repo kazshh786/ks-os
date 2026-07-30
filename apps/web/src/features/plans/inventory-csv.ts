@@ -66,8 +66,8 @@ export function parseInventoryCsv(source: string): { products: CreateProductRequ
     const sku = String(row[skuIndex] || '').trim().toUpperCase();
     const priceRaw = String(row[centsIndex >= 0 ? centsIndex : poundsIndex] || '').trim().replace(/^£/, '');
     const stockRaw = String(row[stockIndex] || '').trim();
-    const parsedPrice = Number(priceRaw);
-    const parsedStock = Number(stockRaw);
+    const parsedPrice = priceRaw === '' ? Number.NaN : Number(priceRaw);
+    const parsedStock = stockRaw === '' ? Number.NaN : Number(stockRaw);
     const priceInCents = centsIndex >= 0 ? parsedPrice : Math.round(parsedPrice * 100);
 
     if (!name) errors.push(`Row ${line}: product name is required.`);
