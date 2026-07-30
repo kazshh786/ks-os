@@ -87,6 +87,14 @@ export const ConversationListResponseSchema = z.object({ data: z.array(Conversat
 export const ConversationDetailResponseSchema = z.object({ data: ConversationDetailSchema }).strict();
 export const ConversationResponseSchema = z.object({ data: ConversationListItemSchema }).strict();
 export const ConversationMessageResponseSchema = z.object({ data: ConversationMessageSchema }).strict();
+export const ConversationPaymentLinkResponseSchema = z.object({
+  data: z.object({
+    url: z.string().url(),
+    appointmentId: z.string().uuid(),
+    amount: z.number().int().positive(),
+    currency: z.string().length(3),
+  }).strict(),
+}).strict();
 
 export const SendConversationMessageSchema = z.object({
   body: z.string().trim().min(1).max(8000),
