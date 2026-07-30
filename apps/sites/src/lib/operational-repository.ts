@@ -142,7 +142,12 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
       : Promise.resolve(false);
   }
 
+  private supportsRawQueries() {
+    return typeof (this.database as unknown as { execute?: unknown }).execute === 'function';
+  }
+
   private async latestPreview(siteReference: string): Promise<PublishedSiteSnapshot | null> {
+    if (!this.supportsRawQueries()) return null;
     const result = await this.database.execute(sql<{ content_json: unknown }>`
       select snapshot.content_json
       from site_render_snapshots snapshot
@@ -159,6 +164,7 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
   }
 
   private async activeDomains(siteReference: string): Promise<ActiveDomain[]> {
+    if (!this.supportsRawQueries()) return [];
     const result = await this.database.execute(sql<ActiveDomain>`
       select domain.hostname, domain.domain_type, domain.domain_role
       from site_domains domain
