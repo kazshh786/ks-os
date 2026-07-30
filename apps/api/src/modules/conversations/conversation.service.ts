@@ -19,6 +19,7 @@ export type ConversationActor = {
   tenantId: string;
   userId: string;
   role: 'owner' | 'staff';
+  scope: 'ALL' | 'ASSIGNED';
 };
 
 const iso = (value: Date | string | null | undefined) => value ? new Date(value).toISOString() : null;
@@ -78,6 +79,7 @@ export class ConversationService {
 
   private filters(actor: ConversationActor, query: ConversationListQuery) {
     const conditions: any[] = [eq(conversations.tenantId, actor.tenantId)];
+    if (actor.scope === 'ASSIGNED') conditions.push(eq(conversations.assignedToUserId, actor.userId));
     if (query.channel) conditions.push(eq(conversations.primaryChannel, query.channel));
     if (query.status) conditions.push(eq(conversations.status, query.status));
     if (query.assignment === 'MINE') conditions.push(eq(conversations.assignedToUserId, actor.userId));
@@ -113,12 +115,17 @@ export class ConversationService {
   }
 
   private async conversationRow(actor: ConversationActor, conversationId: string) {
+    const conditions: any[] = [
+      eq(conversations.id, conversationId),
+      eq(conversations.tenantId, actor.tenantId),
+    ];
+    if (actor.scope === 'ASSIGNED') conditions.push(eq(conversations.assignedToUserId, actor.userId));
     const [row] = await this.db.select(this.baseSelection())
       .from(conversations)
       .leftJoin(users, and(eq(users.id, conversations.assignedToUserId), eq(users.tenantId, actor.tenantId)))
       .leftJoin(appointments, and(eq(appointments.id, conversations.relatedAppointmentId), eq(appointments.tenantId, actor.tenantId)))
       .leftJoin(services, and(eq(services.id, appointments.serviceId), eq(services.tenantId, actor.tenantId)))
-      .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, actor.tenantId)))
+      .where(and(...conditions))
       .limit(1);
     if (!row) throw Object.assign(new Error('Conversation not found'), { statusCode: 404, code: 'CONVERSATION_NOT_FOUND' });
     return row;
@@ -224,6 +231,9 @@ export class ConversationService {
 
   async update(actor: ConversationActor, conversationId: string, input: UpdateConversation) {
     await this.conversationRow(actor, conversationId);
+    if (actor.scope === 'ASSIGNED' && Object.prototype.hasOwnProperty.call(input, 'assignedToUserId') && input.assignedToUserId !== actor.userId) {
+      throw Object.assign(new Error('Assigned-only team members cannot reassign conversations'), { statusCode: 403, code: 'FORBIDDEN' });
+    }
     if (input.assignedToUserId) {
       const [assignee] = await this.db.select({ id: users.id }).from(users)
         .where(and(eq(users.id, input.assignedToUserId), eq(users.tenantId, actor.tenantId), eq(users.accountStatus, 'ACTIVE')))
