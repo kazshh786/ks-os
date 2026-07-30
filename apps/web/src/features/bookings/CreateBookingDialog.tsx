@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { Link2, X } from 'lucide-react';
 import { fromZonedTime } from 'date-fns-tz';
 import type { Service, Staff } from '../../data/types.js';
+import { getClientProfile } from '../../api/client.js';
 import { getDataProvider } from '../../data/data-provider.js';
 
 interface CreateBookingDialogProps {
@@ -10,6 +11,7 @@ interface CreateBookingDialogProps {
   services: Service[];
   staff: Staff[];
   initialDate: string;
+  initialClientId?: string | null;
   onClose: () => void;
   onCreated: () => void;
   mode?: 'booking' | 'walk-in';
@@ -55,7 +57,7 @@ function normalizeWalkInStart(selectedStart: Date) {
   return selectedStart;
 }
 
-export function CreateBookingDialog({ open, timezone, services, staff, initialDate, onClose, onCreated, mode = 'booking' }: CreateBookingDialogProps) {
+export function CreateBookingDialog({ open, timezone, services, staff, initialDate, initialClientId = null, onClose, onCreated, mode = 'booking' }: CreateBookingDialogProps) {
   const closeButton = useRef<HTMLButtonElement>(null);
   const [serviceId, setServiceId] = useState('');
   const [staffId, setStaffId] = useState('');
@@ -68,6 +70,7 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
   const [forms, setForms] = useState<Array<{ id: string; title: string; status: string }>>([]);
   const [intakeFormIds, setIntakeFormIds] = useState<string[]>([]);
   const [confirmPastBooking, setConfirmPastBooking] = useState(false);
+  const [loadingClient, setLoadingClient] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -85,6 +88,22 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [initialDate, mode, onClose, open, services, staff, timezone]);
+
+  useEffect(() => {
+    if (!open || !initialClientId) return;
+    let active = true;
+    setLoadingClient(true);
+    setError('');
+    getClientProfile(initialClientId).then(result => {
+      if (!active) return;
+      const profile = result.data.profile;
+      setName(profile.name || '');
+      setEmail(profile.email || '');
+      setPhone(profile.phone || '');
+    }).catch(() => { if (active) setError('The selected customer could not be prefilled. You can still enter their details manually.'); })
+      .finally(() => { if (active) setLoadingClient(false); });
+    return () => { active = false; };
+  }, [initialClientId, open]);
 
   if (!open) return null;
   const selectedStart = fromZonedTime(`${date}T${time}:00`, timezone);
@@ -133,7 +152,7 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
   return <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-6" role="presentation" data-calendar-dialog-layer="true">
     <section role="dialog" aria-modal="true" aria-labelledby="create-booking-title" className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
       <header className="flex items-start justify-between gap-4">
-        <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{mode === 'walk-in' ? 'Walk-in desk' : 'Calendar booking'}</p><h2 id="create-booking-title" className="mt-1 text-2xl font-black text-slate-950">{mode === 'walk-in' ? 'Add walk-in' : 'Create booking'}</h2><p className="mt-1 text-sm text-slate-500">{mode === 'walk-in' ? 'The customer will be added to the calendar as checked in and ready for service.' : 'Availability is checked again by the server before this is saved.'}</p></div>
+        <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{mode === 'walk-in' ? 'Walk-in desk' : 'Calendar booking'}</p><h2 id="create-booking-title" className="mt-1 text-2xl font-black text-slate-950">{mode === 'walk-in' ? 'Add walk-in' : 'Create booking'}</h2><p className="mt-1 text-sm text-slate-500">{mode === 'walk-in' ? 'The customer will be added to the calendar as checked in and ready for service.' : 'Availability is checked again by the server before this is saved.'}</p>{initialClientId && <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-700"><Link2 className="h-3.5 w-3.5" />{loadingClient ? 'Loading customer…' : 'Linked from customer inbox'}</p>}</div>
         <button ref={closeButton} type="button" onClick={onClose} aria-label="Close create booking" className="rounded-lg border p-2 text-slate-600 hover:bg-slate-50"><X className="h-5 w-5" /></button>
       </header>
       <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -149,7 +168,7 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
         {forms.length > 0 && <fieldset className="rounded-xl border border-slate-200 p-4 sm:col-span-2"><legend className="px-1 text-sm font-black text-slate-800">Intake forms</legend><p className="mb-3 text-xs text-slate-500">Selected forms will be assigned to the customer and linked to this booking.</p><div className="space-y-2">{forms.map(form => <label key={form.id} className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={intakeFormIds.includes(form.id)} onChange={event => setIntakeFormIds(current => event.target.checked ? [...current, form.id] : current.filter(id => id !== form.id))} />{form.title}</label>)}</div></fieldset>}
         {isPastBooking && <label className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 sm:col-span-2"><input required type="checkbox" checked={confirmPastBooking} onChange={event => setConfirmPastBooking(event.target.checked)} className="mt-0.5" /><span><strong className="block">Confirm historical booking</strong>This appointment is in the past. Save it as a completed booking in the customer and business history.</span></label>}
         {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800 sm:col-span-2">{error}</p>}
-        <div className="flex justify-end gap-3 sm:col-span-2"><button type="button" onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm font-bold">Cancel</button><button disabled={saving || !services.length || !staff.length} className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">{saving ? 'Checking availability…' : mode === 'walk-in' ? 'Check in walk-in' : 'Create booking'}</button></div>
+        <div className="flex justify-end gap-3 sm:col-span-2"><button type="button" onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm font-bold">Cancel</button><button disabled={saving || loadingClient || !services.length || !staff.length} className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">{saving ? 'Checking availability…' : mode === 'walk-in' ? 'Check in walk-in' : 'Create booking'}</button></div>
       </form>
     </section>
   </div>;
