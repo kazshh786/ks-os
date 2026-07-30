@@ -13,11 +13,13 @@ import {
   users,
 } from '@ks-os/database';
 import {
+  calculatePublishedSnapshotDigest,
   validatePublishedSnapshot,
   type PublishedSiteSnapshot,
 } from '@ks-os/site-schema';
 import {
   DrizzlePublicSiteRepository,
+  PublicSnapshotIntegrityError,
   type PublicSiteRepository,
   type ResolvedPublicSite,
 } from './repository.js';
@@ -57,6 +59,17 @@ type ActiveDomain = {
   hostname: string;
   domain_type: 'FALLBACK' | 'CUSTOM';
   domain_role: 'CANONICAL' | 'ALIAS' | 'FALLBACK';
+};
+
+type PreviewRow = {
+  snapshot_reference: string;
+  snapshot_kind: string;
+  schema_version: number;
+  digest: string;
+  content_json: unknown;
+  site_reference: string;
+  version_reference: string;
+  template_version_reference: string;
 };
 
 /**
@@ -148,19 +161,47 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
 
   private async latestPreview(siteReference: string): Promise<PublishedSiteSnapshot | null> {
     if (!this.supportsRawQueries()) return null;
-    const result = await this.database.execute(sql<{ content_json: unknown }>`
-      select snapshot.content_json
+    const result = await this.database.execute(sql<PreviewRow>`
+      select
+        snapshot.public_reference as snapshot_reference,
+        snapshot.snapshot_kind,
+        snapshot.schema_version,
+        snapshot.content_digest_sha256 as digest,
+        snapshot.content_json,
+        site.public_reference as site_reference,
+        version.public_reference as version_reference,
+        template.public_reference as template_version_reference
       from site_render_snapshots snapshot
       join sites site on site.id = snapshot.site_id
       join site_versions version on version.id = snapshot.site_version_id
+      join template_versions template on template.id = snapshot.template_version_id
       where site.public_reference = ${siteReference}::uuid
         and snapshot.snapshot_kind = 'PREVIEW'
+        and template.status = 'APPROVED'
       order by version.version_number desc, snapshot.revision desc
       limit 1
     `);
-    const rows = Array.isArray(result) ? result : result.rows;
-    const content = (rows as Array<{ content_json?: unknown }>)[0]?.content_json;
-    return content ? validatePublishedSnapshot(content) : null;
+    const rows = (Array.isArray(result) ? result : result.rows) as PreviewRow[];
+    const row = rows[0];
+    if (!row) return null;
+    try {
+      const snapshot = validatePublishedSnapshot(row.content_json);
+      if (
+        snapshot.publicReference !== row.snapshot_reference
+        || snapshot.siteReference !== row.site_reference
+        || snapshot.versionReference !== row.version_reference
+        || snapshot.templateVersionReference !== row.template_version_reference
+        || snapshot.schemaVersion !== row.schema_version
+        || snapshot.visibility !== row.snapshot_kind
+        || calculatePublishedSnapshotDigest(snapshot) !== row.digest
+      ) {
+        throw new PublicSnapshotIntegrityError();
+      }
+      return snapshot;
+    } catch (error) {
+      if (error instanceof PublicSnapshotIntegrityError) throw error;
+      throw new PublicSnapshotIntegrityError();
+    }
   }
 
   private async activeDomains(siteReference: string): Promise<ActiveDomain[]> {
