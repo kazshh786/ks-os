@@ -75,7 +75,7 @@ export function CalendarWorkspaceFrame({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const frame = frameRef.current;
-    const calendarMain = frame?.firstElementChild as HTMLElement | null;
+    const calendarMain = frame?.querySelector(':scope > main') as HTMLElement | null;
     const toolbar = calendarMain?.querySelector(':scope > header') as HTMLElement | null;
     if (!frame || !toolbar) return;
 
