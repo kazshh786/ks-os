@@ -8,10 +8,14 @@ import {
   services,
   staffLocations,
   staffServiceAssignments,
+  sql,
   tenants,
   users,
 } from '@ks-os/database';
-import type { PublishedSiteSnapshot } from '@ks-os/site-schema';
+import {
+  validatePublishedSnapshot,
+  type PublishedSiteSnapshot,
+} from '@ks-os/site-schema';
 import {
   DrizzlePublicSiteRepository,
   type PublicSiteRepository,
@@ -28,6 +32,14 @@ const days = [
   'SATURDAY',
 ] as const;
 
+const STAGING_SITE_STATUSES = new Set([
+  'DRAFT',
+  'GENERATING',
+  'INTERNAL_REVIEW',
+  'CLIENT_REVIEW',
+  'APPROVED',
+]);
+
 function clock(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const match = value.match(/^(\d{2}):(\d{2})/);
@@ -41,31 +53,61 @@ function priceText(minor: number, currency: string): string {
   }).format(Math.max(0, minor) / 100);
 }
 
+type ActiveDomain = {
+  hostname: string;
+  domain_type: 'FALLBACK' | 'CUSTOM';
+  domain_role: 'CANONICAL' | 'ALIAS' | 'FALLBACK';
+};
+
 /**
- * Published snapshots remain integrity-checked and immutable. This decorator
- * overlays only booking-owned operational data at request time so hours,
- * prices and bookability do not become stale between website publications.
- * New services are deliberately not appended: an agency operator must first
- * provision and review their dedicated website page.
+ * Published snapshots remain content-integrity checked and immutable. This
+ * decorator overlays only operational booking and hostname data at request
+ * time. A managed fallback hostname can serve the latest governed preview as
+ * a shareable staging site, but it is always noindex/nofollow. Search indexing
+ * is enabled only after an active custom canonical hostname exists.
  */
 export class OperationalPublicSiteRepository implements PublicSiteRepository {
+  private readonly stagingSiteReferences = new Set<string>();
+
   constructor(
     private readonly base: PublicSiteRepository = new DrizzlePublicSiteRepository(),
     private readonly database = getDatabase(),
   ) {}
 
-  resolveHostname(hostname: string, fallbackDomain: string): Promise<ResolvedPublicSite | null> {
-    return this.base.resolveHostname(hostname, fallbackDomain);
+  async resolveHostname(hostname: string, fallbackDomain: string): Promise<ResolvedPublicSite | null> {
+    const resolved = await this.base.resolveHostname(hostname, fallbackDomain);
+    if (!resolved) return null;
+    if (resolved.matchKind === 'FALLBACK' && STAGING_SITE_STATUSES.has(resolved.siteStatus)) {
+      this.stagingSiteReferences.add(resolved.siteReference);
+      return { ...resolved, siteStatus: 'LIVE' };
+    }
+    return resolved;
   }
 
   async loadPublishedSnapshot(siteReference: string) {
-    const snapshot = await this.base.loadPublishedSnapshot(siteReference);
-    return snapshot ? this.hydrate(snapshot) : null;
+    const published = await this.base.loadPublishedSnapshot(siteReference);
+    if (published) return this.hydrate(await this.applyDomains(published, false));
+    if (!this.stagingSiteReferences.has(siteReference)) return null;
+    const preview = await this.latestPreview(siteReference);
+    if (!preview) return null;
+    const staging = validatePublishedSnapshot({
+      ...preview,
+      visibility: 'PUBLISHED',
+      siteStatus: 'LIVE',
+      versionStatus: 'PUBLISHED',
+      publishedAt: new Date().toISOString(),
+      pages: preview.pages.map(page => ({
+        ...page,
+        indexable: false,
+        seo: { ...page.seo, index: false, follow: false },
+      })),
+    });
+    return this.hydrate(await this.applyDomains(staging, true));
   }
 
   async loadPreviewSnapshot(siteReference: string, versionReference: string) {
     const snapshot = await this.base.loadPreviewSnapshot(siteReference, versionReference);
-    return snapshot ? this.hydrate(snapshot) : null;
+    return snapshot ? this.hydrate(await this.applyDomains(snapshot, true)) : null;
   }
 
   isPreviewTokenRevoked(input: {
@@ -98,6 +140,67 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
     return this.base.isQualityAuditSessionActive
       ? this.base.isQualityAuditSessionActive(input)
       : Promise.resolve(false);
+  }
+
+  private async latestPreview(siteReference: string): Promise<PublishedSiteSnapshot | null> {
+    const result = await this.database.execute(sql<{ content_json: unknown }>`
+      select snapshot.content_json
+      from site_render_snapshots snapshot
+      join sites site on site.id = snapshot.site_id
+      join site_versions version on version.id = snapshot.site_version_id
+      where site.public_reference = ${siteReference}::uuid
+        and snapshot.snapshot_kind = 'PREVIEW'
+      order by version.version_number desc, snapshot.revision desc
+      limit 1
+    `);
+    const rows = Array.isArray(result) ? result : result.rows;
+    const content = (rows as Array<{ content_json?: unknown }>)[0]?.content_json;
+    return content ? validatePublishedSnapshot(content) : null;
+  }
+
+  private async activeDomains(siteReference: string): Promise<ActiveDomain[]> {
+    const result = await this.database.execute(sql<ActiveDomain>`
+      select domain.hostname, domain.domain_type, domain.domain_role
+      from site_domains domain
+      join sites site on site.id = domain.site_id
+      where site.public_reference = ${siteReference}::uuid
+        and domain.status = 'ACTIVE'
+        and domain.ownership_status = 'VERIFIED'
+        and domain.ssl_status = 'ACTIVE'
+      order by
+        case domain.domain_role when 'CANONICAL' then 0 when 'ALIAS' then 1 else 2 end,
+        domain.created_at asc
+    `);
+    return (Array.isArray(result) ? result : result.rows) as ActiveDomain[];
+  }
+
+  private async applyDomains(snapshot: PublishedSiteSnapshot, preview: boolean): Promise<PublishedSiteSnapshot> {
+    const domains = await this.activeDomains(snapshot.siteReference);
+    if (!domains.length) return snapshot;
+    const canonicalCustom = domains.find(domain =>
+      domain.domain_type === 'CUSTOM' && domain.domain_role === 'CANONICAL');
+    const fallback = domains.find(domain => domain.domain_type === 'FALLBACK');
+    const canonicalHostname = canonicalCustom?.hostname || fallback?.hostname || snapshot.canonicalHostname;
+    const indexingAllowed = Boolean(canonicalCustom) && !preview;
+    return validatePublishedSnapshot({
+      ...snapshot,
+      canonicalHostname,
+      domains: domains.map(domain => ({
+        hostname: domain.hostname,
+        kind: domain.domain_type,
+        status: 'ACTIVE',
+        primary: domain.hostname === canonicalHostname,
+      })),
+      pages: snapshot.pages.map(page => ({
+        ...page,
+        indexable: indexingAllowed ? page.indexable : false,
+        seo: {
+          ...page.seo,
+          index: indexingAllowed ? page.seo.index : false,
+          follow: indexingAllowed ? page.seo.follow : false,
+        },
+      })),
+    });
   }
 
   private async hydrate(snapshot: PublishedSiteSnapshot): Promise<PublishedSiteSnapshot> {
@@ -185,7 +288,7 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
       hoursByLocation.set(location.reference, openingHours);
     }
 
-    return {
+    return validatePublishedSnapshot({
       ...snapshot,
       services: snapshot.services.map(service => {
         const live = liveServices.get(service.publicReference);
@@ -203,6 +306,6 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
         ...location,
         openingHours: hoursByLocation.get(location.publicReference) ?? location.openingHours,
       })),
-    };
+    });
   }
 }
