@@ -20,10 +20,14 @@ const actor = (request: FastifyRequest) => {
   if (auth.role !== 'owner' && !auth.permissions.some(permission => inboxPermissions.has(permission))) {
     throw Object.assign(new Error('Inbox access is not enabled for this team member'), { statusCode: 403, code: 'FORBIDDEN' });
   }
+  const scope = auth.role === 'owner' || auth.permissions.some(permission => permission === 'OPERATIONS_VIEW_ALL' || permission === 'OPERATIONS_MANAGE')
+    ? 'ALL'
+    : 'ASSIGNED';
   return {
     tenantId: auth.tenantId,
     userId: auth.tenantUserId,
     role: auth.role,
+    scope,
   } as const;
 };
 
