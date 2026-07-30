@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, Loader2, Plus, Rocket, X } from 'lucide-react';
 import { useSearchParams } from 'react-router';
-import { agencyFetch } from './AgencyAuth';
+import { agencyFetch, useAgencyAuth } from './AgencyAuth';
 import { AgencyWorkspaceLaunchPipeline } from './AgencyWorkspaceLaunchPipeline';
+import { WorkspaceDataControls } from './WorkspaceDataControls';
 
 const isRemovedWorkspace = (tenant: any) => tenant.lifecycleStatus === 'OFFBOARDED'
   && tenant.name === 'Deleted workspace'
@@ -12,12 +13,49 @@ export function AgencyProvisioningPage() {
   const [params, setParams] = useSearchParams();
   const tenantId = params.get('tenant');
   if (tenantId) {
-    return <AgencyWorkspaceLaunchPipeline
-      tenantIdOverride={tenantId}
+    return <SelectedClientLaunchWorkspace
+      tenantId={tenantId}
       onBack={() => setParams({})}
     />;
   }
   return <ClientLaunchDirectory onSelect={reference => setParams({ tenant: reference })} />;
+}
+
+function SelectedClientLaunchWorkspace({ tenantId, onBack }: { tenantId: string; onBack: () => void }) {
+  const { session } = useAgencyAuth();
+  const [detail, setDetail] = useState<any>(null);
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+
+  const loadDetail = async () => {
+    const nextDetail = await agencyFetch(`/tenants/${tenantId}`);
+    setDetail(nextDetail);
+  };
+
+  useEffect(() => {
+    void loadDetail().catch((cause: Error) => setError(cause.message));
+  }, [tenantId]);
+
+  const tenant = detail?.tenant;
+  const canManage = Boolean(session?.capabilities.includes('tenants.manage'));
+  const isPlatformOwner = session?.role === 'PLATFORM_OWNER';
+
+  return <div className="space-y-6">
+    <AgencyWorkspaceLaunchPipeline tenantIdOverride={tenantId} onBack={onBack} />
+    {error ? <p role="alert" className="rounded-xl border border-rose-800 bg-rose-950/35 p-4 text-sm text-rose-200">{error}</p> : null}
+    {notice ? <p role="status" className="rounded-xl border border-emerald-800 bg-emerald-950/35 p-4 text-sm text-emerald-200">{notice}</p> : null}
+    {tenant ? <WorkspaceDataControls
+      tenantId={tenantId}
+      tenantName={tenant.name}
+      lifecycleStatus={tenant.lifecycleStatus}
+      canManage={canManage}
+      isPlatformOwner={isPlatformOwner}
+      onDeleted={onBack}
+      onRefresh={loadDetail}
+      onNotice={setNotice}
+      onError={setError}
+    /> : null}
+  </div>;
 }
 
 function ClientLaunchDirectory({ onSelect }: { onSelect: (reference: string) => void }) {
