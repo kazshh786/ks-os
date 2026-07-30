@@ -20,6 +20,7 @@ import { stripeWebhookRoutes } from './modules/webhooks/stripe/stripe-webhook.ro
 import { paymentRoutes } from './modules/payments/payments.routes.js';
 import { financeRoutes } from './modules/finance/finance.routes.js';
 import { resendWebhookRoutes } from './modules/webhooks/resend/resend-webhook.routes.js';
+import { metaWebhookRoutes } from './modules/webhooks/meta/meta-webhook.routes.js';
 import { emailRoutes } from './modules/email/email.routes.js';
 import { automationActionRoutes, automationRoutes, automationRunRoutes, automationWorkerRoutes } from './modules/automations/automation.routes.js';
 import formbody from '@fastify/formbody';
@@ -112,42 +113,29 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
         'res.body'
       ]
     },
-    // We assume the API sits behind a local reverse proxy (like Plesk or Nginx).
-    // trustProxy: true tells Fastify to trust the X-Forwarded-For header from the proxy
-    // to determine the real client IP for rate limiting and logging.
     trustProxy: env.TRUST_PROXY,
-    // Add global request body size limit (1MB)
     bodyLimit: 1048576
   });
 
-  // Allows integration tests to install route-independent fakes before
-  // encapsulated plugins register their own lifecycle hooks.
   options.beforeRegister?.(fastify);
 
   fastify.register(fastifyRawBody, {
     global: false,
     runFirst: true,
-    routes: ['/api/v1/webhooks/resend', '/api/v1/webhooks/gocardless'],
+    routes: ['/api/v1/webhooks/resend', '/api/v1/webhooks/gocardless', '/api/v1/webhooks/meta'],
     encoding: 'utf8',
   });
   fastify.register(formbody);
 
-  // Rate Limiter
   fastify.register(rateLimit, {
-    max: 100, // global default limit
+    max: 100,
     timeWindow: '1 minute'
   });
 
-  // Central error handling
   registerErrorHandler(fastify);
-
-  // Security headers & CORS
   fastify.register(registerSecurity);
-
-  // Decoupled tenant request context
   fastify.register(registerRequestContext);
 
-  // Public Routes (no auth)
   fastify.register(publicBookingRoutes, { prefix: '/api/v1/public' });
   fastify.register(publicCalendarRoutes, { prefix: '/api/v1/public' });
   fastify.register(publicFormRoutes, { prefix: '/api/v1/public/forms' });
@@ -156,12 +144,11 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(teamInvitationAcceptanceRoutes, { prefix: '/api/v1/team/invitations' });
   fastify.register(publicSiteReviewRoutes, { prefix: '/api/v1/site-review' });
   fastify.register(publicFactFindingRoutes, { prefix: '/api/v1/fact-finding' });
+  fastify.register(metaWebhookRoutes, { prefix: '/api/v1/webhooks/meta' });
 
-  // Auth Plugin
   fastify.register(authPlugin);
   fastify.register(authenticationRoutes);
 
-  // Agency control plane and commercial billing are isolated from tenant routes.
   fastify.register(agencyRoutes, { prefix: '/api/v1/agency' });
   fastify.register(platformErrorLogRoutes, { prefix: '/api/v1/agency/errors' });
   fastify.register(complianceRoutes, { prefix: '/api/v1/agency' });
@@ -184,13 +171,10 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(agencyWorkerRoutes, { prefix: '/api/v1/internal/agency-worker' });
   fastify.register(complianceWorkerRoutes, { prefix: '/api/v1/internal/privacy-worker' });
 
-  // Customer endpoints resolve the independently modelled customer account from
-  // the verified Supabase identity. They never accept tenant or client IDs.
   fastify.register(customerPortalRoutes, { prefix: '/api/v1/customer' });
   fastify.register(customerReviewInvitationRoutes, { prefix: '/api/v1/customer/review-invitations' });
   fastify.register(customerBookingPolicyRoutes, { prefix: '/api/v1/settings/booking/customer-management' });
 
-  // Mount API Endpoints (authenticated)
   fastify.register(registerRoutes);
   fastify.register(sessionRoutes);
   fastify.register(workspaceRoutes);
