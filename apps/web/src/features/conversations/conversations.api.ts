@@ -1,4 +1,5 @@
 import type {
+  CommunicationChannelConnection,
   ConversationChannel,
   ConversationDetail,
   ConversationListItem,
@@ -25,6 +26,10 @@ export async function listConversations(query: Partial<ConversationListQuery> = 
     if (value !== undefined && value !== '') params.set(key, String(value));
   });
   return request<{ data: ConversationListItem[]; nextCursor: string | null }>(`/api/v1/conversations?${params}`);
+}
+
+export async function listConversationChannels() {
+  return (await request<{ data: CommunicationChannelConnection[] }>('/api/v1/conversations/channels')).data;
 }
 
 export async function getConversation(conversationId: string) {
