@@ -7,15 +7,14 @@ import {
   staffSchedules,
   staffServiceAssignments,
   stripeConnections,
+  templateLicenses,
   tenantPlanAssignments,
   users,
 } from '@ks-os/database';
 import {
-  CreateProvisioningDraftSchema,
   evaluateProvisioningReadiness,
   type StartProvisioningRun,
 } from '@ks-os/workspace-provisioning';
-import type { z } from 'zod';
 import type { AgencyActor } from '../agency/agency.service.js';
 import { SitePublicationService } from '../sites/site-publication.service.js';
 import { ProvisioningService } from './provisioning.service.js';
@@ -98,7 +97,7 @@ async function assessWithCanonicalBooking(db: Database, context: DraftContext) {
   const explicitlyRequestedMarketingCount = requested.filter(item => MARKETING_TYPES.has(item)).length;
 
   const now = new Date();
-  const [entitlement, assignment, payment, canonicalServices, canonicalLocations, canonicalStaff, canonicalSchedules, canonicalAssignments, booking] = await Promise.all([
+  const [entitlement, assignment, licence, payment, canonicalServices, canonicalLocations, canonicalStaff, canonicalSchedules, canonicalAssignments, booking] = await Promise.all([
     db.execute(sql<{ value_json: unknown }>`
       select value_json from platform_plan_entitlements
       where plan_version_id = ${context.planVersionId}::uuid
@@ -113,6 +112,14 @@ async function assessWithCanonicalBooking(db: Database, context: DraftContext) {
         lte(tenantPlanAssignments.startsAt, now),
         or(isNull(tenantPlanAssignments.endsAt), gt(tenantPlanAssignments.endsAt, now)),
       )).limit(1),
+    context.templateSourceType === 'ENVATO_HTML'
+      ? db.select({ id: templateLicenses.id }).from(templateLicenses).where(and(
+        eq(templateLicenses.templateSourceId, context.templateSourceId),
+        or(eq(templateLicenses.templateVersionId, context.templateVersionId), isNull(templateLicenses.templateVersionId)),
+        or(eq(templateLicenses.tenantId, context.tenantId), isNull(templateLicenses.tenantId)),
+        eq(templateLicenses.status, 'ACTIVE'),
+      )).limit(1)
+      : Promise.resolve([{ id: 'not-required' }]),
     db.select().from(stripeConnections).where(eq(stripeConnections.tenantId, context.tenantId)).limit(1),
     db.select({
       id: services.id,
@@ -176,7 +183,7 @@ async function assessWithCanonicalBooking(db: Database, context: DraftContext) {
     requestedMarketingPageCount,
     approvedTemplate: context.templateStatus === 'APPROVED'
       && context.templateAnalysisStatus === 'APPROVED',
-    templateLicensed: context.templateSourceType !== 'ENVATO_HTML' || true,
+    templateLicensed: licence.length > 0,
     locationCount,
     approvedRemoteServiceConfiguration: false,
     bookableServiceCount: serviceCount,
@@ -231,8 +238,8 @@ export class BookingAwareProvisioningService extends ProvisioningService {
   private readonly publication: SitePublicationService;
 
   constructor(
-    private readonly database: Database = getDatabase(),
-    environment: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+    database: Database = getDatabase(),
+    private readonly environment: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
   ) {
     super(database);
     this.publication = new SitePublicationService(database);
@@ -240,12 +247,9 @@ export class BookingAwareProvisioningService extends ProvisioningService {
       assess: (context: DraftContext) => Promise<unknown>;
     };
     target.assess = context => assessWithCanonicalBooking(database, context);
-    this.environment = environment;
   }
 
-  private readonly environment: NodeJS.ProcessEnv | Record<string, string | undefined>;
-
-  override async start(actor: AgencyActor, input: z.infer<typeof StartProvisioningRunSchema>) {
+  override async start(actor: AgencyActor, input: StartProvisioningRun) {
     const result = await super.start(actor, input);
     if (result.siteReference) {
       try {
