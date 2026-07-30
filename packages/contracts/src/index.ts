@@ -109,6 +109,7 @@ export * from './authentication.js';
 export * from './compliance.js';
 export * from './integrations.js';
 export * from './booking-operations.js';
+export * from './booking-detail.js';
 export * from './workspace-plan.js';
 export * from './sites.js';
 export * from './site-design.js';

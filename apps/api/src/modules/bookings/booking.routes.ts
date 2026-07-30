@@ -1,21 +1,23 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { 
-  StaffCreateBookingRequestSchema, 
+import {
+  StaffCreateBookingRequestSchema,
   CreateBlockedTimeRequestSchema,
-  UpdateBookingStatusRequestSchema, 
+  UpdateBookingStatusRequestSchema,
   RescheduleBookingRequestSchema,
   BookingOperationsQuerySchema,
   BookingOperationsResponseSchema,
   ERROR_CODES
 } from '@ks-os/contracts';
 import { BookingService } from './booking.service.js';
+import { BookingDetailService } from './booking-detail.service.js';
 import { EntitlementService } from '../agency/agency.service.js';
 
 const bookingIdSchema = z.string().uuid();
 
 const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
   const bookingService = new BookingService();
+  const bookingDetailService = new BookingDetailService();
   const entitlements = new EntitlementService();
 
   fastify.get('/api/v1/bookings', async (request, reply) => {
@@ -61,7 +63,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     const parsed = bookingIdSchema.safeParse((request.params as { id: string }).id);
     if (!parsed.success) return reply.code(400).send({ success: false, error: { code: 'INVALID_BOOKING_ID', message: 'Invalid booking ID.' } });
     try {
-      return reply.send({ success: true, data: await bookingService.getOperationalBooking(request.auth!, parsed.data) });
+      return reply.send({ success: true, data: await bookingDetailService.get(request.auth!, parsed.data) });
     } catch (error: any) {
       if (error.statusCode === 404) return reply.code(404).send({ success: false, error: { code: error.code, message: error.message } });
       throw error;
@@ -70,7 +72,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post('/api/v1/bookings', async (request, reply) => {
     request.requireAuth();
-    
+
     const parsed = StaffCreateBookingRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ success: false, error: { code: ERROR_CODES.INVALID_BOOKING_REQUEST, message: 'Invalid booking data' } });
@@ -104,7 +106,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (auditError) {
         request.log.error(auditError, 'Booking was created but its usage-overage audit could not be recorded');
       }
-      
+
       return reply.code(201).send({ success: true, bookingId: appointmentId });
     } catch (err: any) {
       fastify.log.error(err, 'Staff booking creation failed');
@@ -155,7 +157,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch('/api/v1/bookings/:id/status', async (request, reply) => {
     request.requireAuth();
-    
+
     const { id } = request.params as { id: string };
     const parsed = UpdateBookingStatusRequestSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -179,7 +181,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch('/api/v1/bookings/:id/reschedule', async (request, reply) => {
     request.requireAuth();
-    
+
     const { id } = request.params as { id: string };
     const parsed = RescheduleBookingRequestSchema.safeParse(request.body);
     if (!parsed.success) {
