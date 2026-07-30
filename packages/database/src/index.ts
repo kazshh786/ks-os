@@ -2,6 +2,7 @@ export * from './schema.js';
 export * from './error-schema.js';
 export * from './design-library-schema.js';
 export * from './booking-schedule-overrides.js';
+export * from './conversation-schema.js';
 export * from './manifest.js';
 export * from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -10,12 +11,14 @@ import * as coreSchema from './schema.js';
 import * as errorSchema from './error-schema.js';
 import * as designLibrarySchema from './design-library-schema.js';
 import * as bookingScheduleOverrideSchema from './booking-schedule-overrides.js';
+import * as conversationSchema from './conversation-schema.js';
 
-const schema: typeof coreSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema = {
+const schema: typeof coreSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema = {
   ...coreSchema,
   ...errorSchema,
   ...designLibrarySchema,
   ...bookingScheduleOverrideSchema,
+  ...conversationSchema,
 };
 type Database = NodePgDatabase<typeof schema>;
 
