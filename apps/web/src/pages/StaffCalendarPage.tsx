@@ -4,6 +4,7 @@ import { useAuth } from '../auth';
 import { useWorkspace } from '../context/WorkspaceContext.js';
 import { BookingOperationsCalendar } from '../features/bookings/BookingOperationsCalendar.js';
 import { CalendarAvailabilityDialog } from '../features/bookings/CalendarAvailabilityDialog.js';
+import { CalendarLayerPolish } from '../features/bookings/CalendarLayerPolish.js';
 import { CalendarToolbarActionPortal, CalendarWorkspaceFrame } from '../features/bookings/CalendarWorkspaceFrame.js';
 
 export function StaffCalendarPage() {
@@ -27,6 +28,7 @@ export function StaffCalendarPage() {
 
   return <>
     <CalendarWorkspaceFrame>
+      <CalendarLayerPolish />
       <BookingOperationsCalendar />
     </CalendarWorkspaceFrame>
     {role === 'owner' && <CalendarToolbarActionPortal>
