@@ -23,6 +23,12 @@ const connectUrl = (kind: 'return' | 'refresh') => {
   return new URL(expectedPath, origin).toString();
 };
 
+const bookingPaymentOrigin = () => (
+  process.env.PUBLIC_APP_ORIGIN
+  || process.env.FRONTEND_ORIGIN
+  || 'http://localhost:3000'
+).replace(/\/$/, '');
+
 export class StripeService {
   private repo = new StripeRepository();
 
@@ -182,6 +188,7 @@ export class StripeService {
 
     const stripe = getStripeClient();
     const expiresAt = Math.floor(Date.now() / 1000) + (parseInt(process.env.BOOKING_PAYMENT_HOLD_MINUTES || '30') * 60);
+    const origin = bookingPaymentOrigin();
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -189,8 +196,8 @@ export class StripeService {
         application_fee_amount,
       },
       client_reference_id: publicBookingReference,
-      success_url: `http://localhost:3000/book/${tenant.subdomain}/payment/success?session_id={CHECKOUT_SESSION_ID}&reference=${publicBookingReference}`,
-      cancel_url: `http://localhost:3000/book/${tenant.subdomain}/payment/cancel?reference=${publicBookingReference}`,
+      success_url: `${origin}/book/${tenant.subdomain}/payment/success?session_id={CHECKOUT_SESSION_ID}&reference=${publicBookingReference}`,
+      cancel_url: `${origin}/book/${tenant.subdomain}/payment/cancel?reference=${publicBookingReference}`,
       expires_at: expiresAt,
       line_items: [
         {
