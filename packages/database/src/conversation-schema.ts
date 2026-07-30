@@ -64,13 +64,17 @@ export const conversationMessages = pgTable('conversation_messages', {
   replyToMessageId: uuid('reply_to_message_id'),
   externalMessageId: varchar('external_message_id', { length: 255 }),
   errorCode: varchar('error_code', { length: 120 }),
+  attemptCount: integer('attempt_count').default(0).notNull(),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).defaultNow().notNull(),
   metadataJson: jsonb('metadata_json').default({}).notNull(),
   sentAt: timestamp('sent_at', { withTimezone: true }),
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   readAt: timestamp('read_at', { withTimezone: true }),
+  failedAt: timestamp('failed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, table => ({
   conversationCreatedIdx: index('conversation_messages_conversation_created_idx').on(table.conversationId, table.createdAt),
+  deliveryQueueIdx: index('conversation_messages_delivery_queue_idx').on(table.status, table.nextAttemptAt),
   tenantExternalUnique: uniqueIndex('conversation_messages_tenant_channel_external_unique').on(table.tenantId, table.channelType, table.externalMessageId),
 }));
 
