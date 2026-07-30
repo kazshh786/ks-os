@@ -10,7 +10,7 @@ import {
 import { JsonSiteWorkerLogger } from './logger.js';
 import { PostgresSiteJobRepository } from './postgres-repository.js';
 import { createConfiguredSiteGenerationExecutor } from './postgres-generation-executor.js';
-import { PostgresWorkspaceProvisioningExecutor } from './postgres-provisioning-executor.js';
+import { UnifiedWorkspaceProvisioningExecutor } from './unified-provisioning-executor.js';
 import { ProductionPlaywrightQualityAdapter } from './playwright-quality-adapter.js';
 import { PostgresSiteQualityExecutor } from './postgres-quality-executor.js';
 import { PostgresSitePublicationExecutor } from './postgres-publication-executor.js';
@@ -39,7 +39,7 @@ export async function startSiteWorker(
   const registry = createSiteJobHandlerRegistry(
     config.enableTestHandlers,
     resolvedGenerationExecutor,
-    new PostgresWorkspaceProvisioningExecutor(database, config.generation),
+    new UnifiedWorkspaceProvisioningExecutor(database, config.generation),
     qualityExecutor,
     new PostgresSitePublicationExecutor(database),
   );
@@ -116,6 +116,7 @@ export * from './logger.js';
 export * from './postgres-repository.js';
 export * from './postgres-generation-executor.js';
 export * from './postgres-provisioning-executor.js';
+export * from './unified-provisioning-executor.js';
 export * from './postgres-quality-executor.js';
 export * from './postgres-publication-executor.js';
 export * from './playwright-quality-adapter.js';
