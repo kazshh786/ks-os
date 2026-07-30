@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { getDatabase, sql } from '@ks-os/database';
 import { normalizeCustomHostname } from '@ks-os/site-publishing';
 import type { AgencyActor } from '../agency/agency.service.js';
@@ -93,7 +93,7 @@ export class UnifiedSitePublicationService extends SitePublicationService {
     return row;
   }
 
-  override async createCustom(actor: AgencyActor, siteReference: string, hostnameInput: string) {
+  async createManagedCustom(actor: AgencyActor, siteReference: string, hostnameInput: string) {
     const hostname = normalizeCustomHostname(hostnameInput);
     const context = await this.siteContext(siteReference);
     const existing = rowsOf<{ public_reference: string; site_id: string; status: string }>(
@@ -120,8 +120,8 @@ export class UnifiedSitePublicationService extends SitePublicationService {
     const verification = Array.isArray(added.verification) ? added.verification : [];
     const discoveryDigest = createHash('sha256').update(JSON.stringify({ hostname, routing, verification })).digest('hex');
 
-    const domainReference = crypto.randomUUID();
-    const planReference = crypto.randomUUID();
+    const domainReference = randomUUID();
+    const planReference = randomUUID();
     await this.database.transaction(async tx => {
       await tx.execute(sql`
         insert into site_domains (
