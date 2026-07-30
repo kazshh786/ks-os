@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 const calendarWorkspaceStyles = `
   .ks-calendar-workspace-frame {
@@ -73,7 +73,7 @@ const calendarWorkspaceStyles = `
 export function CalendarWorkspaceFrame({ children }: { children: ReactNode }) {
   const frameRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const frame = frameRef.current;
     const calendarMain = frame?.querySelector(':scope > main') as HTMLElement | null;
     const toolbar = calendarMain?.querySelector(':scope > header') as HTMLElement | null;
@@ -83,13 +83,12 @@ export function CalendarWorkspaceFrame({ children }: { children: ReactNode }) {
       frame.style.setProperty('--ks-calendar-toolbar-height', `${Math.ceil(toolbar.getBoundingClientRect().height)}px`);
     };
 
-    const animationFrame = window.requestAnimationFrame(syncToolbarHeight);
+    syncToolbarHeight();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncToolbarHeight);
     observer?.observe(toolbar);
     window.addEventListener('resize', syncToolbarHeight);
 
     return () => {
-      window.cancelAnimationFrame(animationFrame);
       observer?.disconnect();
       window.removeEventListener('resize', syncToolbarHeight);
     };
