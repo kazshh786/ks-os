@@ -59,6 +59,7 @@ type ActiveDomain = {
   hostname: string;
   domain_type: 'FALLBACK' | 'CUSTOM';
   domain_role: 'CANONICAL' | 'ALIAS' | 'FALLBACK';
+  updated_at: Date | string;
 };
 
 type PreviewRow = {
@@ -77,7 +78,8 @@ type PreviewRow = {
  * decorator overlays only operational booking and hostname data at request
  * time. A managed fallback hostname can serve the latest governed preview as
  * a shareable staging site, but it is always noindex/nofollow. Search indexing
- * is enabled only after an active custom canonical hostname exists.
+ * is enabled only after an active custom canonical hostname exists and the
+ * exact site version has been published after that hostname was promoted.
  */
 export class OperationalPublicSiteRepository implements PublicSiteRepository {
   private readonly stagingSiteReferences = new Set<string>();
@@ -207,7 +209,7 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
   private async activeDomains(siteReference: string): Promise<ActiveDomain[]> {
     if (!this.supportsRawQueries()) return [];
     const result = await this.database.execute(sql<ActiveDomain>`
-      select domain.hostname, domain.domain_type, domain.domain_role
+      select domain.hostname, domain.domain_type, domain.domain_role, domain.updated_at
       from site_domains domain
       join sites site on site.id = domain.site_id
       where site.public_reference = ${siteReference}::uuid
@@ -228,7 +230,13 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
       domain.domain_type === 'CUSTOM' && domain.domain_role === 'CANONICAL');
     const fallback = domains.find(domain => domain.domain_type === 'FALLBACK');
     const canonicalHostname = canonicalCustom?.hostname || fallback?.hostname || snapshot.canonicalHostname;
-    const indexingAllowed = Boolean(canonicalCustom) && !preview;
+    const domainActivatedAt = canonicalCustom ? new Date(canonicalCustom.updated_at).getTime() : Number.NaN;
+    const publishedAt = snapshot.publishedAt ? Date.parse(snapshot.publishedAt) : Number.NaN;
+    const indexingAllowed = Boolean(canonicalCustom)
+      && !preview
+      && Number.isFinite(domainActivatedAt)
+      && Number.isFinite(publishedAt)
+      && publishedAt >= domainActivatedAt;
     return validatePublishedSnapshot({
       ...snapshot,
       canonicalHostname,
