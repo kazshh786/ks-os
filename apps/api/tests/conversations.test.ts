@@ -52,6 +52,7 @@ test('omnichannel migration is registered and keeps data API-only', () => {
   const entry = MIGRATION_MANIFEST.find(item => item.filename === '20260730223000_omnichannel_conversations.sql');
   assert.equal(entry?.order, 53);
   const migration = readFileSync(new URL('../../../packages/database/migrations/20260730223000_omnichannel_conversations.sql', import.meta.url), 'utf8');
+  assert.match(migration, /'HARDWARE','COMMUNICATION'/);
   assert.match(migration, /credentials_reference uuid REFERENCES integration_connections\(id\)/);
   assert.match(migration, /ALTER TABLE conversations ENABLE ROW LEVEL SECURITY/);
   assert.match(migration, /REVOKE ALL ON communication_channels, conversations, conversation_messages, conversation_attachments FROM anon, authenticated/);
