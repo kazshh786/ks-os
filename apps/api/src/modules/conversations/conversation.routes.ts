@@ -12,12 +12,18 @@ import {
 } from '@ks-os/contracts';
 import { ConversationService } from './conversation.service.js';
 
+const inboxPermissions = new Set(['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE']);
+
 const actor = (request: FastifyRequest) => {
   request.requireAuth();
+  const auth = request.auth!;
+  if (auth.role !== 'owner' && !auth.permissions.some(permission => inboxPermissions.has(permission))) {
+    throw Object.assign(new Error('Inbox access is not enabled for this team member'), { statusCode: 403, code: 'FORBIDDEN' });
+  }
   return {
-    tenantId: request.auth!.tenantId,
-    userId: request.auth!.tenantUserId,
-    role: request.auth!.role,
+    tenantId: auth.tenantId,
+    userId: auth.tenantUserId,
+    role: auth.role,
   } as const;
 };
 
