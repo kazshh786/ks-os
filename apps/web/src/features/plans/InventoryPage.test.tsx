@@ -25,7 +25,7 @@ describe('InventoryPage', () => {
 
   it('shows live stock and opens manual and CSV workflows', async () => {
     render(<MemoryRouter><InventoryPage /></MemoryRouter>);
-    expect(await screen.findByText('Shampoo')).toBeInTheDocument();
+    expect((await screen.findAllByText('Shampoo')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('8 units').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Add product' }));
@@ -39,7 +39,7 @@ describe('InventoryPage', () => {
 
   it('creates a product and adjusts existing stock through the API', async () => {
     render(<MemoryRouter><InventoryPage /></MemoryRouter>);
-    await screen.findByText('Shampoo');
+    await screen.findAllByText('Shampoo');
 
     fireEvent.click(screen.getByRole('button', { name: 'Add product' }));
     const addDialog = screen.getByRole('dialog', { name: 'Add product' });
