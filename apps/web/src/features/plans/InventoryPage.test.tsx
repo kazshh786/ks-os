@@ -18,6 +18,7 @@ describe('InventoryPage', () => {
     fetchWithAuth.mockReset().mockImplementation((url: string, init?: RequestInit) => {
       if (url.startsWith('/api/v1/products?')) return Promise.resolve(response({ success: true, data: [product] }));
       if (url === '/api/v1/products' && init?.method === 'POST') return Promise.resolve(response({ success: true, data: { ...product, id: '22222222-2222-4222-8222-222222222222', name: 'Conditioner', sku: 'CON-001' } }, 201));
+      if (url === `/api/v1/products/${product.id}` && init?.method === 'PATCH') return Promise.resolve(response({ success: true, data: { ...product, name: 'Luxury Shampoo', sku: 'SHP-002', priceInCents: 1499 } }));
       if (url.endsWith('/stock-adjustments')) return Promise.resolve(response({ success: true, data: { ...product, stockQuantity: 10 } }));
       return Promise.resolve(response({ success: true, data: [] }));
     });
@@ -59,5 +60,22 @@ describe('InventoryPage', () => {
     fireEvent.change(within(adjustDialog).getByLabelText('Quantity'), { target: { value: '2' } });
     fireEvent.click(within(adjustDialog).getByRole('button', { name: 'Save adjustment' }));
     await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith(`/api/v1/products/${product.id}/stock-adjustments`, expect.objectContaining({ method: 'POST' })));
+  });
+
+  it('edits product details without changing stock', async () => {
+    render(<MemoryRouter><InventoryPage /></MemoryRouter>);
+    await screen.findAllByText('Shampoo');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    const editDialog = screen.getByRole('dialog', { name: 'Edit Shampoo' });
+    fireEvent.change(within(editDialog).getByLabelText('Product name'), { target: { value: 'Luxury Shampoo' } });
+    fireEvent.change(within(editDialog).getByLabelText('SKU'), { target: { value: 'SHP-002' } });
+    fireEvent.change(within(editDialog).getByLabelText('Selling price (£)'), { target: { value: '14.99' } });
+    fireEvent.click(within(editDialog).getByRole('button', { name: 'Save product' }));
+
+    await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith(`/api/v1/products/${product.id}`, expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'Luxury Shampoo', sku: 'SHP-002', priceInCents: 1499 }),
+    })));
   });
 });
