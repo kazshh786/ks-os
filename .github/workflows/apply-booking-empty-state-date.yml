@@ -1,0 +1,60 @@
+name: Apply booking empty-state date fix
+
+on:
+  push:
+    branches:
+      - agent/booking-empty-state-date
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/booking-empty-state-date
+          fetch-depth: 0
+
+      - name: Apply guarded source edits
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("apps/web/src/features/bookings/PublicBookingFlow.tsx")
+          source = path.read_text()
+
+          replacements = [
+              (
+                  "  const dateMaximum = format(addDays(firstBookableDate, maximumFutureDays - 1), 'yyyy-MM-dd');\n  const enabledChannels: BookingChannel[] =",
+                  "  const dateMaximum = format(addDays(firstBookableDate, maximumFutureDays - 1), 'yyyy-MM-dd');\n  const selectedDateLabel = format(localDate(date), 'EEEE, d MMMM yyyy');\n  const nextDate = format(addDays(localDate(date), 1), 'yyyy-MM-dd');\n  const canTryNextDate = nextDate <= dateMaximum;\n  const enabledChannels: BookingChannel[] =",
+              ),
+              (
+                  "  const moveWeek = (direction: -1 | 1) => {\n    const nextWeek = Math.max(0, Math.min(maximumWeekIndex, weekIndex + direction));\n    setDate(format(addDays(firstBookableDate, nextWeek * 7), 'yyyy-MM-dd'));\n    setError('');\n  };\n  const chooseSlot = async (nextSlot: Slot) => {",
+                  "  const moveWeek = (direction: -1 | 1) => {\n    const nextWeek = Math.max(0, Math.min(maximumWeekIndex, weekIndex + direction));\n    setDate(format(addDays(firstBookableDate, nextWeek * 7), 'yyyy-MM-dd'));\n    setError('');\n  };\n  const tryNextDate = () => {\n    if (!canTryNextDate) return;\n    setDate(nextDate);\n    setError('');\n    track('DATE_SELECTED', { serviceId, staffId: staffId === 'any' ? undefined : staffId });\n  };\n  const chooseSlot = async (nextSlot: Slot) => {",
+              ),
+              (
+                  '<div className="mt-8 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><CalendarDays className="mx-auto h-9 w-9 text-slate-400" /><h3 className="mt-3 font-black text-slate-950">No availability on this date</h3><p className="mt-1 text-sm text-slate-500">Try another date or choose “Anyone available” to see more options.</p></div>',
+                  '''<div aria-live="polite" className="mt-8 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><CalendarDays className="mx-auto h-9 w-9 text-slate-400" /><h3 className="mt-3 font-black text-slate-950">No availability on {selectedDateLabel}</h3><p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-500">{staffId === 'any' ? 'Try the next date or choose another day.' : 'Try the next date, or check availability across the whole team.'}</p><div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">{canTryNextDate && <button type="button" onClick={tryNextDate} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-black shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2" style={{ backgroundColor: primary, color: contrastText(primary) }}>Try {format(localDate(nextDate), 'EEE d MMM')}<ArrowRight className="h-4 w-4" /></button>}{staffId !== 'any' && page?.bookingRules.allowAnyStaff !== false && <button type="button" onClick={() => { setStaffId('any'); setError(''); track('STAFF_SELECTED', { serviceId, staffId: 'any' }); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"><Sparkles className="h-4 w-4" style={{ color: primary }} />See anyone available</button>}</div></div>''',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one guarded match, found {count}: {old[:90]!r}")
+              source = source.replace(old, new, 1)
+
+          path.write_text(source)
+
+      - name: Commit component change
+        run: |
+          rm .github/workflows/apply-booking-empty-state-date.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/features/bookings/PublicBookingFlow.tsx .github/workflows/apply-booking-empty-state-date.yml
+          git diff --cached --check
+          git commit -m "Improve booking no-availability recovery"
+          git push origin HEAD:agent/booking-empty-state-date
