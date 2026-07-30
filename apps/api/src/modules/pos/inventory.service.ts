@@ -28,7 +28,7 @@ const normaliseInput = <T extends Partial<CreateProductRequest>>(input: T): T =>
   ...input,
   ...(input.name !== undefined ? { name: input.name.trim() } : {}),
   ...(input.sku !== undefined ? { sku: input.sku.trim().toUpperCase() } : {}),
-});
+}) as T;
 
 export class InventoryService {
   constructor(
