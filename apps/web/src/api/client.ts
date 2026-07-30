@@ -115,5 +115,6 @@ export async function getClientProfile(clientId: string) {
     if (response.status === 403) throw new Error('Access denied');
     throw new Error('Failed to fetch client profile');
   }
-  return response.json();
+  const data = await response.json();
+  return { data };
 }

@@ -9,6 +9,7 @@ import {
   MapPin,
   Monitor,
   Palette,
+  ReceiptText,
   ShieldCheck,
   Smartphone,
   Tablet,
@@ -16,6 +17,7 @@ import {
 import { BookingPageSlugSchema, type BookingChannel, type BookingPageResponse, type BookingPageUpdate } from '@ks-os/contracts';
 import { getDataProvider } from '../../data/data-provider.js';
 import { PublicBookingFlow } from '../../features/bookings/PublicBookingFlow.js';
+import { BookingPoliciesModal } from './BookingPoliciesModal.js';
 
 type PreviewWidth = 'desktop' | 'tablet' | 'mobile';
 const previewWidths: Record<PreviewWidth, string> = { desktop: '100%', tablet: '768px', mobile: '390px' };
@@ -47,6 +49,7 @@ export function BookingPageSettings() {
   const [customDomain, setCustomDomain] = useState('');
   const [domainInstructions, setDomainInstructions] = useState<any>(null);
   const [analytics, setAnalytics] = useState<any>(null);
+  const [policiesOpen, setPoliciesOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -180,6 +183,7 @@ export function BookingPageSettings() {
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">Control the public address, branding, appointment types, booking window and payment rules from one place.</p>
       </div>
       <div className="flex flex-wrap gap-2">
+        <button onClick={() => setPoliciesOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><ReceiptText className="h-4 w-4" />Booking policies</button>
         <button onClick={() => navigator.clipboard.writeText(page.publicUrl).then(() => setMessage('Booking link copied.'))} className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><Clipboard className="h-4 w-4" />Copy link</button>
         <a href={page.publicUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><ExternalLink className="h-4 w-4" />Open page</a>
         <button onClick={() => void publish()} disabled={saving} className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-black">{page.published ? 'Unpublish' : 'Publish'}</button>
@@ -235,7 +239,7 @@ export function BookingPageSettings() {
             <label className="text-sm font-bold">Deposit %<input type="number" min={0} max={100} value={page.paymentSettings.depositPercentage} onChange={event => update('paymentSettings', { ...page.paymentSettings, depositPercentage: Number(event.target.value) })} className="mt-1 w-full rounded-xl border p-3" /></label>
           </div>
           <label className="mt-4 block text-sm font-bold">Cancellation policy<textarea value={page.cancellationSettings.policyText} onChange={event => update('cancellationSettings', { ...page.cancellationSettings, policyText: event.target.value })} rows={3} className="mt-1 w-full rounded-xl border p-3" /></label>
-          <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><p>Customer cancellation and rescheduling approval rules are managed under <Link className="font-black text-indigo-700 underline" to="/app/settings/booking/customer-management">Customer booking management</Link>.</p></div>
+          <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><div><p>Customer cancellation and rescheduling approval rules are managed here with the booking page.</p><button type="button" onClick={() => setPoliciesOpen(true)} className="mt-2 font-black text-indigo-700 underline">Open customer booking policies</button></div></div>
         </section>
 
         <section className="rounded-2xl border bg-white p-5">
@@ -255,6 +259,8 @@ export function BookingPageSettings() {
         <div className="mx-auto overflow-auto rounded-xl bg-slate-50 p-2 transition-all" style={{ maxWidth: previewWidths[previewWidth] }}><PublicBookingFlow slug={loadedSlug} preview pageOverride={pageOverride} /></div>
       </section>
     </div>
+
+    <BookingPoliciesModal open={policiesOpen} onClose={() => setPoliciesOpen(false)} />
   </main>;
 }
 
