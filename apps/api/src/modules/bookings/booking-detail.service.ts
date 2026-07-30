@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { getDatabase } from '@ks-os/database';
+import { type BookingAuthContext } from '@ks-os/auth';
 import {
   BookingDetailSchema,
   FormSchemaJsonSchema,
-  type BookingAuthContext,
   type BookingDetail,
   type BookingFormAnswer,
 } from '@ks-os/contracts';
