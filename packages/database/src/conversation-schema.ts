@@ -1,5 +1,5 @@
 import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
-import { appointments, clients, tenants, users } from './schema.js';
+import { appointments, clients, integrationConnections, tenants, users } from './schema.js';
 
 export const communicationChannels = pgTable('communication_channels', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -10,7 +10,7 @@ export const communicationChannels = pgTable('communication_channels', {
   externalAccountId: varchar('external_account_id', { length: 255 }),
   status: varchar('status', { length: 20 }).default('DISCONNECTED').notNull(),
   capabilities: text('capabilities').array().default([]).notNull(),
-  credentialsReference: varchar('credentials_reference', { length: 255 }),
+  credentialsReference: uuid('credentials_reference').references(() => integrationConnections.id, { onDelete: 'set null' }),
   metadataJson: jsonb('metadata_json').default({}).notNull(),
   connectedAt: timestamp('connected_at', { withTimezone: true }),
   lastHealthCheckAt: timestamp('last_health_check_at', { withTimezone: true }),
