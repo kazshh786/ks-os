@@ -66,7 +66,8 @@ describe('MobileCalendarExperience', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Search bookings' }));
     expect(document.querySelector('[data-calendar-workspace-frame]')).toHaveAttribute('data-mobile-search-open', 'true');
 
-    fireEvent.click(screen.getByRole('button', { name: 'New booking' }));
+    const createButtons = screen.getAllByRole('button', { name: 'New booking' });
+    fireEvent.click(createButtons[createButtons.length - 1]);
     expect(createBooking).toHaveBeenCalledOnce();
   });
 });
