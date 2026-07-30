@@ -6,6 +6,7 @@ import {
   Boxes,
   Download,
   PackagePlus,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -17,6 +18,7 @@ import type { CreateProductRequest, Product, ProductImportResult } from '@ks-os/
 import { fetchWithAuth } from '../../api/client.js';
 import { useWorkspacePlan } from './WorkspacePlanContext.js';
 import { inventoryCsvTemplate, parseInventoryCsv } from './inventory-csv.js';
+import { InventoryProductEditModal } from './InventoryProductEditModal.js';
 
 async function inventoryRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithAuth(path, init);
@@ -37,6 +39,7 @@ export function InventoryPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [adjusting, setAdjusting] = useState<Product | null>(null);
+  const [editing, setEditing] = useState<Product | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,7 +77,7 @@ export function InventoryPage() {
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-300">Growth operations</p>
           <div className="mt-2 flex flex-wrap items-center gap-3"><h1 className="text-3xl font-black">Inventory</h1><span className="rounded-full bg-indigo-500/20 px-3 py-1 text-xs font-black text-indigo-200">{summary?.availability['inventory.enabled'] === 'BETA' ? 'Beta' : 'Included'}</span></div>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Add products, import a CSV and keep stock quantities accurate for point-of-sale checkout.</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Add and edit products, import a CSV and keep stock quantities accurate for point-of-sale checkout.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setImportOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-black hover:bg-white/15"><Upload className="h-4 w-4" />Import CSV</button>
@@ -94,7 +97,7 @@ export function InventoryPage() {
 
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <header className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div><h2 className="text-lg font-black text-slate-950">Current stock</h2><p className="mt-1 text-xs text-slate-500">Create a product or adjust the quantity already on hand.</p></div>
+        <div><h2 className="text-lg font-black text-slate-950">Current stock</h2><p className="mt-1 text-xs text-slate-500">Edit product details or adjust the quantity already on hand.</p></div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <label className="relative min-w-0 sm:w-72"><span className="sr-only">Search inventory</span><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search product or SKU" className="w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></label>
           <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-bold text-slate-700"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
@@ -104,14 +107,15 @@ export function InventoryPage() {
       {loading && products.length === 0 ? <div className="grid min-h-64 place-items-center text-slate-400"><RefreshCw className="h-7 w-7 animate-spin" /><span className="sr-only">Loading inventory</span></div>
         : filtered.length === 0 ? <div className="grid min-h-64 place-items-center p-8 text-center"><div><Boxes className="mx-auto h-10 w-10 text-slate-300" /><h3 className="mt-3 font-black text-slate-900">{products.length ? 'No matching products' : 'No products yet'}</h3><p className="mt-1 text-sm text-slate-500">{products.length ? 'Try another product name or SKU.' : 'Add a product manually or import your current stock from CSV.'}</p>{!products.length && <button type="button" onClick={() => setAddOpen(true)} className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white">Add first product</button>}</div></div>
           : <>
-            <div className="hidden overflow-x-auto md:block"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-[11px] font-black uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Product</th><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Selling price</th><th className="px-5 py-3">On hand</th><th className="px-5 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-slate-100">{filtered.map(product => <tr key={product.id} className="hover:bg-slate-50"><td className="px-5 py-4 font-bold text-slate-950">{product.name}</td><td className="px-5 py-4 font-mono text-xs text-slate-500">{product.sku}</td><td className="px-5 py-4 font-semibold">{money(product.priceInCents)}</td><td className="px-5 py-4"><StockBadge quantity={product.stockQuantity} /></td><td className="px-5 py-4 text-right"><button type="button" onClick={() => setAdjusting(product)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:border-indigo-300 hover:text-indigo-700">Adjust stock</button></td></tr>)}</tbody></table></div>
-            <div className="divide-y divide-slate-100 md:hidden">{filtered.map(product => <article key={product.id} className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate font-black text-slate-950">{product.name}</h3><p className="mt-1 truncate font-mono text-xs text-slate-500">{product.sku}</p></div><StockBadge quantity={product.stockQuantity} /></div><div className="mt-4 flex items-center justify-between gap-3"><p className="text-sm font-black text-slate-800">{money(product.priceInCents)}</p><button type="button" onClick={() => setAdjusting(product)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black">Adjust stock</button></div></article>)}</div>
+            <div className="hidden overflow-x-auto md:block"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-[11px] font-black uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Product</th><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Selling price</th><th className="px-5 py-3">On hand</th><th className="px-5 py-3 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-100">{filtered.map(product => <tr key={product.id} className="hover:bg-slate-50"><td className="px-5 py-4 font-bold text-slate-950">{product.name}</td><td className="px-5 py-4 font-mono text-xs text-slate-500">{product.sku}</td><td className="px-5 py-4 font-semibold">{money(product.priceInCents)}</td><td className="px-5 py-4"><StockBadge quantity={product.stockQuantity} /></td><td className="px-5 py-4"><div className="flex justify-end gap-2"><button type="button" onClick={() => setEditing(product)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:border-indigo-300 hover:text-indigo-700"><Pencil className="h-3.5 w-3.5" />Edit</button><button type="button" onClick={() => setAdjusting(product)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:border-indigo-300 hover:text-indigo-700">Adjust stock</button></div></td></tr>)}</tbody></table></div>
+            <div className="divide-y divide-slate-100 md:hidden">{filtered.map(product => <article key={product.id} className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate font-black text-slate-950">{product.name}</h3><p className="mt-1 truncate font-mono text-xs text-slate-500">{product.sku}</p></div><StockBadge quantity={product.stockQuantity} /></div><div className="mt-4 flex items-center justify-between gap-3"><p className="text-sm font-black text-slate-800">{money(product.priceInCents)}</p><div className="flex gap-2"><button type="button" onClick={() => setEditing(product)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs font-black"><Pencil className="h-3.5 w-3.5" />Edit</button><button type="button" onClick={() => setAdjusting(product)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black">Stock</button></div></div></article>)}</div>
           </>}
     </section>
 
     <div className="flex flex-wrap gap-3 text-sm"><Link to="/app/reports/stock" className="font-bold text-indigo-700 underline">Open stock report</Link><Link to="/app/reports/products" className="font-bold text-indigo-700 underline">Open product performance</Link><Link to="/app/pos" className="font-bold text-indigo-700 underline">Open point of sale</Link></div>
 
     <ProductModal open={addOpen} onClose={() => setAddOpen(false)} onSaved={async product => { setAddOpen(false); await completed(`${product.name} was added to inventory.`); }} />
+    <InventoryProductEditModal product={editing} onClose={() => setEditing(null)} onSaved={async product => { setEditing(null); await completed(`${product.name} was updated.`); }} />
     <StockAdjustmentModal product={adjusting} onClose={() => setAdjusting(null)} onSaved={async product => { setAdjusting(null); await completed(`${product.name} now has ${product.stockQuantity} units on hand.`); }} />
     <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={async result => { setImportOpen(false); await completed(`Import complete: ${result.created} created and ${result.updated} updated.`); }} />
   </main>;
