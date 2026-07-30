@@ -5,7 +5,6 @@ import {
   bookingChannelSchedules,
   bookingScheduleOverrides,
   appointments,
-  staffPricing,
   staffServiceAssignments,
   staffTimeOff,
   staffLocations,
@@ -13,7 +12,7 @@ import {
   serviceResources,
   users,
 } from '@ks-os/database';
-import { eq, and, gt, gte, lt, ne, notInArray } from 'drizzle-orm';
+import { eq, and, gt, gte, lt, ne, notInArray, sql } from 'drizzle-orm';
 import { AvailabilityQuery, AvailabilityResult, AvailabilitySlot } from '@ks-os/contracts';
 import { parseLocalTimeToUtc } from './availability.utils.js';
 import { resolveEffectiveAvailabilityWindows } from './availability-schedule.js';
@@ -23,6 +22,11 @@ export type AvailabilityCalculationOptions = {
   locationId?: string | null;
   resourceId?: string | null;
   database?: any;
+};
+
+type StaffPricingRow = {
+  staffUserId: string;
+  priceOverride: number;
 };
 
 export async function calculateAvailability(
@@ -72,11 +76,14 @@ export async function calculateAvailability(
       eq(users.bookingEnabled, true),
     ));
 
-  const locationStaff = options.locationId
-    ? new Set((await db.select({ staffUserId: staffLocations.staffUserId }).from(staffLocations).where(and(
+  const locationStaffRows = options.locationId
+    ? await db.select({ staffUserId: staffLocations.staffUserId }).from(staffLocations).where(and(
       eq(staffLocations.tenantId, tenantId!),
       eq(staffLocations.locationId, options.locationId),
-    ))).map((row: { staffUserId: string }) => row.staffUserId))
+    ))
+    : [];
+  const locationStaff = locationStaffRows.length
+    ? new Set(locationStaffRows.map((row: { staffUserId: string }) => row.staffUserId))
     : null;
 
   const members = eligibleMembers.filter((member: { userId: string }) => {
@@ -166,21 +173,23 @@ export async function calculateAvailability(
     gte(staffTimeOff.endsAt, dayStartUtc),
   ));
 
-  const pricingOverrides = await db.select({
-    userId: staffPricing.userId,
-    customPriceInCents: staffPricing.customPriceInCents,
-    customDurationMinutes: staffPricing.customDurationMinutes,
-  }).from(staffPricing).where(eq(staffPricing.serviceId, serviceId));
+  const pricingResult = await db.execute(sql<StaffPricingRow>`
+    select staff_user_id as "staffUserId", price_override as "priceOverride"
+    from staff_pricing
+    where tenant_id = ${tenantId!}::uuid
+      and service_id = ${serviceId}::uuid
+  `);
+  const pricingOverrides = (Array.isArray(pricingResult) ? pricingResult : pricingResult.rows) as StaffPricingRow[];
 
   const now = Date.now();
   const slots: AvailabilitySlot[] = [];
 
   for (const schedule of schedules) {
-    const pricingOverride = pricingOverrides.find((item: any) => item.userId === schedule.userId);
-    const duration = pricingOverride?.customDurationMinutes || service.duration;
+    const pricingOverride = pricingOverrides.find(item => item.staffUserId === schedule.userId);
+    const duration = service.duration;
     const buffer = service.bufferTime || 0;
     const totalDurationWithBuffer = duration + buffer;
-    const rawPrice = pricingOverride?.customPriceInCents ?? service.price;
+    const rawPrice = pricingOverride?.priceOverride ?? service.price;
     const price = Math.max(0, rawPrice - (service.discount || 0));
 
     const [startHour, startMinute] = schedule.startTime.split(':').map(Number);
