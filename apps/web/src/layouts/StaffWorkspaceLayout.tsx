@@ -86,6 +86,7 @@ export const StaffWorkspaceLayout: React.FC = () => {
     title={activeItem?.label ?? 'Workspace'}
     eyebrow={auth.tenantName}
     breadcrumbs={activeItem ? [auth.tenantName, activeItem.label] : [auth.tenantName]}
+    compact={isCalendarWorkspace}
     menuButtonRef={menuButtonRef}
     onOpenNavigation={() => setMobileOpen(true)}
     notificationHref={groups.some(group => group.items.some(item => item.id === 'operations')) ? '/app/operations' : undefined}
