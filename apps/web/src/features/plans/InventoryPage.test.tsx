@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InventoryPage } from './InventoryPage.js';
@@ -42,11 +42,12 @@ describe('InventoryPage', () => {
     await screen.findByText('Shampoo');
 
     fireEvent.click(screen.getByRole('button', { name: 'Add product' }));
-    fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'Conditioner' } });
-    fireEvent.change(screen.getByLabelText('SKU'), { target: { value: 'CON-001' } });
-    fireEvent.change(screen.getByLabelText('Selling price (£)'), { target: { value: '9.99' } });
-    fireEvent.change(screen.getByLabelText('Opening stock'), { target: { value: '5' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add product' }));
+    const addDialog = screen.getByRole('dialog', { name: 'Add product' });
+    fireEvent.change(within(addDialog).getByLabelText('Product name'), { target: { value: 'Conditioner' } });
+    fireEvent.change(within(addDialog).getByLabelText('SKU'), { target: { value: 'CON-001' } });
+    fireEvent.change(within(addDialog).getByLabelText('Selling price (£)'), { target: { value: '9.99' } });
+    fireEvent.change(within(addDialog).getByLabelText('Opening stock'), { target: { value: '5' } });
+    fireEvent.click(within(addDialog).getByRole('button', { name: 'Add product' }));
 
     await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith('/api/v1/products', expect.objectContaining({
       method: 'POST',
@@ -54,8 +55,9 @@ describe('InventoryPage', () => {
     })));
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Adjust stock' })[0]);
-    fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: '2' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save adjustment' }));
+    const adjustDialog = screen.getByRole('dialog', { name: 'Adjust Shampoo' });
+    fireEvent.change(within(adjustDialog).getByLabelText('Quantity'), { target: { value: '2' } });
+    fireEvent.click(within(adjustDialog).getByRole('button', { name: 'Save adjustment' }));
     await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith(`/api/v1/products/${product.id}/stock-adjustments`, expect.objectContaining({ method: 'POST' })));
   });
 });
