@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { clients, conversationMessages, conversations, getDatabase } from '@ks-os/database';
 import type { ConversationChannel } from '@ks-os/contracts';
 
@@ -33,13 +33,16 @@ export class ConversationIngestService {
         )).limit(1);
       if (duplicate) return { accepted: true as const, duplicate: true as const, conversationId: duplicate.conversationId, messageId: duplicate.id };
 
-      const identityConditions = [];
+      const identityConditions: SQL[] = [];
       if (input.customerPhone) identityConditions.push(eq(clients.phoneE164, input.customerPhone));
       if (input.customerEmail) identityConditions.push(sql`lower(${clients.email}) = lower(${input.customerEmail})`);
-      const [client] = identityConditions.length ? await tx.select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phoneE164 })
-        .from(clients)
-        .where(and(eq(clients.tenantId, input.tenantId), or(...identityConditions)))
-        .limit(1) : [];
+      const clientRows = identityConditions.length > 0
+        ? await tx.select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phoneE164 })
+          .from(clients)
+          .where(and(eq(clients.tenantId, input.tenantId), or(...identityConditions)))
+          .limit(1)
+        : [];
+      const client = clientRows[0];
 
       const identityMatch = client?.id
         ? eq(conversations.clientId, client.id)
