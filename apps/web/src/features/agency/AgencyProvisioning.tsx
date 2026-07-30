@@ -38,7 +38,7 @@ function SelectedClientLaunchWorkspace({ tenantId, onBack }: { tenantId: string;
 
   const tenant = detail?.tenant;
   const canManage = Boolean(session?.capabilities.includes('tenants.manage'));
-  const isPlatformOwner = session?.role === 'PLATFORM_OWNER';
+  const isPlatformOwner = session?.user.role === 'PLATFORM_OWNER';
 
   return <div className="space-y-6">
     <AgencyWorkspaceLaunchPipeline tenantIdOverride={tenantId} onBack={onBack} />
