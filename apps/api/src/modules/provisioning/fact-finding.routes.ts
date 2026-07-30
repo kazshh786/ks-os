@@ -16,7 +16,7 @@ import {
   PublicReferenceSchema,
 } from '@ks-os/fact-finding';
 import type { AgencyActor } from '../agency/agency.service.js';
-import { FactFindingService } from './fact-finding.service.js';
+import { BookingAwareFactFindingService } from './booking-aware-fact-finding.service.js';
 import { ManualFactFindingService } from './manual-fact-finding.service.js';
 import { ManualFactFindingUploadService } from './manual-fact-finding-upload.service.js';
 
@@ -46,10 +46,10 @@ function actor(request: FastifyRequest, capability: AgencyCapability): AgencyAct
 }
 
 export async function agencyFactFindingRoutes(app: FastifyInstance) {
-  let instance: FactFindingService | undefined;
+  let instance: BookingAwareFactFindingService | undefined;
   let manualInstance: ManualFactFindingService | undefined;
   let manualUploadInstance: ManualFactFindingUploadService | undefined;
-  const service = () => (instance ||= new FactFindingService());
+  const service = () => (instance ||= new BookingAwareFactFindingService());
   const manual = () => (manualInstance ||= new ManualFactFindingService());
   const manualUploads = () => (manualUploadInstance ||= new ManualFactFindingUploadService());
 
@@ -98,6 +98,14 @@ export async function agencyFactFindingRoutes(app: FastifyInstance) {
       actor(request, 'fact_finding.manage'),
       questionnaireReference,
       PrequalifyQuestionnaireSchema.parse(request.body),
+    ) };
+  });
+  app.post('/questionnaires/:questionnaireReference/sync-booking-facts', async request => {
+    const { questionnaireReference } = QuestionnaireParams.parse(request.params);
+    z.object({}).strict().parse(request.body ?? {});
+    return { data: await service().syncBookingFacts(
+      actor(request, 'fact_finding.manage'),
+      questionnaireReference,
     ) };
   });
   app.post('/questionnaires/:questionnaireReference/invite', async request => {
