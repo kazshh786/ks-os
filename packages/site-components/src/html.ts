@@ -66,6 +66,14 @@ export function renderAction(
   context: ComponentRenderContext,
   className = 'site-action',
 ): SafeHtml {
+  if (action.type === 'KS_OS_BOOKING' && action.serviceReference) {
+    const service = context.snapshot.services.find(
+      candidate => candidate.publicReference === action.serviceReference,
+    );
+    if (!service?.bookingEnabled) {
+      return html`<span class="${escapeHtml(className)} unavailable" aria-disabled="true">Currently unavailable</span>`;
+    }
+  }
   const href = escapeHtml(actionHref(action, context));
   return html`<a class="${escapeHtml(className)}" href="${href}">${escapeHtml(action.label)}</a>`;
 }

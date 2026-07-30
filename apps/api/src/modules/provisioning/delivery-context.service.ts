@@ -1,6 +1,9 @@
 import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import {
+  designLibraryAssignments,
+  designLibraryItems,
   getDatabase,
+  knowledgePacks,
   locations,
   platformPlans,
   platformPlanVersions,
@@ -90,7 +93,19 @@ export class DeliveryContextService {
       throw fail(404, 'TENANT_NOT_FOUND', 'The client workspace was not found.');
     }
 
-    const [planRows, briefRows, templateRows, nativeRows, draftRows, runRows, siteRows, canonical] = await Promise.all([
+    const [
+      planRows,
+      briefRows,
+      templateRows,
+      nativeRows,
+      themeRows,
+      assignedThemeRows,
+      knowledgeRows,
+      draftRows,
+      runRows,
+      siteRows,
+      canonical,
+    ] = await Promise.all([
       this.db.select({
         versionReference: platformPlanVersions.id,
         key: platformPlans.key,
@@ -144,6 +159,56 @@ export class DeliveryContextService {
           eq(templateLayoutRenderers.rendererStatus, 'READY'),
           isNotNull(templateLayoutPageTypes.approvedAt),
         )),
+      this.db.select({
+        reference: designLibraryItems.publicReference,
+        name: designLibraryItems.name,
+        description: designLibraryItems.description,
+        theme: designLibraryItems.themeJson,
+        preview: designLibraryItems.previewJson,
+        previewImageUrl: designLibraryItems.previewImageUrl,
+        tags: designLibraryItems.tagsJson,
+        isSystem: designLibraryItems.isSystem,
+        updatedAt: designLibraryItems.updatedAt,
+      }).from(designLibraryItems).where(and(
+        eq(designLibraryItems.itemKind, 'SITE_THEME'),
+        eq(designLibraryItems.status, 'APPROVED'),
+        eq(designLibraryItems.availableForClientDelivery, true),
+      )).orderBy(desc(designLibraryItems.isSystem), desc(designLibraryItems.updatedAt)).limit(100),
+      this.db.select({
+        reference: designLibraryItems.publicReference,
+        name: designLibraryItems.name,
+        description: designLibraryItems.description,
+        theme: designLibraryItems.themeJson,
+        preview: designLibraryItems.previewJson,
+        previewImageUrl: designLibraryItems.previewImageUrl,
+        tags: designLibraryItems.tagsJson,
+        isSystem: designLibraryItems.isSystem,
+        assignedAt: designLibraryAssignments.assignedAt,
+      }).from(designLibraryAssignments)
+        .innerJoin(designLibraryItems, eq(designLibraryAssignments.itemId, designLibraryItems.id))
+        .where(and(
+          eq(designLibraryAssignments.tenantId, tenant.id),
+          eq(designLibraryAssignments.status, 'ACTIVE'),
+          eq(designLibraryItems.itemKind, 'SITE_THEME'),
+          eq(designLibraryItems.status, 'APPROVED'),
+          eq(designLibraryItems.availableForClientDelivery, true),
+        ))
+        .orderBy(desc(designLibraryAssignments.assignedAt))
+        .limit(1),
+      this.db.select({
+        reference: knowledgePacks.publicReference,
+        name: knowledgePacks.name,
+        semanticVersion: knowledgePacks.semanticVersion,
+        sourceDigest: knowledgePacks.sourceDigestSha256,
+        contentDigest: knowledgePacks.contentDigestSha256,
+        sourceCount: knowledgePacks.sourceCount,
+        ruleCount: knowledgePacks.ruleCount,
+        pagePlaybookCount: knowledgePacks.pagePlaybookCount,
+        sectionPlaybookCount: knowledgePacks.sectionPlaybookCount,
+      }).from(knowledgePacks).where(and(
+        eq(knowledgePacks.intendedScope, 'PUBLIC_SITE'),
+        eq(knowledgePacks.status, 'ACTIVE'),
+      )).limit(2),
       this.db.select({ reference: provisioningDrafts.publicReference })
         .from(provisioningDrafts).where(eq(provisioningDrafts.tenantId, tenant.id))
         .orderBy(desc(provisioningDrafts.createdAt)).limit(1),
@@ -169,6 +234,15 @@ export class DeliveryContextService {
       nativeRows[0]?.versionReference
       && REQUIRED_NATIVE_PAGE_TYPES.every(pageType => nativePageTypes.has(pageType)),
     );
+    const knowledgeReady = knowledgeRows.length === 1;
+    const assignedTheme = assignedThemeRows[0]
+      ? {
+          ...assignedThemeRows[0],
+          theme: record(assignedThemeRows[0].theme),
+          preview: record(assignedThemeRows[0].preview),
+          tags: Array.isArray(assignedThemeRows[0].tags) ? assignedThemeRows[0].tags : [],
+        }
+      : null;
 
     return {
       tenant,
@@ -179,12 +253,34 @@ export class DeliveryContextService {
         status: brief.status,
         readyForProvisioning: record(brief.readiness).readyForProvisioning === true,
       } : null,
+      knowledge: knowledgeReady ? {
+        ready: true,
+        ...knowledgeRows[0],
+      } : {
+        ready: false,
+        reference: null,
+        name: null,
+        semanticVersion: null,
+        sourceDigest: null,
+        contentDigest: null,
+        sourceCount: 0,
+        ruleCount: 0,
+        pagePlaybookCount: 0,
+        sectionPlaybookCount: 0,
+      },
       designLibrary: {
         defaultSource: 'KS_NATIVE',
         defaultPresetKey: 'NORTHLIGHT',
         nativeTemplateReady,
         nativeTemplateVersionReference: nativeTemplateReady ? nativeRows[0].versionReference : null,
+        assignedTheme,
         presets: SITE_DESIGN_PRESETS,
+        themes: themeRows.map(item => ({
+          ...item,
+          theme: record(item.theme),
+          preview: record(item.preview),
+          tags: Array.isArray(item.tags) ? item.tags : [],
+        })),
         sectionVariants: ['editorial', 'grid', 'split', 'compact', 'standard', 'featured', 'quiet'],
       },
       approvedTemplates: templateRows.map(item => ({

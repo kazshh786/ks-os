@@ -67,6 +67,7 @@ export type ProvisioningStepKey = z.infer<typeof ProvisioningStepKeySchema>;
 const PublicReferenceSchema = z.string().uuid();
 const SafeNameSchema = z.string().trim().min(2).max(255);
 const SubdomainSchema = z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/);
+const HexColourSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
 export const ProvisioningDesignSourceSchema = z.enum([
   'KS_NATIVE',
@@ -99,11 +100,41 @@ export const ProvisioningSectionVariantSchema = z.enum([
   'quiet',
 ]);
 
+/** Per-client palette overrides. They are validated again against WCAG before review opens. */
+export const ProvisioningThemeColourOverridesSchema = z.object({
+  primaryColour: HexColourSchema.optional(),
+  secondaryColour: HexColourSchema.optional(),
+  accentColour: HexColourSchema.optional(),
+  backgroundColour: HexColourSchema.optional(),
+  surfaceColour: HexColourSchema.optional(),
+  textColour: HexColourSchema.optional(),
+  mutedTextColour: HexColourSchema.optional(),
+  borderColour: HexColourSchema.optional(),
+}).strict();
+export type ProvisioningThemeColourOverrides = z.infer<typeof ProvisioningThemeColourOverridesSchema>;
+
 export const ProvisioningSiteDesignSchema = z.object({
   source: ProvisioningDesignSourceSchema.default('KS_NATIVE'),
   presetKey: ProvisioningDesignPresetKeySchema.default('NORTHLIGHT'),
   defaultSectionVariant: ProvisioningSectionVariantSchema.default('standard'),
-}).strict();
+  libraryItemReference: PublicReferenceSchema.optional(),
+  themeOverrides: ProvisioningThemeColourOverridesSchema.optional(),
+}).strict().superRefine((design, context) => {
+  if (design.source !== 'KS_NATIVE' && design.libraryItemReference) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['libraryItemReference'],
+      message: 'A Design Studio library theme can only be used with KS Native delivery.',
+    });
+  }
+  if (design.source !== 'KS_NATIVE' && design.themeOverrides && Object.keys(design.themeOverrides).length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['themeOverrides'],
+      message: 'Custom KS colour overrides can only be used with KS Native delivery.',
+    });
+  }
+});
 export type ProvisioningSiteDesign = z.infer<typeof ProvisioningSiteDesignSchema>;
 
 export const CreateProvisioningDraftSchema = z.object({

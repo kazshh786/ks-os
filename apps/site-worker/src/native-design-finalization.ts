@@ -14,6 +14,7 @@ import {
   SiteDesignPresetKeySchema,
   SiteStudioSectionVariantSchema,
   SiteThemeEditorSchema,
+  siteThemeAccessibilityIssues,
   type SiteDesignPresetKey,
   type SiteStudioSectionVariant,
 } from '@ks-os/contracts';
@@ -22,6 +23,7 @@ import {
   validatePublishedSnapshot,
   type PublishedSiteSnapshot,
 } from '@ks-os/site-schema';
+import { ProvisioningThemeColourOverridesSchema } from '@ks-os/workspace-provisioning';
 
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -61,6 +63,20 @@ export function nativeSectionVariant(
   if (['BOOKING_CTA', 'FINAL_CTA'].includes(sectionType)) return 'featured';
   if (['BENEFITS', 'PROCESS'].includes(sectionType)) return STRUCTURED_PRESETS.has(presetKey) ? 'grid' : fallback;
   return fallback;
+}
+
+export function mergeProvisionedThemeColours(baseTheme: unknown, rawOverrides: unknown) {
+  const base = SiteThemeEditorSchema.parse(baseTheme);
+  const overrides = ProvisioningThemeColourOverridesSchema.parse(rawOverrides ?? {});
+  const theme = SiteThemeEditorSchema.parse({ ...base, ...overrides });
+  const issues = siteThemeAccessibilityIssues(theme);
+  if (issues.length) {
+    throw Object.assign(
+      new Error('The selected custom colours do not meet KS OS WCAG 2.2 AA requirements. Adjust the palette before building the client website.'),
+      { code: 'CUSTOM_THEME_ACCESSIBILITY_BLOCKED', issues },
+    );
+  }
+  return { theme, overrideCount: Object.keys(overrides).length };
 }
 
 function sameDesign(left: PublishedSiteSnapshot, right: PublishedSiteSnapshot) {
@@ -113,6 +129,13 @@ async function resolveDesign(
         ))
         .orderBy(desc(designLibraryAssignments.assignedAt))
         .limit(1);
+
+  if (explicitReference && !custom) {
+    throw Object.assign(
+      new Error('The selected Design Studio theme is no longer approved for client delivery.'),
+      { code: 'DESIGN_LIBRARY_THEME_UNAVAILABLE' },
+    );
+  }
 
   if (custom) {
     const theme = SiteThemeEditorSchema.parse(custom.theme);
@@ -171,6 +194,7 @@ export async function applyProvisionedNativeDesign(
   if (design.source !== 'KS_NATIVE') return null;
 
   const selected = await resolveDesign(tx, input.tenantId, input.pagePlan);
+  const applied = mergeProvisionedThemeColours(selected.theme, design.themeOverrides);
 
   const [latest] = await tx.select({
     reference: siteRenderSnapshots.publicReference,
@@ -191,7 +215,7 @@ export async function applyProvisionedNativeDesign(
 
   const current = validatePublishedSnapshot(latest.content);
   const next = JSON.parse(JSON.stringify(current)) as PublishedSiteSnapshot;
-  next.theme = { ...selected.theme };
+  next.theme = { ...applied.theme };
   for (const page of next.pages) {
     for (const section of page.sections) {
       section.variant = selected.variantFor(section.type);
@@ -204,6 +228,7 @@ export async function applyProvisionedNativeDesign(
       presetKey: selected.reference,
       designReference: selected.reference,
       designName: selected.name,
+      customColourOverrideCount: applied.overrideCount,
       idempotentReplay: true,
     };
   }
@@ -255,9 +280,9 @@ export async function applyProvisionedNativeDesign(
     updatedAt: new Date(),
   }).where(eq(siteVersions.id, input.versionId));
   await tx.update(tenants).set({
-    primaryColor: selected.theme.primaryColour,
-    secondaryColor: selected.theme.secondaryColour,
-    accentColor: selected.theme.accentColour,
+    primaryColor: applied.theme.primaryColour,
+    secondaryColor: applied.theme.secondaryColour,
+    accentColor: applied.theme.accentColour,
     updatedAt: new Date(),
   }).where(eq(tenants.id, input.tenantId));
   await tx.insert(platformAuditEvents).values({
@@ -268,12 +293,13 @@ export async function applyProvisionedNativeDesign(
     targetId: input.siteReference,
     eventCategory: 'WEBSITE',
     sourceComponent: 'site-worker',
-    description: 'The selected KS-native design system and controlled component variations were applied before internal review.',
+    description: 'The selected KS-native design system, approved component variations and accessible client palette were applied before internal review.',
     metadata: {
       designSource: selected.kind,
       designReference: selected.reference,
       designName: selected.name,
       defaultSectionVariant: selected.fallbackVariant,
+      customColourOverrideCount: applied.overrideCount,
       snapshotReference,
     },
   });
@@ -283,6 +309,7 @@ export async function applyProvisionedNativeDesign(
     presetKey: selected.reference,
     designReference: selected.reference,
     designName: selected.name,
+    customColourOverrideCount: applied.overrideCount,
     snapshotReference,
     idempotentReplay: false,
   };

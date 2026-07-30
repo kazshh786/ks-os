@@ -8,6 +8,7 @@ import {
 import { z } from 'zod';
 import type { AgencyActor } from '../agency/agency.service.js';
 import { SiteDesignService } from './site-design.service.js';
+import { SiteServicePageService } from './site-service-page.service.js';
 import { SiteStudioService } from './site-studio.service.js';
 
 const Params = z.object({ siteReference: z.string().uuid() }).strict();
@@ -15,6 +16,7 @@ const SectionParams = Params.extend({
   pageReference: z.string().uuid(),
   sectionReference: z.string().uuid(),
 }).strict();
+const ServicePageBody = z.object({ serviceReference: z.string().uuid() }).strict();
 
 function actor(request: FastifyRequest, capability: AgencyCapability): AgencyActor {
   const auth = request.requireAgency(capability);
@@ -33,6 +35,7 @@ function actor(request: FastifyRequest, capability: AgencyCapability): AgencyAct
 export async function agencySiteStudioRoutes(app: FastifyInstance) {
   const service = new SiteStudioService();
   const design = new SiteDesignService();
+  const servicePages = new SiteServicePageService();
   app.get('/:siteReference/studio', async request => {
     actor(request, 'sites.studio.read');
     const { siteReference } = Params.parse(request.params);
@@ -62,6 +65,17 @@ export async function agencySiteStudioRoutes(app: FastifyInstance) {
         input.variant,
       ),
     };
+  });
+  app.get('/:siteReference/studio/service-pages', async request => {
+    actor(request, 'sites.studio.read');
+    const { siteReference } = Params.parse(request.params);
+    return { data: await servicePages.list(siteReference) };
+  });
+  app.post('/:siteReference/studio/service-pages', async request => {
+    const agencyActor = actor(request, 'sites.manage');
+    const { siteReference } = Params.parse(request.params);
+    const { serviceReference } = ServicePageBody.parse(request.body);
+    return { data: await servicePages.provision(agencyActor, siteReference, serviceReference) };
   });
   app.get('/:siteReference/studio/booking-links', async request => {
     actor(request, 'sites.studio.read');
