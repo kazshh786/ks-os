@@ -81,7 +81,7 @@ describe('BookingScheduleView time grid', () => {
     expect(screen.getByLabelText('Calendar times')).toHaveTextContent('20:00');
     expect(screen.getByRole('button', { name: /Thu 30/i })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByLabelText('Selected day focused availability hours')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /09:00 Alice Jones/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /09:00.*Alice Jones.*Consultation/i })).toBeInTheDocument();
   });
 
   it('snaps a day drop to an exact 15-minute time', () => {
@@ -100,7 +100,7 @@ describe('BookingScheduleView time grid', () => {
       onReschedule={onReschedule}
     />);
 
-    const card = screen.getByRole('button', { name: /09:00 Alice Jones/i });
+    const card = screen.getByRole('button', { name: /09:00.*Alice Jones.*Consultation/i });
     const target = screen.getByRole('gridcell', { name: 'Thu 30 time grid' });
     setGridBounds(target);
     const transfer = dataTransfer();
