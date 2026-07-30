@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
+  CommunicationChannelListResponseSchema,
   ConversationDetailResponseSchema,
   ConversationIdParamsSchema,
   ConversationListQuerySchema,
@@ -10,6 +11,7 @@ import {
   SendConversationMessageSchema,
   UpdateConversationSchema,
 } from '@ks-os/contracts';
+import { ConversationChannelService } from './conversation-channel.service.js';
 import { ConversationService } from './conversation.service.js';
 
 const inboxPermissions = new Set(['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE']);
@@ -33,10 +35,16 @@ const actor = (request: FastifyRequest) => {
 
 export async function conversationRoutes(app: FastifyInstance) {
   const service = new ConversationService();
+  const channelService = new ConversationChannelService();
 
   app.get('/', async request => {
     const query = ConversationListQuerySchema.parse(request.query);
     return ConversationListResponseSchema.parse(await service.list(actor(request), query));
+  });
+
+  app.get('/channels', async request => {
+    const currentActor = actor(request);
+    return CommunicationChannelListResponseSchema.parse({ data: await channelService.list(currentActor.tenantId) });
   });
 
   app.get('/:conversationId', async request => {
