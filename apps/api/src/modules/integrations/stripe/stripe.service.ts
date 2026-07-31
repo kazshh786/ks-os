@@ -1,5 +1,5 @@
-import { eq } from 'drizzle-orm';
-import { getDatabase, tenants } from '@ks-os/database';
+import { and, eq } from 'drizzle-orm';
+import { bookingPages, getDatabase, tenants } from '@ks-os/database';
 import { StripeRepository } from './stripe.repository.js';
 import { getStripeClient } from '../../../lib/stripe.js';
 import { deriveStripeConnectionStatus } from './stripe.mapper.js';
@@ -28,6 +28,17 @@ const bookingPaymentOrigin = () => (
   || process.env.FRONTEND_ORIGIN
   || 'http://localhost:3000'
 ).replace(/\/$/, '');
+
+function verifiedBookingOrigin(page?: { customDomain: string | null; customDomainStatus: string } | null) {
+  if (page?.customDomainStatus !== 'VERIFIED' || !page.customDomain) return null;
+  try {
+    const url = new URL(`https://${page.customDomain}`);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
 
 export class StripeService {
   private repo = new StripeRepository();
@@ -179,7 +190,13 @@ export class StripeService {
     }
 
     const db = getDatabase();
-    const [tenant] = await db.select({ subdomain: tenants.subdomain }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const [[tenant], [page]] = await Promise.all([
+      db.select({ subdomain: tenants.subdomain }).from(tenants).where(eq(tenants.id, tenantId)).limit(1),
+      db.select({ customDomain: bookingPages.customDomain, customDomainStatus: bookingPages.customDomainStatus })
+        .from(bookingPages)
+        .where(and(eq(bookingPages.tenantId, tenantId), eq(bookingPages.enabled, true), eq(bookingPages.published, true)))
+        .limit(1),
+    ]);
     if (!tenant) throw new Error('TENANT_NOT_FOUND');
 
     const bps = parseInt(process.env.STRIPE_APPLICATION_FEE_BPS || '0', 10);
@@ -188,7 +205,9 @@ export class StripeService {
 
     const stripe = getStripeClient();
     const expiresAt = Math.floor(Date.now() / 1000) + (parseInt(process.env.BOOKING_PAYMENT_HOLD_MINUTES || '30') * 60);
-    const origin = bookingPaymentOrigin();
+    const customOrigin = verifiedBookingOrigin(page);
+    const origin = customOrigin || bookingPaymentOrigin();
+    const bookingPath = customOrigin ? '/book' : `/book/${tenant.subdomain}`;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -196,8 +215,8 @@ export class StripeService {
         application_fee_amount,
       },
       client_reference_id: publicBookingReference,
-      success_url: `${origin}/book/${tenant.subdomain}/payment/success?session_id={CHECKOUT_SESSION_ID}&reference=${publicBookingReference}`,
-      cancel_url: `${origin}/book/${tenant.subdomain}/payment/cancel?reference=${publicBookingReference}`,
+      success_url: `${origin}${bookingPath}/payment/success?session_id={CHECKOUT_SESSION_ID}&reference=${publicBookingReference}`,
+      cancel_url: `${origin}${bookingPath}/payment/cancel?reference=${publicBookingReference}`,
       expires_at: expiresAt,
       line_items: [
         {
