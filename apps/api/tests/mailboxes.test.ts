@@ -59,8 +59,7 @@ test('connected mailbox migration is registered and contains no credential mater
 test('settings provide explicit Google and Zoho mailbox controls', () => {
   assert.match(settingsPage, /Google Workspace/);
   assert.match(settingsPage, /Zoho Mail/);
-  assert.match(settingsPage, /Connect Google Workspace/);
-  assert.match(settingsPage, /Connect Zoho Mail/);
+  assert.match(settingsPage, /`Connect \$\{definition\.name\}`/);
   assert.match(settingsPage, /Sync now/);
   assert.match(settingsPage, /Reauthorise/);
   assert.match(settingsPage, /Disconnect/);
