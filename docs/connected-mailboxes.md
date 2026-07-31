@@ -5,9 +5,15 @@
 This feature requires **both Vercel and VPS deployment**.
 
 - **Vercel:** owner-facing Connect, Reauthorise, Sync and Disconnect controls.
-- **VPS:** OAuth callbacks, encrypted token storage, provider-native sending and inbound mailbox synchronisation.
+- **VPS:** OAuth callbacks, encrypted token storage, provider-native sending, inbound mailbox synchronisation and migration 54.
 
-No database migration is required. The feature reuses the existing encrypted `integration_connections` and `communication_channels` tables.
+Apply migration order 54:
+
+```text
+20260731102000_connected_mailbox_timestamp.sql
+```
+
+The migration adds a non-secret authorization timestamp and a bounded mailbox-worker index to the existing encrypted `integration_connections` table. OAuth tokens remain only in `token_ciphertext`.
 
 ## Email responsibilities
 
@@ -123,7 +129,7 @@ git status --short
 
 DEPLOY_BRANCH=main pnpm deploy:vps:dry-run
 
-DEPLOY_BRANCH=main APPLY_MIGRATIONS=0 \
+DEPLOY_BRANCH=main APPLY_MIGRATIONS=1 \
 bash scripts/deploy/deploy-vps.sh
 
 sudo systemctl status ks-os-api --no-pager
@@ -132,7 +138,7 @@ curl -fsS http://127.0.0.1:5000/health
 echo
 ```
 
-Restarting the API is required after adding or changing OAuth environment variables.
+The first deployment must use `APPLY_MIGRATIONS=1`. Restarting the API is also required after adding or changing OAuth environment variables.
 
 ## Production validation
 
