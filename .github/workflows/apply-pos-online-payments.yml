@@ -49,6 +49,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Apply API and UI patches
         run: |
+          python .github/scripts/fix-pos-online-ui-script.py
           python .github/scripts/apply-pos-online-api.py
           python .github/scripts/apply-pos-online-ui.py
       - name: Add Stripe web checkout dependencies
@@ -71,6 +72,7 @@ jobs:
         run: |
           rm .github/scripts/apply-pos-online-api.py
           rm .github/scripts/apply-pos-online-ui.py
+          rm .github/scripts/fix-pos-online-ui-script.py
           rm .github/workflows/apply-pos-online-payments.yml
       - name: Commit verified implementation
         run: |
