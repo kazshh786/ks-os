@@ -6,7 +6,7 @@ import { createCorsOriginPolicy, splitCorsConfiguration } from '../src/plugins/c
 
 test('public booking origins inherit the private workspace domain safely', () => {
   const allowed = createCorsOriginPolicy({
-    exactOrigins: ['https://app.kasimshah.com'],
+    workspaceOrigins: ['https://app.kasimshah.com'],
   });
 
   assert.equal(allowed('https://app.kasimshah.com'), true);
@@ -22,7 +22,7 @@ test('public booking origins inherit the private workspace domain safely', () =>
 
 test('shared deployment hosts are exact-only and never become wildcard domains', () => {
   const allowed = createCorsOriginPolicy({
-    exactOrigins: ['https://ks-os-git-main-ksmarketing.vercel.app'],
+    workspaceOrigins: ['https://ks-os-git-main-ksmarketing.vercel.app'],
   });
 
   assert.equal(allowed('https://ks-os-git-main-ksmarketing.vercel.app'), true);
@@ -30,7 +30,7 @@ test('shared deployment hosts are exact-only and never become wildcard domains',
   assert.equal(allowed('https://vercel.app'), false);
 });
 
-test('explicit widget origins and workspace domains are normalised', () => {
+test('explicit widget origins remain exact while workspace domains are normalised', () => {
   assert.deepEqual(splitCorsConfiguration(' https://one.example ,https://two.example, '), [
     'https://one.example',
     'https://two.example',
@@ -43,13 +43,14 @@ test('explicit widget origins and workspace domains are normalised', () => {
   });
 
   assert.equal(allowed('https://partner.example'), true);
+  assert.equal(allowed('https://child.partner.example'), false);
   assert.equal(allowed('https://ks-agency.kasimshah.com'), true);
   assert.equal(allowed('https://untrusted.example'), false);
 });
 
 test('booking POST preflight succeeds for tenant hosts and rejected origins do not become 500 errors', async t => {
   const app = Fastify();
-  const allowed = createCorsOriginPolicy({ exactOrigins: ['https://app.kasimshah.com'] });
+  const allowed = createCorsOriginPolicy({ workspaceOrigins: ['https://app.kasimshah.com'] });
 
   await app.register(cors, {
     origin: (origin, callback) => callback(null, allowed(origin)),
