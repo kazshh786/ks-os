@@ -101,8 +101,11 @@ export class PosOnlineStripeService {
     };
 
     if (input.presentation === 'EMBEDDED') {
-      params.ui_mode = 'embedded';
-      params.redirect_on_completion = 'never';
+      // This Stripe API version supports embedded Checkout at runtime, while the
+      // pinned SDK's generated UiMode type has not yet added the value.
+      const compatibleParams = params as unknown as Record<string, unknown>;
+      compatibleParams.ui_mode = 'embedded';
+      compatibleParams.redirect_on_completion = 'never';
     } else {
       params.success_url = `${origin}/pos-payment-complete?session_id={CHECKOUT_SESSION_ID}`;
       params.cancel_url = `${origin}/pos-payment-complete?cancelled=1`;
