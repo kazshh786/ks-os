@@ -31,6 +31,7 @@ import {
   hashPublicToken,
   normaliseBookingSlug,
   RESERVED_BOOKING_SLUGS,
+  verifiedBookingPublicUrl,
 } from './booking-page.utils.js';
 
 type AnalyticsEventInput = typeof PublicBookingAnalyticsEventSchema._type;
@@ -62,6 +63,18 @@ function mergeObject<T extends object>(value: unknown, fallback: T): T {
   return { ...fallback, ...(value && typeof value === 'object' ? value as Partial<T> : {}) };
 }
 
+function normalisePublicHost(host?: string) {
+  const first = host?.split(',')[0]?.trim();
+  if (!first) return null;
+  try {
+    const url = new URL(first.includes('://') ? first : `https://${first}`);
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
+    return /^[a-z0-9.-]{1,255}$/.test(hostname) ? hostname : null;
+  } catch {
+    return null;
+  }
+}
+
 export class BookingPageService {
   async ensureForTenant(tenantId: string, db: DatabaseLike = getDatabase()) {
     const [existing] = await db.select().from(bookingPages).where(eq(bookingPages.tenantId, tenantId)).limit(1);
@@ -76,11 +89,17 @@ export class BookingPageService {
   }
 
   toResponse(page: typeof bookingPages.$inferSelect): BookingPageResponse {
+    const verifiedPublicUrl = page.customDomainStatus === 'VERIFIED' && page.customDomain
+      ? verifiedBookingPublicUrl(page.customDomain)
+      : null;
+    const verifiedPreviewUrl = page.customDomainStatus === 'VERIFIED' && page.customDomain
+      ? verifiedBookingPublicUrl(page.customDomain, true)
+      : null;
     const response = {
       id: page.id,
       publicSlug: page.publicSlug,
-      publicUrl: bookingPublicUrl(publicOrigin(), page.publicSlug),
-      previewUrl: bookingPublicUrl(publicOrigin(), page.publicSlug, true),
+      publicUrl: verifiedPublicUrl || bookingPublicUrl(publicOrigin(), page.publicSlug),
+      previewUrl: verifiedPreviewUrl || bookingPublicUrl(publicOrigin(), page.publicSlug, true),
       title: page.title,
       description: page.description,
       enabled: page.enabled,
@@ -224,7 +243,7 @@ export class BookingPageService {
 
   async resolvePublicPage(identifier: string, host?: string) {
     const db = getDatabase();
-    const safeHost = host?.split(':')[0]?.toLowerCase();
+    const safeHost = normalisePublicHost(host);
     const directConditions = [eq(bookingPages.publicSlug, identifier)];
     if (safeHost) directConditions.push(and(eq(bookingPages.customDomain, safeHost), eq(bookingPages.customDomainStatus, 'VERIFIED')) as any);
     const [direct] = await db.select({ page: bookingPages, tenant: tenants }).from(bookingPages)
@@ -329,21 +348,21 @@ export class BookingPageService {
       const [existing] = await tx.select().from(bookingHolds).where(and(eq(bookingHolds.bookingPageId, page.id), eq(bookingHolds.idempotencyKey, input.idempotencyKey))).limit(1);
       if (existing) return this.holdResponse(existing, rawToken);
       const localDateParts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: tenant.timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(new Date(input.startTime));
-    const year = localDateParts.find(part => part.type === 'year')?.value;
-    const month = localDateParts.find(part => part.type === 'month')?.value;
-    const day = localDateParts.find(part => part.type === 'day')?.value;
-    if (!year || !month || !day) {
-      throw Object.assign(new Error('The selected appointment date could not be read.'), { code: 'INVALID_HOLD_REQUEST', statusCode: 400 });
-    }
-    const localDate = `${year}-${month}-${day}`;
+        timeZone: tenant.timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date(input.startTime));
+      const year = localDateParts.find(part => part.type === 'year')?.value;
+      const month = localDateParts.find(part => part.type === 'month')?.value;
+      const day = localDateParts.find(part => part.type === 'day')?.value;
+      if (!year || !month || !day) {
+        throw Object.assign(new Error('The selected appointment date could not be read.'), { code: 'INVALID_HOLD_REQUEST', statusCode: 400 });
+      }
+      const localDate = `${year}-${month}-${day}`;
       const availability = await calculateAvailability({ tenantId: tenant.id, serviceId: input.serviceId, staffId: input.staffId, date: localDate, bookingChannel: input.bookingChannel }, { locationId: input.locationId, resourceId: input.resourceId, database: tx });
       const requestedStart = new Date(input.startTime).getTime();
-    const slot = availability.slots.find(item => item.staffId === input.staffId && new Date(item.start).getTime() === requestedStart);
+      const slot = availability.slots.find(item => item.staffId === input.staffId && new Date(item.start).getTime() === requestedStart);
       if (!slot) throw Object.assign(new Error('That time is no longer available.'), { code: 'SLOT_UNAVAILABLE', statusCode: 409 });
       const [conflictingHold] = await tx.select({ id: bookingHolds.id }).from(bookingHolds).where(and(
         eq(bookingHolds.tenantId, tenant.id), eq(bookingHolds.staffUserId, input.staffId), eq(bookingHolds.status, 'ACTIVE'), gt(bookingHolds.expiresAt, new Date()), lt(bookingHolds.startTime, new Date(slot.end)), gt(bookingHolds.endTime, new Date(slot.start)),
