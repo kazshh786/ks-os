@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
-import cors from '@fastify/cors';
+import cors, { type FastifyCorsOptions } from '@fastify/cors';
 import {
   createCorsOriginAuthorizer,
   createCorsOriginPolicy,
@@ -86,12 +86,12 @@ test('verified client domains can reach public booking routes but not staff rout
     inferWorkspaceDomains: false,
     verifyCustomDomain: async hostname => hostname === 'book.clientbusiness.co.uk',
   });
-  const baseOptions = {
+  const baseOptions: FastifyCorsOptions = {
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
     strictPreflight: true,
     maxAge: 600,
-  } as const;
+  };
 
   await app.register(cors, {
     ...baseOptions,
