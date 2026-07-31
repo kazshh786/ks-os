@@ -19,14 +19,32 @@ function findCustomerEmail(anchor: HTMLAnchorElement) {
   return confirmation?.textContent?.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || null;
 }
 
+function replaceAnchorLabel(anchor: HTMLAnchorElement, label: string) {
+  const textNode = [...anchor.childNodes].find(node => node.nodeType === Node.TEXT_NODE);
+  if (textNode) textNode.textContent = label;
+  else anchor.append(document.createTextNode(label));
+  anchor.setAttribute('aria-label', label);
+}
+
 function enhanceCalendarAnchor(anchor: HTMLAnchorElement) {
   if (anchor.dataset.calendarAction === 'true') return;
+
+  const email = findCustomerEmail(anchor);
+  const provider = inferCalendarProvider(email, navigator.userAgent, navigator.platform || '');
+  const label = provider
+    ? provider === 'native'
+      ? 'Open device calendar'
+      : `Add to ${calendarProviderLabel(provider)}`
+    : 'Choose calendar';
+
   anchor.dataset.calendarAction = 'true';
   anchor.dataset.calendarData = anchor.href;
+  anchor.dataset.calendarProvider = provider || '';
   anchor.removeAttribute('download');
   anchor.href = '#';
-  anchor.setAttribute('aria-haspopup', 'dialog');
-  anchor.title = 'Open this appointment in your calendar';
+  anchor.title = label;
+  if (!provider) anchor.setAttribute('aria-haspopup', 'dialog');
+  replaceAnchorLabel(anchor, label);
 }
 
 function openProvider(event: CalendarEventDetails, provider: CalendarProvider) {
@@ -36,8 +54,13 @@ function openProvider(event: CalendarEventDetails, provider: CalendarProvider) {
     return;
   }
 
-  const opened = window.open(url, '_blank', 'noopener,noreferrer');
-  if (!opened) window.location.assign(url);
+  const popup = window.open('', '_blank');
+  if (!popup) {
+    window.location.assign(url);
+    return;
+  }
+  popup.opener = null;
+  popup.location.href = url;
 }
 
 export function CalendarActionEnhancer() {
@@ -62,12 +85,7 @@ export function CalendarActionEnhancer() {
 
       try {
         const event = parseCalendarDataUrl(anchor.dataset.calendarData || '');
-        const email = findCustomerEmail(anchor);
-        const provider = inferCalendarProvider(
-          email,
-          navigator.userAgent,
-          navigator.platform || '',
-        );
+        const provider = anchor.dataset.calendarProvider as CalendarProvider | undefined;
 
         if (provider) {
           openProvider(event, provider);
@@ -118,7 +136,7 @@ export function CalendarActionEnhancer() {
             </span>
             <div>
               <h2 id="calendar-provider-title" className="text-lg font-black text-slate-950">Choose your calendar</h2>
-              <p className="mt-1 text-sm leading-5 text-slate-600">The appointment will open ready to save. No calendar file download is required.</p>
+              <p className="mt-1 text-sm leading-5 text-slate-600">The appointment opens ready to save in your calendar service or device app.</p>
             </div>
           </div>
           <button
@@ -132,10 +150,11 @@ export function CalendarActionEnhancer() {
         </div>
 
         <div className="mt-5 grid gap-2">
-          {PROVIDERS.map(provider => (
+          {PROVIDERS.map((provider, index) => (
             <button
               key={provider}
               type="button"
+              autoFocus={index === 0}
               onClick={() => {
                 openProvider(pendingEvent, provider);
                 setPendingEvent(null);
