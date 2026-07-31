@@ -30,6 +30,7 @@ export function inferCalendarProvider(
   if (domain && OUTLOOK_DOMAINS.has(domain)) return 'outlook';
   if (domain && YAHOO_DOMAINS.has(domain)) return 'yahoo';
   if (domain && APPLE_DOMAINS.has(domain)) return 'native';
+  if (domain) return null;
 
   const device = `${userAgent} ${platform}`.toLowerCase();
   if (/android|cros/.test(device)) return 'google';
