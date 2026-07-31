@@ -19,7 +19,7 @@ export class ConversationIngestService {
   private db = getDatabase();
 
   async ingest(input: InboundConversationMessage) {
-    if (!input.externalMessageId || !input.externalSenderId || !input.body.trim()) return { accepted: false, reason: 'INVALID_MESSAGE' as const };
+    if (!input.externalMessageId || !input.externalSenderId || !input.body.trim()) return { accepted: false as const, duplicate: false as const, reason: 'INVALID_MESSAGE' as const };
 
     return this.db.transaction(async tx => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${input.tenantId}:${input.channel}:${input.externalSenderId}`}))`);
