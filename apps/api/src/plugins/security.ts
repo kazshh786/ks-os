@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import fp from 'fastify-plugin';
 import { env } from '../config/env.js';
+import { createCorsOriginPolicy, splitCorsConfiguration } from './cors-origin-policy.js';
 
 async function registerSecurity(fastify: FastifyInstance) {
   // 1. Secure HTTP Headers
@@ -13,16 +14,22 @@ async function registerSecurity(fastify: FastifyInstance) {
     crossOriginResourcePolicy:{policy:'same-site'},
   });
 
-  // 2. CORS suitable for local development
+  const originAllowed = createCorsOriginPolicy({
+    exactOrigins: [
+      env.FRONTEND_ORIGIN,
+      env.PUBLIC_APP_ORIGIN,
+      ...splitCorsConfiguration(env.WIDGET_ALLOWED_ORIGINS),
+    ],
+    workspaceDomains: splitCorsConfiguration(
+      process.env.PUBLIC_WORKSPACE_DOMAINS || process.env.PUBLIC_WORKSPACE_DOMAIN,
+    ),
+    allowLocalhost: env.NODE_ENV !== 'production',
+  });
+
+  // 2. Allow trusted staff, public-booking and embedded-widget origins.
+  // Invalid browser origins are denied without throwing a server error.
   await fastify.register(cors, {
-    origin: (origin, cb) => {
-      const allowed=new Set([env.FRONTEND_ORIGIN,env.PUBLIC_APP_ORIGIN,env.NODE_ENV!=='production'?'http://localhost:3000':undefined,env.NODE_ENV!=='production'?'http://127.0.0.1:3000':undefined].filter(Boolean));
-      if (!origin || allowed.has(origin)) {
-        cb(null, true);
-        return;
-      }
-      cb(new Error('Not allowed by CORS'), false);
-    },
+    origin: (origin, cb) => cb(null, originAllowed(origin)),
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
     strictPreflight:true,
