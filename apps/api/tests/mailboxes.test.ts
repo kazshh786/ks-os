@@ -49,7 +49,7 @@ test('mailbox sync worker is bounded and overlap protected', () => {
 
 test('connected mailbox migration is registered and contains no credential material', () => {
   const entry = MIGRATION_MANIFEST.find(item => item.filename === '20260731102000_connected_mailbox_timestamp.sql');
-  assert.equal(entry?.order, 54);
+  assert.equal(entry?.order, 55);
   const migration = readFileSync(new URL('../../../packages/database/migrations/20260731102000_connected_mailbox_timestamp.sql', import.meta.url), 'utf8');
   assert.match(migration, /ADD COLUMN IF NOT EXISTS connected_at timestamptz/);
   assert.match(migration, /integration_connections_mailbox_sync_idx/);

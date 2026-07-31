@@ -57,6 +57,7 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260729234500_calendar_availability_overrides.sql', order: 50, description: 'Date-specific in-shop and mobile booking-hour overrides managed from the booking calendar' },
   { filename: '20260730182500_expand_appointment_status_constraint.sql', order: 51, description: 'Allow the full operational appointment lifecycle including checked-in walk-ins, in-service work, and awaiting-payment states' },
   { filename: '20260730210500_standalone_retail_pos.sql', order: 52, description: 'Allow idempotent product-only POS transactions without an appointment and preserve transaction history when bookings are removed' },
-  { filename: '20260730223000_omnichannel_conversations.sql', order: 53, description: 'Tenant-isolated omnichannel channels, conversations, messages, attachments, assignment, unread state, and booking context' },
-  { filename: '20260731102000_connected_mailbox_timestamp.sql', order: 54, description: 'Connected mailbox authorization timestamp and bounded Google/Zoho sync index' },
+  { filename: '20260731130000_reconcile_phase_13_integrations.sql', order: 53, description: 'Reconcile Phase 13 integration tables missing behind an applied historical migration ledger entry' },
+  { filename: '20260730223000_omnichannel_conversations.sql', order: 54, description: 'Tenant-isolated omnichannel channels, conversations, messages, attachments, assignment, unread state, and booking context' },
+  { filename: '20260731102000_connected_mailbox_timestamp.sql', order: 55, description: 'Connected mailbox authorization timestamp and bounded Google/Zoho sync index' },
 ];
