@@ -15,11 +15,8 @@ async function registerSecurity(fastify: FastifyInstance) {
   });
 
   const originAllowed = createCorsOriginPolicy({
-    exactOrigins: [
-      env.FRONTEND_ORIGIN,
-      env.PUBLIC_APP_ORIGIN,
-      ...splitCorsConfiguration(env.WIDGET_ALLOWED_ORIGINS),
-    ],
+    workspaceOrigins: [env.FRONTEND_ORIGIN, env.PUBLIC_APP_ORIGIN],
+    exactOrigins: splitCorsConfiguration(env.WIDGET_ALLOWED_ORIGINS),
     workspaceDomains: splitCorsConfiguration(
       process.env.PUBLIC_WORKSPACE_DOMAINS || process.env.PUBLIC_WORKSPACE_DOMAIN,
     ),
