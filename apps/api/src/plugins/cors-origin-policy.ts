@@ -6,6 +6,12 @@ type CorsOriginPolicyOptions = {
   inferWorkspaceDomains?: boolean;
 };
 
+type CorsOriginAuthorizerOptions = CorsOriginPolicyOptions & {
+  verifyCustomDomain?: (hostname: string) => Promise<boolean>;
+  cacheTtlMs?: number;
+  now?: () => number;
+};
+
 const SHARED_HOSTING_SUFFIXES = [
   'vercel.app',
   'netlify.app',
@@ -61,6 +67,20 @@ export function splitCorsConfiguration(value?: string | null) {
     .filter(Boolean);
 }
 
+export function corsOriginHostname(value?: string | null) {
+  if (!value) return null;
+  const parsed = parseOrigin(value);
+  return parsed?.protocol === 'https:' ? parsed.hostname : null;
+}
+
+export function normaliseForwardedHostname(value?: string | string[] | null) {
+  const first = (Array.isArray(value) ? value[0] : value)?.split(',')[0]?.trim();
+  if (!first) return null;
+  const parsed = parseOrigin(first.includes('://') ? first : `https://${first}`);
+  if (!parsed || !/^[a-z0-9.-]{1,255}$/.test(parsed.hostname)) return null;
+  return parsed.hostname;
+}
+
 export function createCorsOriginPolicy(options: CorsOriginPolicyOptions = {}) {
   const exactOrigins = new Set<string>();
   const workspaceHostnames = new Set<string>();
@@ -99,5 +119,25 @@ export function createCorsOriginPolicy(options: CorsOriginPolicyOptions = {}) {
     if (options.allowLocalhost && LOCAL_HOSTS.has(parsed.hostname)) return true;
     if (parsed.protocol !== 'https:') return false;
     return [...workspaceDomains].some(domain => matchesDomain(parsed.hostname, domain));
+  };
+}
+
+export function createCorsOriginAuthorizer(options: CorsOriginAuthorizerOptions = {}) {
+  const staticPolicy = createCorsOriginPolicy(options);
+  const cache = new Map<string, { allowed: boolean; expiresAt: number }>();
+  const ttl = Math.max(1_000, options.cacheTtlMs ?? 60_000);
+  const now = options.now || Date.now;
+
+  return async (origin?: string | null) => {
+    if (staticPolicy(origin)) return true;
+    const hostname = corsOriginHostname(origin);
+    if (!hostname || !options.verifyCustomDomain) return false;
+
+    const cached = cache.get(hostname);
+    if (cached && cached.expiresAt > now()) return cached.allowed;
+
+    const allowed = await options.verifyCustomDomain(hostname);
+    cache.set(hostname, { allowed, expiresAt: now() + ttl });
+    return allowed;
   };
 }
