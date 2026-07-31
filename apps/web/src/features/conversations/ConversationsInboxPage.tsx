@@ -125,15 +125,30 @@ export function ConversationsInboxPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [channel, setChannel] = useState<ConversationChannel | ''>('');
-  const [status, setStatus] = useState<ConversationStatus | ''>('OPEN');
+  const [status, setStatus] = useState<ConversationStatus | ''>('');
   const [assignment, setAssignment] = useState<'ALL' | 'MINE' | 'UNASSIGNED'>('ALL');
   const [composer, setComposer] = useState('');
   const [composerChannel, setComposerChannel] = useState<ConversationChannel>('EMAIL');
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const messagesEnd = useRef<HTMLDivElement>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  const listRequestRunning = useRef(false);
+  const detailRequestRunning = useRef(false);
 
-  const loadList = useCallback(async (keepSelection = true) => {
-    setLoadingList(true);
-    setError('');
+  selectedIdRef.current = selectedId;
+
+  const loadList = useCallback(async ({
+    keepSelection = true,
+    silent = false,
+  }: { keepSelection?: boolean; silent?: boolean } = {}) => {
+    if (listRequestRunning.current) return;
+    listRequestRunning.current = true;
+
+    if (!silent) {
+      setLoadingList(true);
+      setError('');
+    }
+
     try {
       const result = await listConversations({
         q: search || undefined,
@@ -143,15 +158,55 @@ export function ConversationsInboxPage() {
         limit: 60,
       });
       setItems(result.data);
-      setSelectedId(current => keepSelection && current && result.data.some(item => item.id === current) ? current : result.data[0]?.id || null);
+      setSelectedId(current => keepSelection && current ? current : result.data[0]?.id || null);
+      setLastRefreshedAt(new Date());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'The inbox could not be loaded.');
+      if (!silent) setError(cause instanceof Error ? cause.message : 'The inbox could not be loaded.');
     } finally {
-      setLoadingList(false);
+      listRequestRunning.current = false;
+      if (!silent) setLoadingList(false);
     }
   }, [assignment, channel, search, status]);
 
-  useEffect(() => { void loadList(false); }, [loadList]);
+  const loadDetail = useCallback(async (conversationId: string, { silent = false }: { silent?: boolean } = {}) => {
+    if (detailRequestRunning.current) return;
+    detailRequestRunning.current = true;
+
+    if (!silent) {
+      setLoadingDetail(true);
+      setError('');
+    }
+
+    try {
+      const data = await getConversation(conversationId);
+      if (selectedIdRef.current !== conversationId) return;
+
+      setDetail(data);
+      setComposerChannel(data.conversation.channel);
+      setLastRefreshedAt(new Date());
+
+      if (data.conversation.unreadCount > 0) {
+        try {
+          const updated = await updateConversation(conversationId, { markRead: true });
+          if (selectedIdRef.current === conversationId) {
+            setItems(current => current.map(item => item.id === updated.id ? updated : item));
+            setDetail(current => current ? { ...current, conversation: updated } : current);
+          }
+        } catch {
+          // Reading the message remains useful even if acknowledgement fails.
+        }
+      }
+    } catch (cause) {
+      if (!silent && selectedIdRef.current === conversationId) {
+        setError(cause instanceof Error ? cause.message : 'The conversation could not be loaded.');
+      }
+    } finally {
+      detailRequestRunning.current = false;
+      if (!silent && selectedIdRef.current === conversationId) setLoadingDetail(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadList({ keepSelection: false }); }, [loadList]);
   useEffect(() => {
     if (!activeTenant) return;
     let active = true;
@@ -160,27 +215,42 @@ export function ConversationsInboxPage() {
   }, [activeTenant]);
 
   useEffect(() => {
-    if (!selectedId) { setDetail(null); return; }
-    let active = true;
-    setLoadingDetail(true);
-    setError('');
-    getConversation(selectedId).then(async data => {
-      if (!active) return;
-      setDetail(data);
-      setComposerChannel(data.conversation.channel);
-      if (data.conversation.unreadCount > 0) {
-        try {
-          const updated = await updateConversation(selectedId, { markRead: true });
-          if (active) {
-            setItems(current => current.map(item => item.id === updated.id ? updated : item));
-            setDetail(current => current ? { ...current, conversation: updated } : current);
-          }
-        } catch { /* Reading the message remains useful even if acknowledgement fails. */ }
-      }
-    }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : 'The conversation could not be loaded.'); })
-      .finally(() => { if (active) setLoadingDetail(false); });
-    return () => { active = false; };
-  }, [selectedId]);
+    if (!selectedId) {
+      setDetail(null);
+      return;
+    }
+    void loadDetail(selectedId);
+  }, [loadDetail, selectedId]);
+
+  useEffect(() => {
+    const refreshVisibleInbox = () => {
+      if (document.visibilityState !== 'visible') return;
+      void loadList({ silent: true });
+      if (selectedId) void loadDetail(selectedId, { silent: true });
+    };
+
+    const listTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void loadList({ silent: true });
+    }, 10_000);
+
+    const detailTimer = window.setInterval(() => {
+      if (selectedId && document.visibilityState === 'visible') void loadDetail(selectedId, { silent: true });
+    }, 5_000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshVisibleInbox();
+    };
+
+    window.addEventListener('focus', refreshVisibleInbox);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.clearInterval(listTimer);
+      window.clearInterval(detailTimer);
+      window.removeEventListener('focus', refreshVisibleInbox);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [loadDetail, loadList, selectedId]);
 
   useEffect(() => { messagesEnd.current?.scrollIntoView({ block: 'end' }); }, [detail?.messages.length, selectedId]);
 
@@ -190,6 +260,11 @@ export function ConversationsInboxPage() {
     clientId: customer?.clientId || selected?.clientId || null,
     appointmentId: customer?.upcomingBooking?.appointmentId || selected?.booking?.appointmentId || null,
   }), [customer, selected]);
+
+  const refreshInbox = () => {
+    void loadList();
+    if (selectedId) void loadDetail(selectedId);
+  };
 
   const updateSelected = async (input: Parameters<typeof updateConversation>[1]) => {
     if (!selectedId) return;
@@ -222,6 +297,8 @@ export function ConversationsInboxPage() {
         lastMessageAt: message.createdAt,
       } : item));
       setComposer('');
+      void loadList({ silent: true });
+      window.setTimeout(() => void loadDetail(selectedId, { silent: true }), 750);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The message could not be queued.');
     } finally {
@@ -291,9 +368,9 @@ export function ConversationsInboxPage() {
     <header className="flex min-h-16 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 sm:px-5">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-sm"><Inbox className="h-5 w-5" /></span>
-        <div className="min-w-0"><h1 className="truncate text-lg font-black text-slate-950">Customer inbox</h1><p className="truncate text-xs font-medium text-slate-500">Messages, bookings, forms and payments in one workspace</p></div>
+        <div className="min-w-0"><h1 className="truncate text-lg font-black text-slate-950">Customer inbox</h1><p className="truncate text-xs font-medium text-slate-500">{lastRefreshedAt ? `Live refresh · updated ${formatTime(lastRefreshedAt.toISOString())}` : 'Live refresh starting…'}</p></div>
       </div>
-      <button type="button" onClick={() => void loadList()} disabled={loadingList} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loadingList ? 'animate-spin' : ''}`} /> <span className="hidden sm:inline">Refresh</span></button>
+      <button type="button" onClick={refreshInbox} disabled={loadingList || loadingDetail} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loadingList || loadingDetail ? 'animate-spin' : ''}`} /> <span className="hidden sm:inline">Refresh</span></button>
       <Link to="/app/settings/communications" className="inline-flex h-10 items-center rounded-xl bg-slate-950 px-3 text-xs font-black text-white hover:bg-slate-800">Channels</Link>
     </header>
 
@@ -310,7 +387,7 @@ export function ConversationsInboxPage() {
             {(['', 'WHATSAPP', 'INSTAGRAM', 'FACEBOOK', 'SMS', 'EMAIL'] as const).map(value => <button key={value || 'ALL'} type="button" onClick={() => setChannel(value)} className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-black ${channel === value ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{value ? channelLabels[value] : 'All'}</button>)}
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <label className="relative"><span className="sr-only">Conversation status</span><select value={status} onChange={event => setStatus(event.target.value as ConversationStatus | '')} className="min-h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-7 text-xs font-bold text-slate-700"><option value="">All statuses</option><option value="OPEN">Open</option><option value="PENDING">Awaiting customer</option><option value="RESOLVED">Resolved</option></select><ChevronDown className="pointer-events-none absolute right-2 top-2.5 h-3.5 w-3.5 text-slate-400" /></label>
+            <label className="relative"><span className="sr-only">Conversation status</span><select value={status} onChange={event => setStatus(event.target.value as ConversationStatus | '')} className="min-h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-7 text-xs font-bold text-slate-700"><option value="">Active and resolved</option><option value="OPEN">Open</option><option value="PENDING">Awaiting customer</option><option value="RESOLVED">Resolved</option></select><ChevronDown className="pointer-events-none absolute right-2 top-2.5 h-3.5 w-3.5 text-slate-400" /></label>
             <label className="relative"><span className="sr-only">Assignment</span><select value={assignment} onChange={event => setAssignment(event.target.value as typeof assignment)} className="min-h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-7 text-xs font-bold text-slate-700"><option value="ALL">Everyone</option><option value="MINE">Assigned to me</option><option value="UNASSIGNED">Unassigned</option></select><ChevronDown className="pointer-events-none absolute right-2 top-2.5 h-3.5 w-3.5 text-slate-400" /></label>
           </div>
         </div>

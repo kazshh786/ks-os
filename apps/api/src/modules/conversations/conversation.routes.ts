@@ -72,7 +72,17 @@ export async function conversationRoutes(app: FastifyInstance) {
   app.post('/:conversationId/messages', async request => {
     const { conversationId } = ConversationIdParamsSchema.parse(request.params);
     const input = SendConversationMessageSchema.parse(request.body);
-    return ConversationMessageResponseSchema.parse({ data: await service.send(actor(request), conversationId, input) });
+    const message = await service.send(actor(request), conversationId, input);
+
+    void deliveryService.process(20).catch(cause => {
+      request.log.error({
+        errorType: cause instanceof Error ? cause.name : 'UnknownError',
+        conversationId,
+        messageId: message.id,
+      }, 'Immediate conversation delivery kick failed');
+    });
+
+    return ConversationMessageResponseSchema.parse({ data: message });
   });
 
   app.post('/:conversationId/actions/payment-link', async request => {
