@@ -79,23 +79,39 @@ test('forwarded booking hosts are normalised without accepting malformed values'
   assert.equal(normaliseForwardedHostname('javascript:alert(1)'), null);
 });
 
-test('booking POST preflight succeeds for verified custom domains and rejected origins do not become 500 errors', async t => {
+test('verified client domains can reach public booking routes but not staff routes', async t => {
   const app = Fastify();
-  const allowed = createCorsOriginAuthorizer({
-    workspaceOrigins: ['https://app.kasimshah.com'],
+  const firstPartyAllowed = createCorsOriginPolicy({ workspaceOrigins: ['https://app.kasimshah.com'] });
+  const verifiedBookingAllowed = createCorsOriginAuthorizer({
+    inferWorkspaceDomains: false,
     verifyCustomDomain: async hostname => hostname === 'book.clientbusiness.co.uk',
   });
-
-  await app.register(cors, {
-    origin: (origin, callback) => {
-      void allowed(origin).then(result => callback(null, result)).catch(() => callback(null, false));
-    },
+  const baseOptions = {
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
     strictPreflight: true,
     maxAge: 600,
+  } as const;
+
+  await app.register(cors, {
+    ...baseOptions,
+    delegator: (request, callback) => {
+      const origin = request.headers.origin;
+      if (firstPartyAllowed(origin)) {
+        callback(null, { ...baseOptions, origin: true });
+        return;
+      }
+      if (!request.raw.url?.startsWith('/api/v1/public/')) {
+        callback(null, { ...baseOptions, origin: false });
+        return;
+      }
+      void verifiedBookingAllowed(origin)
+        .then(result => callback(null, { ...baseOptions, origin: result }))
+        .catch(() => callback(null, { ...baseOptions, origin: false }));
+    },
   });
   app.post('/api/v1/public/custom-domain/holds', async (_request, reply) => reply.code(201).send({ hold: { id: 'test' } }));
+  app.post('/api/v1/bookings', async (_request, reply) => reply.code(201).send({ id: 'private-test' }));
   await app.ready();
   t.after(() => app.close());
 
@@ -120,6 +136,17 @@ test('booking POST preflight succeeds for verified custom domains and rejected o
   });
   assert.equal(post.statusCode, 201);
   assert.equal(post.headers['access-control-allow-origin'], origin);
+
+  const privatePreflight = await app.inject({
+    method: 'OPTIONS',
+    url: '/api/v1/bookings',
+    headers: {
+      origin,
+      'access-control-request-method': 'POST',
+      'access-control-request-headers': 'content-type,authorization',
+    },
+  });
+  assert.equal(privatePreflight.headers['access-control-allow-origin'], undefined);
 
   const rejected = await app.inject({
     method: 'OPTIONS',
