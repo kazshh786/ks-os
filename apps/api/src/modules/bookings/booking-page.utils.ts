@@ -2,8 +2,8 @@ import { createHash, createHmac } from 'node:crypto';
 
 export const RESERVED_BOOKING_SLUGS = new Set([
   'admin', 'api', 'app', 'assets', 'auth', 'book', 'booking', 'calendar',
-  'customer', 'help', 'login', 'manage', 'settings', 'staff', 'status',
-  'support', 'www',
+  'custom-domain', 'customer', 'help', 'login', 'manage', 'settings', 'staff',
+  'status', 'support', 'www',
 ]);
 
 export function normaliseBookingSlug(value: string): string {
@@ -35,6 +35,17 @@ export function bookingPublicUrl(origin: string, slug: string, preview = false):
   }
   const base = origin.replace(/\/$/, '');
   return `${base}/book/${encodeURIComponent(slug)}${preview ? '?preview=1' : ''}`;
+}
+
+export function verifiedBookingPublicUrl(domain: string, preview = false): string | null {
+  try {
+    const url = new URL(`https://${domain.trim().toLowerCase()}`);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+    if (!/^(?=.{4,255}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(url.hostname)) return null;
+    return `${url.origin}/book${preview ? '?preview=1' : ''}`;
+  } catch {
+    return null;
+  }
 }
 
 export function deterministicPublicToken(scope: string, id: string, secret: string): string {

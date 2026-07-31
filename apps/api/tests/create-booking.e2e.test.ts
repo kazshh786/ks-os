@@ -8,7 +8,10 @@ import { EntitlementService } from '../src/modules/agency/agency.service.js';
 import { getDatabase } from '@ks-os/database';
 
 test('Booking Creation endpoints', async (t) => {
+  const previousWorkspaceDomain = process.env.PUBLIC_WORKSPACE_DOMAIN;
+  process.env.PUBLIC_WORKSPACE_DOMAIN = 'kasimshah.com';
   const app = buildApp();
+  const bookingOrigin = 'https://ks-agency.kasimshah.com';
   
   const mockTenant = { 
     id: 'test-tenant-id', 
@@ -79,12 +82,30 @@ test('Booking Creation endpoints', async (t) => {
   t.after(() => {
     sinon.restore();
     app.close();
+    if (previousWorkspaceDomain === undefined) delete process.env.PUBLIC_WORKSPACE_DOMAIN;
+    else process.env.PUBLIC_WORKSPACE_DOMAIN = previousWorkspaceDomain;
+  });
+
+  await t.test('tenant booking host passes browser preflight', async () => {
+    const response = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/v1/public/test-tenant/bookings',
+      headers: {
+        origin: bookingOrigin,
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'content-type',
+      },
+    });
+
+    assert.strictEqual(response.statusCode, 204);
+    assert.strictEqual(response.headers['access-control-allow-origin'], bookingOrigin);
   });
 
   await t.test('POST /api/v1/public/:subdomain/bookings - successful creation', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/public/test-tenant/bookings',
+      headers: { origin: bookingOrigin },
       payload: {
         serviceId: '11111111-1111-1111-1111-111111111111',
         staffId: '22222222-2222-2222-2222-222222222222',
@@ -102,6 +123,7 @@ test('Booking Creation endpoints', async (t) => {
     });
 
     assert.strictEqual(response.statusCode, 201);
+    assert.strictEqual(response.headers['access-control-allow-origin'], bookingOrigin);
     const body = JSON.parse(response.body);
     assert.strictEqual(body.booking.reference, 'REF-123');
   });
@@ -110,6 +132,7 @@ test('Booking Creation endpoints', async (t) => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/public/test-tenant/bookings',
+      headers: { origin: bookingOrigin },
       payload: {
         serviceId: 'test-svc',
         // missing customer, date, etc
@@ -117,5 +140,6 @@ test('Booking Creation endpoints', async (t) => {
     });
 
     assert.strictEqual(response.statusCode, 400);
+    assert.strictEqual(response.headers['access-control-allow-origin'], bookingOrigin);
   });
 });

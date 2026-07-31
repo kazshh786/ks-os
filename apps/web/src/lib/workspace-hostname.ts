@@ -1,5 +1,7 @@
 const DEFAULT_WORKSPACE_DOMAIN = 'kasimshah.com';
 
+export const CUSTOM_DOMAIN_BOOKING_IDENTIFIER = 'custom-domain';
+
 const RESERVED_WORKSPACE_LABELS = new Set([
   'admin',
   'agency',
@@ -32,7 +34,27 @@ export function resolveWorkspaceSlugFromHostname(
   return label;
 }
 
+export function resolvePublicBookingIdentifierFromHostname(
+  hostname: string,
+  workspaceDomain = import.meta.env.VITE_PUBLIC_WORKSPACE_DOMAIN || DEFAULT_WORKSPACE_DOMAIN,
+): string | null {
+  const workspaceSlug = resolveWorkspaceSlugFromHostname(hostname, workspaceDomain);
+  if (workspaceSlug) return workspaceSlug;
+
+  const safeHostname = normaliseHostname(hostname);
+  const safeDomain = normaliseHostname(workspaceDomain);
+  if (!safeHostname || safeHostname === 'localhost' || safeHostname === '127.0.0.1' || safeHostname === '::1') return null;
+  if (safeHostname === safeDomain || safeHostname.endsWith(`.${safeDomain}`)) return null;
+  if (!/^(?=.{4,255}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(safeHostname)) return null;
+  return CUSTOM_DOMAIN_BOOKING_IDENTIFIER;
+}
+
 export function currentWorkspaceSlug(): string | null {
   if (typeof window === 'undefined') return null;
   return resolveWorkspaceSlugFromHostname(window.location.hostname);
+}
+
+export function currentPublicBookingIdentifier(): string | null {
+  if (typeof window === 'undefined') return null;
+  return resolvePublicBookingIdentifierFromHostname(window.location.hostname);
 }
