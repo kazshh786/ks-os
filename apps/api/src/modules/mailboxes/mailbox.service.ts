@@ -449,7 +449,7 @@ export class MailboxService {
           UPDATE integration_connections
           SET connected_user_id = ${input.userId}::uuid,
               external_account_id = ${input.email}, external_resource_id = ${input.resourceId}, external_resource_name = ${input.displayName},
-              token_ciphertext = ${encryptSecret(input.token)}, token_expires_at = ${new Date(input.token.expiresAt)}, granted_scopes = ${input.scopes}::text[],
+              token_ciphertext = ${encryptSecret(input.token)}, token_expires_at = ${new Date(input.token.expiresAt)}, granted_scopes = ARRAY[${sql.join(input.scopes.map(scope => sql`${scope}`), sql`, `)}]::text[],
               status = 'CONNECTED', sync_direction = 'TWO_WAY', settings = ${json(input.settings)}::jsonb, provider_metadata = ${json(input.metadata)}::jsonb,
               connected_by_user_id = ${input.userId}::uuid, connected_at = now(), disconnected_at = NULL,
               last_sync_error = NULL, updated_at = now()
@@ -463,7 +463,7 @@ export class MailboxService {
             connected_by_user_id, connected_at
           ) VALUES(
             ${input.tenantId}::uuid, ${input.userId}::uuid, 'COMMUNICATION', ${input.provider}, ${input.email}, ${input.resourceId}, ${input.displayName},
-            ${encryptSecret(input.token)}, ${new Date(input.token.expiresAt)}, ${input.scopes}::text[], 'CONNECTED', 'TWO_WAY', ${json(input.settings)}::jsonb, ${json(input.metadata)}::jsonb,
+            ${encryptSecret(input.token)}, ${new Date(input.token.expiresAt)}, ARRAY[${sql.join(input.scopes.map(scope => sql`${scope}`), sql`, `)}]::text[], 'CONNECTED', 'TWO_WAY', ${json(input.settings)}::jsonb, ${json(input.metadata)}::jsonb,
             ${input.userId}::uuid, now()
           ) RETURNING id
         `);

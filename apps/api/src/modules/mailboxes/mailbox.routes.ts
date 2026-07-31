@@ -22,6 +22,12 @@ const errorCode = (cause: unknown) => String((cause as any)?.code || 'MAILBOX_CO
   .slice(0, 100)
   .toUpperCase();
 
+const safeErrorLog = (cause: unknown) => ({
+  errorType: cause instanceof Error ? cause.name : 'UnknownError',
+  errorCode: errorCode(cause),
+  statusCode: Number((cause as any)?.statusCode || 500),
+});
+
 export async function mailboxOauthCallbackRoutes(app: FastifyInstance) {
   const service = new MailboxService();
 
@@ -30,7 +36,7 @@ export async function mailboxOauthCallbackRoutes(app: FastifyInstance) {
       const redirectUrl = await service.completeGoogle(request.query as Record<string, unknown>);
       return reply.header('cache-control', 'no-store').redirect(redirectUrl);
     } catch (cause) {
-      request.log.warn({ err: cause }, 'Google mailbox OAuth callback failed');
+      request.log.warn(safeErrorLog(cause), 'Google mailbox OAuth callback failed');
       const redirectUrl = service.callbackRedirect('/app/settings/integrations', {
         mailbox: 'error',
         provider: 'GOOGLE_MAIL',
@@ -45,7 +51,7 @@ export async function mailboxOauthCallbackRoutes(app: FastifyInstance) {
       const redirectUrl = await service.completeZoho(request.query as Record<string, unknown>);
       return reply.header('cache-control', 'no-store').redirect(redirectUrl);
     } catch (cause) {
-      request.log.warn({ err: cause }, 'Zoho mailbox OAuth callback failed');
+      request.log.warn(safeErrorLog(cause), 'Zoho mailbox OAuth callback failed');
       const redirectUrl = service.callbackRedirect('/app/settings/integrations', {
         mailbox: 'error',
         provider: 'ZOHO_MAIL',

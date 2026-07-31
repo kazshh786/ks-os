@@ -23,6 +23,9 @@ test('Google and Zoho mailbox OAuth uses signed tenant state and offline access'
 test('mailbox secrets are encrypted and never returned by listing routes', () => {
   assert.match(mailboxService, /token_ciphertext = \$\{encryptSecret\(input\.token\)\}/);
   assert.match(mailboxService, /decryptSecret<StoredMailboxToken>/);
+  assert.match(mailboxService, /sql\.join\(input\.scopes\.map/);
+  assert.doesNotMatch(mailboxService, /\$\{input\.scopes\}::text\[\]/);
+  assert.doesNotMatch(mailboxRoutes, /request\.log\.warn\(\{ err: cause \}/);
   assert.doesNotMatch(mailboxRoutes, /token_ciphertext/);
   assert.doesNotMatch(mailboxRoutes, /refreshToken/);
   assert.match(mailboxRoutes, /request\.auth\.role !== 'owner'/);
