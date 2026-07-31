@@ -34,6 +34,21 @@ export function resolveWorkspaceSlugFromHostname(
   return label;
 }
 
+export function resolvePublicBookingIdentifierFromHostname(
+  hostname: string,
+  workspaceDomain = import.meta.env.VITE_PUBLIC_WORKSPACE_DOMAIN || DEFAULT_WORKSPACE_DOMAIN,
+): string | null {
+  const workspaceSlug = resolveWorkspaceSlugFromHostname(hostname, workspaceDomain);
+  if (workspaceSlug) return workspaceSlug;
+
+  const safeHostname = normaliseHostname(hostname);
+  const safeDomain = normaliseHostname(workspaceDomain);
+  if (!safeHostname || safeHostname === 'localhost' || safeHostname === '127.0.0.1' || safeHostname === '::1') return null;
+  if (safeHostname === safeDomain || safeHostname.endsWith(`.${safeDomain}`)) return null;
+  if (!/^(?=.{4,255}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(safeHostname)) return null;
+  return CUSTOM_DOMAIN_BOOKING_IDENTIFIER;
+}
+
 export function currentWorkspaceSlug(): string | null {
   if (typeof window === 'undefined') return null;
   return resolveWorkspaceSlugFromHostname(window.location.hostname);
@@ -41,15 +56,5 @@ export function currentWorkspaceSlug(): string | null {
 
 export function currentPublicBookingIdentifier(): string | null {
   if (typeof window === 'undefined') return null;
-  const workspaceSlug = currentWorkspaceSlug();
-  if (workspaceSlug) return workspaceSlug;
-
-  const hostname = normaliseHostname(window.location.hostname);
-  const workspaceDomain = normaliseHostname(
-    import.meta.env.VITE_PUBLIC_WORKSPACE_DOMAIN || DEFAULT_WORKSPACE_DOMAIN,
-  );
-  if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return null;
-  if (hostname === workspaceDomain || hostname.endsWith(`.${workspaceDomain}`)) return null;
-  if (!/^(?=.{4,255}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(hostname)) return null;
-  return CUSTOM_DOMAIN_BOOKING_IDENTIFIER;
+  return resolvePublicBookingIdentifierFromHostname(window.location.hostname);
 }
