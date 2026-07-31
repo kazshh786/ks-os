@@ -29,6 +29,7 @@ test('mailbox secrets are encrypted and never returned by listing routes', () =>
   assert.doesNotMatch(mailboxRoutes, /token_ciphertext/);
   assert.doesNotMatch(mailboxRoutes, /refreshToken/);
   assert.match(mailboxRoutes, /request\.auth\.role !== 'owner'/);
+  assert.match(mailboxService, /jsonb_build_object\('tenantUserId', \$\{input\.userId\}::text, 'provider', \$\{input\.provider\}::text\)/);
 });
 
 test('connected mailbox routes and provider-native delivery are registered', () => {

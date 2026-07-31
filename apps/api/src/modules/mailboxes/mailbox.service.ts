@@ -504,7 +504,7 @@ export class MailboxService {
       await tx.execute(sql`UPDATE tenants SET reply_to_email = ${input.email}, updated_at = now() WHERE id = ${input.tenantId}::uuid`);
       await tx.execute(sql`
         INSERT INTO platform_audit_events(tenant_id, action, target_type, target_id, outcome, event_category, description, environment, source_component, metadata)
-        VALUES(${input.tenantId}::uuid, 'MAILBOX_CONNECTED', 'INTEGRATION', ${connectionId}, 'SUCCESS', 'INTEGRATION', 'business mailbox connected', ${process.env.NODE_ENV || 'development'}, 'mailboxes', jsonb_build_object('tenantUserId', ${input.userId}, 'provider', ${input.provider}))
+        VALUES(${input.tenantId}::uuid, 'MAILBOX_CONNECTED', 'INTEGRATION', ${connectionId}, 'SUCCESS', 'INTEGRATION', 'business mailbox connected', ${process.env.NODE_ENV || 'development'}, 'mailboxes', jsonb_build_object('tenantUserId', ${input.userId}::text, 'provider', ${input.provider}::text))
       `);
     });
     return connectionId!;
