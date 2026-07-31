@@ -61,6 +61,19 @@ test('customer inbox refreshes live and immediately kicks queued delivery', () =
   assert.match(inbox, /silent: true/);
 });
 
+test('smart chat preserves context and surfaces new-message tools', () => {
+  const inbox = readFileSync(new URL('../../web/src/features/conversations/ConversationsInboxPage.tsx', import.meta.url), 'utf8');
+
+  assert.match(inbox, /ks-os:conversation-draft/);
+  assert.match(inbox, /replyToMessageId: replyTo\?\.id/);
+  assert.match(inbox, /Search this conversation/);
+  assert.match(inbox, /Notification\.requestPermission/);
+  assert.match(inbox, /New messages/);
+  assert.match(inbox, /message\.attachments\.map/);
+  assert.match(inbox, /Send again/);
+  assert.match(inbox, /Ctrl\/⌘ \+ Enter/);
+});
+
 test('omnichannel migration is registered, durable and API-only', () => {
   const entry = MIGRATION_MANIFEST.find(item => item.filename === '20260730223000_omnichannel_conversations.sql');
   assert.equal(entry?.order, 54);
