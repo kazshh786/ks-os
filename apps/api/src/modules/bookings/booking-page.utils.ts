@@ -2,8 +2,8 @@ import { createHash, createHmac } from 'node:crypto';
 
 export const RESERVED_BOOKING_SLUGS = new Set([
   'admin', 'api', 'app', 'assets', 'auth', 'book', 'booking', 'calendar',
-  'customer', 'help', 'login', 'manage', 'settings', 'staff', 'status',
-  'support', 'www',
+  'custom-domain', 'customer', 'help', 'login', 'manage', 'settings', 'staff',
+  'status', 'support', 'www',
 ]);
 
 export function normaliseBookingSlug(value: string): string {
