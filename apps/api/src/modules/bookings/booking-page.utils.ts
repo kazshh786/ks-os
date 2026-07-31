@@ -37,6 +37,17 @@ export function bookingPublicUrl(origin: string, slug: string, preview = false):
   return `${base}/book/${encodeURIComponent(slug)}${preview ? '?preview=1' : ''}`;
 }
 
+export function verifiedBookingPublicUrl(domain: string, preview = false): string | null {
+  try {
+    const url = new URL(`https://${domain.trim().toLowerCase()}`);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+    if (!/^(?=.{4,255}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(url.hostname)) return null;
+    return `${url.origin}/book${preview ? '?preview=1' : ''}`;
+  } catch {
+    return null;
+  }
+}
+
 export function deterministicPublicToken(scope: string, id: string, secret: string): string {
   return createHmac('sha256', secret).update(`${scope}:${id}`).digest('base64url');
 }
