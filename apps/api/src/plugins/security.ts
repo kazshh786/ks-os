@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import cors from '@fastify/cors';
+import cors, { type FastifyCorsOptions } from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import fp from 'fastify-plugin';
 import { and, eq, sql } from 'drizzle-orm';
@@ -57,12 +57,12 @@ async function registerSecurity(fastify: FastifyInstance) {
     if (forwarded) request.headers.host = forwarded;
   });
 
-  const corsOptions = {
+  const corsOptions: FastifyCorsOptions = {
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
     strictPreflight: true,
     maxAge: 600,
-  } as const;
+  };
 
   // 2. First-party and exact widget origins keep their configured access.
   // Verified client domains are intentionally limited to the public API only.
