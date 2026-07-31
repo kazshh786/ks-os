@@ -1,5 +1,6 @@
 type CorsOriginPolicyOptions = {
   exactOrigins?: Array<string | null | undefined>;
+  workspaceOrigins?: Array<string | null | undefined>;
   workspaceDomains?: Array<string | null | undefined>;
   allowLocalhost?: boolean;
   inferWorkspaceDomains?: boolean;
@@ -62,14 +63,18 @@ export function splitCorsConfiguration(value?: string | null) {
 
 export function createCorsOriginPolicy(options: CorsOriginPolicyOptions = {}) {
   const exactOrigins = new Set<string>();
-  const exactHostnames = new Set<string>();
+  const workspaceHostnames = new Set<string>();
 
-  for (const value of options.exactOrigins || []) {
+  for (const value of [...(options.workspaceOrigins || []), ...(options.exactOrigins || [])]) {
     if (!value) continue;
     const parsed = parseOrigin(value);
-    if (!parsed) continue;
-    exactOrigins.add(parsed.origin);
-    exactHostnames.add(parsed.hostname);
+    if (parsed) exactOrigins.add(parsed.origin);
+  }
+
+  for (const value of options.workspaceOrigins || []) {
+    if (!value) continue;
+    const parsed = parseOrigin(value);
+    if (parsed) workspaceHostnames.add(parsed.hostname);
   }
 
   const workspaceDomains = new Set<string>();
@@ -80,7 +85,7 @@ export function createCorsOriginPolicy(options: CorsOriginPolicyOptions = {}) {
   }
 
   if (options.inferWorkspaceDomains !== false) {
-    for (const hostname of exactHostnames) {
+    for (const hostname of workspaceHostnames) {
       const domain = inferWorkspaceDomain(hostname);
       if (domain) workspaceDomains.add(domain);
     }
