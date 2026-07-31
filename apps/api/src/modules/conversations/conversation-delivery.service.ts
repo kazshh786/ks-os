@@ -11,6 +11,7 @@ import type { ConversationChannel } from '@ks-os/contracts';
 import { getResend } from '../../lib/resend.js';
 import { getTwilioClient } from '../../lib/twilio.js';
 import { decryptSecret } from '../integrations/integration-security.js';
+import { MailboxService } from '../mailboxes/mailbox.service.js';
 import { normalizeSmsPhone } from '../sms/phone.js';
 
 const MAX_ATTEMPTS = 5;
@@ -31,6 +32,7 @@ class DeliveryError extends Error {
 
 export class ConversationDeliveryService {
   private db = getDatabase();
+  private mailbox = new MailboxService();
 
   private async context(messageId: string) {
     const [row] = await this.db.select({
@@ -44,8 +46,10 @@ export class ConversationDeliveryService {
       customerEmail: conversations.customerEmail,
       customerPhone: conversations.customerPhone,
       conversationMetadata: conversations.metadataJson,
+      channelProvider: communicationChannels.provider,
       channelExternalAccountId: communicationChannels.externalAccountId,
       channelMetadata: communicationChannels.metadataJson,
+      credentialsReference: communicationChannels.credentialsReference,
       tokenCiphertext: integrationConnections.tokenCiphertext,
       tenantName: tenants.name,
       senderDisplayName: tenants.senderDisplayName,
@@ -72,10 +76,25 @@ export class ConversationDeliveryService {
   }
 
   private async deliverEmail(context: Awaited<ReturnType<ConversationDeliveryService['context']>>) {
-    const fromAddress = process.env.EMAIL_BOOKINGS_FROM;
-    if (!fromAddress) throw new DeliveryError('EMAIL_FROM_NOT_CONFIGURED', true);
     if (!context.customerEmail) throw new DeliveryError('EMAIL_RECIPIENT_REQUIRED', true);
     const sender = context.senderDisplayName || context.tenantName;
+    if (context.channelProvider === 'GOOGLE_MAIL' || context.channelProvider === 'ZOHO_MAIL') {
+      if (!context.credentialsReference) throw new DeliveryError('MAILBOX_CREDENTIALS_REQUIRED', true);
+      try {
+        return await this.mailbox.sendConnectedEmail(context.credentialsReference, {
+          to: context.customerEmail,
+          subject: context.subject || `Message from ${sender}`,
+          body: context.body,
+          senderName: sender,
+          conversationMetadata: context.conversationMetadata as Record<string, unknown>,
+        });
+      } catch (cause) {
+        const statusCode = Number((cause as any)?.statusCode || 0);
+        throw new DeliveryError(safeCode((cause as any)?.code || (cause instanceof Error ? cause.message : cause)), statusCode === 400 || statusCode === 401 || statusCode === 403 || statusCode === 404);
+      }
+    }
+    const fromAddress = process.env.EMAIL_BOOKINGS_FROM;
+    if (!fromAddress) throw new DeliveryError('EMAIL_FROM_NOT_CONFIGURED', true);
     const response = await getResend().emails.send({
       from: `${sender} via KS OS <${fromAddress}>`,
       to: context.customerEmail,

@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { getDatabase } from '@ks-os/database';
 import { AccountingExportQuerySchema,CreateApiCredentialSchema,CreateCalendarFeedSchema,CreateWebhookSubscriptionSchema,OAuthStartSchema,TerminalConnectionTokenSchema } from '@ks-os/contracts';
 import { env } from '../../config/env.js';
+import { mailboxOauthCallbackRoutes, mailboxRoutes } from '../mailboxes/mailbox.routes.js';
 import { IntegrationsService } from './integrations.service.js';
 
 const Id=z.object({id:z.string().uuid()});const FeedToken=z.object({token:z.string().regex(/^cal_[A-Za-z0-9_-]{40,}$/)});
@@ -11,6 +12,8 @@ const owner=(r:FastifyRequest)=>{r.requireAuth();if(!r.auth||r.auth.role!=='owne
 const key=(r:FastifyRequest)=>{const value=r.headers.authorization;if(!value?.startsWith('Bearer '))throw Object.assign(new Error('API key required'),{statusCode:401,code:'API_KEY_REQUIRED'});return value.slice(7);};
 
 export async function integrationRoutes(app:FastifyInstance){const service=new IntegrationsService();
+ app.register(mailboxOauthCallbackRoutes,{prefix:'/mailboxes/oauth'});
+ app.register(mailboxRoutes);
  app.get('/integrations',async r=>{const a=owner(r);return{data:await service.list(a.tenantId)}});
  app.post('/integrations/oauth/start',{config:{rateLimit:{max:10,timeWindow:'1 minute'}}},async r=>{const a=owner(r),v=OAuthStartSchema.parse(r.body);return{data:{authorizationUrl:service.oauthUrl(a.tenantId,a.tenantUserId,v.provider,v.returnPath)}}});
  app.delete('/integrations/:id',async r=>{const a=owner(r);return{data:await service.disconnect(a.tenantId,a.tenantUserId,Id.parse(r.params).id)}});

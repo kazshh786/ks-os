@@ -10,6 +10,24 @@ const metaConfigured = () => Boolean(
   && process.env.META_WEBHOOK_VERIFY_TOKEN,
 );
 
+const googleMailConfigured = () => Boolean(
+  process.env.GOOGLE_MAIL_CLIENT_ID
+  && process.env.GOOGLE_MAIL_CLIENT_SECRET
+  && process.env.GOOGLE_MAIL_REDIRECT_URI,
+);
+
+const zohoMailConfigured = () => Boolean(
+  process.env.ZOHO_MAIL_CLIENT_ID
+  && process.env.ZOHO_MAIL_CLIENT_SECRET
+  && process.env.ZOHO_MAIL_REDIRECT_URI,
+);
+
+const emailConfigured = () => Boolean(
+  process.env.EMAIL_BOOKINGS_FROM
+  || googleMailConfigured()
+  || zohoMailConfigured(),
+);
+
 const channelDefinitions: Array<{
   channel: ConversationChannel;
   provider: string;
@@ -18,9 +36,9 @@ const channelDefinitions: Array<{
   configured: () => boolean;
 }> = [
   {
-    channel: 'EMAIL', provider: 'RESEND', displayName: 'Email',
-    capabilities: ['MESSAGES', 'BOOKING_LINKS', 'FORMS', 'PAYMENTS'],
-    configured: () => Boolean(process.env.EMAIL_BOOKINGS_FROM),
+    channel: 'EMAIL', provider: 'GOOGLE / ZOHO / RESEND', displayName: 'Email',
+    capabilities: ['MESSAGES', 'THREADS', 'BOOKING_LINKS', 'FORMS', 'PAYMENTS'],
+    configured: emailConfigured,
   },
   {
     channel: 'SMS', provider: 'TWILIO', displayName: 'SMS',
@@ -76,12 +94,16 @@ export class ConversationChannelService {
       const providerConfigured = definition.configured();
       const status = row?.status === 'CONNECTED' || row?.status === 'ATTENTION' ? row.status : 'DISCONNECTED';
       const setupMessage = status === 'CONNECTED'
-        ? `${row?.displayName || definition.displayName} is connected and available to the inbox.`
+        ? row?.channel === 'EMAIL' && ['GOOGLE_MAIL', 'ZOHO_MAIL'].includes(row.provider)
+          ? `${row.displayName || row.externalAccountId || 'Business mailbox'} sends and receives through the connected ${row.provider === 'GOOGLE_MAIL' ? 'Google Workspace' : 'Zoho Mail'} account.`
+          : `${row?.displayName || definition.displayName} is connected and available to the inbox.`
         : status === 'ATTENTION'
           ? `${row?.displayName || definition.displayName} needs reauthorisation or a provider health check before messages can be sent.`
           : !providerConfigured
             ? `${definition.provider} platform credentials must be configured before a business can connect this channel.`
-            : `The platform is ready for a business owner to connect ${definition.displayName}.`;
+            : definition.channel === 'EMAIL'
+              ? 'The platform is ready for a business owner to connect Google Workspace or Zoho Mail. Resend remains available for automated email.'
+              : `The platform is ready for a business owner to connect ${definition.displayName}.`;
       return {
         id: row?.id || null,
         channel: definition.channel,
