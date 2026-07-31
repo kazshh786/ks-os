@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, count, desc, eq, gt, ilike, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import {
   appointments,
   clients,
@@ -157,7 +157,10 @@ export class ConversationService {
       mimeType: conversationAttachments.mimeType,
       fileSizeBytes: conversationAttachments.fileSizeBytes,
     }).from(conversationAttachments)
-      .where(and(eq(conversationAttachments.tenantId, actor.tenantId), sql`${conversationAttachments.messageId} = ANY(${messageIds}::uuid[])`)) : [];
+      .where(and(
+        eq(conversationAttachments.tenantId, actor.tenantId),
+        inArray(conversationAttachments.messageId, messageIds),
+      )) : [];
     const attachmentsByMessage = new Map<string, any[]>();
     for (const attachment of attachmentRows) {
       const current = attachmentsByMessage.get(attachment.messageId) || [];
