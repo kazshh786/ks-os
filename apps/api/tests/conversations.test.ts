@@ -48,6 +48,19 @@ test('message lifecycle responses include channel delivery state', () => {
   assert.equal(parsed.status, 'QUEUED');
 });
 
+test('customer inbox refreshes live and immediately kicks queued delivery', () => {
+  const routes = readFileSync(new URL('../src/modules/conversations/conversation.routes.ts', import.meta.url), 'utf8');
+  const inbox = readFileSync(new URL('../../web/src/features/conversations/ConversationsInboxPage.tsx', import.meta.url), 'utf8');
+
+  assert.match(routes, /deliveryService\.process\(20\)/);
+  assert.match(routes, /Immediate conversation delivery kick failed/);
+  assert.match(inbox, /10_000/);
+  assert.match(inbox, /5_000/);
+  assert.match(inbox, /visibilitychange/);
+  assert.match(inbox, /useState<ConversationStatus \| ''>\(''\)/);
+  assert.match(inbox, /silent: true/);
+});
+
 test('omnichannel migration is registered, durable and API-only', () => {
   const entry = MIGRATION_MANIFEST.find(item => item.filename === '20260730223000_omnichannel_conversations.sql');
   assert.equal(entry?.order, 54);
