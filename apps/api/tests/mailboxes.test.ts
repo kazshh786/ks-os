@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { MIGRATION_MANIFEST } from '@ks-os/database';
 
 const mailboxService = readFileSync(new URL('../src/modules/mailboxes/mailbox.service.ts', import.meta.url), 'utf8');
 const mailboxRoutes = readFileSync(new URL('../src/modules/mailboxes/mailbox.routes.ts', import.meta.url), 'utf8');
@@ -44,6 +45,15 @@ test('mailbox sync worker is bounded and overlap protected', () => {
   assert.match(server, /Math\.max\(15_000/);
   assert.match(mailboxService, /LIMIT \$\{Math\.max\(1, Math\.min\(limit, 50\)\)\}/);
   assert.match(mailboxService, /syncOverlapSeconds/);
+});
+
+test('connected mailbox migration is registered and contains no credential material', () => {
+  const entry = MIGRATION_MANIFEST.find(item => item.filename === '20260731102000_connected_mailbox_timestamp.sql');
+  assert.equal(entry?.order, 54);
+  const migration = readFileSync(new URL('../../../packages/database/migrations/20260731102000_connected_mailbox_timestamp.sql', import.meta.url), 'utf8');
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS connected_at timestamptz/);
+  assert.match(migration, /integration_connections_mailbox_sync_idx/);
+  assert.doesNotMatch(migration, /access_token|refresh_token|client_secret/i);
 });
 
 test('settings provide explicit Google and Zoho mailbox controls', () => {
