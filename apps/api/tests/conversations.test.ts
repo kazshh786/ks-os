@@ -50,7 +50,7 @@ test('message lifecycle responses include channel delivery state', () => {
 
 test('omnichannel migration is registered, durable and API-only', () => {
   const entry = MIGRATION_MANIFEST.find(item => item.filename === '20260730223000_omnichannel_conversations.sql');
-  assert.equal(entry?.order, 53);
+  assert.equal(entry?.order, 54);
   const migration = readFileSync(new URL('../../../packages/database/migrations/20260730223000_omnichannel_conversations.sql', import.meta.url), 'utf8');
   assert.match(migration, /'HARDWARE','COMMUNICATION'/);
   assert.match(migration, /credentials_reference uuid REFERENCES integration_connections\(id\)/);
