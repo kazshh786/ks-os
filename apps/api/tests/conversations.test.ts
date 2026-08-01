@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   ConversationListQuerySchema,
   ConversationMessageSchema,
+  CreateWhatsAppCampaignSchema,
   SendConversationMessageSchema,
   UpdateConversationSchema,
   UpdateWhatsAppMarketingConsentSchema,
@@ -46,6 +47,29 @@ test('WhatsApp template input is typed and restricted to the WhatsApp channel', 
     status: 'OPTED_IN', source: 'VERBAL', evidence: {},
   });
   assert.throws(() => UpdateWhatsAppMarketingConsentSchema.parse({ status: 'UNKNOWN', source: 'VERBAL' }));
+});
+
+test('WhatsApp campaign input is bounded and audience typed', () => {
+  const parsed = CreateWhatsAppCampaignSchema.parse({
+    name: 'August rebooking',
+    templateId: '11111111-1111-4111-8111-111111111111',
+    audienceType: 'LAPSED_90_DAYS',
+    templateParameters: ['20%'],
+    recipientLimit: 250,
+  });
+  assert.equal(parsed.audienceType, 'LAPSED_90_DAYS');
+  assert.equal(parsed.recipientLimit, 250);
+  assert.throws(() => CreateWhatsAppCampaignSchema.parse({
+    name: 'Campaign',
+    templateId: '11111111-1111-4111-8111-111111111111',
+    audienceType: 'EVERYONE',
+  }));
+  assert.throws(() => CreateWhatsAppCampaignSchema.parse({
+    name: 'Campaign',
+    templateId: '11111111-1111-4111-8111-111111111111',
+    audienceType: 'ALL_OPTED_IN',
+    recipientLimit: 1001,
+  }));
 });
 
 test('conversation updates require at least one controlled change', () => {
@@ -109,11 +133,29 @@ test('WhatsApp messaging is enforced by package, service window and consent', ()
   assert.match(policy, /WHATSAPP_TEMPLATES_REQUIRE_GROWTH/);
   assert.match(policy, /WHATSAPP_MARKETING_REQUIRES_SCALE/);
   assert.match(policy, /WHATSAPP_MARKETING_CONSENT_REQUIRED/);
+  assert.match(delivery, /WHATSAPP_MARKETING_CONSENT_REVOKED/);
   assert.match(delivery, /type: 'template'/);
   assert.match(delivery, /whatsappTemplate/);
   assert.match(ingest, /24 \* 60 \* 60 \* 1000/);
   assert.match(controls, /Core can reply on WhatsApp only during the 24-hour customer-service window/);
   assert.match(consoleSource, /Meta messaging fees billed by Meta to this business/);
+});
+
+test('Scale campaigns enforce consent, limits, frequency caps and protected dispatch', () => {
+  const campaign = readFileSync(new URL('../src/modules/conversations/whatsapp-campaign.service.ts', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../src/modules/conversations/conversation.routes.ts', import.meta.url), 'utf8');
+  const manager = readFileSync(new URL('../../web/src/components/WhatsAppCampaignManager.tsx', import.meta.url), 'utf8');
+
+  assert.match(campaign, /WHATSAPP_MARKETING_REQUIRES_SCALE/);
+  assert.match(campaign, /WHATSAPP_MARKETING_MONTHLY_LIMIT_REACHED/);
+  assert.match(campaign, /FREQUENCY_CAP_DAYS = 7/);
+  assert.match(campaign, /consent\.status='OPTED_IN'/);
+  assert.match(campaign, /UPCOMING_BOOKING_30_DAYS/);
+  assert.match(campaign, /LAPSED_90_DAYS/);
+  assert.match(campaign, /processDueCampaigns/);
+  assert.match(routes, /campaignService\.processDueCampaigns\(3\)/);
+  assert.match(manager, /Meta fees billed directly to this business/);
+  assert.match(manager, /seven-day frequency cap/);
 });
 
 test('omnichannel and WhatsApp messaging migrations are registered and API-only', () => {
@@ -132,10 +174,14 @@ test('omnichannel and WhatsApp messaging migrations are registered and API-only'
   assert.equal(tierMessaging?.order, 56);
   const tierMigration = readFileSync(new URL('../../../packages/database/migrations/20260801033000_whatsapp_tier_messaging.sql', import.meta.url), 'utf8');
   assert.match(tierMigration, /whatsapp_service_window_expires_at/);
+  assert.match(tierMigration, /whatsapp_marketing_monthly_message_limit/);
   assert.match(tierMigration, /whatsapp_message_templates/);
   assert.match(tierMigration, /whatsapp_marketing_consents/);
+  assert.match(tierMigration, /whatsapp_marketing_campaigns/);
+  assert.match(tierMigration, /whatsapp_marketing_campaign_recipients/);
   assert.match(tierMigration, /OPTED_IN/);
-  assert.match(tierMigration, /REVOKE ALL ON whatsapp_message_templates, whatsapp_marketing_consents FROM anon, authenticated/);
+  assert.match(tierMigration, /ALTER TABLE whatsapp_marketing_campaigns ENABLE ROW LEVEL SECURITY/);
+  assert.match(tierMigration, /whatsapp_marketing_campaign_recipients FROM anon, authenticated/);
 });
 
 test('provider webhooks require signatures and worker execution is protected', () => {
