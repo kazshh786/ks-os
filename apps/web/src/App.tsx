@@ -25,6 +25,7 @@ import { StripeReturn } from './pages/settings/StripeReturn.js';
 import { StripeRefresh } from './pages/settings/StripeRefresh.js';
 import PaymentSuccess from './pages/book/PaymentSuccess.js';
 import PaymentCancel from './pages/book/PaymentCancel.js';
+import PosPaymentCompletePage from './pages/PosPaymentCompletePage.js';
 import { PaymentHistoryPage } from './pages/payments/PaymentHistoryPage.js';
 import { PaymentDetailPage } from './pages/payments/PaymentDetailPage.js';
 import { FinanceOverviewPage } from './pages/finance/FinanceOverviewPage.js';
@@ -151,6 +152,7 @@ const AppContent: React.FC = () => {
         <Route path="/forms/complete/:token/success" element={<PublicFormSuccessPage />} />
         <Route path="/review/:token" element={<PublicReviewInvitationPage />} />
         <Route path="/fact-finding" element={<ClientFactFindingPage />} />
+        <Route path="/pos-payment-complete" element={<PosPaymentCompletePage />} />
 
         {/* Public Booking Widgets */}
         <Route element={<PublicBookingLayout />}>

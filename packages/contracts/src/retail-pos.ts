@@ -5,6 +5,7 @@ import {
   PaymentComponentInputSchema,
   PaymentComponentSchema,
   PaymentMethodSchema,
+  PosOnlinePaymentPresentationSchema,
   PosStripePaymentConfirmationSchema,
 } from './pos.js';
 
@@ -35,6 +36,14 @@ export const StartRetailStripePaymentRequestSchema = z.object({
   purchasedProducts: z.array(CheckoutBasketItemSchema).min(1).max(100),
 });
 export type StartRetailStripePaymentRequest = z.infer<typeof StartRetailStripePaymentRequestSchema>;
+
+export const StartRetailStripeOnlinePaymentRequestSchema = z.object({
+  idempotencyKey: z.string().min(1).max(255),
+  presentation: PosOnlinePaymentPresentationSchema,
+  tipAmountInCents: z.number().int().nonnegative().default(0),
+  purchasedProducts: z.array(CheckoutBasketItemSchema).min(1).max(100),
+});
+export type StartRetailStripeOnlinePaymentRequest = z.infer<typeof StartRetailStripeOnlinePaymentRequestSchema>;
 
 export const RetailSaleItemSchema = z.object({
   name: z.string(),

@@ -13,11 +13,15 @@ test('Stripe Terminal is accepted as the POS card method', () => {
   assert.doesNotThrow(() => validatePaymentMethod('STRIPE_TERMINAL', 9700, components));
 });
 
-test('booking-page Stripe payments remain blocked from staff POS submission', () => {
-  assert.throws(
-    () => getFinalPaymentComponents('STRIPE_ONLINE', 9700),
-    (error: any) => error?.name === 'INVALID_PAYMENT_METHOD',
-  );
+test('Stripe Online is accepted as a provider-confirmed POS card method', () => {
+  const components = getFinalPaymentComponents('STRIPE_ONLINE', 9700);
+  assert.deepEqual(components, [{
+    method: 'STRIPE_ONLINE',
+    amountInCents: 9700,
+    externalProvider: 'STRIPE',
+    externalProviderName: 'Stripe',
+  }]);
+  assert.doesNotThrow(() => validatePaymentMethod('STRIPE_ONLINE', 9700, components));
 });
 
 test('Stripe Terminal components must match the server total', () => {

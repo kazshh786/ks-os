@@ -24,6 +24,7 @@ export const PaymentComponentMethodSchema = z.enum([
   'EXTERNAL_CARD',
   'OTHER',
   'STRIPE_TERMINAL',
+  'STRIPE_ONLINE',
 ]);
 
 export const PaymentComponentInputSchema = z.object({
@@ -44,6 +45,7 @@ export type PaymentComponent = z.infer<typeof PaymentComponentSchema>;
 
 export const PosStripePaymentModeSchema = z.enum([
   'AUTOMATED_TERMINAL',
+  'ONLINE_CHECKOUT',
   'TAP_TO_PAY_MANUAL',
   'TERMINAL_MANUAL',
 ]);
@@ -52,9 +54,9 @@ export type PosStripePaymentMode = z.infer<typeof PosStripePaymentModeSchema>;
 /**
  * Stripe is the only integrated card provider for the POS launch.
  *
- * AUTOMATED_TERMINAL is verified against Stripe before checkout is finalised.
- * The manual modes are explicit staff confirmations for payments taken directly
- * in Stripe's own mobile app or on a standalone Stripe Terminal device.
+ * AUTOMATED_TERMINAL and ONLINE_CHECKOUT are verified against Stripe before
+ * checkout is finalised. The manual modes are explicit staff confirmations for
+ * payments taken directly in Stripe's own mobile app or on a standalone reader.
  */
 export const PosStripePaymentConfirmationSchema = z.object({
   mode: PosStripePaymentModeSchema,
@@ -166,10 +168,51 @@ export const PosConfigSchema = z.object({
   stripe: z.object({
     connected: z.boolean(),
     ready: z.boolean(),
+    onlinePaymentsReady: z.boolean(),
     accountIdMasked: z.string().nullable(),
   }),
 });
 export type PosConfig = z.infer<typeof PosConfigSchema>;
+
+
+export const PosOnlinePaymentPresentationSchema = z.enum(['EMBEDDED', 'HOSTED']);
+export type PosOnlinePaymentPresentation = z.infer<typeof PosOnlinePaymentPresentationSchema>;
+
+export const PosStripeOnlinePaymentSessionSchema = z.object({
+  sessionId: z.string().regex(/^cs_[A-Za-z0-9_]+$/),
+  presentation: PosOnlinePaymentPresentationSchema,
+  clientSecret: z.string().nullable(),
+  checkoutUrl: z.string().url().nullable(),
+  publishableKey: z.string().min(1),
+  stripeAccountId: z.string().regex(/^acct_[A-Za-z0-9]+$/),
+  amountInCents: z.number().int().positive(),
+  currency: z.string().length(3),
+  expiresAt: z.string().datetime(),
+});
+export type PosStripeOnlinePaymentSession = z.infer<typeof PosStripeOnlinePaymentSessionSchema>;
+
+export const PosStripeOnlinePaymentStatusSchema = z.object({
+  sessionId: z.string().regex(/^cs_[A-Za-z0-9_]+$/),
+  status: z.string(),
+  paymentStatus: z.string(),
+  paymentIntentId: z.string().regex(/^pi_[A-Za-z0-9]+$/).nullable(),
+  amountInCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  succeeded: z.boolean(),
+  failed: z.boolean(),
+  expired: z.boolean(),
+  failureMessage: z.string().nullable(),
+});
+export type PosStripeOnlinePaymentStatus = z.infer<typeof PosStripeOnlinePaymentStatusSchema>;
+
+export const StartPosStripeOnlinePaymentRequestSchema = z.object({
+  appointmentId: z.string().uuid(),
+  idempotencyKey: z.string().min(1).max(255),
+  presentation: PosOnlinePaymentPresentationSchema,
+  tipAmountInCents: z.number().int().nonnegative().default(0),
+  purchasedProducts: z.array(CheckoutBasketItemSchema).default([]),
+});
+export type StartPosStripeOnlinePaymentRequest = z.infer<typeof StartPosStripeOnlinePaymentRequestSchema>;
 
 /**
  * Starts an automated server-driven Stripe Terminal payment. The amount is not

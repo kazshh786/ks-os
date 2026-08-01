@@ -22,13 +22,6 @@ export function validatePaymentComponents(grandTotalInCents: number, components:
       throw err;
     }
 
-    // Booking-page Stripe payments are never submitted through the staff POS.
-    if ((comp.method as string) === 'STRIPE_ONLINE') {
-      const err = new Error('STRIPE_ONLINE cannot be submitted through the POS');
-      err.name = 'INVALID_PAYMENT_COMPONENT_METHOD';
-      throw err;
-    }
-
     if (comp.method === 'EXTERNAL_CARD' && !comp.externalProvider) {
       const err = new Error('EXTERNAL_CARD requires an external provider');
       err.name = 'MISSING_EXTERNAL_PROVIDER';
@@ -70,12 +63,6 @@ export function getFinalPaymentComponents(
 ): PaymentComponentInput[] {
   const method = normalizePaymentMethod(paymentMethod);
 
-  if (method === 'STRIPE_ONLINE') {
-    const err = new Error('STRIPE_ONLINE cannot be submitted through the POS');
-    err.name = 'INVALID_PAYMENT_METHOD';
-    throw err;
-  }
-
   if (components && components.length > 0) {
     return components;
   }
@@ -102,6 +89,7 @@ export function getFinalPaymentComponents(
     || method === 'EXTERNAL_CARD'
     || method === 'OTHER'
     || method === 'STRIPE_TERMINAL'
+    || method === 'STRIPE_ONLINE'
   ) {
     const comp: PaymentComponentInput = {
       method,
@@ -114,7 +102,7 @@ export function getFinalPaymentComponents(
     if (method === 'OTHER') {
       comp.methodDescription = 'Legacy POS OTHER';
     }
-    if (method === 'STRIPE_TERMINAL') {
+    if (method === 'STRIPE_TERMINAL' || method === 'STRIPE_ONLINE') {
       comp.externalProvider = 'STRIPE';
       comp.externalProviderName = 'Stripe';
     }
