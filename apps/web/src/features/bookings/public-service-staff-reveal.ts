@@ -42,17 +42,22 @@ function revealSignature(serviceButton: HTMLButtonElement, staffButtons: HTMLBut
   ].join('|');
 }
 
+function clearExpandedServiceState(root: ParentNode, except?: HTMLButtonElement) {
+  root.querySelectorAll<HTMLButtonElement>(`.booking-service-choice.${expandedServiceClass}`)
+    .forEach(button => {
+      if (button !== except) button.classList.remove(expandedServiceClass);
+    });
+}
+
 export function syncPublicServiceStaffReveal(root: ParentNode = document) {
   const serviceFieldset = fieldsetByLegend(root, 'Choose a service');
   const staffFieldset = fieldsetByLegend(root, 'Choose who you book with');
   const previousReveal = root.querySelector<HTMLElement>(`.${revealClass}`);
 
-  root.querySelectorAll<HTMLElement>(`.booking-service-choice.${expandedServiceClass}`)
-    .forEach(button => button.classList.remove(expandedServiceClass));
-
   if (!serviceFieldset || !staffFieldset) {
     previousReveal?.remove();
     staffFieldset?.classList.remove(originalStaffFieldsetClass);
+    clearExpandedServiceState(root);
     return;
   }
 
@@ -60,8 +65,11 @@ export function syncPublicServiceStaffReveal(root: ParentNode = document) {
   if (!selectedService) {
     previousReveal?.remove();
     staffFieldset.classList.remove(originalStaffFieldsetClass);
+    clearExpandedServiceState(root);
     return;
   }
+
+  clearExpandedServiceState(root, selectedService);
 
   const staffButtons = Array.from(staffFieldset.querySelectorAll<HTMLButtonElement>('button[aria-pressed]'));
   const memberButtons = staffButtons.filter(button => !isAnyoneAvailableButton(button));
@@ -125,10 +133,18 @@ export function syncPublicServiceStaffReveal(root: ParentNode = document) {
   selectedService.insertAdjacentElement('afterend', reveal);
 }
 
+function onNextFrame(callback: () => void) {
+  if (typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(callback);
+    return;
+  }
+  window.setTimeout(callback, 0);
+}
+
 function scheduleSync() {
   if (scheduled) return;
   scheduled = true;
-  window.requestAnimationFrame(() => {
+  onNextFrame(() => {
     scheduled = false;
     const root = document.getElementById('booking-flow');
     if (root) syncPublicServiceStaffReveal(root);
@@ -136,16 +152,16 @@ function scheduleSync() {
 }
 
 export function ensurePublicServiceStaffReveal() {
-  if (typeof document === 'undefined' || observer) return;
+  if (typeof document === 'undefined' || observer || typeof window.MutationObserver === 'undefined') return;
 
   const connect = () => {
     const root = document.getElementById('booking-flow');
     if (!root) {
-      window.requestAnimationFrame(connect);
+      onNextFrame(connect);
       return;
     }
 
-    observer = new MutationObserver(scheduleSync);
+    observer = new window.MutationObserver(scheduleSync);
     observer.observe(root, {
       subtree: true,
       childList: true,
