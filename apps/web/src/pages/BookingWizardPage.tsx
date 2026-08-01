@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router';
 import { PublicBookingFlow } from '../features/bookings/PublicBookingFlow.js';
 import { ensurePublicCatalogCategoryEnrichment } from '../features/bookings/public-catalog-category-enrichment.js';
 import { ensurePublicServiceStaffReveal } from '../features/bookings/public-service-staff-reveal.js';
+import { ensurePublicServiceTeamFlow } from '../features/bookings/public-service-team-flow.js';
 import { currentPublicBookingIdentifier } from '../lib/workspace-hostname.js';
 import './BookingWizardPage.css';
 import './BookingServiceList.css';
@@ -19,6 +20,7 @@ export function BookingWizardPage() {
 
   ensurePublicCatalogCategoryEnrichment();
   ensurePublicServiceStaffReveal(bookingIdentifier);
+  ensurePublicServiceTeamFlow();
 
   if (!bookingIdentifier) {
     return (
