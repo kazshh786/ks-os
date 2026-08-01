@@ -94,6 +94,7 @@ export * from './payments.js';
 export * from './finance.js';
 export * from './communications.js';
 export * from './conversations.js';
+export * from './whatsapp-marketing.js';
 export * from './automations.js';
 export * from './analytics.js';
 export * from './reports.js';
