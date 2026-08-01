@@ -1,5 +1,6 @@
 .booking-date-picker {
-  overflow: hidden;
+  position: relative;
+  overflow: visible;
   border: 1px solid rgb(226 232 240);
   border-radius: 1.35rem;
   background: white;
@@ -8,6 +9,38 @@
 
 .booking-date-picker.is-calendar-view ~ .mt-5 {
   display: none;
+}
+
+.booking-date-picker.is-times-view {
+  border-bottom-color: rgb(241 245 249);
+  border-radius: 1.35rem 1.35rem 0 0;
+  box-shadow: 0 12px 35px rgba(15, 23, 42, 0.06);
+}
+
+.booking-date-picker.is-times-view + .mt-5 {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 0 !important;
+  border: 1px solid rgb(226 232 240) !important;
+  border-top: 0 !important;
+  border-radius: 0 0 1.35rem 1.35rem !important;
+  background: white !important;
+  padding: 0.25rem 1.1rem 1.2rem !important;
+  box-shadow: 0 18px 35px rgba(15, 23, 42, 0.08) !important;
+  animation: booking-calendar-drawer-open 220ms ease-out both;
+}
+
+.booking-date-picker.is-times-view + .mt-5::before {
+  content: '';
+  display: block;
+  height: 1px;
+  margin: 0 0 1rem;
+  background: rgb(241 245 249);
+}
+
+.booking-date-picker.is-times-view + .mt-5.rounded-3xl {
+  text-align: center;
 }
 
 .booking-date-picker__header {
@@ -101,6 +134,7 @@
 }
 
 .booking-date-picker__grid button:hover:not(:disabled) {
+  z-index: 8;
   transform: translateY(-1px);
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
 }
@@ -108,8 +142,78 @@
 .booking-date-picker__grid button:focus-visible,
 .booking-date-picker__header button:focus-visible,
 .booking-date-picker__change-date:focus-visible {
+  z-index: 9;
   outline: 2px solid rgb(15 23 42);
   outline-offset: 2px;
+}
+
+.booking-date-picker__grid button[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  bottom: calc(100% + 0.62rem);
+  width: max-content;
+  max-width: 11rem;
+  transform: translate(-50%, 0.2rem) scale(0.98);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.7rem;
+  background: rgb(15 23 42);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+  padding: 0.48rem 0.65rem;
+  color: white;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.booking-date-picker__grid button[data-tooltip]::after {
+  content: '';
+  position: absolute;
+  z-index: 29;
+  left: 50%;
+  bottom: calc(100% + 0.33rem);
+  width: 0.58rem;
+  height: 0.58rem;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 1px solid rgba(148, 163, 184, 0.35);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgb(15 23 42);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.booking-date-picker__grid button[data-tooltip]:hover::before,
+.booking-date-picker__grid button[data-tooltip]:hover::after,
+.booking-date-picker__grid button[data-tooltip]:focus-visible::before,
+.booking-date-picker__grid button[data-tooltip]:focus-visible::after {
+  opacity: 1;
+}
+
+.booking-date-picker__grid button[data-tooltip]:hover::before,
+.booking-date-picker__grid button[data-tooltip]:focus-visible::before {
+  transform: translate(-50%, 0) scale(1);
+}
+
+.booking-date-picker__grid button[data-tooltip-tone='available']::before,
+.booking-date-picker__grid button[data-tooltip-tone='available']::after {
+  background: rgb(6 78 59);
+}
+
+.booking-date-picker__grid button[data-tooltip-tone='limited']::before,
+.booking-date-picker__grid button[data-tooltip-tone='limited']::after {
+  background: rgb(120 53 15);
+}
+
+.booking-date-picker__grid button[data-tooltip-tone='unavailable']::before,
+.booking-date-picker__grid button[data-tooltip-tone='unavailable']::after {
+  background: rgb(51 65 85);
 }
 
 .booking-date-picker__grid button.is-available {
@@ -205,6 +309,7 @@
   display: flex;
   align-items: center;
   gap: 0.45rem;
+  border-radius: 0 0 1.35rem 1.35rem;
   background: rgb(248 250 252);
   padding: 0.55rem 0.9rem 0.75rem;
   color: rgb(100 116 139);
@@ -220,8 +325,11 @@
 
 .booking-date-picker__time-header {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 1rem;
   padding: 1rem 1.1rem;
+  animation: booking-calendar-selected-open 190ms ease-out both;
 }
 
 .booking-date-picker__change-date {
@@ -229,6 +337,7 @@
   width: fit-content;
   min-height: 2.5rem;
   align-items: center;
+  justify-content: center;
   gap: 0.45rem;
   border: 1px solid rgb(226 232 240);
   border-radius: 0.8rem;
@@ -237,6 +346,7 @@
   color: rgb(51 65 85);
   font-size: 0.75rem;
   font-weight: 900;
+  white-space: nowrap;
 }
 
 .booking-date-picker__change-date:hover {
@@ -294,6 +404,28 @@
   font-weight: 750;
 }
 
+@keyframes booking-calendar-selected-open {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes booking-calendar-drawer-open {
+  from {
+    opacity: 0;
+    transform: translateY(-0.4rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 640px) {
   .booking-date-picker__grid {
     gap: 0.25rem;
@@ -305,15 +437,33 @@
     border-radius: 0.75rem;
   }
 
+  .booking-date-picker__grid button[data-tooltip]::before,
+  .booking-date-picker__grid button[data-tooltip]::after {
+    display: none;
+  }
+
   .booking-date-picker__legend {
     gap: 0.55rem 0.75rem;
+  }
+
+  .booking-date-picker__time-header {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-date-picker__change-date {
+    width: 100%;
+  }
+
+  .booking-date-picker.is-times-view + .mt-5 {
+    padding-inline: 0.8rem !important;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .booking-date-picker *,
   .booking-date-picker *::before,
-  .booking-date-picker *::after {
+  .booking-date-picker *::after,
+  .booking-date-picker.is-times-view + .mt-5 {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;

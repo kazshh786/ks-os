@@ -2,14 +2,17 @@ import { CheckCircle2 } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router';
 import { PublicBookingFlow } from '../features/bookings/PublicBookingFlow.js';
 import { ensurePublicCatalogCategoryEnrichment } from '../features/bookings/public-catalog-category-enrichment.js';
+import { ensurePublicServiceStaffReveal } from '../features/bookings/public-service-staff-reveal.js';
 import { currentPublicBookingIdentifier } from '../lib/workspace-hostname.js';
 import './BookingWizardPage.css';
 import './BookingServiceList.css';
+import './BookingServiceStaffReveal.css';
 import './BookingWorkspaceViewport.css';
 import './BookingCheckoutLayout.css';
 
 export function BookingWizardPage() {
   ensurePublicCatalogCategoryEnrichment();
+  ensurePublicServiceStaffReveal();
   const { subdomain } = useParams();
   const [search] = useSearchParams();
   const bookingIdentifier = subdomain || currentPublicBookingIdentifier();
