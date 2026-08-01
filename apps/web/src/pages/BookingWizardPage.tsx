@@ -2,6 +2,7 @@ import { CalendarCheck2, CheckCircle2, LockKeyhole, ReceiptText } from 'lucide-r
 import { useParams, useSearchParams } from 'react-router';
 import { PublicBookingFlow } from '../features/bookings/PublicBookingFlow.js';
 import { currentPublicBookingIdentifier } from '../lib/workspace-hostname.js';
+import './BookingWizardPage.css';
 
 const conversionPromises = [
   {
