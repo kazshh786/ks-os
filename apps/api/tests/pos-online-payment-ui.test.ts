@@ -12,7 +12,8 @@ test('appointment POS offers embedded and payment-link Stripe flows', () => {
   assert.match(source, /Payment link or QR code/);
   assert.match(source, /startOnlinePayment\('EMBEDDED'\)/);
   assert.match(source, /startOnlinePayment\('HOSTED'\)/);
-  assert.match(source, /paymentMethod: 'STRIPE_ONLINE'/);
+  assert.match(source, /paymentMethod: 'STRIPE_TERMINAL' \| 'STRIPE_ONLINE'/);
+  assert.match(source, /undefined, 'STRIPE_ONLINE'\);/);
   assert.match(source, /mode: 'ONLINE_CHECKOUT'/);
 });
 
