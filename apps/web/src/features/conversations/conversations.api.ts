@@ -5,9 +5,11 @@ import type {
   ConversationListItem,
   ConversationListQuery,
   ConversationMessage,
+  CreateWhatsAppCampaign,
   SendConversationMessage,
   UpdateConversation,
   UpdateWhatsAppMarketingConsent,
+  WhatsAppCampaignListResponse,
   WhatsAppSendPolicy,
   WhatsAppTemplate,
 } from '@ks-os/contracts';
@@ -67,6 +69,23 @@ export async function updateWhatsAppMarketingConsent(conversationId: string, inp
   return (await request<{ data: WhatsAppSendPolicy }>(`/api/v1/conversations/${conversationId}/whatsapp/marketing-consent`, {
     method: 'PATCH',
     body: JSON.stringify(input),
+  })).data;
+}
+
+export async function listWhatsAppCampaigns() {
+  return request<WhatsAppCampaignListResponse>('/api/v1/conversations/whatsapp/campaigns');
+}
+
+export async function createWhatsAppCampaign(input: CreateWhatsAppCampaign) {
+  return (await request<{ data: { id: string } }>('/api/v1/conversations/whatsapp/campaigns', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })).data;
+}
+
+export async function cancelWhatsAppCampaign(campaignId: string) {
+  return (await request<{ data: { id: string; status: 'CANCELLED' } }>(`/api/v1/conversations/whatsapp/campaigns/${campaignId}/cancel`, {
+    method: 'POST',
   })).data;
 }
 
