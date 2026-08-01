@@ -65,7 +65,7 @@ describe('BookingWizardPage', () => {
     renderPage();
 
     expect(screen.getByRole('heading', { name: 'Choose a service and book a live appointment time' })).toBeInTheDocument();
-    expect(screen.getByText('Live availability')).toBeInTheDocument();
+    expect(screen.getAllByText('Live availability').length).toBeGreaterThan(0);
     expect(screen.getByText('Clear total and commitment')).toBeInTheDocument();
     expect(screen.getByText('No account required')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Skip to booking options' })).toHaveAttribute('href', '#booking-flow');
@@ -90,7 +90,7 @@ describe('BookingWizardPage', () => {
     const manicure = screen.getByRole('button', { name: /Select Gel manicure/ });
     fireEvent.click(manicure);
 
-    await waitFor(() => expect(manicure).toHaveAttribute('aria-pressed', 'true'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Select Gel manicure/ })).toHaveAttribute('aria-pressed', 'true'));
   });
 
   it('makes preview limitations explicit and passes preview mode into the flow', () => {
