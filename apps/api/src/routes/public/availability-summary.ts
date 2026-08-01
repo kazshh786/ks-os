@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { BookingPageSlugSchema, ERROR_CODES } from '@ks-os/contracts';
 import { getDatabase, services } from '@ks-os/database';
@@ -53,7 +53,7 @@ export default async function publicAvailabilitySummaryRoutes(fastify: FastifyIn
     const allowedIds = resolved.page.allowedServiceIds;
     const rows = await getDatabase().select({
       id: services.id,
-      category: services.category,
+      category: sql<string | null>`category`,
     }).from(services).where(and(
       eq(services.tenantId, resolved.tenant.id),
       eq(services.isActive, true),
