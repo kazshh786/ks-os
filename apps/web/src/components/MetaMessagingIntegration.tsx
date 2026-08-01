@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AtSign, MessagesSquare, Phone, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
 import { fetchWithAuth } from '../api/client.js';
+import { WhatsAppMessagingConsole } from './WhatsAppMessagingConsole.js';
 
 type MetaChannel = {
   id: string;
@@ -157,8 +158,9 @@ export function MetaMessagingIntegration() {
   };
 
   const channels = status?.channels.filter(channel => channel.status === 'CONNECTED') || [];
+  const whatsappConnected = channels.some(channel => channel.channelType === 'WHATSAPP');
 
-  return <section aria-labelledby="meta-messaging-heading" className="space-y-4">
+  return <section aria-labelledby="meta-messaging-heading" className="space-y-8">
     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h2 id="meta-messaging-heading" className="text-xl font-black text-slate-950">Meta messaging</h2>
@@ -198,5 +200,7 @@ export function MetaMessagingIntegration() {
       </div>
       <p className="mt-4 text-xs leading-5 text-slate-500">External customer onboarding requires the Meta app to be Live, the business to be verified, and the relevant messaging permissions to have Advanced Access.</p>
     </article>
+
+    {whatsappConnected && <WhatsAppMessagingConsole />}
   </section>;
 }
