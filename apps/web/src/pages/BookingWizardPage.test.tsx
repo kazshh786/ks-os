@@ -23,13 +23,11 @@ function renderPage(path = '/book/north-star') {
 }
 
 describe('BookingWizardPage', () => {
-  it('keeps the split-view proposition and conversion reassurance', () => {
-    renderPage();
+  it('renders one focused checkout workspace without a duplicate marketing panel', () => {
+    const { container } = renderPage();
 
-    expect(screen.getByRole('heading', { name: 'Book the right service in a few clear steps.' })).toBeInTheDocument();
-    expect(screen.getByText('Live availability')).toBeInTheDocument();
-    expect(screen.getByText('Clear total and commitment')).toBeInTheDocument();
-    expect(screen.getByText('No account required')).toBeInTheDocument();
+    expect(container.querySelector('.booking-checkout-shell')).toBeInTheDocument();
+    expect(container.querySelector('.booking-story-panel')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Skip to booking options' })).toHaveAttribute('href', '#booking-flow');
 
     const flow = screen.getByTestId('public-booking-flow');
