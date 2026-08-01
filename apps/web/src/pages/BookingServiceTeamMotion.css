@@ -1,0 +1,75 @@
+.booking-service-choice.is-team-expanded {
+  display: grid;
+  grid-template-areas:
+    'copy copy'
+    'meta price';
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: start;
+  column-gap: 0.4rem;
+  row-gap: 0.5rem;
+  transition:
+    width 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 320ms ease,
+    opacity 320ms ease;
+}
+
+.booking-service-choice.is-team-expanded .booking-service-choice__top {
+  display: contents;
+}
+
+.booking-service-choice.is-team-expanded .booking-service-choice__top > div:first-child {
+  grid-area: copy;
+  min-width: 0;
+}
+
+.booking-service-choice.is-team-expanded .booking-service-choice__meta {
+  display: flex;
+  grid-area: meta;
+  min-width: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  margin-top: 0;
+}
+
+.booking-service-choice.is-team-expanded .booking-service-choice__meta span:not(:first-child) {
+  display: none;
+}
+
+.booking-service-choice.is-team-expanded .booking-service-choice__price {
+  display: flex;
+  grid-area: price;
+  min-width: 0;
+  align-self: center;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.booking-service-choice.is-team-expanded .booking-service-choice__price s,
+.booking-service-choice.is-team-expanded .booking-service-choice__price strong {
+  display: inline;
+}
+
+.booking-service-staff-reveal {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (max-width: 760px) {
+  .booking-service-choice.is-team-expanded .booking-service-choice__meta {
+    display: flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .booking-service-choice.is-team-expanded {
+    transition-duration: 0.01ms !important;
+  }
+
+  .booking-service-staff-reveal {
+    animation-duration: 0.01ms !important;
+  }
+}
