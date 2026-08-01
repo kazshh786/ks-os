@@ -77,9 +77,12 @@ export function BookingWizardPage() {
 
   useEffect(() => {
     if (!bookingIdentifier) return;
+    const provider = getDataProvider();
+    if (typeof provider.getPublicCatalog !== 'function') return;
+
     let active = true;
     setCatalog(null);
-    getDataProvider().getPublicCatalog(bookingIdentifier)
+    provider.getPublicCatalog(bookingIdentifier)
       .then((data: BookingCatalog) => {
         if (active) setCatalog(data);
       })
