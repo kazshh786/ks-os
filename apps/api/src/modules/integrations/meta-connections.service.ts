@@ -304,7 +304,7 @@ export class MetaConnectionsService {
       const pages = await this.graph<{ data?: MetaPage[] }>(`/me/accounts?${pageFields.toString()}`, exchanged.accessToken);
       for (const page of pages.data || []) {
         if (!page.id || !page.access_token) continue;
-        let pageSubscriptionReady = false;
+        let pageSubscriptionReady: boolean = false;
         try {
           const query = new URLSearchParams({ subscribed_fields: 'messages,messaging_postbacks,message_deliveries,message_reads' });
           await this.graph(`/${encodeURIComponent(page.id)}/subscribed_apps?${query.toString()}`, page.access_token, { method: 'POST' });
@@ -338,7 +338,7 @@ export class MetaConnectionsService {
 
         const instagram = page.instagram_business_account;
         if (instagram?.id) {
-          let instagramSubscriptionReady = false;
+          let instagramSubscriptionReady: boolean = false;
           try {
             const query = new URLSearchParams({ subscribed_fields: 'messages,messaging_postbacks' });
             await this.graph(`/${encodeURIComponent(instagram.id)}/subscribed_apps?${query.toString()}`, page.access_token, { method: 'POST' });
