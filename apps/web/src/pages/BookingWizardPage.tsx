@@ -1,8 +1,13 @@
-import { CalendarCheck2, CheckCircle2, LockKeyhole, ReceiptText } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarCheck2, CheckCircle2, LockKeyhole, ReceiptText, Sparkles } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router';
 import { PublicBookingFlow } from '../features/bookings/PublicBookingFlow.js';
+import { getDataProvider } from '../data/data-provider.js';
 import { currentPublicBookingIdentifier } from '../lib/workspace-hostname.js';
 import './BookingWizardPage.css';
+
+type CatalogueService = { category?: string | null };
+type Catalogue = { services?: CatalogueService[] };
 
 const conversionPromises = [
   {
@@ -27,6 +32,25 @@ export function BookingWizardPage() {
   const [search] = useSearchParams();
   const bookingIdentifier = subdomain || currentPublicBookingIdentifier();
   const preview = search.get('preview') === '1';
+  const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+
+  useEffect(() => {
+    if (!bookingIdentifier) return;
+    let active = true;
+    getDataProvider().getPublicCatalog(bookingIdentifier)
+      .then((data: Catalogue) => {
+        if (active) setCatalogue(data);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [bookingIdentifier]);
+
+  const categories = useMemo(() => {
+    const values = (catalogue?.services || [])
+      .map(service => service.category?.trim())
+      .filter((category): category is string => Boolean(category));
+    return [...new Set(values)];
+  }, [catalogue]);
 
   if (!bookingIdentifier) {
     return (
@@ -40,7 +64,7 @@ export function BookingWizardPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="booking-page-shell mx-auto w-full max-w-[1440px]">
       <a
         href="#booking-flow"
         className="sr-only rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50"
@@ -49,39 +73,54 @@ export function BookingWizardPage() {
       </a>
 
       {preview ? (
-        <div role="status" className="mb-4 flex items-center gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-950">
+        <div role="status" className="booking-preview-banner">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           Preview mode is active. You can test the journey, but no real booking or payment will be created.
         </div>
       ) : null}
 
-      <section
-        aria-labelledby="booking-page-title"
-        className="mb-5 overflow-hidden rounded-[2rem] border border-slate-200 bg-slate-950 px-5 py-7 text-white shadow-xl shadow-slate-300/30 sm:px-8 sm:py-9"
-      >
-        <div className="max-w-3xl">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-300">Online booking</p>
-          <h1 id="booking-page-title" className="mt-3 text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
-            Choose a service and book a live appointment time
-          </h1>
-          <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-            Complete the booking in four clear steps. You will see availability, the full price and the exact payment commitment before confirming.
+      <div className="booking-page-grid">
+        <aside className="booking-story-panel" aria-labelledby="booking-page-title">
+          <div>
+            <div className="booking-story-kicker">
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              Secure online booking
+            </div>
+            <h1 id="booking-page-title">Book the right service in a few clear steps.</h1>
+            <p className="booking-story-copy">
+              Choose a service, view live appointment times, see the full price and confirm without creating an account.
+            </p>
+          </div>
+
+          {categories.length > 0 ? (
+            <section className="booking-category-panel" aria-labelledby="service-category-title">
+              <p id="service-category-title">Available service categories</p>
+              <div className="booking-category-list">
+                {categories.map(category => <span key={category}>{category}</span>)}
+              </div>
+            </section>
+          ) : null}
+
+          <ul className="booking-promise-list" aria-label="Booking benefits">
+            {conversionPromises.map(item => (
+              <li key={item.title}>
+                <span className="booking-promise-icon"><item.icon aria-hidden="true" /></span>
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>{item.description}</small>
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <p className="booking-story-footnote">
+            Your information is only used to manage this appointment securely.
           </p>
-        </div>
+        </aside>
 
-        <ul className="mt-7 grid gap-3 md:grid-cols-3" aria-label="Booking benefits">
-          {conversionPromises.map(item => (
-            <li key={item.title} className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur-sm">
-              <item.icon className="h-5 w-5 text-white" aria-hidden="true" />
-              <p className="mt-3 text-sm font-black">{item.title}</p>
-              <p className="mt-1 text-xs leading-5 text-slate-300">{item.description}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <div id="booking-flow" tabIndex={-1} className="scroll-mt-4 outline-none">
-        <PublicBookingFlow slug={bookingIdentifier} preview={preview} />
+        <section id="booking-flow" tabIndex={-1} className="booking-flow-panel scroll-mt-4 outline-none">
+          <PublicBookingFlow slug={bookingIdentifier} preview={preview} />
+        </section>
       </div>
     </div>
   );
