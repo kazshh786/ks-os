@@ -94,69 +94,76 @@ export class PosService {
     };
   }
 
-  private async prepareStripeCheckout(
-    tenantId: string,
-    payload: CheckoutRequest,
-    expectedAmountInCents: number,
-  ) {
-    if (payload.paymentMethod !== 'STRIPE_TERMINAL') {
-      return {
-        trustedComponents: payload.paymentComponents,
-        paymentIntentId: null as string | null,
-        verificationSource: 'STAFF_CONFIRMED' as const,
-      };
-    }
 
-    const confirmation = payload.stripePayment;
-    if (!confirmation) {
-      throw fail('STRIPE_CONFIRMATION_REQUIRED', 'Stripe payment confirmation is required.');
-    }
+private async prepareStripeCheckout(
+  tenantId: string,
+  payload: CheckoutRequest,
+  expectedAmountInCents: number,
+) {
+  const isTerminal = payload.paymentMethod === 'STRIPE_TERMINAL';
+  const isOnline = payload.paymentMethod === 'STRIPE_ONLINE';
+  if (!isTerminal && !isOnline) {
+    return {
+      trustedComponents: payload.paymentComponents,
+      paymentIntentId: null as string | null,
+      verificationSource: 'STAFF_CONFIRMED' as const,
+    };
+  }
 
-    const connection = await this.stripe.getConnectionSummary(tenantId);
-    if (!connection.ready) {
-      throw fail('STRIPE_ACCOUNT_NOT_READY', 'The connected Stripe account is not ready to take payments.');
-    }
+  const confirmation = payload.stripePayment;
+  if (!confirmation) throw fail('STRIPE_CONFIRMATION_REQUIRED', 'Stripe payment confirmation is required.');
 
-    let verificationSource: 'PROVIDER_CONFIRMED' | 'STAFF_CONFIRMED' = 'STAFF_CONFIRMED';
-    let verifiedPaymentIntentId: string | null = null;
+  const connection = await this.stripe.getConnectionSummary(tenantId);
+  if (!connection.ready) throw fail('STRIPE_ACCOUNT_NOT_READY', 'The connected Stripe account is not ready to take payments.');
 
-    if (confirmation.mode === 'AUTOMATED_TERMINAL' && !confirmation.paymentIntentId) {
-      throw fail('STRIPE_PAYMENT_INTENT_REQUIRED', 'The automated terminal payment is missing its Stripe PaymentIntent.');
-    }
+  if (isOnline && (confirmation.mode !== 'ONLINE_CHECKOUT' || !confirmation.paymentIntentId)) {
+    throw fail('STRIPE_PAYMENT_INTENT_REQUIRED', 'The online Stripe payment is missing its confirmed PaymentIntent.');
+  }
+  if (isTerminal && confirmation.mode === 'ONLINE_CHECKOUT') {
+    throw fail('STRIPE_CONFIRMATION_REQUIRED', 'The Stripe confirmation does not match the selected POS payment method.');
+  }
+  if (isTerminal && confirmation.mode === 'AUTOMATED_TERMINAL' && !confirmation.paymentIntentId) {
+    throw fail('STRIPE_PAYMENT_INTENT_REQUIRED', 'The automated terminal payment is missing its Stripe PaymentIntent.');
+  }
 
-    if (confirmation.paymentIntentId) {
-      const paymentIntent = await this.stripe.assertPaymentSucceeded({
-        tenantId,
-        appointmentId: payload.appointmentId,
-        paymentIntentId: confirmation.paymentIntentId,
-        expectedAmountInCents,
-      });
-      verifiedPaymentIntentId = paymentIntent.id;
-      verificationSource = 'PROVIDER_CONFIRMED';
-    } else if (!confirmation.manuallyConfirmed) {
-      throw fail('STRIPE_MANUAL_CONFIRMATION_REQUIRED', 'Confirm that the Stripe payment succeeded before completing the sale.');
-    }
+  let verificationSource: 'PROVIDER_CONFIRMED' | 'STAFF_CONFIRMED' = 'STAFF_CONFIRMED';
+  let verifiedPaymentIntentId: string | null = null;
+  if (confirmation.paymentIntentId) {
+    const paymentIntent = await this.stripe.assertPaymentSucceeded({
+      tenantId,
+      appointmentId: payload.appointmentId,
+      paymentIntentId: confirmation.paymentIntentId,
+      expectedAmountInCents,
+    });
+    verifiedPaymentIntentId = paymentIntent.id;
+    verificationSource = 'PROVIDER_CONFIRMED';
+  } else if (!confirmation.manuallyConfirmed) {
+    throw fail('STRIPE_MANUAL_CONFIRMATION_REQUIRED', 'Confirm that the Stripe payment succeeded before completing the sale.');
+  }
 
-    const provider = confirmation.mode === 'TAP_TO_PAY_MANUAL'
+  const provider = isOnline
+    ? 'STRIPE_ONLINE'
+    : confirmation.mode === 'TAP_TO_PAY_MANUAL'
       ? 'STRIPE_TAP_TO_PAY'
       : confirmation.mode === 'TERMINAL_MANUAL'
         ? 'STRIPE_TERMINAL_MANUAL'
         : 'STRIPE_TERMINAL';
+  const method = isOnline ? 'STRIPE_ONLINE' as const : 'STRIPE_TERMINAL' as const;
 
-    return {
-      trustedComponents: [{
-        method: 'STRIPE_TERMINAL' as const,
-        amountInCents: expectedAmountInCents,
-        externalProvider: provider,
-        externalProviderName: 'Stripe',
-        externalReference: verifiedPaymentIntentId || confirmation.manualReference || undefined,
-      }],
-      paymentIntentId: verifiedPaymentIntentId,
-      verificationSource,
-    };
-  }
+  return {
+    trustedComponents: [{
+      method,
+      amountInCents: expectedAmountInCents,
+      externalProvider: provider,
+      externalProviderName: 'Stripe',
+      externalReference: verifiedPaymentIntentId || confirmation.manualReference || undefined,
+    }],
+    paymentIntentId: verifiedPaymentIntentId,
+    verificationSource,
+  };
+}
 
-  async completeCheckout(tenantId: string, role: string, authUserId: string, payload: CheckoutRequest) {
+async completeCheckout(tenantId: string, role: string, authUserId: string, payload: CheckoutRequest) {
     await this.assertInventoryAccess(tenantId, payload.purchasedProducts || []);
 
     // Recalculate before touching Stripe or opening the transaction. The browser
@@ -310,7 +317,7 @@ export class PosService {
 
       const insertedComponents = [];
       for (const comp of finalComponents) {
-        const isStripeComponent = comp.method === 'STRIPE_TERMINAL';
+        const isStripeComponent = comp.method === 'STRIPE_TERMINAL' || comp.method === 'STRIPE_ONLINE';
         const [inserted] = await tx.insert(checkoutPaymentComponents).values({
           checkoutTransactionId: transaction.id,
           tenantId,
