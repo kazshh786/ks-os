@@ -39,6 +39,7 @@ export const conversations = pgTable('conversations', {
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow().notNull(),
   tags: text('tags').array().default([]).notNull(),
   metadataJson: jsonb('metadata_json').default({}).notNull(),
+  whatsappServiceWindowExpiresAt: timestamp('whatsapp_service_window_expires_at', { withTimezone: true }),
   resolvedAt: timestamp('resolved_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -90,4 +91,41 @@ export const conversationAttachments = pgTable('conversation_attachments', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, table => ({
   messageIdx: index('conversation_attachments_message_idx').on(table.messageId),
+}));
+
+export const whatsappMessageTemplates = pgTable('whatsapp_message_templates', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  channelId: uuid('channel_id').notNull().references(() => communicationChannels.id, { onDelete: 'cascade' }),
+  providerTemplateId: varchar('provider_template_id', { length: 255 }),
+  name: varchar('name', { length: 512 }).notNull(),
+  language: varchar('language', { length: 35 }).notNull(),
+  category: varchar('category', { length: 20 }).notNull(),
+  status: varchar('status', { length: 30 }).notNull(),
+  components: jsonb('components').default([]).notNull(),
+  qualityScore: varchar('quality_score', { length: 30 }),
+  lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  tenantChannelNameLanguageUnique: uniqueIndex('whatsapp_message_templates_tenant_channel_name_language_unique').on(table.tenantId, table.channelId, table.name, table.language),
+  tenantCategoryStatusIdx: index('whatsapp_message_templates_tenant_category_status_idx').on(table.tenantId, table.category, table.status, table.name),
+}));
+
+export const whatsappMarketingConsents = pgTable('whatsapp_marketing_consents', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
+  recipientPhone: varchar('recipient_phone', { length: 30 }).notNull(),
+  status: varchar('status', { length: 20 }).default('UNKNOWN').notNull(),
+  source: varchar('source', { length: 80 }),
+  evidence: jsonb('evidence').default({}).notNull(),
+  consentedAt: timestamp('consented_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  tenantPhoneUnique: uniqueIndex('whatsapp_marketing_consents_tenant_phone_unique').on(table.tenantId, table.recipientPhone),
+  tenantStatusIdx: index('whatsapp_marketing_consents_tenant_status_idx').on(table.tenantId, table.status, table.updatedAt),
 }));
