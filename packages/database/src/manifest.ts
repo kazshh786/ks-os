@@ -60,4 +60,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260731130000_reconcile_phase_13_integrations.sql', order: 53, description: 'Reconcile Phase 13 integration tables missing behind an applied historical migration ledger entry' },
   { filename: '20260730223000_omnichannel_conversations.sql', order: 54, description: 'Tenant-isolated omnichannel channels, conversations, messages, attachments, assignment, unread state, and booking context' },
   { filename: '20260731102000_connected_mailbox_timestamp.sql', order: 55, description: 'Connected mailbox authorization timestamp and bounded Google/Zoho sync index' },
+  { filename: '20260801043000_booking_commitment_payment_policy.sql', order: 56, description: 'Require deposit-first or full upfront Stripe payments for paid public bookings while free services remain payment-free' },
 ];
