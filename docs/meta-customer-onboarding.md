@@ -26,6 +26,34 @@ META_LOGIN_CONFIG_ID=
 
 The Meta app and webhook are shared platform infrastructure. Customer tokens and channel records are tenant-specific.
 
+## WhatsApp package model
+
+KS OS enforces WhatsApp features in the API as well as the interface.
+
+### Core
+
+- receives incoming WhatsApp messages;
+- allows free-form staff replies only during the rolling 24-hour customer-service window;
+- refreshes the window whenever the customer sends a new WhatsApp message;
+- blocks WhatsApp replies after the window closes and recommends connected SMS or email channels;
+- does not allow utility, authentication or marketing templates.
+
+### Growth
+
+- includes all Core capabilities;
+- allows approved utility and authentication templates outside the customer-service window;
+- supports appointment confirmations, reminders, form requests and payment links;
+- does not allow marketing templates.
+
+### Scale
+
+- includes all Growth capabilities;
+- allows approved marketing templates;
+- requires recorded customer opt-in before a marketing template can be queued;
+- allows the owner to record opt-in or opt-out evidence from the KS OS messaging controls.
+
+The template catalogue is synced from the customer-owned WhatsApp Business Account. Only templates with Meta status `APPROVED` can be selected or sent.
+
 ## Billing model
 
 The initial KS OS model is **customer-owned billing**:
@@ -37,6 +65,18 @@ The initial KS OS model is **customer-owned billing**:
 - KS OS does not attach a shared line of credit and does not front Meta message charges.
 
 A partner credit-line model can be introduced later, but that would make KS OS responsible for Meta's aggregated invoice and customer rebilling.
+
+## Consent and compliance
+
+Marketing consent is stored per tenant and recipient phone number. The record contains:
+
+- current status: `OPTED_IN`, `OPTED_OUT` or `UNKNOWN`;
+- source of the consent decision;
+- structured evidence;
+- opt-in and revocation timestamps;
+- the KS OS user who recorded the change.
+
+The Scale send path refuses marketing delivery unless the current status is `OPTED_IN`. A later opt-out immediately prevents further marketing templates.
 
 ## External customer release requirements
 
@@ -61,13 +101,13 @@ All tenants use the same callback:
 https://api.kasimshah.com/api/v1/webhooks/meta
 ```
 
-The webhook routes events to a tenant by matching Meta's external account ID against a connected `communication_channels` record.
+The webhook routes events to a tenant by matching Meta's external account ID against a connected `communication_channels` record. WhatsApp inbound messages also extend that conversation's service-window expiry by 24 hours.
 
 ## Deployment
 
 This feature is a **both** deployment:
 
-- Vercel: Integrations UI and Meta Login for Business flow.
-- VPS: code exchange, encrypted token storage, asset discovery, webhook subscriptions and channel delivery.
+- Vercel: Integrations UI, Meta Login for Business flow, package messaging controls and template composer.
+- VPS: code exchange, encrypted token storage, asset discovery, webhook subscriptions, service-window enforcement, template sync, consent checks and channel delivery.
 
-No database migration is required because the existing integration and communication-channel tables already support this model.
+Database migration `20260801033000_whatsapp_tier_messaging.sql` is required. It adds the service-window timestamp, approved-template cache and marketing-consent records.
