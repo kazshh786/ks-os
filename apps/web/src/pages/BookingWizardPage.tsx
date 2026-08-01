@@ -11,12 +11,13 @@ import './BookingWorkspaceViewport.css';
 import './BookingCheckoutLayout.css';
 
 export function BookingWizardPage() {
-  ensurePublicCatalogCategoryEnrichment();
-  ensurePublicServiceStaffReveal();
   const { subdomain } = useParams();
   const [search] = useSearchParams();
   const bookingIdentifier = subdomain || currentPublicBookingIdentifier();
   const preview = search.get('preview') === '1';
+
+  ensurePublicCatalogCategoryEnrichment();
+  ensurePublicServiceStaffReveal(bookingIdentifier);
 
   if (!bookingIdentifier) {
     return (
