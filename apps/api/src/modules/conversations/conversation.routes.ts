@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { and, eq } from 'drizzle-orm';
+import { z } from 'zod';
 import { conversationMessages, conversations, getDatabase } from '@ks-os/database';
 import {
   CommunicationChannelListResponseSchema,
@@ -10,17 +11,21 @@ import {
   ConversationMessageResponseSchema,
   ConversationPaymentLinkResponseSchema,
   ConversationResponseSchema,
+  CreateWhatsAppCampaignSchema,
   SendConversationMessageSchema,
   UpdateConversationSchema,
   UpdateWhatsAppMarketingConsentSchema,
+  WhatsAppCampaignListResponseSchema,
   WhatsAppTemplateListResponseSchema,
 } from '@ks-os/contracts';
 import { ConversationChannelService } from './conversation-channel.service.js';
 import { ConversationDeliveryService } from './conversation-delivery.service.js';
 import { ConversationService } from './conversation.service.js';
+import { WhatsAppCampaignService } from './whatsapp-campaign.service.js';
 import { WhatsAppMessagingService } from './whatsapp-messaging.service.js';
 
 const inboxPermissions = new Set(['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE']);
+const CampaignIdParamsSchema = z.object({ campaignId: z.string().uuid() }).strict();
 
 const actor = (request: FastifyRequest) => {
   request.requireAuth();
@@ -39,12 +44,21 @@ const actor = (request: FastifyRequest) => {
   } as const;
 };
 
+const ownerActor = (request: FastifyRequest) => {
+  const currentActor = actor(request);
+  if (currentActor.role !== 'owner') {
+    throw Object.assign(new Error('Business owner access is required.'), { statusCode: 403, code: 'OWNER_ACCESS_REQUIRED' });
+  }
+  return currentActor;
+};
+
 export async function conversationRoutes(app: FastifyInstance) {
   const db = getDatabase();
   const service = new ConversationService();
   const channelService = new ConversationChannelService();
   const deliveryService = new ConversationDeliveryService();
   const whatsappService = new WhatsAppMessagingService();
+  const campaignService = new WhatsAppCampaignService();
 
   app.get('/', async request => {
     const query = ConversationListQuerySchema.parse(request.query);
@@ -66,11 +80,25 @@ export async function conversationRoutes(app: FastifyInstance) {
   });
 
   app.post('/whatsapp/templates/sync', async request => {
-    const currentActor = actor(request);
-    if (currentActor.role !== 'owner') {
-      throw Object.assign(new Error('Business owner access is required to sync WhatsApp templates.'), { statusCode: 403, code: 'WHATSAPP_TEMPLATE_SYNC_FORBIDDEN' });
-    }
+    const currentActor = ownerActor(request);
     return { data: await whatsappService.syncTemplates(currentActor.tenantId) };
+  });
+
+  app.get('/whatsapp/campaigns', async request => {
+    const currentActor = ownerActor(request);
+    return WhatsAppCampaignListResponseSchema.parse(await campaignService.list(currentActor.tenantId));
+  });
+
+  app.post('/whatsapp/campaigns', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const currentActor = ownerActor(request);
+    const input = CreateWhatsAppCampaignSchema.parse(request.body);
+    return reply.code(201).send({ data: await campaignService.create(currentActor.tenantId, currentActor.userId, input) });
+  });
+
+  app.post('/whatsapp/campaigns/:campaignId/cancel', async request => {
+    const currentActor = ownerActor(request);
+    const { campaignId } = CampaignIdParamsSchema.parse(request.params);
+    return { data: await campaignService.cancel(currentActor.tenantId, currentActor.userId, campaignId) };
   });
 
   app.get('/:conversationId/whatsapp/templates', async request => {
@@ -81,10 +109,7 @@ export async function conversationRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:conversationId/whatsapp/marketing-consent', async request => {
-    const currentActor = actor(request);
-    if (currentActor.role !== 'owner') {
-      throw Object.assign(new Error('Business owner access is required to change WhatsApp marketing consent.'), { statusCode: 403, code: 'WHATSAPP_CONSENT_FORBIDDEN' });
-    }
+    const currentActor = ownerActor(request);
     const { conversationId } = ConversationIdParamsSchema.parse(request.params);
     await service.get(currentActor, conversationId);
     const input = UpdateWhatsAppMarketingConsentSchema.parse(request.body);
