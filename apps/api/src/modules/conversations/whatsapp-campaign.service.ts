@@ -282,6 +282,25 @@ export class WhatsAppCampaignService {
     return sql`true`;
   }
 
+  private recentMarketingExists(tenantExpression: any, phoneExpression: any) {
+    return sql`
+      exists (
+        select 1
+        from conversation_messages recent_message
+        join conversations recent_conversation
+          on recent_conversation.id=recent_message.conversation_id
+         and recent_conversation.tenant_id=recent_message.tenant_id
+        where recent_message.tenant_id=${tenantExpression}::uuid
+          and recent_message.channel_type='WHATSAPP'
+          and recent_message.direction='OUTBOUND'
+          and recent_message.status<>'FAILED'
+          and recent_message.metadata_json#>>'{whatsappTemplate,category}'='MARKETING'
+          and recent_conversation.customer_phone=${phoneExpression}
+          and recent_message.created_at>=now()-${FREQUENCY_CAP_DAYS} * interval '1 day'
+      )
+    `;
+  }
+
   private async dispatchCampaign(campaign: any) {
     const policy = await this.requireScale(String(campaign.tenantId));
     const used = await this.usedThisMonth(String(campaign.tenantId));
@@ -290,6 +309,34 @@ export class WhatsAppCampaignService {
     if (capacity <= 0) throw fail(409, 'WHATSAPP_MARKETING_MONTHLY_LIMIT_REACHED', 'The workspace has reached its monthly WhatsApp marketing limit.');
 
     const audienceCondition = this.audienceCondition(String(campaign.audienceType) as WhatsAppCampaignAudience);
+    const frequencyBlocked = this.recentMarketingExists(sql`consent.tenant_id`, sql`consent.recipient_phone`);
+    await this.db.execute(sql`
+      insert into whatsapp_marketing_campaign_recipients(
+        tenant_id, campaign_id, consent_id, client_id, recipient_phone,
+        customer_name, status, skip_reason, created_at, updated_at
+      )
+      select consent.tenant_id,
+             ${String(campaign.id)}::uuid,
+             consent.id,
+             consent.client_id,
+             consent.recipient_phone,
+             coalesce(client.name, 'Customer'),
+             'SKIPPED',
+             'FREQUENCY_CAP',
+             now(),
+             now()
+      from whatsapp_marketing_consents consent
+      left join clients client
+        on client.id=consent.client_id and client.tenant_id=consent.tenant_id
+      where consent.tenant_id=${String(campaign.tenantId)}::uuid
+        and consent.status='OPTED_IN'
+        and ${audienceCondition}
+        and ${frequencyBlocked}
+      order by consent.updated_at
+      limit ${Math.max(1, Math.min(Number(campaign.recipientLimit || 500), 1000))}
+      on conflict (campaign_id, recipient_phone) do nothing
+    `);
+
     const recipients = await this.db.execute(sql`
       select consent.id "consentId",
              consent.client_id "clientId",
@@ -301,20 +348,7 @@ export class WhatsAppCampaignService {
       where consent.tenant_id=${String(campaign.tenantId)}::uuid
         and consent.status='OPTED_IN'
         and ${audienceCondition}
-        and not exists (
-          select 1
-          from conversation_messages recent_message
-          join conversations recent_conversation
-            on recent_conversation.id=recent_message.conversation_id
-           and recent_conversation.tenant_id=recent_message.tenant_id
-          where recent_message.tenant_id=consent.tenant_id
-            and recent_message.channel_type='WHATSAPP'
-            and recent_message.direction='OUTBOUND'
-            and recent_message.status<>'FAILED'
-            and recent_message.metadata_json#>>'{whatsappTemplate,category}'='MARKETING'
-            and recent_conversation.customer_phone=consent.recipient_phone
-            and recent_message.created_at>=now()-${FREQUENCY_CAP_DAYS} * interval '1 day'
-        )
+        and not ${frequencyBlocked}
       order by consent.consented_at nulls last, consent.updated_at
       limit ${capacity}
     `);
