@@ -4,7 +4,7 @@ import {
   DEFAULT_DEPOSIT_PERCENTAGE,
   normaliseCommitmentPaymentMode,
   normaliseDepositPercentage,
-} from './BookingPaymentExperienceEnhancer.js';
+} from './booking-payment-policy.js';
 
 describe('booking payment experience', () => {
   it('keeps only commitment-first payment modes', () => {
