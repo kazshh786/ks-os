@@ -45,9 +45,9 @@ export function AvailabilityCalendar({
   primary,
   onChange,
 }: AvailabilityCalendarProps) {
-  const minimum = localDate(minimumDate);
-  const maximum = localDate(maximumDate);
-  const selected = localDate(value);
+  const minimum = useMemo(() => localDate(minimumDate), [minimumDate]);
+  const maximum = useMemo(() => localDate(maximumDate), [maximumDate]);
+  const selected = useMemo(() => localDate(value), [value]);
   const [visibleMonth, setVisibleMonth] = useState(startOfMonth(selected));
   const [availableDates, setAvailableDates] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -55,13 +55,13 @@ export function AvailabilityCalendar({
 
   useEffect(() => {
     if (monthKey(selected) !== monthKey(visibleMonth)) setVisibleMonth(startOfMonth(selected));
-  }, [value]);
+  }, [selected, visibleMonth]);
 
   const range = useMemo(() => {
     const from = isBefore(startOfMonth(visibleMonth), minimum) ? minimum : startOfMonth(visibleMonth);
     const to = isAfter(endOfMonth(visibleMonth), maximum) ? maximum : endOfMonth(visibleMonth);
     return { from: format(from, 'yyyy-MM-dd'), to: format(to, 'yyyy-MM-dd') };
-  }, [maximumDate, minimumDate, visibleMonth]);
+  }, [maximum, minimum, visibleMonth]);
 
   useEffect(() => {
     if (!serviceId || isAfter(localDate(range.from), localDate(range.to))) {
@@ -84,15 +84,7 @@ export function AvailabilityCalendar({
         if (!response.ok) throw new Error('Availability calendar could not be loaded.');
         return response.json() as Promise<AvailabilityResponse>;
       })
-      .then(body => {
-        const dates = new Set(body.availableDates || []);
-        setAvailableDates(dates);
-        const selectedValue = format(selected, 'yyyy-MM-dd');
-        if (isSameMonth(selected, visibleMonth) && !dates.has(selectedValue)) {
-          const firstAvailable = [...dates].sort()[0];
-          if (firstAvailable) onChange(firstAvailable);
-        }
-      })
+      .then(body => setAvailableDates(new Set(body.availableDates || [])))
       .catch(error => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         setLoadFailed(true);
