@@ -171,7 +171,7 @@ test('omnichannel and WhatsApp messaging migrations are registered and API-only'
   assert.match(omnichannelMigration, /REVOKE ALL ON communication_channels, conversations, conversation_messages, conversation_attachments FROM anon, authenticated/);
 
   const tierMessaging = MIGRATION_MANIFEST.find(item => item.filename === '20260801033000_whatsapp_tier_messaging.sql');
-  assert.equal(tierMessaging?.order, 56);
+  assert.equal(tierMessaging?.order, 57);
   const tierMigration = readFileSync(new URL('../../../packages/database/migrations/20260801033000_whatsapp_tier_messaging.sql', import.meta.url), 'utf8');
   assert.match(tierMigration, /whatsapp_service_window_expires_at/);
   assert.match(tierMigration, /whatsapp_marketing_monthly_message_limit/);
