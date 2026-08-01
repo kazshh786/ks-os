@@ -1,3 +1,4 @@
+# Repair trigger: apply the generated POS online-payment integration to the current main branch.
 name: Apply POS online payments
 
 on:
