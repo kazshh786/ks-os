@@ -5,6 +5,7 @@ import { PublicBookingFlow } from '../features/bookings/PublicBookingFlow.js';
 import { getDataProvider } from '../data/data-provider.js';
 import { currentPublicBookingIdentifier } from '../lib/workspace-hostname.js';
 import './BookingWizardPage.css';
+import './BookingWorkspaceViewport.css';
 
 type CatalogueService = { category?: string | null };
 type Catalogue = { services?: CatalogueService[] };
