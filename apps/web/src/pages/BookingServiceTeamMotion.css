@@ -138,7 +138,11 @@
     height: 1.75rem;
   }
 
-  .booking-step-column nav[aria-label='Booking progress'] li > div:first-child > span:not(:first-child) {
+  .booking-step-column nav[aria-label='Booking progress'] li > div:first-child > span:nth-child(2) {
+    display: none;
+  }
+
+  .booking-step-column nav[aria-label='Booking progress'] li > div:first-child > span:last-child {
     display: block;
     width: 100%;
     min-width: 0;
