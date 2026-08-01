@@ -12,6 +12,7 @@ import {
   templateVariableCount,
   WhatsAppComposerControls,
 } from '../features/conversations/WhatsAppComposerControls.js';
+import { WhatsAppCampaignManager } from './WhatsAppCampaignManager.js';
 
 export function WhatsAppMessagingConsole() {
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
@@ -112,10 +113,10 @@ export function WhatsAppMessagingConsole() {
     }
   };
 
-  return <section aria-labelledby="whatsapp-tier-console-heading" className="space-y-4">
+  return <section aria-labelledby="whatsapp-tier-console-heading" className="space-y-8">
     <div>
       <h2 id="whatsapp-tier-console-heading" className="text-xl font-black text-slate-950">WhatsApp messaging controls</h2>
-      <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">Core replies only inside the 24-hour service window. Growth unlocks approved utility templates. Scale unlocks consent-controlled marketing templates. Meta charges remain on the business-owned WhatsApp account.</p>
+      <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">Core replies only inside the 24-hour service window. Growth unlocks approved utility templates. Scale unlocks consent-controlled marketing templates and campaigns. Meta charges remain on the business-owned WhatsApp account.</p>
     </div>
 
     {(error || notice) && <div role={error ? 'alert' : 'status'} className={`rounded-2xl border p-4 text-sm font-bold ${error ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{error || notice}</div>}
@@ -148,5 +149,7 @@ export function WhatsAppMessagingConsole() {
         </div>
       </div>
     </article>
+
+    <WhatsAppCampaignManager />
   </section>;
 }
