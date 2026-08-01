@@ -76,7 +76,9 @@ export async function conversationRoutes(app: FastifyInstance) {
       throw Object.assign(new Error('Unauthorized'), { statusCode: 401, code: 'UNAUTHENTICATED' });
     }
     const requestedLimit = Number((request.query as { limit?: string }).limit || 20);
-    return { data: await deliveryService.process(Number.isFinite(requestedLimit) ? requestedLimit : 20) };
+    const campaigns = await campaignService.processDueCampaigns(3);
+    const delivery = await deliveryService.process(Number.isFinite(requestedLimit) ? requestedLimit : 20);
+    return { data: { ...delivery, campaigns } };
   });
 
   app.post('/whatsapp/templates/sync', async request => {
