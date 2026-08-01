@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
+import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { BookingPageSlugSchema, ERROR_CODES } from '@ks-os/contracts';
+import { getDatabase, services } from '@ks-os/database';
 import { calculateAvailability } from '../../modules/availability/availability.service.js';
 import { BookingPageService } from '../../modules/bookings/booking-page.service.js';
 
@@ -34,6 +36,34 @@ function datesBetween(from: string, to: string) {
 
 export default async function publicAvailabilitySummaryRoutes(fastify: FastifyInstance) {
   const bookingPageService = new BookingPageService();
+
+  fastify.get('/:subdomain/service-categories', {
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { subdomain } = request.params as { subdomain: string };
+    if (!BookingPageSlugSchema.safeParse(subdomain).success) {
+      return reply.code(400).send({ error: { code: 'INVALID_SUBDOMAIN', message: 'Invalid booking-page address.' } });
+    }
+
+    const resolved = await bookingPageService.resolvePublicPage(subdomain, request.headers.host);
+    if (!resolved) {
+      return reply.code(404).send({ error: { code: ERROR_CODES.BOOKING_SITE_NOT_FOUND, message: 'Booking site not found.' } });
+    }
+
+    const allowedIds = resolved.page.allowedServiceIds;
+    const rows = await getDatabase().select({
+      id: services.id,
+      category: services.category,
+    }).from(services).where(and(
+      eq(services.tenantId, resolved.tenant.id),
+      eq(services.isActive, true),
+      allowedIds.length ? inArray(services.id, allowedIds) : undefined,
+    ));
+
+    return reply
+      .header('cache-control', 'private, max-age=60')
+      .send({ services: rows.map(row => ({ id: row.id, category: row.category || 'General' })) });
+  });
 
   fastify.get('/:subdomain/available-dates', {
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
