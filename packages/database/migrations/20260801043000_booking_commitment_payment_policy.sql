@@ -11,10 +11,10 @@ SET payment_settings = jsonb_set(
   jsonb_set(
     COALESCE(payment_settings, '{}'::jsonb),
     '{mode}',
-    to_jsonb(CASE
+    to_jsonb((CASE
       WHEN payment_settings->>'mode' = 'FULL' THEN 'FULL'
       ELSE 'DEPOSIT'
-    END),
+    END)::text),
     true
   ),
   '{depositPercentage}',
@@ -29,8 +29,11 @@ SET payment_settings = jsonb_set(
 )
 WHERE payment_settings IS NULL
    OR payment_settings->>'mode' NOT IN ('DEPOSIT', 'FULL')
-   OR COALESCE(payment_settings->>'depositPercentage', '') !~ '^[0-9]+([.][0-9]+)?$'
-   OR (payment_settings->>'depositPercentage')::numeric NOT BETWEEN 1 AND 99;
+   OR CASE
+     WHEN COALESCE(payment_settings->>'depositPercentage', '') ~ '^[0-9]+([.][0-9]+)?$'
+       THEN (payment_settings->>'depositPercentage')::numeric NOT BETWEEN 1 AND 99
+     ELSE true
+   END;
 
 -- The booking-page payment setting is authoritative. This removes the legacy
 -- per-service override from existing data; new services already default false.
