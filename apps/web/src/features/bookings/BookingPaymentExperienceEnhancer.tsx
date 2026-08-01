@@ -30,8 +30,11 @@ function setControlledValue(element: HTMLSelectElement | HTMLInputElement, value
 
 function replaceLeadingLabelText(label: HTMLLabelElement, nextText: string) {
   const textNode = [...label.childNodes].find(node => node.nodeType === Node.TEXT_NODE);
-  if (textNode) textNode.textContent = nextText;
-  else label.prepend(document.createTextNode(nextText));
+  if (textNode) {
+    if (textNode.textContent !== nextText) textNode.textContent = nextText;
+    return;
+  }
+  label.prepend(document.createTextNode(nextText));
 }
 
 function upsertHelper(label: HTMLLabelElement, key: string, text: string) {
@@ -42,7 +45,7 @@ function upsertHelper(label: HTMLLabelElement, key: string, text: string) {
     helper.className = 'mt-1 block text-xs font-normal leading-5 text-slate-500';
     label.append(helper);
   }
-  helper.textContent = text;
+  if (helper.textContent !== text) helper.textContent = text;
 }
 
 function enhanceBookingPaymentSettings(root: ParentNode = document) {
@@ -61,8 +64,12 @@ function enhanceBookingPaymentSettings(root: ParentNode = document) {
     const supported = option.value === 'DEPOSIT' || option.value === 'FULL';
     option.hidden = !supported;
     option.disabled = !supported;
-    if (option.value === 'DEPOSIT') option.textContent = 'Deposit first';
-    if (option.value === 'FULL') option.textContent = 'Full payment upfront';
+    const nextLabel = option.value === 'DEPOSIT'
+      ? 'Deposit first'
+      : option.value === 'FULL'
+        ? 'Full payment upfront'
+        : option.textContent;
+    if (option.textContent !== nextLabel) option.textContent = nextLabel;
   }
 
   const paymentLabel = paymentSelect.closest('label');
@@ -133,8 +140,9 @@ function enhanceDepositBalanceSummary(root: ParentNode = document) {
       depositRow.after(balanceRow);
     }
     const value = calculateOutstandingBalance(total, deposit);
+    const nextValue = formatDisplayedMoney(totalText, value);
     const output = balanceRow.querySelector('dd');
-    if (output) output.textContent = formatDisplayedMoney(totalText, value);
+    if (output && output.textContent !== nextValue) output.textContent = nextValue;
   }
 }
 
