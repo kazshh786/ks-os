@@ -129,3 +129,5 @@ This feature is a **both** deployment:
 - VPS: code exchange, encrypted token storage, asset discovery, webhook subscriptions, service-window enforcement, template sync, consent checks, campaign dispatch and channel delivery.
 
 Database migration `20260801033000_whatsapp_tier_messaging.sql` is required. It adds the service-window timestamp, monthly marketing limit, approved-template cache, marketing-consent evidence, scheduled campaigns and campaign recipient delivery records.
+
+The pull request must pass the full CI and security suite against the latest `main` before it is merged.
