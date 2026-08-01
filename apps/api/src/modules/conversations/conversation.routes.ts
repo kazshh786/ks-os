@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { conversationMessages, conversations, getDatabase } from '@ks-os/database';
 import {
   CommunicationChannelListResponseSchema,
+  ConversationChannelSchema,
   ConversationDetailResponseSchema,
   ConversationIdParamsSchema,
   ConversationListQuerySchema,
@@ -142,7 +143,7 @@ export async function conversationRoutes(app: FastifyInstance) {
       .from(conversations)
       .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, currentActor.tenantId)))
       .limit(1);
-    const resolvedChannel = input.channel || conversation?.channel;
+    const resolvedChannel = input.channel || (conversation?.channel ? ConversationChannelSchema.parse(conversation.channel) : undefined);
     const prepared = resolvedChannel === 'WHATSAPP'
       ? await whatsappService.validateSend(currentActor.tenantId, conversationId, { ...input, channel: 'WHATSAPP' })
       : { metadata: { source: 'KS_OS_INBOX' } };
