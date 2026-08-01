@@ -53,6 +53,7 @@ export class ConversationDeliveryService {
       credentialsReference: communicationChannels.credentialsReference,
       tokenCiphertext: integrationConnections.tokenCiphertext,
       tenantName: tenants.name,
+      packageTier: tenants.packageTier,
       senderDisplayName: tenants.senderDisplayName,
       replyToEmail: tenants.replyToEmail,
     }).from(conversationMessages)
@@ -158,8 +159,26 @@ export class ConversationDeliveryService {
     const template = metadata.whatsappTemplate as {
       name?: string;
       language?: string;
+      category?: string;
       components?: unknown[];
     } | undefined;
+
+    if (String(template?.category || '').toUpperCase() === 'MARKETING') {
+      if (String(context.packageTier || '').toUpperCase() !== 'SCALE') {
+        throw new DeliveryError('WHATSAPP_MARKETING_REQUIRES_SCALE', true);
+      }
+      const phone = `+${String(context.customerPhone || recipient).replace(/\D/g, '')}`;
+      const consent = await this.db.execute(sql`
+        select status
+        from whatsapp_marketing_consents
+        where tenant_id=${context.tenantId}::uuid and recipient_phone=${phone}
+        limit 1
+      `);
+      if (String((consent.rows[0] as any)?.status || '') !== 'OPTED_IN') {
+        throw new DeliveryError('WHATSAPP_MARKETING_CONSENT_REVOKED', true);
+      }
+    }
+
     const requestBody: Record<string, unknown> = template?.name && template.language
       ? {
           messaging_product: 'whatsapp',
