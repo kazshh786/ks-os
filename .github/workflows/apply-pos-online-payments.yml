@@ -1,18 +1,16 @@
-# Repair trigger: apply the generated POS online-payment integration to the current main branch.
+# Repair trigger: apply the generated POS online-payment integration from this branch only.
 name: Apply POS online payments
 
 on:
   push:
     branches: [feature/pos-online-payments]
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: write
 
 concurrency:
-  group: apply-pos-online-payments
-  cancel-in-progress: true
+  group: apply-pos-online-payments-branch
+  cancel-in-progress: false
 
 jobs:
   apply-and-verify:
@@ -38,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.13.1
