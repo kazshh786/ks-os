@@ -6,17 +6,27 @@ import { AccountingExportQuerySchema,CreateApiCredentialSchema,CreateCalendarFee
 import { env } from '../../config/env.js';
 import { mailboxOauthCallbackRoutes, mailboxRoutes } from '../mailboxes/mailbox.routes.js';
 import { IntegrationsService } from './integrations.service.js';
+import { MetaConnectionsService } from './meta-connections.service.js';
 
 const Id=z.object({id:z.string().uuid()});const FeedToken=z.object({token:z.string().regex(/^cal_[A-Za-z0-9_-]{40,}$/)});
+const MetaConnectSchema=z.object({
+ code:z.string().min(10).max(4096),
+ wabaId:z.string().min(1).max(255).optional(),
+ phoneNumberId:z.string().min(1).max(255).optional(),
+ businessId:z.string().min(1).max(255).optional(),
+}).strict();
 const owner=(r:FastifyRequest)=>{r.requireAuth();if(!r.auth||r.auth.role!=='owner'||r.auth.supportMode)throw Object.assign(new Error('Business owner access is required.'),{statusCode:403,code:'INTEGRATION_FORBIDDEN'});return r.auth;};
 const key=(r:FastifyRequest)=>{const value=r.headers.authorization;if(!value?.startsWith('Bearer '))throw Object.assign(new Error('API key required'),{statusCode:401,code:'API_KEY_REQUIRED'});return value.slice(7);};
 
-export async function integrationRoutes(app:FastifyInstance){const service=new IntegrationsService();
+export async function integrationRoutes(app:FastifyInstance){const service=new IntegrationsService();const meta=new MetaConnectionsService();
  app.register(mailboxOauthCallbackRoutes,{prefix:'/mailboxes/oauth'});
  app.register(mailboxRoutes);
  app.get('/integrations',async r=>{const a=owner(r);return{data:await service.list(a.tenantId)}});
  app.post('/integrations/oauth/start',{config:{rateLimit:{max:10,timeWindow:'1 minute'}}},async r=>{const a=owner(r),v=OAuthStartSchema.parse(r.body);return{data:{authorizationUrl:service.oauthUrl(a.tenantId,a.tenantUserId,v.provider,v.returnPath)}}});
  app.delete('/integrations/:id',async r=>{const a=owner(r);return{data:await service.disconnect(a.tenantId,a.tenantUserId,Id.parse(r.params).id)}});
+ app.get('/integrations/meta',async r=>{const a=owner(r);return{data:await meta.status(a.tenantId)}});
+ app.post('/integrations/meta/connect',{config:{rateLimit:{max:5,timeWindow:'5 minutes'}}},async r=>{const a=owner(r);return{data:await meta.connect(a.tenantId,a.tenantUserId,MetaConnectSchema.parse(r.body))}});
+ app.delete('/integrations/meta',async r=>{const a=owner(r);return{data:await meta.disconnect(a.tenantId,a.tenantUserId)}});
  app.post('/integrations/calendar-feeds',async(r,reply)=>{const a=owner(r);return reply.code(201).send({data:await service.createFeed(a.tenantId,a.tenantUserId,CreateCalendarFeedSchema.parse(r.body),env.PUBLIC_APP_ORIGIN||'http://localhost:5000')})});
  app.post('/integrations/calendar-feeds/:id/rotate',async r=>{const a=owner(r);return{data:await service.rotateFeed(a.tenantId,a.tenantUserId,Id.parse(r.params).id,env.PUBLIC_APP_ORIGIN||'http://localhost:5000')}});
  app.delete('/integrations/calendar-feeds/:id',async(r,reply)=>{const a=owner(r);await service.revokeFeed(a.tenantId,a.tenantUserId,Id.parse(r.params).id);return reply.code(204).send()});
