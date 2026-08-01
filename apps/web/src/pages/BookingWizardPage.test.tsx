@@ -23,10 +23,10 @@ function renderPage(path = '/book/north-star') {
 }
 
 describe('BookingWizardPage', () => {
-  it('leads with the booking outcome and conversion reassurance', () => {
+  it('keeps the split-view proposition and conversion reassurance', () => {
     renderPage();
 
-    expect(screen.getByRole('heading', { name: 'Choose a service and book a live appointment time' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Book the right service in a few clear steps.' })).toBeInTheDocument();
     expect(screen.getByText('Live availability')).toBeInTheDocument();
     expect(screen.getByText('Clear total and commitment')).toBeInTheDocument();
     expect(screen.getByText('No account required')).toBeInTheDocument();

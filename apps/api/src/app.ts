@@ -12,6 +12,7 @@ import staffRoutes from './routes/staff.js';
 import bookingsRoutes from './modules/bookings/booking.routes.js';
 import dashboardRoutes from './routes/dashboard.js';
 import publicBookingRoutes from './routes/public/booking.js';
+import publicAvailabilitySummaryRoutes from './routes/public/availability-summary.js';
 import clientsRoutes from './routes/clients.js';
 import posModuleRoutes from './modules/pos/index.js';
 import fastifyRawBody from 'fastify-raw-body';
@@ -137,6 +138,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(registerRequestContext);
 
   fastify.register(publicBookingRoutes, { prefix: '/api/v1/public' });
+  fastify.register(publicAvailabilitySummaryRoutes, { prefix: '/api/v1/public' });
   fastify.register(publicCalendarRoutes, { prefix: '/api/v1/public' });
   fastify.register(publicFormRoutes, { prefix: '/api/v1/public/forms' });
   fastify.register(publicReputationRoutes, { prefix: '/api/v1/public/review-invitations' });

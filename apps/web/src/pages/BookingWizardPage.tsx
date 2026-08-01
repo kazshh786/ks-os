@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { CalendarCheck2, CheckCircle2, LockKeyhole, ReceiptText, Sparkles } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router';
 import { PublicBookingFlow } from '../features/bookings/PublicBookingFlow.js';
+import { ensurePublicCatalogCategoryEnrichment } from '../features/bookings/public-catalog-category-enrichment.js';
 import { getDataProvider } from '../data/data-provider.js';
 import { currentPublicBookingIdentifier } from '../lib/workspace-hostname.js';
 import './BookingWizardPage.css';
+import './BookingWorkspaceViewport.css';
 
 type CatalogueService = { category?: string | null };
 type Catalogue = { services?: CatalogueService[] };
@@ -28,6 +30,7 @@ const conversionPromises = [
 ] as const;
 
 export function BookingWizardPage() {
+  ensurePublicCatalogCategoryEnrichment();
   const { subdomain } = useParams();
   const [search] = useSearchParams();
   const bookingIdentifier = subdomain || currentPublicBookingIdentifier();

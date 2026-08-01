@@ -1,0 +1,13 @@
+@media (min-width: 1100px) {
+  .booking-page-grid {
+    min-height: 0;
+  }
+
+  .booking-story-panel {
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+}
