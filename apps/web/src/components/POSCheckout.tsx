@@ -16,6 +16,7 @@ import {
   Minus,
   Package,
   Plus,
+  QrCode,
   Radio,
   ReceiptText,
   RefreshCw,
@@ -25,6 +26,7 @@ import {
   Smartphone,
   Sparkles,
   UserRound,
+  WalletCards,
   Wifi,
   X,
 } from 'lucide-react';
@@ -33,6 +35,8 @@ import type {
   CheckoutRequest,
   CheckoutResponse,
   PosConfig,
+  PosStripeOnlinePaymentSession,
+  PosStripeOnlinePaymentStatus,
   PosStripePaymentStatus,
   PosStripeReader,
   Product,
@@ -40,6 +44,7 @@ import type {
 import type { BusinessTenant, POSItem } from '../data/types.js';
 import { getDataProvider } from '../data/data-provider.js';
 import { fetchWithAuth } from '../api/client.js';
+import { EmbeddedPosCheckout, PaymentLinkPanel } from './PosOnlinePayment.js';
 
 interface POSCheckoutProps {
   tenant: BusinessTenant;
@@ -47,8 +52,8 @@ interface POSCheckoutProps {
   onCheckoutCompleted: () => void;
 }
 
-type PaymentChoice = 'READER' | 'TAP_TO_PAY' | 'MANUAL_TERMINAL';
-type PaymentStage = 'choose' | 'instructions' | 'sending' | 'waiting' | 'finalising';
+type PaymentChoice = 'READER' | 'ONLINE' | 'PAYMENT_LINK' | 'TAP_TO_PAY' | 'MANUAL_TERMINAL';
+type PaymentStage = 'choose' | 'instructions' | 'sending' | 'waiting' | 'online' | 'finalising';
 
 interface PendingStripeSale {
   paymentIntentId: string;
@@ -111,6 +116,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
   const [paymentMessage, setPaymentMessage] = useState('');
   const [manualConfirmed, setManualConfirmed] = useState(false);
   const [manualReference, setManualReference] = useState('');
+  const [onlineSession, setOnlineSession] = useState<PosStripeOnlinePaymentSession | null>(null);
   const [completedSale, setCompletedSale] = useState<CheckoutResponse['data'] | null>(null);
 
   const mountedRef = useRef(true);
@@ -268,6 +274,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
   const finaliseSale = async (
     stripePayment: NonNullable<CheckoutRequest['stripePayment']>,
     source?: PendingStripeSale,
+    paymentMethod: 'STRIPE_TERMINAL' | 'STRIPE_ONLINE' = 'STRIPE_TERMINAL',
   ) => {
     if (finalisingRef.current) return;
     const appointmentId = source?.appointmentId || selectedAppointmentId;
@@ -282,7 +289,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
       const response = await getDataProvider().completeCheckout({
         idempotencyKey: source?.idempotencyKey || checkoutIdempotencyRef.current,
         appointmentId,
-        paymentMethod: 'STRIPE_TERMINAL',
+        paymentMethod,
         tipAmountInCents: source?.tipAmountInCents ?? tipAmountInCents,
         purchasedProducts: source?.purchasedProducts || purchasedProducts,
         stripePayment,
@@ -384,6 +391,78 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
     }
   };
 
+
+const pollOnlinePayment = async (session: PosStripeOnlinePaymentSession) => {
+  setPaymentMessage('Waiting for Stripe to confirm the online payment…');
+  for (let attempt = 0; attempt < 620 && mountedRef.current; attempt += 1) {
+    try {
+      const response = await apiRequest<{ success: true; data: PosStripeOnlinePaymentStatus }>(
+        `/api/v1/pos/stripe/online-sessions/${encodeURIComponent(session.sessionId)}`,
+      );
+      if (response.data.succeeded && response.data.paymentIntentId) {
+        setPaymentMessage('Payment approved. Completing the sale…');
+        await finaliseSale({
+          mode: 'ONLINE_CHECKOUT',
+          paymentIntentId: response.data.paymentIntentId,
+        }, undefined, 'STRIPE_ONLINE');
+        return;
+      }
+      if (response.data.failed || response.data.expired) {
+        setOnlineSession(null);
+        setPaymentStage('choose');
+        setError(response.data.failureMessage || (response.data.expired
+          ? 'The payment link expired. Create a new one to try again.'
+          : 'Stripe did not approve the online payment.'));
+        return;
+      }
+    } catch (statusError) {
+      setPaymentMessage(statusError instanceof Error
+        ? `${statusError.message} Retrying safely…`
+        : 'Checking Stripe again…');
+    }
+    await new Promise(resolve => window.setTimeout(resolve, 3_000));
+  }
+  if (mountedRef.current) {
+    setOnlineSession(null);
+    setPaymentStage('choose');
+    setError('Stripe is still processing this payment. Check Stripe before starting another charge.');
+  }
+};
+
+const startOnlinePayment = async (presentation: 'EMBEDDED' | 'HOSTED') => {
+  if (!selectedAppointmentId || !serverTotals || !config?.stripe.onlinePaymentsReady) return;
+  setPaymentStage('sending');
+  setPaymentMessage(presentation === 'EMBEDDED'
+    ? 'Opening secure card payment…'
+    : 'Creating a secure payment link…');
+  setError('');
+  try {
+    const response = await apiRequest<{ success: true; data: PosStripeOnlinePaymentSession }>(
+      '/api/v1/pos/stripe/online-sessions',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          appointmentId: selectedAppointmentId,
+          idempotencyKey: checkoutIdempotencyRef.current,
+          presentation,
+          tipAmountInCents,
+          purchasedProducts,
+        }),
+      },
+    );
+    if (!mountedRef.current) return;
+    setOnlineSession(response.data);
+    setPaymentStage('online');
+    setPaymentMessage(presentation === 'EMBEDDED'
+      ? 'Complete payment below. KS OS will finish the sale automatically.'
+      : 'Waiting for the customer to pay through the secure link…');
+    void pollOnlinePayment(response.data);
+  } catch (startError) {
+    setPaymentStage('choose');
+    setError(startError instanceof Error ? startError.message : 'The online payment could not be started.');
+  }
+};
+
   const confirmManualStripePayment = async () => {
     if (!manualConfirmed) return;
     await finaliseSale({
@@ -395,11 +474,12 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
 
   const openPayment = () => {
     if (!selectedAppointmentId || !serverTotals || !config?.stripe.ready) return;
-    setPaymentChoice(onlineReaders.length > 0 ? 'READER' : 'TAP_TO_PAY');
+    setPaymentChoice(onlineReaders.length > 0 ? 'READER' : config.stripe.onlinePaymentsReady ? 'ONLINE' : 'TAP_TO_PAY');
     setPaymentStage('choose');
     setPaymentMessage('');
     setManualConfirmed(false);
     setManualReference('');
+    setOnlineSession(null);
     setError('');
     setPaymentOpen(true);
   };
@@ -413,6 +493,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
     setServerTotals(null);
     setManualConfirmed(false);
     setManualReference('');
+    setOnlineSession(null);
     checkoutIdempotencyRef.current = crypto.randomUUID();
     await refreshCandidates().catch(() => undefined);
   };
@@ -683,7 +764,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
           <div className="max-h-[96vh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:max-w-2xl sm:rounded-3xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-6">
               <div><p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-500">Stripe payment</p><h2 id="payment-title" className="mt-1 text-xl font-black text-slate-950">Take {money(grandTotal, currency)}</h2></div>
-              <button type="button" onClick={() => paymentStage === 'choose' || paymentStage === 'instructions' ? setPaymentOpen(false) : undefined} disabled={paymentStage === 'sending' || paymentStage === 'waiting' || paymentStage === 'finalising'} className="grid h-11 w-11 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-30" aria-label="Close payment"><X className="h-5 w-5" /></button>
+              <button type="button" onClick={() => paymentStage === 'choose' || paymentStage === 'instructions' ? setPaymentOpen(false) : undefined} disabled={paymentStage === 'sending' || paymentStage === 'waiting' || paymentStage === 'online' || paymentStage === 'finalising'} className="grid h-11 w-11 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-30" aria-label="Close payment"><X className="h-5 w-5" /></button>
             </div>
 
             <div className="space-y-5 p-5 sm:p-6">
@@ -699,6 +780,13 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
                     <button type="button" onClick={() => setPaymentChoice('READER')} disabled={onlineReaders.length === 0} className={`flex min-h-[92px] w-full items-center gap-4 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${paymentChoice === 'READER' ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}>
                       <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-indigo-600 text-white"><CreditCard className="h-5 w-5" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-900">Send to Stripe Terminal</p><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700">Automatic</span></div><p className="mt-1 text-xs leading-5 text-slate-500">The POS sends the exact amount to a supported online Stripe reader and confirms it directly with Stripe.</p></div>{paymentChoice === 'READER' && <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo-600" />}
                     </button>
+
+<button type="button" onClick={() => setPaymentChoice('ONLINE')} disabled={!config?.stripe.onlinePaymentsReady} className={`flex min-h-[92px] w-full items-center gap-4 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${paymentChoice === 'ONLINE' ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}>
+  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-violet-600 text-white"><WalletCards className="h-5 w-5" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-900">Pay on this screen</p><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700">Automatic</span></div><p className="mt-1 text-xs leading-5 text-slate-500">Open Stripe's secure card form inside the POS. Apple Pay or Google Pay appears when supported.</p></div>{paymentChoice === 'ONLINE' && <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo-600" />}
+</button>
+<button type="button" onClick={() => setPaymentChoice('PAYMENT_LINK')} disabled={!config?.stripe.onlinePaymentsReady} className={`flex min-h-[92px] w-full items-center gap-4 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${paymentChoice === 'PAYMENT_LINK' ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}>
+  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-cyan-600 text-white"><QrCode className="h-5 w-5" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-900">Payment link or QR code</p><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700">Automatic</span></div><p className="mt-1 text-xs leading-5 text-slate-500">Let the customer scan a QR code or open a secure Stripe link on their own phone.</p></div>{paymentChoice === 'PAYMENT_LINK' && <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo-600" />}
+</button>
                     <button type="button" onClick={() => setPaymentChoice('TAP_TO_PAY')} className={`flex min-h-[92px] w-full items-center gap-4 rounded-2xl border p-4 text-left transition ${paymentChoice === 'TAP_TO_PAY' ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}>
                       <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-slate-950 text-white"><Smartphone className="h-5 w-5" /></div><div className="min-w-0 flex-1"><p className="font-black text-slate-900">Tap to Pay in Stripe</p><p className="mt-1 text-xs leading-5 text-slate-500">Enter the displayed amount in the Stripe Dashboard mobile app, take the contactless payment, then confirm it here.</p></div>{paymentChoice === 'TAP_TO_PAY' && <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo-600" />}
                     </button>
@@ -711,7 +799,7 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
                     <div><label htmlFor="stripe-reader" className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-400">Stripe reader</label><div className="flex gap-2"><select id="stripe-reader" value={selectedReaderId} onChange={event => setSelectedReaderId(event.target.value)} className="min-h-12 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100">{onlineReaders.map(reader => <option key={reader.id} value={reader.id}>{reader.label}</option>)}</select><button type="button" onClick={() => void loadReaders()} className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-slate-200 text-slate-600 hover:bg-slate-50" aria-label="Refresh readers"><RefreshCw className="h-4 w-4" /></button></div></div>
                   )}
 
-                  <button type="button" onClick={() => setPaymentStage('instructions')} disabled={paymentChoice === 'READER' && !selectedReaderId} className="flex min-h-14 w-full items-center justify-between rounded-2xl bg-indigo-600 px-5 text-base font-black text-white transition hover:bg-indigo-700 disabled:bg-slate-300">Continue<ChevronRight className="h-5 w-5" /></button>
+                  <button type="button" onClick={() => paymentChoice === 'ONLINE' ? void startOnlinePayment('EMBEDDED') : paymentChoice === 'PAYMENT_LINK' ? void startOnlinePayment('HOSTED') : setPaymentStage('instructions')} disabled={(paymentChoice === 'READER' && !selectedReaderId) || ((paymentChoice === 'ONLINE' || paymentChoice === 'PAYMENT_LINK') && !config?.stripe.onlinePaymentsReady)} className="flex min-h-14 w-full items-center justify-between rounded-2xl bg-indigo-600 px-5 text-base font-black text-white transition hover:bg-indigo-700 disabled:bg-slate-300">Continue<ChevronRight className="h-5 w-5" /></button>
                 </>
               )}
 
@@ -723,7 +811,20 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
                 </>
               )}
 
-              {paymentStage === 'instructions' && paymentChoice !== 'READER' && (
+
+{paymentStage === 'online' && onlineSession && paymentChoice === 'ONLINE' && (
+  <>
+    <div className="rounded-2xl bg-indigo-50 px-4 py-3 text-center"><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Secure online payment</p><p className="mt-1 text-sm font-semibold text-slate-700">The exact {money(grandTotal, currency)} total was sent to Stripe automatically.</p></div>
+    <EmbeddedPosCheckout session={onlineSession} />
+    <div className="flex items-center justify-center gap-2 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-600"><Loader2 className="h-4 w-4 animate-spin text-indigo-600" />{paymentMessage}</div>
+  </>
+)}
+
+{paymentStage === 'online' && onlineSession && paymentChoice === 'PAYMENT_LINK' && (
+  <PaymentLinkPanel session={onlineSession} message={paymentMessage} />
+)}
+
+              {paymentStage === 'instructions' && (paymentChoice === 'TAP_TO_PAY' || paymentChoice === 'MANUAL_TERMINAL') && (
                 <>
                   <button type="button" onClick={() => setPaymentStage('choose')} className="inline-flex min-h-10 items-center gap-2 rounded-xl px-2 text-sm font-bold text-slate-500 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" />Change method</button>
                   <div className="rounded-3xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-violet-50 p-6 text-center"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-indigo-600 text-white">{paymentChoice === 'TAP_TO_PAY' ? <Smartphone className="h-6 w-6" /> : <CreditCard className="h-6 w-6" />}</div><p className="mt-4 text-sm font-bold text-indigo-700">Enter this exact amount in Stripe</p><p className="mt-2 text-5xl font-black tracking-tight text-slate-950">{money(grandTotal, currency)}</p><button type="button" onClick={() => void copyAmount()} className="mx-auto mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-bold text-indigo-700 hover:bg-indigo-50"><Copy className="h-4 w-4" />Copy amount</button></div>

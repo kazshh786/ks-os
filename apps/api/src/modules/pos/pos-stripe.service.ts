@@ -49,9 +49,11 @@ export class PosStripeService {
       .where(eq(stripeConnections.tenantId, tenantId))
       .limit(1);
 
+    const ready = Boolean(connection && connection.connectionStatus === 'READY' && connection.chargesEnabled);
     return {
       connected: Boolean(connection),
-      ready: Boolean(connection && connection.connectionStatus === 'READY' && connection.chargesEnabled),
+      ready,
+      onlinePaymentsReady: ready && Boolean(process.env.STRIPE_PUBLISHABLE_KEY),
       accountIdMasked: maskStripeAccountId(connection?.stripeAccountId),
     };
   }

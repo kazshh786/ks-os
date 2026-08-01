@@ -3,11 +3,13 @@ import {
   CheckoutPreviewRequestSchema,
   CheckoutRequestSchema,
   ProductListQuerySchema,
+  StartPosStripeOnlinePaymentRequestSchema,
   StartPosStripePaymentRequestSchema,
 } from '@ks-os/contracts';
 import { PosService } from './pos.service.js';
 import { EntitlementService } from '../agency/agency.service.js';
 import { PosStripeService } from './pos-stripe.service.js';
+import { PosOnlineStripeService } from './pos-online-stripe.service.js';
 
 const errorCode = (error: any, fallback: string) => error?.code || error?.name || fallback;
 
@@ -15,6 +17,7 @@ const posRoutes: FastifyPluginAsync = async (fastify) => {
   const service = new PosService();
   const entitlements = new EntitlementService();
   const stripe = new PosStripeService();
+  const onlineStripe = new PosOnlineStripeService();
 
   fastify.addHook('preHandler', async request => {
     request.requireAuth();
@@ -92,6 +95,65 @@ const posRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(status).send({ error: { code, message: error.message || 'Stripe readers are unavailable.' } });
     }
   });
+
+
+fastify.post('/api/v1/pos/stripe/online-sessions', async (request, reply) => {
+  const result = StartPosStripeOnlinePaymentRequestSchema.safeParse(request.body);
+  if (!result.success) {
+    return reply.status(400).send({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid online payment request', details: result.error.format() },
+    });
+  }
+
+  try {
+    const totals = await service.previewCheckout(
+      request.auth!.tenantId,
+      request.auth!.role,
+      request.auth!.tenantUserId,
+      {
+        appointmentId: result.data.appointmentId,
+        paymentMethod: 'STRIPE_ONLINE',
+        tipAmountInCents: result.data.tipAmountInCents,
+        purchasedProducts: result.data.purchasedProducts,
+      },
+    );
+    const data = await onlineStripe.createSession({
+      tenantId: request.auth!.tenantId,
+      amountInCents: totals.grandTotalInCents,
+      presentation: result.data.presentation,
+      context: {
+        kind: 'APPOINTMENT',
+        appointmentId: result.data.appointmentId,
+        idempotencyKey: result.data.idempotencyKey,
+      },
+    });
+    return reply.status(201).send({ success: true, data });
+  } catch (error: any) {
+    const code = errorCode(error, 'STRIPE_ONLINE_PAYMENT_FAILED');
+    let status = 502;
+    if (code === 'POS_APPOINTMENT_NOT_FOUND' || code === 'PRODUCT_NOT_FOUND') status = 404;
+    if (code === 'POS_ACCESS_DENIED' || code === 'ENTITLEMENT_REQUIRED') status = 403;
+    if (code === 'INSUFFICIENT_STOCK' || code === 'STRIPE_ACCOUNT_NOT_READY' || code === 'STRIPE_PUBLISHABLE_KEY_MISSING') status = 409;
+    if (code === 'INVALID_PAYMENT_TOTAL') status = 400;
+    request.log.error({ err: error }, 'Could not start online POS payment');
+    return reply.status(status).send({ error: { code, message: error.message || 'The online payment could not be started.' } });
+  }
+});
+
+fastify.get('/api/v1/pos/stripe/online-sessions/:sessionId', async (request, reply) => {
+  const { sessionId } = request.params as { sessionId: string };
+  if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId)) {
+    return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid Stripe Checkout Session ID.' } });
+  }
+  try {
+    const data = await onlineStripe.getSessionStatus(request.auth!.tenantId, sessionId);
+    return reply.send({ success: true, data });
+  } catch (error: any) {
+    const code = errorCode(error, 'STRIPE_ONLINE_STATUS_FAILED');
+    const status = code === 'STRIPE_ONLINE_SESSION_NOT_FOUND' ? 404 : code === 'STRIPE_ACCOUNT_NOT_READY' ? 409 : 502;
+    return reply.status(status).send({ error: { code, message: error.message || 'Online payment status is unavailable.' } });
+  }
+});
 
   fastify.post('/api/v1/pos/stripe/payment-intents', async (request, reply) => {
     const result = StartPosStripePaymentRequestSchema.safeParse(request.body);
