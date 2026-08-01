@@ -45,7 +45,7 @@ describe('booking assistance controls', () => {
     expect(input).toHaveValue('kasim@gmail.com');
   });
 
-  it('shows availability density and transitions from a selected day to its times', async () => {
+  it('shows styled availability hints and opens the selected day inline', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -66,22 +66,27 @@ describe('booking assistance controls', () => {
     await waitFor(() => expect(limitedDay).toBeEnabled());
     expect(limitedDay).toHaveClass('is-limited');
     expect(limitedDay).toHaveAttribute('aria-pressed', 'true');
+    expect(limitedDay).toHaveAttribute('data-tooltip', 'Only 2 times left');
+    expect(limitedDay).toHaveAttribute('data-tooltip-tone', 'limited');
 
     const availableDay = screen.getByRole('button', {
       name: 'Wednesday 12 August 2026, 6 appointment times available',
     });
     expect(availableDay).toBeEnabled();
     expect(availableDay).toHaveClass('is-available');
+    expect(availableDay).toHaveAttribute('data-tooltip', '6 times available');
 
     const unavailableDay = screen.getByRole('button', {
       name: 'Thursday 6 August 2026, no appointment times available',
     });
     expect(unavailableDay).toBeDisabled();
     expect(unavailableDay).toHaveClass('is-unavailable');
+    expect(unavailableDay).toHaveAttribute('data-tooltip', 'No times available');
 
     fireEvent.click(limitedDay);
-    expect(screen.getByText('Choose a time')).toBeInTheDocument();
+    expect(screen.getByText('Selected day')).toBeInTheDocument();
     expect(screen.getByText('Wednesday, 5 August 2026')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Change date' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Appointment calendar')).toHaveClass('is-times-view');
   });
 });
