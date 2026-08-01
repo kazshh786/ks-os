@@ -270,7 +270,7 @@ export class BookingPageService {
     if (!resolved) return null;
     const { page, tenant, redirectSlug } = resolved;
     const db = getDatabase();
-    const serviceRows = await db.select({ id: services.id, publicReference: services.publicReference, name: services.name, description: services.description, duration: services.duration, price: services.price, discount: services.discount, requiresDeposit: services.requiresDeposit })
+    const serviceRows = await db.select({ id: services.id, publicReference: services.publicReference, name: services.name, description: services.description, category: sql<string | null>`category`, duration: services.duration, price: services.price, discount: services.discount, requiresDeposit: services.requiresDeposit })
       .from(services).where(and(eq(services.tenantId, tenant.id), eq(services.isActive, true), page.allowedServiceIds.length ? inArray(services.id, page.allowedServiceIds) : undefined));
     const staffRows = await db.select({ id: users.id, publicReference: users.publicReference, name: users.name, role: users.jobTitle, accountRole: users.role, imageUrl: users.profileImageUrl, bio: users.bio })
       .from(users).where(and(
