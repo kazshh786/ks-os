@@ -99,6 +99,7 @@ export default async function publicAvailabilitySummaryRoutes(fastify: FastifyIn
     const latest = Date.now() + Math.max(1, rules.maximumFutureDays || 90) * 86_400_000;
     const dates = datesBetween(query.from, query.to);
     const availableDates: string[] = [];
+    const availabilityByDate: Array<{ date: string; slotCount: number }> = [];
 
     try {
       for (let index = 0; index < dates.length; index += 6) {
@@ -113,18 +114,24 @@ export default async function publicAvailabilitySummaryRoutes(fastify: FastifyIn
             bookingChannel: query.bookingChannel,
             date,
           }, { locationId: query.locationId, resourceId: query.resourceId });
+          const liveSlots = availability.slots.filter(slot => {
+            const start = new Date(slot.start).getTime();
+            return start >= earliest && start <= latest;
+          });
           const hasAvailableSlot = availability.slots.some(slot => {
             const start = new Date(slot.start).getTime();
             return start >= earliest && start <= latest;
           });
-          return hasAvailableSlot ? date : null;
+          return { date, slotCount: liveSlots.length, hasAvailableSlot };
         }));
-        availableDates.push(...results.filter((date): date is string => Boolean(date)));
+
+        availabilityByDate.push(...results.map(({ date, slotCount }) => ({ date, slotCount })));
+        availableDates.push(...results.filter(result => result.hasAvailableSlot).map(result => result.date));
       }
 
       return reply
         .header('cache-control', 'private, max-age=15')
-        .send({ from: query.from, to: query.to, availableDates });
+        .send({ from: query.from, to: query.to, availableDates, availabilityByDate });
     } catch (error) {
       fastify.log.error(error);
       return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'Unable to calculate available dates.' } });
