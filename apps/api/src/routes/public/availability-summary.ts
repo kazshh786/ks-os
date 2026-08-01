@@ -7,7 +7,7 @@ import { BookingPageService } from '../../modules/bookings/booking-page.service.
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)');
 const availableDatesQuerySchema = z.object({
   serviceId: z.string().uuid(),
-  staffId: z.string().min(1).max(64).default('any'),
+  staffId: z.union([z.literal('any'), z.string().uuid()]).default('any'),
   locationId: z.string().uuid().optional(),
   resourceId: z.string().uuid().optional(),
   bookingChannel: z.enum(['in_shop', 'mobile']),
