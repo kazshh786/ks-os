@@ -3,7 +3,9 @@ const revealClass = 'booking-service-staff-reveal';
 const expandedServiceClass = 'is-team-expanded';
 
 let observer: MutationObserver | null = null;
+let observedRoot: HTMLElement | null = null;
 let scheduled = false;
+let connecting = false;
 
 function legendText(fieldset: HTMLFieldSetElement) {
   return fieldset.querySelector('legend')?.textContent?.trim() || '';
@@ -151,25 +153,34 @@ function scheduleSync() {
   });
 }
 
-export function ensurePublicServiceStaffReveal() {
-  if (typeof document === 'undefined' || observer || typeof window.MutationObserver === 'undefined') return;
+function connectObserver() {
+  const root = document.getElementById('booking-flow');
+  if (!root) {
+    connecting = false;
+    return;
+  }
 
-  const connect = () => {
-    const root = document.getElementById('booking-flow');
-    if (!root) {
-      onNextFrame(connect);
-      return;
-    }
-
-    observer = new window.MutationObserver(scheduleSync);
-    observer.observe(root, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ['aria-pressed', 'class', 'style'],
-    });
+  if (observer && observedRoot === root) {
+    connecting = false;
     scheduleSync();
-  };
+    return;
+  }
 
-  connect();
+  observer?.disconnect();
+  observedRoot = root;
+  observer = new window.MutationObserver(scheduleSync);
+  observer.observe(root, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ['aria-pressed', 'class', 'style'],
+  });
+  connecting = false;
+  scheduleSync();
+}
+
+export function ensurePublicServiceStaffReveal() {
+  if (typeof document === 'undefined' || typeof window.MutationObserver === 'undefined' || connecting) return;
+  connecting = true;
+  onNextFrame(connectObserver);
 }
