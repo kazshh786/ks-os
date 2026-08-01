@@ -130,27 +130,29 @@ export function AvailabilityCalendar({
   const canGoNext = isBefore(startOfMonth(visibleMonth), startOfMonth(maximum));
   const selectedSlotCount = availabilityByDate.get(value) || 0;
   const selectedAvailabilityCopy = loadFailed
-    ? 'Live times for this date'
+    ? 'Live times are loading below'
     : selectedSlotCount <= lowAvailabilityThreshold
-      ? `${selectedSlotCount} ${selectedSlotCount === 1 ? 'time' : 'times'} left`
-      : `${selectedSlotCount} times available`;
+      ? `${selectedSlotCount} ${selectedSlotCount === 1 ? 'time' : 'times'} left on this day`
+      : `${selectedSlotCount} times available on this day`;
 
   return (
     <section className={`booking-date-picker is-${view}-view`} aria-label="Appointment calendar">
       {view === 'times' ? (
         <div className="booking-date-picker__time-header">
-          <button type="button" onClick={() => setView('calendar')} className="booking-date-picker__change-date">
-            <ArrowLeft aria-hidden="true" />
-            Change date
-          </button>
           <div className="booking-date-picker__selected-date">
-            <span className="booking-date-picker__selected-icon" style={{ color: primary }}><Clock3 aria-hidden="true" /></span>
+            <span className="booking-date-picker__selected-icon" style={{ color: primary }}>
+              <Clock3 aria-hidden="true" />
+            </span>
             <div>
-              <p>Choose a time</p>
+              <p>Selected day</p>
               <h3>{format(selected, 'EEEE, d MMMM yyyy')}</h3>
               <span>{selectedAvailabilityCopy}</span>
             </div>
           </div>
+          <button type="button" onClick={() => setView('calendar')} className="booking-date-picker__change-date">
+            <ArrowLeft aria-hidden="true" />
+            Change date
+          </button>
         </div>
       ) : (
         <>
@@ -198,6 +200,18 @@ export function AvailabilityCalendar({
                   : limited
                     ? `low availability, ${slotCount} ${slotCount === 1 ? 'time' : 'times'} left`
                     : `${slotCount} appointment times available`;
+              const tooltipCopy = !inMonth || !inRange
+                ? undefined
+                : loading
+                  ? 'Checking availability…'
+                  : disabled
+                    ? 'No times available'
+                    : loadFailed
+                      ? 'Check live times'
+                      : limited
+                        ? `Only ${slotCount} ${slotCount === 1 ? 'time' : 'times'} left`
+                        : `${slotCount} times available`;
+              const tooltipTone = disabled ? 'unavailable' : limited ? 'limited' : 'available';
               const className = [
                 active ? 'is-selected' : '',
                 !disabled && !loadFailed && limited ? 'is-limited' : '',
@@ -213,7 +227,8 @@ export function AvailabilityCalendar({
                   disabled={disabled}
                   aria-pressed={active}
                   aria-label={`${format(day, 'EEEE d MMMM yyyy')}, ${availabilityDescription}`}
-                  title={inMonth && inRange ? availabilityDescription : undefined}
+                  data-tooltip={tooltipCopy}
+                  data-tooltip-tone={tooltipTone}
                   onClick={() => {
                     setView('times');
                     onChange(dayValue);
