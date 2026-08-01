@@ -1,0 +1,185 @@
+.booking-checkout-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.booking-checkout-shell .booking-flow-panel {
+  min-height: 0;
+  flex: 1;
+}
+
+.booking-checkout-shell .booking-flow-panel > main {
+  width: 100%;
+  max-width: none;
+}
+
+@media (min-width: 1100px) {
+  .booking-checkout-shell {
+    height: calc(100dvh - 6.25rem);
+    min-height: 0;
+  }
+
+  .booking-checkout-shell .booking-flow-panel,
+  .booking-checkout-shell .booking-flow-panel > main,
+  .booking-checkout-shell .booking-workspace {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .booking-checkout-shell .booking-workspace {
+    overflow: hidden;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 1.5rem;
+    box-shadow: 0 18px 50px rgba(15, 23, 42, 0.09);
+  }
+
+  .booking-checkout-shell .booking-workspace-body {
+    display: grid;
+    grid-template-columns: minmax(270px, 30%) minmax(0, 70%);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .booking-checkout-shell .booking-summary-column {
+    grid-column: 1;
+    grid-row: 1;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-top: 0 !important;
+    border-right: 1px solid rgb(226 232 240);
+    border-left: 0 !important;
+    background: rgb(248 250 252);
+    padding: 1.5rem;
+    scrollbar-gutter: stable;
+  }
+
+  .booking-checkout-shell .booking-step-column {
+    grid-column: 2;
+    grid-row: 1;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: white;
+    padding: 1.5rem 2rem;
+    scrollbar-gutter: stable;
+  }
+}
+
+.booking-checkout-shell .booking-workspace-header {
+  min-height: 4.75rem;
+  padding-block: 0.9rem;
+  box-shadow: none;
+}
+
+.booking-checkout-shell .booking-workspace-header::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--booking-primary), var(--booking-accent), transparent 78%);
+  opacity: 0.3;
+}
+
+.booking-checkout-shell .booking-summary-column > div > p:first-child {
+  color: rgb(71 85 105);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+}
+
+.booking-checkout-shell .booking-summary-column > div > h2 {
+  margin-top: 0.35rem;
+  color: rgb(15 23 42);
+  font-size: 1.12rem;
+  line-height: 1.25;
+}
+
+.booking-checkout-shell .booking-summary-column > div > .mt-4.overflow-hidden {
+  border-color: rgb(226 232 240);
+  border-radius: 1.1rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.booking-checkout-shell .booking-summary-column > div > .mt-4.rounded-3xl:not(.overflow-hidden) {
+  display: none;
+}
+
+.booking-checkout-shell .booking-summary-column .booking-trust-strip {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  border-top: 1px solid rgb(241 245 249);
+  background: white;
+  padding: 0.4rem 0.75rem 0.65rem;
+}
+
+.booking-checkout-shell .booking-summary-column .booking-trust-strip > div {
+  min-height: 2rem;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  text-align: left;
+}
+
+.booking-checkout-shell .booking-summary-column .booking-trust-strip svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.booking-checkout-shell .booking-summary-column .booking-trust-strip span {
+  font-size: 0.68rem;
+}
+
+.booking-checkout-shell .booking-step-column nav[aria-label='Booking progress'] {
+  margin-bottom: 1.25rem;
+}
+
+.booking-checkout-shell .booking-step-content {
+  gap: 1.15rem;
+}
+
+.booking-checkout-shell .booking-step-content > div:first-child h2 {
+  max-width: 22ch;
+  font-size: clamp(1.65rem, 2.6vw, 2.3rem);
+}
+
+.booking-checkout-shell .booking-step-content > div:first-child p:last-child {
+  max-width: 60ch;
+}
+
+.booking-checkout-shell .booking-step-actions {
+  margin-inline: -2rem;
+  padding-inline: 2rem;
+}
+
+@media (max-width: 1099px) {
+  .booking-checkout-shell {
+    min-height: 0;
+  }
+
+  .booking-checkout-shell .booking-workspace {
+    border-radius: 1.25rem;
+    box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
+  }
+
+  .booking-checkout-shell .booking-summary-column {
+    background: rgb(248 250 252);
+  }
+}
+
+@media (max-width: 640px) {
+  .booking-checkout-shell .booking-workspace {
+    border-radius: 1rem;
+  }
+
+  .booking-checkout-shell .booking-workspace-header {
+    min-height: 4.25rem;
+  }
+
+  .booking-checkout-shell .booking-step-actions {
+    margin-inline: -1.25rem;
+    padding-inline: 1.25rem;
+  }
+}
