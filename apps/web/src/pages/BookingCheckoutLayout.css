@@ -1,3 +1,19 @@
+.booking-checkout-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.booking-checkout-shell .booking-flow-panel {
+  min-height: 0;
+  flex: 1;
+}
+
+.booking-checkout-shell .booking-flow-panel > main {
+  width: 100%;
+  max-width: none;
+}
+
 @media (min-width: 1100px) {
   .booking-checkout-shell {
     height: calc(100dvh - 6.25rem);
