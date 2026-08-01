@@ -7,6 +7,9 @@ export const ConversationDirectionSchema = z.enum(['INBOUND', 'OUTBOUND', 'INTER
 export const ConversationMessageStatusSchema = z.enum(['RECEIVED', 'QUEUED', 'SENT', 'DELIVERED', 'READ', 'FAILED']);
 export const ConversationSenderTypeSchema = z.enum(['CUSTOMER', 'STAFF', 'AUTOMATION', 'SYSTEM']);
 export const CommunicationChannelStatusSchema = z.enum(['CONNECTED', 'ATTENTION', 'DISCONNECTED']);
+export const WhatsAppTemplateCategorySchema = z.enum(['UTILITY', 'MARKETING', 'AUTHENTICATION']);
+export const WhatsAppMarketingConsentStatusSchema = z.enum(['UNKNOWN', 'OPTED_IN', 'OPTED_OUT']);
+export const WhatsAppPackageTierSchema = z.enum(['CORE', 'GROWTH', 'SCALE']);
 
 export const CommunicationChannelConnectionSchema = z.object({
   id: z.string().uuid().nullable(),
@@ -60,6 +63,14 @@ export const ConversationMessageAttachmentSchema = z.object({
   downloadUrl: z.string(),
 }).strict();
 
+export const WhatsAppTemplateReferenceSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().min(1).max(512),
+  language: z.string().min(2).max(35),
+  category: WhatsAppTemplateCategorySchema,
+  components: z.array(z.unknown()).default([]),
+}).strict();
+
 export const ConversationMessageSchema = z.object({
   id: z.string().uuid(),
   conversationId: z.string().uuid(),
@@ -71,6 +82,7 @@ export const ConversationMessageSchema = z.object({
   status: ConversationMessageStatusSchema,
   replyToMessageId: z.string().uuid().nullable(),
   externalMessageId: z.string().nullable(),
+  whatsappTemplate: WhatsAppTemplateReferenceSchema.nullable().optional(),
   attachments: z.array(ConversationMessageAttachmentSchema),
   createdAt: z.string().datetime(),
 }).strict();
@@ -86,10 +98,22 @@ export const ConversationCustomerContextSchema = z.object({
   lastVisitAt: z.string().datetime().nullable(),
 }).strict();
 
+export const WhatsAppSendPolicySchema = z.object({
+  packageTier: WhatsAppPackageTierSchema,
+  serviceWindowOpen: z.boolean(),
+  serviceWindowExpiresAt: z.string().datetime().nullable(),
+  freeformAllowed: z.boolean(),
+  utilityTemplatesAllowed: z.boolean(),
+  marketingTemplatesAllowed: z.boolean(),
+  marketingConsentStatus: WhatsAppMarketingConsentStatusSchema,
+  fallbackChannels: z.array(z.enum(['SMS', 'EMAIL'])),
+}).strict();
+
 export const ConversationDetailSchema = z.object({
   conversation: ConversationListItemSchema,
   customer: ConversationCustomerContextSchema,
   messages: z.array(ConversationMessageSchema),
+  whatsapp: WhatsAppSendPolicySchema.nullable().optional(),
 }).strict();
 
 export const ConversationListQuerySchema = z.object({
@@ -119,6 +143,34 @@ export const SendConversationMessageSchema = z.object({
   body: z.string().trim().min(1).max(8000),
   channel: ConversationChannelSchema.optional(),
   replyToMessageId: z.string().uuid().nullable().optional(),
+  whatsappTemplate: WhatsAppTemplateReferenceSchema.optional(),
+}).strict().superRefine((value, context) => {
+  if (value.whatsappTemplate && value.channel && value.channel !== 'WHATSAPP') {
+    context.addIssue({ code: 'custom', path: ['whatsappTemplate'], message: 'WhatsApp templates can only be sent through WhatsApp.' });
+  }
+});
+
+export const WhatsAppTemplateSchema = z.object({
+  id: z.string().uuid(),
+  channelId: z.string().uuid(),
+  name: z.string(),
+  language: z.string(),
+  category: WhatsAppTemplateCategorySchema,
+  status: z.string(),
+  components: z.array(z.unknown()),
+  qualityScore: z.string().nullable(),
+  lastSyncedAt: z.string().datetime(),
+}).strict();
+
+export const WhatsAppTemplateListResponseSchema = z.object({
+  data: z.array(WhatsAppTemplateSchema),
+  policy: WhatsAppSendPolicySchema,
+}).strict();
+
+export const UpdateWhatsAppMarketingConsentSchema = z.object({
+  status: WhatsAppMarketingConsentStatusSchema.exclude(['UNKNOWN']),
+  source: z.string().trim().min(2).max(80),
+  evidence: z.record(z.string(), z.unknown()).default({}),
 }).strict();
 
 export const UpdateConversationSchema = z.object({
@@ -138,3 +190,7 @@ export type ConversationDetail = z.infer<typeof ConversationDetailSchema>;
 export type ConversationListQuery = z.infer<typeof ConversationListQuerySchema>;
 export type SendConversationMessage = z.infer<typeof SendConversationMessageSchema>;
 export type UpdateConversation = z.infer<typeof UpdateConversationSchema>;
+export type WhatsAppTemplate = z.infer<typeof WhatsAppTemplateSchema>;
+export type WhatsAppTemplateReference = z.infer<typeof WhatsAppTemplateReferenceSchema>;
+export type WhatsAppSendPolicy = z.infer<typeof WhatsAppSendPolicySchema>;
+export type UpdateWhatsAppMarketingConsent = z.infer<typeof UpdateWhatsAppMarketingConsentSchema>;
