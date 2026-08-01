@@ -50,9 +50,27 @@ KS OS enforces WhatsApp features in the API as well as the interface.
 - includes all Growth capabilities;
 - allows approved marketing templates;
 - requires recorded customer opt-in before a marketing template can be queued;
-- allows the owner to record opt-in or opt-out evidence from the KS OS messaging controls.
+- allows the owner to record opt-in or opt-out evidence from the KS OS messaging controls;
+- provides governed scheduled marketing campaigns.
 
 The template catalogue is synced from the customer-owned WhatsApp Business Account. Only templates with Meta status `APPROVED` can be selected or sent.
+
+## Scale marketing campaigns
+
+The Scale campaign manager supports:
+
+- immediate or scheduled campaigns;
+- all opted-in customers;
+- customers with an upcoming booking in the next 30 days;
+- customers who have not completed a booking in the previous 90 days;
+- approved Meta marketing templates and required template values;
+- a maximum recipient count for each campaign;
+- a configurable monthly workspace message limit, defaulting to 500;
+- a seven-day frequency cap per recipient;
+- queued, sent, delivered, read, failed and skipped reporting;
+- cancellation while a campaign is still scheduled.
+
+The existing protected conversation worker claims due campaigns, resolves the consent-qualified audience, creates WhatsApp conversations where required and places messages onto the normal delivery queue. The delivery path rechecks that the workspace is still on Scale and that consent remains `OPTED_IN` immediately before calling Meta.
 
 ## Billing model
 
@@ -76,7 +94,7 @@ Marketing consent is stored per tenant and recipient phone number. The record co
 - opt-in and revocation timestamps;
 - the KS OS user who recorded the change.
 
-The Scale send path refuses marketing delivery unless the current status is `OPTED_IN`. A later opt-out immediately prevents further marketing templates.
+The Scale send path refuses marketing delivery unless the current status is `OPTED_IN`. A later opt-out prevents queued or future marketing delivery when the delivery worker rechecks consent.
 
 ## External customer release requirements
 
@@ -107,7 +125,7 @@ The webhook routes events to a tenant by matching Meta's external account ID aga
 
 This feature is a **both** deployment:
 
-- Vercel: Integrations UI, Meta Login for Business flow, package messaging controls and template composer.
-- VPS: code exchange, encrypted token storage, asset discovery, webhook subscriptions, service-window enforcement, template sync, consent checks and channel delivery.
+- Vercel: Integrations UI, Meta Login for Business flow, package messaging controls, template composer and Scale campaign manager.
+- VPS: code exchange, encrypted token storage, asset discovery, webhook subscriptions, service-window enforcement, template sync, consent checks, campaign dispatch and channel delivery.
 
-Database migration `20260801033000_whatsapp_tier_messaging.sql` is required. It adds the service-window timestamp, approved-template cache and marketing-consent records.
+Database migration `20260801033000_whatsapp_tier_messaging.sql` is required. It adds the service-window timestamp, monthly marketing limit, approved-template cache, marketing-consent evidence, scheduled campaigns and campaign recipient delivery records.
