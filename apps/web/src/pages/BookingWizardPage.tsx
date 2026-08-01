@@ -6,6 +6,7 @@ import { ensurePublicCatalogCategoryEnrichment } from '../features/bookings/publ
 import { getDataProvider } from '../data/data-provider.js';
 import { currentPublicBookingIdentifier } from '../lib/workspace-hostname.js';
 import './BookingWizardPage.css';
+import './BookingServiceList.css';
 import './BookingWorkspaceViewport.css';
 
 type CatalogueService = { category?: string | null };
