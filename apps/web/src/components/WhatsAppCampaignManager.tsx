@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Lock, Megaphone, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
-import type { WhatsAppCampaignAudience, WhatsAppCampaignListResponse, WhatsAppTemplate } from '@ks-os/contracts';
+import { Lock, Megaphone, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
+import type { WhatsAppCampaignAudience, WhatsAppCampaignListResponse } from '@ks-os/contracts';
 import {
   cancelWhatsAppCampaign,
   createWhatsAppCampaign,
