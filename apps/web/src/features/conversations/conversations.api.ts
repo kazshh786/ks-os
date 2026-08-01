@@ -7,6 +7,9 @@ import type {
   ConversationMessage,
   SendConversationMessage,
   UpdateConversation,
+  UpdateWhatsAppMarketingConsent,
+  WhatsAppSendPolicy,
+  WhatsAppTemplate,
 } from '@ks-os/contracts';
 import { fetchWithAuth } from '../../api/client.js';
 
@@ -46,6 +49,23 @@ export async function updateConversation(conversationId: string, input: UpdateCo
 export async function sendConversationMessage(conversationId: string, input: SendConversationMessage) {
   return (await request<{ data: ConversationMessage }>(`/api/v1/conversations/${conversationId}/messages`, {
     method: 'POST',
+    body: JSON.stringify(input),
+  })).data;
+}
+
+export async function listWhatsAppTemplates(conversationId: string) {
+  return request<{ data: WhatsAppTemplate[]; policy: WhatsAppSendPolicy }>(`/api/v1/conversations/${conversationId}/whatsapp/templates`);
+}
+
+export async function syncWhatsAppTemplates() {
+  return (await request<{ data: { synced: number } }>('/api/v1/conversations/whatsapp/templates/sync', {
+    method: 'POST',
+  })).data;
+}
+
+export async function updateWhatsAppMarketingConsent(conversationId: string, input: UpdateWhatsAppMarketingConsent) {
+  return (await request<{ data: WhatsAppSendPolicy }>(`/api/v1/conversations/${conversationId}/whatsapp/marketing-consent`, {
+    method: 'PATCH',
     body: JSON.stringify(input),
   })).data;
 }
