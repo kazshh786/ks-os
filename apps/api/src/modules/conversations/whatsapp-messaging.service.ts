@@ -8,6 +8,7 @@ import type {
 } from '@ks-os/contracts';
 import { decryptSecret } from '../integrations/integration-security.js';
 
+const FREQUENCY_CAP_DAYS = 7;
 const fail = (statusCode: number, code: string, message: string) => Object.assign(new Error(message), { statusCode, code });
 const iso = (value: Date | string | null | undefined) => value ? new Date(value).toISOString() : null;
 const normaliseTier = (value: unknown): WhatsAppSendPolicy['packageTier'] => {
@@ -89,6 +90,55 @@ export class WhatsAppMessagingService {
     };
   }
 
+  private async assertMarketingCapacity(tenantId: string, conversationId: string) {
+    const result = await this.db.execute(sql`
+      select tenant.whatsapp_marketing_monthly_message_limit "monthlyLimit",
+             conversation.customer_phone "customerPhone",
+             (
+               select count(*)::int
+               from conversation_messages message
+               where message.tenant_id=tenant.id
+                 and message.channel_type='WHATSAPP'
+                 and message.direction='OUTBOUND'
+                 and message.status<>'FAILED'
+                 and message.metadata_json#>>'{whatsappTemplate,category}'='MARKETING'
+                 and message.created_at>=date_trunc('month', now())
+                 and message.created_at<date_trunc('month', now()) + interval '1 month'
+             ) "usedThisMonth"
+      from conversations conversation
+      join tenants tenant on tenant.id=conversation.tenant_id
+      where conversation.id=${conversationId}::uuid
+        and conversation.tenant_id=${tenantId}::uuid
+      limit 1
+    `);
+    const row = result.rows[0] as any;
+    if (!row) throw fail(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+    const monthlyLimit = Math.max(1, Number(row.monthlyLimit || 500));
+    if (Number(row.usedThisMonth || 0) >= monthlyLimit) {
+      throw fail(409, 'WHATSAPP_MARKETING_MONTHLY_LIMIT_REACHED', 'The workspace has reached its monthly WhatsApp marketing limit.');
+    }
+
+    const phone = normalisePhone(row.customerPhone);
+    if (!phone) throw fail(409, 'WHATSAPP_PHONE_REQUIRED', 'A customer phone number is required for WhatsApp marketing.');
+    const recent = await this.db.execute(sql`
+      select 1
+      from conversation_messages message
+      join conversations conversation
+        on conversation.id=message.conversation_id and conversation.tenant_id=message.tenant_id
+      where message.tenant_id=${tenantId}::uuid
+        and message.channel_type='WHATSAPP'
+        and message.direction='OUTBOUND'
+        and message.status<>'FAILED'
+        and message.metadata_json#>>'{whatsappTemplate,category}'='MARKETING'
+        and conversation.customer_phone=${phone}
+        and message.created_at>=now()-${FREQUENCY_CAP_DAYS} * interval '1 day'
+      limit 1
+    `);
+    if (recent.rows[0]) {
+      throw fail(409, 'WHATSAPP_MARKETING_FREQUENCY_CAP', `This customer has already received WhatsApp marketing within the last ${FREQUENCY_CAP_DAYS} days.`);
+    }
+  }
+
   async validateSend(tenantId: string, conversationId: string, input: SendConversationMessage) {
     const channel = input.channel || 'WHATSAPP';
     if (channel !== 'WHATSAPP') return { metadata: { source: 'KS_OS_INBOX' } };
@@ -109,6 +159,7 @@ export class WhatsAppMessagingService {
       if (policy.marketingConsentStatus !== 'OPTED_IN') {
         throw fail(409, 'WHATSAPP_MARKETING_CONSENT_REQUIRED', 'Recorded WhatsApp marketing consent is required before this template can be sent.');
       }
+      await this.assertMarketingCapacity(tenantId, conversationId);
     } else if (!policy.utilityTemplatesAllowed) {
       throw fail(403, 'WHATSAPP_TEMPLATES_REQUIRE_GROWTH', 'WhatsApp utility and authentication templates are available on the Growth plan and above.');
     }
