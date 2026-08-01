@@ -45,19 +45,43 @@ describe('booking assistance controls', () => {
     expect(input).toHaveValue('kasim@gmail.com');
   });
 
-  it('disables calendar days that have no live appointment times', async () => {
+  it('shows availability density and transitions from a selected day to its times', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ availableDates: ['2026-08-05', '2026-08-12'] }),
+      json: async () => ({
+        availableDates: ['2026-08-05', '2026-08-12'],
+        availabilityByDate: [
+          { date: '2026-08-05', slotCount: 2 },
+          { date: '2026-08-06', slotCount: 0 },
+          { date: '2026-08-12', slotCount: 6 },
+        ],
+      }),
     }));
 
     render(<CalendarHarness />);
 
-    const availableDay = await screen.findByRole('button', { name: 'Wednesday 5 August 2026' });
-    await waitFor(() => expect(availableDay).toBeEnabled());
+    const limitedDay = await screen.findByRole('button', {
+      name: 'Wednesday 5 August 2026, low availability, 2 times left',
+    });
+    await waitFor(() => expect(limitedDay).toBeEnabled());
+    expect(limitedDay).toHaveClass('is-limited');
+    expect(limitedDay).toHaveAttribute('aria-pressed', 'true');
 
-    const unavailableDay = screen.getByRole('button', { name: 'Thursday 6 August 2026, no appointment times available' });
+    const availableDay = screen.getByRole('button', {
+      name: 'Wednesday 12 August 2026, 6 appointment times available',
+    });
+    expect(availableDay).toBeEnabled();
+    expect(availableDay).toHaveClass('is-available');
+
+    const unavailableDay = screen.getByRole('button', {
+      name: 'Thursday 6 August 2026, no appointment times available',
+    });
     expect(unavailableDay).toBeDisabled();
-    expect(availableDay).toHaveAttribute('aria-pressed', 'true');
+    expect(unavailableDay).toHaveClass('is-unavailable');
+
+    fireEvent.click(limitedDay);
+    expect(screen.getByText('Choose a time')).toBeInTheDocument();
+    expect(screen.getByText('Wednesday, 5 August 2026')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change date' })).toBeInTheDocument();
   });
 });
