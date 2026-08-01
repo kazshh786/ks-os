@@ -41,6 +41,7 @@ export class ConversationDeliveryService {
       conversationId: conversationMessages.conversationId,
       channel: conversationMessages.channelType,
       body: conversationMessages.body,
+      messageMetadata: conversationMessages.metadataJson,
       attemptCount: conversationMessages.attemptCount,
       subject: conversations.subject,
       customerEmail: conversations.customerEmail,
@@ -153,13 +154,32 @@ export class ConversationDeliveryService {
   private async deliverWhatsApp(context: Awaited<ReturnType<ConversationDeliveryService['context']>>) {
     const recipient = this.metaRecipient(context) || context.customerPhone?.replace(/\D/g, '') || '';
     if (!recipient) throw new DeliveryError('WHATSAPP_RECIPIENT_REQUIRED', true);
-    const payload = await this.metaRequest(context, {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: recipient,
-      type: 'text',
-      text: { preview_url: false, body: context.body },
-    });
+    const metadata = (context.messageMetadata || {}) as Record<string, unknown>;
+    const template = metadata.whatsappTemplate as {
+      name?: string;
+      language?: string;
+      components?: unknown[];
+    } | undefined;
+    const requestBody: Record<string, unknown> = template?.name && template.language
+      ? {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: recipient,
+          type: 'template',
+          template: {
+            name: template.name,
+            language: { code: template.language },
+            ...(Array.isArray(template.components) && template.components.length ? { components: template.components } : {}),
+          },
+        }
+      : {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: recipient,
+          type: 'text',
+          text: { preview_url: false, body: context.body },
+        };
+    const payload = await this.metaRequest(context, requestBody);
     const messageId = payload.messages?.[0]?.id;
     if (!messageId) throw new DeliveryError('WHATSAPP_MESSAGE_ID_MISSING');
     return String(messageId);
