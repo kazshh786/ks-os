@@ -20,7 +20,7 @@ export function BookingWizardPage() {
 
   ensurePublicCatalogCategoryEnrichment();
   ensurePublicServiceStaffReveal(bookingIdentifier);
-  ensurePublicServiceTeamFlow();
+  if (bookingIdentifier) ensurePublicServiceTeamFlow();
 
   if (!bookingIdentifier) {
     return (
