@@ -36,27 +36,27 @@
 
   .booking-checkout-shell .booking-workspace-body {
     display: grid;
-    grid-template-columns: minmax(270px, 30%) minmax(0, 70%);
+    grid-template-columns: minmax(0, 70%) minmax(270px, 30%);
     min-height: 0;
     overflow: hidden;
   }
 
   .booking-checkout-shell .booking-summary-column {
-    grid-column: 1;
+    grid-column: 2;
     grid-row: 1;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
     border-top: 0 !important;
-    border-right: 1px solid rgb(226 232 240);
-    border-left: 0 !important;
+    border-right: 0 !important;
+    border-left: 1px solid rgb(226 232 240) !important;
     background: rgb(248 250 252);
     padding: 1.5rem;
     scrollbar-gutter: stable;
   }
 
   .booking-checkout-shell .booking-step-column {
-    grid-column: 2;
+    grid-column: 1;
     grid-row: 1;
     overflow-x: hidden;
     overflow-y: auto;
