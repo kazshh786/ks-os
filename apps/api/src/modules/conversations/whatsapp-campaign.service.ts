@@ -64,9 +64,12 @@ export class WhatsAppCampaignService {
   private async usedThisMonth(tenantId: string) {
     const result = await this.db.execute(sql`
       select count(*)::int value
-      from whatsapp_marketing_campaign_recipients
+      from conversation_messages
       where tenant_id=${tenantId}::uuid
-        and status='QUEUED'
+        and channel_type='WHATSAPP'
+        and direction='OUTBOUND'
+        and status<>'FAILED'
+        and metadata_json#>>'{whatsappTemplate,category}'='MARKETING'
         and created_at>=date_trunc('month', now())
         and created_at<date_trunc('month', now()) + interval '1 month'
     `);
@@ -300,11 +303,17 @@ export class WhatsAppCampaignService {
         and ${audienceCondition}
         and not exists (
           select 1
-          from whatsapp_marketing_campaign_recipients recent_recipient
-          where recent_recipient.tenant_id=consent.tenant_id
-            and recent_recipient.recipient_phone=consent.recipient_phone
-            and recent_recipient.status='QUEUED'
-            and recent_recipient.created_at>=now()-${FREQUENCY_CAP_DAYS} * interval '1 day'
+          from conversation_messages recent_message
+          join conversations recent_conversation
+            on recent_conversation.id=recent_message.conversation_id
+           and recent_conversation.tenant_id=recent_message.tenant_id
+          where recent_message.tenant_id=consent.tenant_id
+            and recent_message.channel_type='WHATSAPP'
+            and recent_message.direction='OUTBOUND'
+            and recent_message.status<>'FAILED'
+            and recent_message.metadata_json#>>'{whatsappTemplate,category}'='MARKETING'
+            and recent_conversation.customer_phone=consent.recipient_phone
+            and recent_message.created_at>=now()-${FREQUENCY_CAP_DAYS} * interval '1 day'
         )
       order by consent.consented_at nulls last, consent.updated_at
       limit ${capacity}
