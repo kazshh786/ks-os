@@ -88,6 +88,7 @@ export * from './booking.js';
 export * from './errors.js';
 export * from './clients.js';
 export * from './pos.js';
+export * from './pos-online.js';
 export * from './retail-pos.js';
 export * from './products.js';
 export * from './payments.js';
