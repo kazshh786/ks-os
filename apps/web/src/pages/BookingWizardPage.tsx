@@ -7,6 +7,7 @@ import { currentPublicBookingIdentifier } from '../lib/workspace-hostname.js';
 import './BookingWizardPage.css';
 import './BookingServiceList.css';
 import './BookingServiceStaffReveal.css';
+import './BookingServiceTeamMotion.css';
 import './BookingWorkspaceViewport.css';
 import './BookingCheckoutLayout.css';
 
