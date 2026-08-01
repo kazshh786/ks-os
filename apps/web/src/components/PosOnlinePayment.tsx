@@ -3,7 +3,18 @@ import { EmbeddedCheckout, EmbeddedCheckoutProvider } from '@stripe/react-stripe
 import { loadStripe } from '@stripe/stripe-js';
 import QRCode from 'qrcode';
 import { Copy, ExternalLink, Loader2, Share2 } from 'lucide-react';
-import type { PosStripeOnlinePaymentSession } from '@ks-os/contracts';
+
+type PosStripeOnlinePaymentSession = {
+  sessionId: string;
+  presentation: 'EMBEDDED' | 'HOSTED';
+  clientSecret: string | null;
+  checkoutUrl: string | null;
+  publishableKey: string;
+  stripeAccountId: string;
+  amountInCents: number;
+  currency: string;
+  expiresAt: string;
+};
 
 export function EmbeddedPosCheckout({ session }: { session: PosStripeOnlinePaymentSession }) {
   const stripePromise = useMemo(() => loadStripe(session.publishableKey, {

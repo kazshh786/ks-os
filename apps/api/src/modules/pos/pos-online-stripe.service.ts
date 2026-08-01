@@ -1,8 +1,12 @@
 import { eq } from 'drizzle-orm';
 import { getDatabase, stripeConnections, tenants } from '@ks-os/database';
-import type { PosOnlinePaymentPresentation } from '@ks-os/contracts';
 import Stripe from 'stripe';
 import { getStripeClient } from '../../lib/stripe.js';
+
+// PR #80 introduced this bounded presentation choice in the POS service but
+// referenced a contract export that does not exist. Keep the type local because
+// it is an implementation detail of Stripe Checkout, not a public API payload.
+type PosOnlinePaymentPresentation = 'EMBEDDED' | 'HOSTED';
 
 const fail = (name: string, message: string) => {
   const error = new Error(message);
