@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, Lock, Megaphone, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { WhatsAppSendPolicy, WhatsAppTemplate } from '@ks-os/contracts';
 import {
@@ -62,6 +62,13 @@ export function WhatsAppComposerControls({
   const [working, setWorking] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const policyChangeRef = useRef(onPolicyChange);
+  const templateChangeRef = useRef(onTemplateChange);
+  const selectedTemplateRef = useRef(selectedTemplate);
+
+  useEffect(() => { policyChangeRef.current = onPolicyChange; }, [onPolicyChange]);
+  useEffect(() => { templateChangeRef.current = onTemplateChange; }, [onTemplateChange]);
+  useEffect(() => { selectedTemplateRef.current = selectedTemplate; }, [selectedTemplate]);
 
   const load = useCallback(async () => {
     if (!conversationId) return;
@@ -70,16 +77,17 @@ export function WhatsAppComposerControls({
     try {
       const response = await listWhatsAppTemplates(conversationId);
       setTemplates(response.data);
-      onPolicyChange(response.policy);
-      if (selectedTemplate && !response.data.some(template => template.id === selectedTemplate.id)) {
-        onTemplateChange(null, []);
+      policyChangeRef.current(response.policy);
+      const currentTemplate = selectedTemplateRef.current;
+      if (currentTemplate && !response.data.some(template => template.id === currentTemplate.id)) {
+        templateChangeRef.current(null, []);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'WhatsApp templates could not be loaded.');
     } finally {
       setLoading(false);
     }
-  }, [conversationId, onPolicyChange, onTemplateChange, selectedTemplate]);
+  }, [conversationId]);
 
   useEffect(() => { void load(); }, [load]);
 
