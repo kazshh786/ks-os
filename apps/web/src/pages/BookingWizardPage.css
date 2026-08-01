@@ -1,0 +1,24 @@
+#booking-flow form label {
+  grid-column: 1 / -1;
+}
+
+#booking-flow :where(button, a, input, textarea) {
+  touch-action: manipulation;
+}
+
+@media (max-width: 767px) {
+  #booking-flow :where(input, textarea) {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #booking-flow *,
+  #booking-flow *::before,
+  #booking-flow *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
