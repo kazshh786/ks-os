@@ -5,6 +5,7 @@ export interface SitesRuntimeConfig {
   nodeEnv: 'development' | 'production' | 'test';
   fallbackDomain: string;
   previewHostname?: string;
+  noIndexHostnames: string[];
   publicBookingOrigin?: string;
   previewTokenSecret?: string;
   trustedProxy: boolean;
@@ -15,6 +16,7 @@ const RuntimeEnvironmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PUBLIC_SITES_FALLBACK_DOMAIN: z.string().optional(),
   PUBLIC_SITES_PREVIEW_HOST: z.string().optional(),
+  PUBLIC_SITES_NOINDEX_HOSTS: z.string().optional(),
   PUBLIC_BOOKING_ORIGIN: z.string().url().optional(),
   SITE_PREVIEW_TOKEN_SECRET: z.string().min(32).optional(),
   TRUST_PROXY: z.enum(['true', 'false']).default('false'),
@@ -44,6 +46,11 @@ export function loadSitesRuntimeConfig(
     previewHostname: parsed.PUBLIC_SITES_PREVIEW_HOST
       ? normalizePublicHostname(parsed.PUBLIC_SITES_PREVIEW_HOST)
       : undefined,
+    noIndexHostnames: (parsed.PUBLIC_SITES_NOINDEX_HOSTS ?? '')
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean)
+      .map(normalizePublicHostname),
     publicBookingOrigin: parsed.PUBLIC_BOOKING_ORIGIN,
     previewTokenSecret: parsed.SITE_PREVIEW_TOKEN_SECRET,
     trustedProxy: parsed.TRUST_PROXY === 'true',

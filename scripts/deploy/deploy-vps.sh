@@ -1,106 +1,130 @@
 #!/usr/bin/env bash
 
-# deploy-vps.sh - Controlled staging/production deployment for KS OS.
-# Usage: ./scripts/deploy/deploy-vps.sh [--dry-run] [--rollback-on-failure]
+# Controlled KS OS VPS deployment. The API, site worker, and shared renderer
+# are one release unit; migrations remain an explicit operator decision.
 
 set -euo pipefail
 
+cd /srv/ks-os
+
 DRY_RUN=false
 ROLLBACK_ON_FAILURE=true
-DEPLOY_BRANCH="${DEPLOY_BRANCH:-staging}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 APPLY_MIGRATIONS="${APPLY_MIGRATIONS:-0}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:5000/health}"
+API_HEALTH_URL="${API_HEALTH_URL:-http://127.0.0.1:5000/health}"
+WORKER_HEALTH_URL="${WORKER_HEALTH_URL:-http://127.0.0.1:8091/health}"
+WORKER_READY_URL="${WORKER_READY_URL:-http://127.0.0.1:8091/ready}"
+RENDERER_HEALTH_URL="${RENDERER_HEALTH_URL:-http://127.0.0.1:5001/health}"
+RENDERER_HEALTH_HOST="${RENDERER_HEALTH_HOST:-sites.kasimshah.com}"
+SERVICES=(ks-os-api ks-os-site-worker ks-os-sites)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --dry-run)
-      DRY_RUN=true
-      shift
-      ;;
-    --rollback-on-failure)
-      ROLLBACK_ON_FAILURE=true
-      shift
-      ;;
-    --no-rollback-on-failure)
-      ROLLBACK_ON_FAILURE=false
-      shift
-      ;;
-    *)
-      echo "Unknown option: $1"
-      exit 1
-      ;;
+    --dry-run) DRY_RUN=true ;;
+    --rollback-on-failure) ROLLBACK_ON_FAILURE=true ;;
+    --no-rollback-on-failure) ROLLBACK_ON_FAILURE=false ;;
+    *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
+  shift
 done
 
-log() {
-  echo "[deploy] $*"
+log() { echo "[deploy] $*"; }
+run() { log "Executing: $*"; "$@"; }
+
+require_clean_branch() {
+  [[ -z "$(git status --porcelain)" ]] || {
+    log "Refusing deployment because /srv/ks-os has uncommitted changes."
+    return 1
+  }
+  local branch
+  branch="$(git branch --show-current)"
+  [[ "$branch" == "$DEPLOY_BRANCH" ]] || {
+    log "Refusing deployment from branch '${branch:-DETACHED}'; expected '$DEPLOY_BRANCH'."
+    return 1
+  }
 }
 
-run() {
-  log "Executing: $*"
-  eval "$*"
+check_http() {
+  local label="$1" url="$2" host="${3:-}"
+  local status
+  if [[ -n "$host" ]]; then
+    status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --header "Host: $host" "$url")"
+  else
+    status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$url")"
+  fi
+  [[ "$status" == "200" ]] || {
+    log "$label health check failed with HTTP $status."
+    return 1
+  }
 }
 
-CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+restart_release_services() {
+  run sudo systemctl restart "${SERVICES[@]}"
+  for service in "${SERVICES[@]}"; do
+    run sudo systemctl is-active --quiet "$service"
+  done
+}
+
+write_release_version() {
+  local release_version release_file
+  release_version="$(git rev-parse HEAD)"
+  release_file="$(mktemp)"
+  printf 'RELEASE_VERSION=%s\n' "$release_version" > "$release_file"
+  run sudo install -D -m 0644 "$release_file" /run/ks-os/release.env
+  rm -f "$release_file"
+}
+
 PREV_COMMIT="$(git rev-parse HEAD)"
 
 rollback() {
-  if ! $ROLLBACK_ON_FAILURE; then
-    log "Rollback disabled; manual recovery is required."
-    return
-  fi
-
-  log "Rolling application code back to ${PREV_COMMIT}"
-  git reset --hard "$PREV_COMMIT"
-  pnpm install --frozen-lockfile
-  pnpm run build
-  sudo systemctl restart ks-os-api
+  $ROLLBACK_ON_FAILURE || { log "Rollback disabled; manual recovery is required."; return; }
+  log "Rolling the complete application release back to $PREV_COMMIT. Database down-migrations are never automatic."
+  run git switch --detach "$PREV_COMMIT"
+  run git branch --force "$DEPLOY_BRANCH" "$PREV_COMMIT"
+  run git switch "$DEPLOY_BRANCH"
+  run pnpm install --frozen-lockfile
+  run pnpm run build
+  write_release_version
+  restart_release_services
 }
 
 on_error() {
   local exit_code=$?
-  log "Deployment failed with exit code ${exit_code}."
-  if ! $DRY_RUN; then
-    rollback || true
-  fi
+  trap - ERR
+  log "Deployment failed with exit code $exit_code."
+  if ! $DRY_RUN; then rollback || true; fi
   exit "$exit_code"
 }
-
 trap on_error ERR
 
-log "Preparing ${DEPLOY_BRANCH} from ${CURRENT_BRANCH} at ${PREV_COMMIT}"
-run "git fetch origin ${DEPLOY_BRANCH}"
-run "git checkout ${DEPLOY_BRANCH}"
-run "git reset --hard origin/${DEPLOY_BRANCH}"
-run "pnpm install --frozen-lockfile"
-run "pnpm run build"
-
-# Preflight runs after build because it imports the compiled database manifest.
-run "pnpm deploy:preflight"
-run "pnpm db:migrations:plan"
+require_clean_branch
+log "Preparing $DEPLOY_BRANCH from $PREV_COMMIT."
+run git fetch origin "$DEPLOY_BRANCH"
+run git merge --ff-only "origin/$DEPLOY_BRANCH"
+run pnpm install --frozen-lockfile
+run pnpm run build
+run pnpm deploy:preflight
+run pnpm db:migrations:validate
+run pnpm db:migrations:plan
 
 if $DRY_RUN; then
-  log "Dry run completed successfully. No migrations were applied and no service was restarted."
   trap - ERR
+  log "Dry run complete. No migration or service state was changed."
   exit 0
 fi
 
 if [[ "$APPLY_MIGRATIONS" == "1" ]]; then
-  log "Applying pending database migrations"
-  run "pnpm db:migrations:apply"
+  run pnpm db:migrations:apply
 else
-  log "Skipping database migrations (set APPLY_MIGRATIONS=1 to apply them)"
+  log "Skipping migrations. Set APPLY_MIGRATIONS=1 only after reviewing the plan."
 fi
 
-run "sudo systemctl restart ks-os-api"
-run "sleep 3"
-
-log "Running readiness check at ${HEALTH_URL}"
-HTTP_STATUS="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$HEALTH_URL")"
-if [[ "$HTTP_STATUS" != "200" ]]; then
-  log "Readiness check failed with status ${HTTP_STATUS}"
-  false
-fi
+write_release_version
+restart_release_services
+check_http "API" "$API_HEALTH_URL"
+check_http "site worker health" "$WORKER_HEALTH_URL"
+check_http "site worker readiness" "$WORKER_READY_URL"
+check_http "shared renderer" "$RENDERER_HEALTH_URL" "$RENDERER_HEALTH_HOST"
 
 trap - ERR
-log "Deployment completed successfully at commit $(git rev-parse HEAD)"
+log "Deployment completed at $(git rev-parse HEAD)."

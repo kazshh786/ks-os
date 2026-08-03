@@ -121,3 +121,15 @@ test('a stale service booking action is rendered unavailable instead of linking 
   assert.match(String(output), /aria-disabled="true"/);
   assert.doesNotMatch(String(output), /href=/);
 });
+
+test('operational repository never substitutes a preview when no publication pointer snapshot exists', async () => {
+  const preview = createOriginalInternalSiteFixture();
+  const base: PublicSiteRepository = {
+    async resolveHostname() { return { siteReference: preview.siteReference, siteStatus: 'APPROVED', matchedHostname: preview.canonicalHostname, matchKind: 'FALLBACK', domainStatus: 'ACTIVE' }; },
+    async loadPublishedSnapshot() { return null; },
+    async loadPreviewSnapshot() { return preview; },
+    async isPreviewTokenRevoked() { return false; },
+  };
+  const repository = new OperationalPublicSiteRepository(base, {} as never);
+  assert.equal(await repository.loadPublishedSnapshot(preview.siteReference), null);
+});

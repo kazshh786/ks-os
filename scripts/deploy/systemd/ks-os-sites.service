@@ -1,0 +1,26 @@
+[Unit]
+Description=KS OS shared multi-tenant website renderer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ksdeploy
+Group=ksdeploy
+WorkingDirectory=/srv/ks-os
+EnvironmentFile=/srv/ks-os/.env
+EnvironmentFile=-/run/ks-os/release.env
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=5001
+Environment=TRUST_PROXY=true
+ExecStart=/usr/bin/env pnpm --filter sites start
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

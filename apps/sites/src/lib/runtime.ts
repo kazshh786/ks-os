@@ -74,6 +74,25 @@ function requestHostname(request: Request, config: SitesRuntimeConfig) {
   });
 }
 
+function isNoIndexHostname(request: Request, config: SitesRuntimeConfig) {
+  try {
+    return config.noIndexHostnames.includes(requestHostname(request, config));
+  } catch {
+    return false;
+  }
+}
+
+function applyHostRobotsPolicy(
+  response: Response,
+  request: Request,
+  config: SitesRuntimeConfig,
+) {
+  if (isNoIndexHostname(request, config)) {
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  }
+  return response;
+}
+
 type LiveSiteResult =
   | {
     kind: 'AVAILABLE';
@@ -202,7 +221,7 @@ export async function handlePublicPageRequest(input: {
     const context = renderContext(resolved.snapshot, page);
     const content = renderRegisteredSitePage(page, context);
     const structuredData = generateSiteStructuredData(resolved.snapshot, page);
-    return htmlResponse(
+    return applyHostRobotsPolicy(htmlResponse(
       renderPublishedPageDocument({
         snapshot: resolved.snapshot,
         page,
@@ -211,7 +230,7 @@ export async function handlePublicPageRequest(input: {
       }),
       200,
       PUBLIC_PAGE_CACHE,
-    );
+    ), input.request, input.config);
   } catch (error) {
     if (error instanceof SiteRenderabilityError) return unavailable();
     return unavailable();
@@ -450,6 +469,13 @@ export async function handleRobotsRequest(input: {
   repository: PublicSiteRepository;
   config: SitesRuntimeConfig;
 }): Promise<Response> {
+  if (isNoIndexHostname(input.request, input.config)) {
+    const response = new Response(generateTenantRobots({ allowIndexing: false }), {
+      status: 200,
+      headers: securityHeaders(NO_STORE, 'text/plain; charset=utf-8'),
+    });
+    return applyHostRobotsPolicy(response, input.request, input.config);
+  }
   try {
     const resolved = await resolveLiveSite(input);
     if (resolved.kind !== 'AVAILABLE') {
@@ -475,14 +501,32 @@ export async function handleRobotsRequest(input: {
   }
 }
 
-export function handleHealthRequest(config: SitesRuntimeConfig): Response {
-  return new Response(JSON.stringify({
+export async function handleHealthRequest(input: {
+  request: Request;
+  repository: PublicSiteRepository;
+  config: SitesRuntimeConfig;
+}): Promise<Response> {
+  let site: ResolvedPublicSite | null = null;
+  try {
+    site = await input.repository.resolveHostname(
+      requestHostname(input.request, input.config),
+      input.config.fallbackDomain,
+    );
+  } catch {
+    site = null;
+  }
+  const response = new Response(JSON.stringify({
     status: 'available',
     service: 'sites',
-    release: config.releaseVersion,
+    release: input.config.releaseVersion,
     schemaVersion: 1,
+    // Health identity is safe verification evidence for a mapped hostname even
+    // before activation. Public page rendering still requires ACTIVE above.
+    siteReference: site?.siteReference ?? null,
+    domainStatus: site?.domainStatus ?? 'UNMAPPED',
   }), {
     status: 200,
     headers: securityHeaders(NO_STORE, 'application/json; charset=utf-8'),
   });
+  return applyHostRobotsPolicy(response, input.request, input.config);
 }

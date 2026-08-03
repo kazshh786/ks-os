@@ -63,4 +63,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260801043000_booking_commitment_payment_policy.sql', order: 56, description: 'Require deposit-first or full upfront Stripe payments for paid public bookings while free services remain payment-free' },
   { filename: '20260727120000_race_safe_public_booking.sql', order: 57, description: 'Race-safe authoritative public booking creation with PostgreSQL advisory locking' },
   { filename: '20260803120000_tenant_automated_email_settings.sql', order: 58, description: 'Tenant-isolated automated email branding, lifecycle switches, and editable template copy' },
+  { filename: '20260803170000_allow_proxied_managed_site_records.sql', order: 59, description: 'Allow Cloudflare proxying only for KS OS-managed website A and CNAME routes while preserving DNS-only governance elsewhere' },
 ];

@@ -1,0 +1,15 @@
+{
+  "extends": "../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": "../apps/api",
+    "paths": {
+      "@ks-os/*": ["node_modules/@ks-os/*"],
+      "dotenv": ["node_modules/dotenv"],
+      "drizzle-orm": ["node_modules/drizzle-orm"]
+    },
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["bootstrap-live-website-playground.ts"]
+}

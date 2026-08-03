@@ -1,0 +1,25 @@
+[Unit]
+Description=KS OS durable website worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ksdeploy
+Group=ksdeploy
+WorkingDirectory=/srv/ks-os
+EnvironmentFile=/srv/ks-os/.env
+EnvironmentFile=-/run/ks-os/release.env
+Environment=NODE_ENV=production
+Environment=SITE_WORKER_HEALTH_HOST=127.0.0.1
+Environment=SITE_WORKER_HEALTH_PORT=8091
+ExecStart=/usr/bin/env pnpm --filter site-worker start
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -20,14 +20,12 @@ import {
   sites,
   siteVersions,
   templateVersions,
-  tenants,
 } from '@ks-os/database';
 import {
   calculatePublishedSnapshotDigest,
   validatePublishedSnapshot,
   type PublishedSiteSnapshot,
 } from '@ks-os/site-schema';
-import { managedFallbackSubdomain } from './hostname.js';
 
 export interface ResolvedPublicSite {
   siteReference: string;
@@ -112,7 +110,7 @@ function validateSnapshotRow(row: SnapshotRow): PublishedSiteSnapshot {
 export class DrizzlePublicSiteRepository implements PublicSiteRepository {
   constructor(private readonly database = getDatabase()) {}
 
-  async resolveHostname(hostname: string, fallbackDomain: string) {
+  async resolveHostname(hostname: string, _fallbackDomain: string) {
     const [domain] = await this.database
       .select({
         siteReference: sites.publicReference,
@@ -135,28 +133,7 @@ export class DrizzlePublicSiteRepository implements PublicSiteRepository {
       };
     }
 
-    const subdomain = managedFallbackSubdomain(hostname, fallbackDomain);
-    if (!subdomain) return null;
-    const [fallback] = await this.database
-      .select({
-        siteReference: sites.publicReference,
-        siteStatus: sites.status,
-      })
-      .from(tenants)
-      .innerJoin(sites, eq(sites.tenantId, tenants.id))
-      .where(and(
-        eq(tenants.subdomain, subdomain),
-        eq(tenants.isActive, true),
-      ))
-      .limit(1);
-    if (!fallback) return null;
-    return {
-      siteReference: fallback.siteReference,
-      siteStatus: fallback.siteStatus as SiteStatus,
-      matchedHostname: hostname,
-      matchKind: 'FALLBACK' as const,
-      domainStatus: 'ACTIVE' as const,
-    };
+    return null;
   }
 
   async loadPublishedSnapshot(siteReference: string) {

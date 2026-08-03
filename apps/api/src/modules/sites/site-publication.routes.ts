@@ -16,8 +16,19 @@ const CreatePublication = z.object({
 }).strict();
 const CreateCustomDomain = z.object({ hostname: z.string().trim().min(1).max(253) }).strict();
 const CreateFallbackDomain = z.object({
-  fallbackDomain: z.string().trim().regex(/^[a-z0-9.-]+$/).default('sites.kasimshah.com'),
 }).strict();
+
+function configuredFallbackDomain() {
+  const value = process.env.PUBLIC_SITES_FALLBACK_DOMAIN
+    ?? (process.env.NODE_ENV === 'production' ? undefined : 'sites.kasimshah.com');
+  if (!value) {
+    throw Object.assign(new Error('Managed fallback hosting is not configured.'), {
+      statusCode: 503,
+      code: 'FALLBACK_DOMAIN_NOT_CONFIGURED',
+    });
+  }
+  return value;
+}
 
 function actor(request: FastifyRequest, capability: AgencyCapability): AgencyActor {
   const auth = request.requireAgency(capability);
@@ -61,8 +72,14 @@ export async function agencySitePublicationRoutes(app: FastifyInstance) {
   app.post('/:siteReference/domains/fallback', async (request, reply) => {
     const { siteReference } = SiteParams.parse(request.params);
     const agencyActor = actor(request, 'sites.domains.create');
-    const { fallbackDomain } = CreateFallbackDomain.parse(request.body ?? {});
-    return reply.code(202).send({ data: await service().createFallback(agencyActor, siteReference, fallbackDomain) });
+    CreateFallbackDomain.parse(request.body ?? {});
+    return reply.code(202).send({
+      data: await service().createFallback(
+        agencyActor,
+        siteReference,
+        configuredFallbackDomain(),
+      ),
+    });
   });
   app.post('/:siteReference/domains/custom', async (request, reply) => {
     const { siteReference } = SiteParams.parse(request.params);

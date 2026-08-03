@@ -53,6 +53,7 @@ const previewSecret = 'phase-15-5-test-preview-secret-value-0001';
 const config: SitesRuntimeConfig = {
   nodeEnv: 'test',
   fallbackDomain: 'sites.kasimshah.com',
+  noIndexHostnames: [],
   publicBookingOrigin: 'https://book.kasimshah.com',
   previewTokenSecret: previewSecret,
   trustedProxy: false,
@@ -1159,16 +1160,47 @@ test('preview pages are never publicly cached', async () => {
 
 // 89
 test('health endpoint does not expose environment secrets', async () => {
-  const response = handleHealthRequest(config);
+  const response = await handleHealthRequest({
+    request: request(fallbackHostname, '/health'),
+    repository: repoFor(),
+    config,
+  });
   const body = await response.text();
   assert.equal(response.status, 200);
   assert.doesNotMatch(body, /preview-secret|DATABASE_URL|SUPABASE/i);
   assert.deepEqual(Object.keys(JSON.parse(body)).sort(), [
+    'domainStatus',
     'release',
     'schemaVersion',
     'service',
+    'siteReference',
     'status',
   ]);
+  assert.equal(JSON.parse(body).siteReference, baseSnapshot.siteReference);
+});
+
+test('configured playground host receives host-local noindex headers and robots policy', async () => {
+  const noindexConfig = { ...config, noIndexHostnames: [fallbackHostname] };
+  const response = await publicPage(repoFor(), fallbackHostname, '/', noindexConfig);
+  assert.match(response.headers.get('x-robots-tag') ?? '', /noindex/);
+  const robots = await handleRobotsRequest({
+    request: request(fallbackHostname, '/robots.txt'),
+    repository: repoFor(),
+    config: noindexConfig,
+  });
+  assert.match(await robots.text(), /Disallow: \/$/m);
+});
+
+test('health proves mapped tenant identity before activation without serving public content', async () => {
+  const hostname = 'checking.northlight.example';
+  const repository = repoFor();
+  repository.addHost(hostname, { domainStatus: 'INACTIVE' });
+  const health = await handleHealthRequest({
+    request: request(hostname, '/health'), repository, config,
+  });
+  assert.equal(JSON.parse(await health.text()).siteReference, baseSnapshot.siteReference);
+  const page = await publicPage(repository, hostname);
+  assert.equal(page.status, 404);
 });
 
 // 90

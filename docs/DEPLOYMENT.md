@@ -1,110 +1,107 @@
-# Production Deployment & Database Migration Guide
+# KS OS production deployment
 
-## 1. Architecture Overview
+KS OS deploys the Fastify API, durable site worker, and shared Astro renderer as one release. Public website content remains tenant data: only an immutable published snapshot selected by `site_publication_pointers` is rendered. Preview snapshots are never a public-host fallback.
 
-- **Repository**: `kazshh786/ks-os` (Monorepo)
-- **Deployment Branch**: `staging`
-- **Target VPS Path**: `/srv/ks-os`
-- **Systemd Service**: `ks-os-api`
-- **Execution User**: `ksdeploy`
-- **Node.js**: `24.x` | **pnpm**: `11.13.1`
-- **Fastify API Entry**: `apps/api/dist/server.js` (Binds to `127.0.0.1:5000`)
-- **Reverse Proxy**: Apache / Nginx proxying HTTPS `https://api.kasimshah.com` to `http://127.0.0.1:5000`
+## Production topology
 
----
+- Repository: `kazshh786/ks-os`
+- VPS checkout: `/srv/ks-os`
+- Runtime user: `ksdeploy`
+- API: `ks-os-api`, `127.0.0.1:5000`
+- Durable website worker: `ks-os-site-worker`, health/readiness on `127.0.0.1:8091`
+- Shared website renderer: `ks-os-sites`, `127.0.0.1:5001`
+- Plesk/nginx terminates origin traffic and preserves `Host` and forwarded headers.
+- Cloudflare owns public DNS/proxying. `playground.kasimshah.com` is noindex; this policy is not global.
 
-## 2. Required Environment Variables
+The environment file is `/srv/ks-os/.env`. Never commit, print, or overwrite it during deployment. In addition to the normal database/Supabase values, website production requires:
 
-The VPS environment file is stored strictly at `/srv/ks-os/.env`. It must NEVER be checked into Git, logged, or overwritten.
-
-Required variables:
-- `NODE_ENV=production`
-- `PORT=5000`
-- `DATABASE_URL=postgresql://...` (Supabase pooled or direct PostgreSQL string)
-- `SUPABASE_URL=...`
-- `SUPABASE_SERVICE_ROLE_KEY=...`
-
----
-
-## 3. Command Reference
-
-### Preflight Check
-```bash
-pnpm deploy:preflight
+```dotenv
+NODE_ENV=production
+PUBLIC_SITES_FALLBACK_DOMAIN=kasimshah.com
+PUBLIC_SITES_PREVIEW_HOST=preview.sites.kasimshah.com
+PUBLIC_SITES_NOINDEX_HOSTS=playground.kasimshah.com
+PUBLIC_BOOKING_ORIGIN=https://app.kasimshah.com
+SITE_PREVIEW_TOKEN_SECRET=<distinct secret of at least 32 characters>
+SITE_DOMAIN_PROVIDER=cloudflare
+CLOUDFLARE_ZONE_ID=<zone reference>
+CLOUDFLARE_API_TOKEN=<server-side scoped token>
+SITE_RENDERER_ORIGIN_HOST=<dedicated origin hostname>
+SITE_AI_GENERATION_ENABLED=true
+SITE_AI_PROVIDER=gemini
+SITE_AI_MODEL=<governed model name>
+SITE_AI_API_KEY=<server-side key>
+SITE_QUALITY_ENABLED=true
+SITE_QUALITY_BROWSER_ENABLED=true
 ```
 
-### Migration Status & Planning
-```bash
-# View applied vs pending migration status
-pnpm db:migrations:status
+`SITE_RENDERER_ORIGIN_IP` is an explicit IPv4 fallback only. Prefer the dedicated origin hostname. Never use `VITE_` for provider, database, preview, or AI secrets.
 
-# View execution plan for pending migrations
-pnpm db:migrations:plan
+## First service installation
+
+From the repository checkout on the VPS:
+
+```bash
+cd /srv/ks-os
+sudo install -m 0644 scripts/deploy/systemd/ks-os-site-worker.service /etc/systemd/system/ks-os-site-worker.service
+sudo install -m 0644 scripts/deploy/systemd/ks-os-sites.service /etc/systemd/system/ks-os-sites.service
+sudo systemctl daemon-reload
+sudo systemctl enable ks-os-site-worker ks-os-sites
 ```
 
-### Migration Execution (Production)
+Apply the relevant tracked directive from `scripts/deploy/plesk/` through Plesk's **Additional nginx directives** UI. Do not edit generated Plesk vhost files. The renderer configuration and playground vhost both apply noindex only to the playground hostname; the preview route enforces signed access, no-store, and noindex itself.
+
+Cloudflare records must be exact and proxied only for KS OS-managed website A/CNAME routes. Existing mail, verification, and unrelated records are preserved. Before switching traffic, confirm the origin route with:
+
 ```bash
-# Applies pending migrations in order (requires NODE_ENV=production)
-pnpm db:migrations:apply
+cd /srv/ks-os
+curl --fail --header 'Host: playground.kasimshah.com' http://127.0.0.1:5001/health
 ```
 
-### Dry Run Deployment
+## Controlled deployment
+
+The checkout must be clean and on `DEPLOY_BRANCH` (default `main`). The script uses a fast-forward merge; it does not discard local changes.
+
 ```bash
-pnpm deploy:vps:dry-run
+cd /srv/ks-os
+bash scripts/deploy/deploy-vps.sh --dry-run
 ```
 
-### Full VPS Production Deployment Command
+The dry run installs the locked dependency graph, builds every workspace, runs deployment preflight, validates the migration manifest, and prints the migration plan. It applies no migration and restarts no service.
+
+After reviewing the exact migration plan:
+
 ```bash
+cd /srv/ks-os
 APPLY_MIGRATIONS=1 bash scripts/deploy/deploy-vps.sh
 ```
 
----
+The release is successful only when the API, worker health, worker readiness, and renderer health all return HTTP 200. A failed release checks out the previous application commit, rebuilds it, and restarts all three services. Database down-migrations are never automatic; use a new compensating migration when required.
 
-## 4. Normal Deployment Procedure
+## Guarded Luma playground bootstrap
 
-1. Connect to VPS as `ksdeploy`:
-   ```bash
-   ssh ksdeploy@79.99.41.192
-   cd /srv/ks-os
-   ```
-2. Verify clean git working tree:
-   ```bash
-   git status
-   ```
-3. Run a dry run to inspect pending code changes and migration plan:
-   ```bash
-   pnpm deploy:vps:dry-run
-   ```
-4. Execute controlled production deployment:
-   - **Code update only (no DB schema changes)**:
-     ```bash
-     bash scripts/deploy/deploy-vps.sh
-     ```
-   - **Code update WITH database migrations**:
-     ```bash
-     APPLY_MIGRATIONS=1 bash scripts/deploy/deploy-vps.sh
-     ```
+Run only after migrations, service health, Cloudflare/Plesk routing, and production environment validation succeed:
 
----
+```bash
+cd /srv/ks-os
+LIVE_PLAYGROUND_BOOTSTRAP_ENABLED=true \
+LIVE_PLAYGROUND_SUBDOMAIN=playground \
+LIVE_PLAYGROUND_HOSTNAME=playground.kasimshah.com \
+pnpm playground:website:bootstrap
+```
 
-## 5. Application Rollback Protocol
+The command is intentionally pinned to the fictional `Luma Beauty Studio` workspace and is resumable. It creates/reuses canonical booking data, completes the normal fact-finding review and locked-brief lifecycle, validates a ten-page Northlight provisioning draft, and queues the existing durable provisioning workflow. It outputs references only and never prints generated passwords or credentials.
 
-If the deployment script fails during health check verification (`/health`), it automatically initiates an **application code rollback**:
+It does **not** approve its own website review. An authorised person must inspect the signed preview in Site Studio, record the real review decision, run the exact-version quality gate, explicitly acknowledge any warnings, and then publish. Only the pointer-backed live URL is valid evidence of launch.
 
-1. Reverts git working tree to `PREV_COMMIT` via `git reset --hard`.
-2. Runs `pnpm install --frozen-lockfile` and `pnpm build`.
-3. Restarts `ks-os-api` systemd service.
+## Live verification
 
-### Why Database Rollbacks Are Manual
-Schema migrations in PostgreSQL are non-trivial to automatically reverse without risk of data loss. If a database migration succeeds but the API fails post-migration:
-- The runner **never** attempts automatic database down-migrations.
-- Developers must inspect column/table modifications manually and issue compensating migrations if necessary.
+After human approval and publication, verify at minimum:
 
----
+```bash
+cd /srv/ks-os
+curl --fail --silent https://playground.kasimshah.com/health
+curl --fail --silent --head https://playground.kasimshah.com/
+curl --fail --silent https://playground.kasimshah.com/robots.txt
+```
 
-## 6. Security Rules & Migration Best Practices
-
-1. **Applied Migrations Are Immutable**: Once a migration file has been applied in production or staging, its SQL content and SHA-256 hash must NEVER be modified.
-2. **Deterministic Manifest**: New migrations must be added to `packages/database/src/manifest.ts` with explicit sequence order.
-3. **Transactional Execution**: Every migration runs inside an isolated `BEGIN ... COMMIT` block. If any query fails, the entire file rolls back.
-4. **Advisory Locking**: All migration attempts acquire PostgreSQL session advisory lock `88492026` to prevent simultaneous concurrent runner executions.
+Confirm `/`, representative service/about/contact pages, and the real `/book` path return successful responses; tenant identity and canonical metadata are correct; playground responses include noindex; preview responses remain token-protected; and the API, worker, and renderer remain healthy after traffic begins.

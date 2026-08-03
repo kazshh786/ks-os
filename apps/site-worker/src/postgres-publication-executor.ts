@@ -82,7 +82,29 @@ export class PostgresSitePublicationExecutor implements SitePublicationJobExecut
           qr.knowledge_pack_digest_sha256,
           qr.renderer_version,
           sv.public_reference AS version_reference,
+          sv.status AS version_status,
           sv.generation_content_digest_sha256,
+          srs.source_content_digest_sha256,
+          EXISTS (
+            SELECT 1 FROM site_review_cycles review
+            WHERE review.tenant_id = pr.tenant_id
+              AND review.site_id = pr.site_id
+              AND review.site_version_id = pr.site_version_id
+              AND review.status = 'AGENCY_APPROVED'
+              AND review.pinned_content_digest_sha256 = sv.generation_content_digest_sha256
+          ) AS review_approved,
+          EXISTS (
+            SELECT 1 FROM site_domains domain
+            WHERE domain.tenant_id = pr.tenant_id
+              AND domain.site_id = pr.site_id
+              AND domain.status = 'ACTIVE'
+              AND domain.ownership_status = 'VERIFIED'
+              AND domain.ssl_status = 'ACTIVE'
+              AND (
+                domain.domain_type = 'FALLBACK'
+                OR (domain.domain_type = 'CUSTOM' AND domain.domain_role = 'CANONICAL')
+              )
+          ) AS managed_hostname_active,
           srs.id AS preview_snapshot_id,
           srs.template_version_id,
           srs.schema_version,
@@ -103,6 +125,7 @@ export class PostgresSitePublicationExecutor implements SitePublicationJobExecut
             AND candidate.site_id = pr.site_id
             AND candidate.site_version_id = pr.site_version_id
             AND candidate.snapshot_kind = 'PREVIEW'
+            AND candidate.source_content_digest_sha256 = sv.generation_content_digest_sha256
           ORDER BY candidate.revision DESC
           LIMIT 1
         ) srs ON true
@@ -116,8 +139,9 @@ export class PostgresSitePublicationExecutor implements SitePublicationJobExecut
         publication_gate_status: string; site_version_digest_sha256: string;
         policy_version: string; knowledge_pack_id: string;
         knowledge_pack_semantic_version: string; knowledge_pack_digest_sha256: string;
-        renderer_version: string; version_reference: string;
-        generation_content_digest_sha256: string; template_version_id: string;
+        renderer_version: string; version_reference: string; version_status: string;
+        generation_content_digest_sha256: string; source_content_digest_sha256: string;
+        review_approved: boolean; managed_hostname_active: boolean; template_version_id: string;
         schema_version: number; hostname_configuration_version: number;
         content_json: unknown; previous_snapshot_id: string | null; pointer_version: number | null;
       }>(result);
@@ -126,8 +150,15 @@ export class PostgresSitePublicationExecutor implements SitePublicationJobExecut
         row.quality_status !== 'READY'
         || !['READY', 'READY_WITH_WARNINGS'].includes(row.publication_gate_status)
         || row.site_version_digest_sha256 !== row.generation_content_digest_sha256
+        || row.source_content_digest_sha256 !== row.generation_content_digest_sha256
       ) {
         throw new SiteJobExecutionError('TERMINAL_VALIDATION_FAILURE', 'Publication readiness changed or no longer matches the exact version digest.');
+      }
+      if (!row.review_approved || !['APPROVED', 'PUBLISHED'].includes(row.version_status)) {
+        throw new SiteJobExecutionError('TERMINAL_VALIDATION_FAILURE', 'The exact digest no longer has an agency approval.');
+      }
+      if (!row.managed_hostname_active) {
+        throw new SiteJobExecutionError('TERMINAL_VALIDATION_FAILURE', 'No active managed hostname remains available for this site.');
       }
       if (row.publication_gate_status === 'READY_WITH_WARNINGS' && !payload.acknowledgeWarnings) {
         throw new SiteJobExecutionError('TERMINAL_VALIDATION_FAILURE', 'Digest-bound warning acknowledgement is required.');
