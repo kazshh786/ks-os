@@ -973,13 +973,15 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
       const [transactionExisting] = await tx.select({ reference: siteBlueprints.publicReference })
         .from(siteBlueprints).where(eq(siteBlueprints.provisioningRunId, run.runId)).limit(1);
       if (transactionExisting) return [{ type: 'SITE_BLUEPRINT', reference: transactionExisting.reference }];
-      const [latest] = await tx.select({ revision: max(siteBlueprints.revision) })
-        .from(siteBlueprints).where(eq(siteBlueprints.siteId, run.siteId));
-      const revision = (latest?.revision ?? 0) + 1;
       const [blueprint] = await tx.insert(siteBlueprints).values({
         tenantId: run.tenantId, siteId: run.siteId, templateVersionId: run.templateVersionId,
         planAssignmentId: assignment.id, provisioningRunId: run.runId, name: request.name!, status: 'REVIEW_REQUIRED',
-        revision, sourceDataDigest: plan.sourceDataDigest, engineVersion: plan.engineVersion,
+        revision: sql<number>`(
+          SELECT coalesce(max(existing.revision), 0) + 1
+          FROM site_blueprints AS existing
+          WHERE existing.site_id = ${run.siteId}::uuid
+        )`,
+        sourceDataDigest: plan.sourceDataDigest, engineVersion: plan.engineVersion,
         proposedMarketingPageCount: plan.entitlementUsage.proposedMarketingPageCount,
         entitlementMarketingPageLimit: plan.entitlementUsage.marketingPageLimit,
         functionalPageCount: plan.entitlementUsage.functionalPageCount,
