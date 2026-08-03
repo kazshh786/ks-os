@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import {
   agencyUsers,
   getDatabase,
@@ -23,6 +23,7 @@ import {
 } from '@ks-os/site-publishing';
 import type { z } from 'zod';
 import type { AgencyActor } from '../agency/agency.service.js';
+import { publicationBlockCode } from './publication-preconditions.js';
 
 type Database = ReturnType<typeof getDatabase>;
 type PublicationReason = z.infer<typeof PublicationReasonSchema>;
@@ -55,16 +56,37 @@ export class SitePublicationService {
   async live(siteReference: string) {
     const [result] = await this.database.select({
       siteReference: sites.publicReference,
+      versionReference: siteVersions.publicReference,
       snapshotReference: siteRenderSnapshots.publicReference,
       pointerVersion: sitePublicationPointers.pointerVersion,
       activatedAt: sitePublicationPointers.activatedAt,
     }).from(sites)
       .leftJoin(sitePublicationPointers, eq(sitePublicationPointers.siteId, sites.id))
       .leftJoin(siteRenderSnapshots, eq(siteRenderSnapshots.id, sitePublicationPointers.activeSnapshotId))
+      .leftJoin(siteVersions, eq(siteVersions.id, siteRenderSnapshots.siteVersionId))
       .where(eq(sites.publicReference, siteReference))
       .limit(1);
     if (!result) throw fail(404, 'SITE_NOT_FOUND', 'Site not found.');
-    return result;
+    const domains = await this.domains(siteReference);
+    const liveDomain = domains.find(domain =>
+      domain.status === 'ACTIVE'
+      && domain.ownershipStatus === 'VERIFIED'
+      && domain.sslStatus === 'ACTIVE'
+      && domain.domainType === 'CUSTOM'
+      && domain.domainRole === 'CANONICAL')
+      || domains.find(domain =>
+        domain.status === 'ACTIVE'
+        && domain.ownershipStatus === 'VERIFIED'
+        && domain.sslStatus === 'ACTIVE'
+        && domain.domainType === 'FALLBACK');
+    return {
+      ...result,
+      status: result.snapshotReference ? 'LIVE' : 'NOT_PUBLISHED',
+      hostname: liveDomain?.hostname ?? null,
+      liveUrl: result.snapshotReference && liveDomain
+        ? `https://${liveDomain.hostname}`
+        : null,
+    };
   }
 
   async create(actor: AgencyActor, siteReference: string, input: {
@@ -82,6 +104,7 @@ export class SitePublicationService {
       siteStatus: sites.status,
       versionId: siteVersions.id,
       versionReference: siteVersions.publicReference,
+      versionStatus: siteVersions.status,
       versionDigest: siteVersions.generationContentDigestSha256,
       qualityRunId: siteQualityRuns.id,
       qualityRunReference: siteQualityRuns.publicReference,
@@ -89,6 +112,26 @@ export class SitePublicationService {
       gateStatus: siteQualityRuns.publicationGateStatus,
       qualityDigest: siteQualityRuns.siteVersionDigestSha256,
       warningCount: siteQualityRuns.warningCount,
+      reviewApproved: sql<boolean>`exists (
+        select 1 from site_review_cycles review
+        where review.tenant_id = ${sites.tenantId}
+          and review.site_id = ${sites.id}
+          and review.site_version_id = ${siteVersions.id}
+          and review.status = 'AGENCY_APPROVED'
+          and review.pinned_content_digest_sha256 = ${siteVersions.generationContentDigestSha256}
+      )`,
+      managedHostnameActive: sql<boolean>`exists (
+        select 1 from site_domains domain
+        where domain.tenant_id = ${sites.tenantId}
+          and domain.site_id = ${sites.id}
+          and domain.status = 'ACTIVE'
+          and domain.ownership_status = 'VERIFIED'
+          and domain.ssl_status = 'ACTIVE'
+          and (
+            domain.domain_type = 'FALLBACK'
+            or (domain.domain_type = 'CUSTOM' and domain.domain_role = 'CANONICAL')
+          )
+      )`,
     }).from(sites)
       .innerJoin(tenants, eq(sites.tenantId, tenants.id))
       .innerJoin(siteVersions, and(
@@ -102,19 +145,26 @@ export class SitePublicationService {
       .where(eq(sites.publicReference, siteReference))
       .limit(1);
     if (!context) throw fail(404, 'PUBLICATION_SCOPE_NOT_FOUND', 'The requested version and quality run do not belong to this site.');
-    if (!context.versionDigest || context.versionDigest !== context.qualityDigest) {
-      throw fail(409, 'PUBLICATION_PIN_MISMATCH', 'The quality result does not match the current immutable version digest.');
-    }
-    if (context.qualityStatus !== 'READY'
-      || !['READY', 'READY_WITH_WARNINGS'].includes(context.gateStatus)) {
-      throw fail(409, 'PUBLICATION_READINESS_BLOCKED', 'The exact quality run is not ready for publication.');
-    }
-    if (context.gateStatus === 'READY_WITH_WARNINGS' && !input.acknowledgeWarnings) {
-      throw fail(409, 'PUBLICATION_WARNING_ACKNOWLEDGEMENT_REQUIRED', 'Current warnings must be acknowledged.');
-    }
-    if (['SUSPENDED', 'ARCHIVED'].includes(context.siteStatus)) {
-      throw fail(409, 'PUBLICATION_SITE_UNAVAILABLE', 'Suspended or archived sites cannot be published.');
-    }
+    const blockCode = publicationBlockCode({
+      versionDigest: context.versionDigest,
+      qualityDigest: context.qualityDigest,
+      versionStatus: context.versionStatus,
+      reviewApproved: context.reviewApproved,
+      qualityStatus: context.qualityStatus,
+      gateStatus: context.gateStatus,
+      acknowledgeWarnings: input.acknowledgeWarnings,
+      siteStatus: context.siteStatus,
+      managedHostnameActive: context.managedHostnameActive,
+    });
+    const blockMessages = {
+      PUBLICATION_PIN_MISMATCH: 'The quality result does not match the current immutable version digest.',
+      PUBLICATION_REVIEW_REQUIRED: 'The exact site version must have a current agency approval before publication.',
+      PUBLICATION_READINESS_BLOCKED: 'The exact quality run is not ready for publication.',
+      PUBLICATION_WARNING_ACKNOWLEDGEMENT_REQUIRED: 'Current warnings must be acknowledged.',
+      PUBLICATION_SITE_UNAVAILABLE: 'Suspended or archived sites cannot be published.',
+      PUBLICATION_MANAGED_HOSTNAME_REQUIRED: 'Activate a managed fallback hostname or a verified canonical custom hostname before publication.',
+    } as const;
+    if (blockCode) throw fail(409, blockCode, blockMessages[blockCode]);
     const [agencyUser] = await this.database.select({
       reference: agencyUsers.publicReference,
     }).from(agencyUsers).where(and(
@@ -189,8 +239,11 @@ export class SitePublicationService {
     return this.database.select({
       reference: siteDomains.publicReference,
       hostname: siteDomains.hostname,
+      domainType: siteDomains.domainType,
+      domainRole: siteDomains.domainRole,
       type: siteDomains.domainType,
       role: siteDomains.domainRole,
+      providerKey: siteDomains.providerKey,
       status: siteDomains.status,
       ownershipStatus: siteDomains.ownershipStatus,
       sslStatus: siteDomains.sslStatus,
