@@ -104,6 +104,18 @@ export class PostgresSiteJobRepository implements SiteJobRepository {
             failure_code = null,
             failure_message = null,
             retryable = null,
+            progress_current = CASE
+              WHEN candidate.previous_status IN ('LEASED', 'PROCESSING') THEN 0
+              ELSE job.progress_current
+            END,
+            progress_total = CASE
+              WHEN candidate.previous_status IN ('LEASED', 'PROCESSING') THEN null
+              ELSE job.progress_total
+            END,
+            progress_message = CASE
+              WHEN candidate.previous_status IN ('LEASED', 'PROCESSING') THEN null
+              ELSE job.progress_message
+            END,
             updated_at = now()
           FROM candidate
           WHERE job.id = candidate.id

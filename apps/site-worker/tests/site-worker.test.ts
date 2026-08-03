@@ -641,6 +641,13 @@ test('9d. reprovisioning allocates and persists a new blueprint revision atomica
   assert.match(provisioningExecutorSource, /return this\.db\.transaction/);
 });
 
+test('9e. expired lease recovery resets aggregate progress before replay', () => {
+  assert.match(
+    postgresRepositorySource,
+    /previous_status IN \('LEASED', 'PROCESSING'\) THEN 0[\s\S]*previous_status IN \('LEASED', 'PROCESSING'\) THEN null[\s\S]*previous_status IN \('LEASED', 'PROCESSING'\) THEN null/,
+  );
+});
+
 test('10. lease owner is recorded', async () => {
   const repository = new MemorySiteJobRepository();
   repository.enqueue();
