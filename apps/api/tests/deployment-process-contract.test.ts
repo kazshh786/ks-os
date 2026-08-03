@@ -12,6 +12,7 @@ test('VPS deployment treats API, worker and renderer as one health-checked rollb
   assert.match(script, /5001\/health/);
   assert.match(script, /db:migrations:plan/);
   assert.match(script, /APPLY_MIGRATIONS/);
+  assert.match(script, /node\/v24\.18\.0\/bin/);
   assert.doesNotMatch(script, /reset --hard|eval /);
 });
 
@@ -23,6 +24,7 @@ test('systemd units run as ksdeploy with production environment files and gracef
   for (const unit of [worker, sites]) {
     assert.match(unit, /User=ksdeploy/);
     assert.match(unit, /EnvironmentFile=\/srv\/ks-os\/\.env/);
+    assert.match(unit, /node\/v24\.18\.0\/bin/);
     assert.match(unit, /Restart=on-failure/);
     assert.match(unit, /NoNewPrivileges=true/);
   }

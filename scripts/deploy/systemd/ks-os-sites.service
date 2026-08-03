@@ -11,6 +11,7 @@ WorkingDirectory=/srv/ks-os
 EnvironmentFile=/srv/ks-os/.env
 EnvironmentFile=-/run/ks-os/release.env
 Environment=NODE_ENV=production
+Environment=PATH=/home/ksdeploy/.nvm/versions/node/v24.18.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 Environment=HOST=127.0.0.1
 Environment=PORT=5001
 Environment=TRUST_PROXY=true
