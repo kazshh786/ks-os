@@ -434,6 +434,18 @@ export class PostgresSiteJobRepository implements SiteJobRepository {
           failure_code = ${update.failureCode},
           failure_message = ${update.failureMessage},
           retryable = ${update.retryable},
+          progress_current = CASE
+            WHEN ${update.targetStatus} = 'RETRY_DELAY' THEN 0
+            ELSE progress_current
+          END,
+          progress_total = CASE
+            WHEN ${update.targetStatus} = 'RETRY_DELAY' THEN null
+            ELSE progress_total
+          END,
+          progress_message = CASE
+            WHEN ${update.targetStatus} = 'RETRY_DELAY' THEN null
+            ELSE progress_message
+          END,
           failed_at = CASE
             WHEN ${update.targetStatus} IN ('FAILED', 'DEAD_LETTER')
               THEN now()
