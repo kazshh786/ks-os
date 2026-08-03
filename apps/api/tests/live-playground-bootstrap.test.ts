@@ -7,12 +7,17 @@ const knowledgePath = new URL('../../../scripts/activate-live-playground-knowled
 const provisioningExecutorPath = new URL('../../site-worker/src/postgres-provisioning-executor.ts', import.meta.url);
 const provisioningServicePath = new URL('../src/modules/provisioning/provisioning.service.ts', import.meta.url);
 const generationServicePath = new URL('../src/modules/sites/site-generation.service.ts', import.meta.url);
-const [bootstrap, knowledge, provisioningExecutor, provisioningService, generationService] = await Promise.all([
+const terminalMigrationPath = new URL(
+  '../../../packages/database/migrations/20260803213000_allow_terminal_generation_after_knowledge_supersession.sql',
+  import.meta.url,
+);
+const [bootstrap, knowledge, provisioningExecutor, provisioningService, generationService, terminalMigration] = await Promise.all([
   readFile(bootstrapPath, 'utf8'),
   readFile(knowledgePath, 'utf8'),
   readFile(provisioningExecutorPath, 'utf8'),
   readFile(provisioningServicePath, 'utf8'),
   readFile(generationServicePath, 'utf8'),
+  readFile(terminalMigrationPath, 'utf8'),
 ]);
 
 test('live playground fixture is pinned to the exact Leeds acceptance data', () => {
@@ -77,4 +82,8 @@ test('controlled recovery reuses only a draft site and reconciles only a termina
   assert.match(generationService, /\['FAILED', 'DEAD_LETTER'\]\.includes\(run\.jobStatus\)/);
   assert.match(generationService, /SITE_GENERATION_STATE_RECONCILED/);
   assert.match(generationService, /status: 'PARTIALLY_FAILED'/);
+  assert.match(terminalMigration, /TG_OP = 'INSERT' AND pinned_pack_status <> 'ACTIVE'/);
+  assert.match(terminalMigration, /NEW\.status NOT IN \('FAILED', 'CANCELLED'\)/);
+  assert.match(terminalMigration, /pinned provenance is immutable/);
+  assert.doesNotMatch(terminalMigration, /DROP|TRUNCATE|DELETE FROM/i);
 });
