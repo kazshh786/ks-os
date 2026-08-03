@@ -1347,3 +1347,14 @@ test('71. expired final-attempt leases move to dead letter', async () => {
   assert.equal(job.status, 'DEAD_LETTER');
   assert.match(postgresRepositorySource, /recoverExpiredTerminalLeases/);
 });
+
+test('72. dead-letter audit metadata binds concrete PostgreSQL types', () => {
+  assert.match(
+    postgresRepositorySource,
+    /'jobType', \$\{job\.jobType\}::text,[\s\S]*'failureCode', \$\{update\.failureCode\}::text,[\s\S]*'attemptNumber', \$\{job\.attemptNumber\}::integer/,
+  );
+  assert.match(
+    postgresRepositorySource,
+    /'jobType', \$\{row\.job_type\}::text,[\s\S]*'attemptNumber', \$\{row\.attempt_count\}::integer/,
+  );
+});

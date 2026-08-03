@@ -106,6 +106,13 @@ test('manual retry and cancellation use the platform audit service', () => {
   assert.match(serviceSource, /this\.audit\.write/);
 });
 
+test('manual retry resets aggregate progress before the next attempt', () => {
+  assert.match(
+    serviceSource,
+    /status = 'PENDING',[\s\S]*progress_current = 0,[\s\S]*progress_total = null,[\s\S]*progress_message = null,/,
+  );
+});
+
 test('job history is returned in deterministic order', () => {
   assert.match(serviceSource, /asc\(siteJobAttempts\.attemptNumber\)/);
   assert.match(
