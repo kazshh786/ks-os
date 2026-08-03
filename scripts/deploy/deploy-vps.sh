@@ -7,6 +7,13 @@ set -euo pipefail
 
 cd /srv/ks-os
 
+KS_OS_RUNTIME_BIN="${KS_OS_RUNTIME_BIN:-/home/ksdeploy/.nvm/versions/node/v24.18.0/bin}"
+[[ -x "$KS_OS_RUNTIME_BIN/node" ]] || {
+  echo "Required KS OS Node runtime is missing at $KS_OS_RUNTIME_BIN/node." >&2
+  exit 1
+}
+export PATH="$KS_OS_RUNTIME_BIN:$PATH"
+
 DRY_RUN=false
 ROLLBACK_ON_FAILURE=true
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
