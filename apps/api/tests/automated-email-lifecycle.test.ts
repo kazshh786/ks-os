@@ -64,6 +64,14 @@ test('business booking and payment notifications use dedicated branded templates
   assert.match(payments, /businessPaymentReceivedEnabled/);
 });
 
+test('worker cancels stale time-sensitive appointment emails before sending', () => {
+  const email = source('modules/email/email.service.ts');
+  assert.match(email, /TIME_SENSITIVE_APPOINTMENT_TEMPLATES/);
+  assert.match(email, /appointment\.startTime\.getTime\(\) <= Date\.now\(\)/);
+  assert.match(email, /appointment\.status === 'CANCELLED'/);
+  assert.match(email, /APPOINTMENT_NOTIFICATION_NO_LONGER_APPLICABLE/);
+});
+
 test('email review routing uses Google first and Trustpilot for returning customers', () => {
   const invitations = source('modules/reputation/review-invitation.service.ts');
   assert.match(invitations, /previousCompletedVisits/);

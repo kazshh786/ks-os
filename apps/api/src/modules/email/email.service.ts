@@ -7,6 +7,7 @@ import {
   siteReviewInvitations,
   factFindingInvitations,
   factFindingQuestionnaires,
+  appointments,
 } from '@ks-os/database';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { renderEmail } from '@ks-os/email';
@@ -78,6 +79,13 @@ const FROM_ENV: Record<string, string> = {
 export const EMAIL_SUBJECTS = SUBJECTS;
 export const EMAIL_FROM_ENV = FROM_ENV;
 
+const TIME_SENSITIVE_APPOINTMENT_TEMPLATES = new Set([
+  'appointment-reminder',
+  'booking-confirmed',
+  'booking-rescheduled',
+  'business-booking-confirmed',
+]);
+
 export class EmailService {
   private issues=new OperationsIssueReporter();
   async enqueueEmail(params: EnqueueEmailParams, tx?: any) {
@@ -134,6 +142,29 @@ export class EmailService {
     for (const email of claimed.rows as any[]) {
       const nextAttempt = Number(email.attempt_count ?? 0) + 1;
       try {
+        if (
+          email.related_entity_type === 'appointment'
+          && email.related_entity_id
+          && TIME_SENSITIVE_APPOINTMENT_TEMPLATES.has(email.template_key)
+        ) {
+          const [appointment] = await db.select({
+            startTime: appointments.startTime,
+            status: appointments.status,
+          }).from(appointments)
+            .where(eq(appointments.id, email.related_entity_id))
+            .limit(1);
+          if (
+            !appointment
+            || appointment.startTime.getTime() <= Date.now()
+            || appointment.status === 'CANCELLED'
+          ) {
+            await db.update(emailOutbox).set({
+              status: 'CANCELLED',
+              lastErrorCode: 'APPOINTMENT_NOTIFICATION_NO_LONGER_APPLICABLE',
+            }).where(eq(emailOutbox.id, email.id));
+            continue;
+          }
+        }
         if (email.related_entity_type === 'site_review_invitation' && email.related_entity_id) {
           const [reviewState] = await db.select({
             invitationStatus: siteReviewInvitations.status,
