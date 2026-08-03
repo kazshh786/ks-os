@@ -1,129 +1,141 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router';
-import { agencyFetch } from './AgencyAuth';
+import { Building2, Loader2, Plus, Rocket, X } from 'lucide-react';
+import { useSearchParams } from 'react-router';
+import { agencyFetch, useAgencyAuth } from './AgencyAuth';
+import { AgencyFocusedLaunchJourney } from './AgencyFocusedLaunchJourney';
+import { WorkspaceDataControls } from './WorkspaceDataControls';
 
-const WIZARD_STEPS = [
-  'Plan and entitlement', 'Business profile', 'Locations', 'Services and pricing',
-  'Staff and eligibility', 'Opening hours and availability', 'Booking configuration',
-  'Forms and policies', 'Payments', 'Brand and visual direction', 'Website template',
-  'Website page plan', 'Provisioning review', 'Provisioning progress', 'Workspace completion',
-] as const;
-
-const PAGE_TYPES = ['HOME', 'SERVICE_HUB', 'SERVICE_DETAIL', 'LOCATION_DETAIL', 'ABOUT', 'TEAM_HUB', 'TEAM_DETAIL', 'CONTACT', 'FAQ', 'POLICIES', 'BOOKING'];
-
-const tone: Record<string, string> = {
-  COMPLETED: 'border-emerald-700 bg-emerald-950/40 text-emerald-200',
-  READY: 'border-emerald-700 bg-emerald-950/40 text-emerald-200',
-  IN_PROGRESS: 'border-violet-600 bg-violet-950/50 text-violet-200',
-  PENDING: 'border-slate-800 bg-slate-900 text-slate-400',
-  WARNING: 'border-amber-700 bg-amber-950/40 text-amber-200',
-  ACTION_REQUIRED: 'border-amber-700 bg-amber-950/40 text-amber-200',
-  FAILED: 'border-rose-800 bg-rose-950/40 text-rose-200',
-  BLOCKED: 'border-rose-800 bg-rose-950/40 text-rose-200',
-  SKIPPED: 'border-slate-800 bg-slate-950 text-slate-500',
-};
-
-const Field = ({ label, value, onChange, placeholder = '' }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) => (
-  <label className="text-xs font-bold text-slate-400">{label}<input value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-white" /></label>
-);
+const isRemovedWorkspace = (tenant: any) => tenant.lifecycleStatus === 'OFFBOARDED'
+  && tenant.name === 'Deleted workspace'
+  && String(tenant.subdomain || '').startsWith('deleted-');
 
 export function AgencyProvisioningPage() {
-  const [current, setCurrent] = useState(0);
-  const [draftReference, setDraftReference] = useState(() => localStorage.getItem('ks-os-provisioning-draft') || '');
-  const [run, setRun] = useState<any>(null);
-  const [validation, setValidation] = useState<any>(null);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({
-    productionBriefReference: '', planVersionReference: '', templateVersionReference: '',
-    name: '', subdomain: '', timezone: 'Europe/London', currency: 'GBP',
-    requestedPageTypes: ['HOME', 'SERVICE_HUB', 'ABOUT', 'CONTACT', 'POLICIES', 'BOOKING'],
-    allowPayLater: true, onlinePaymentsRequested: false, depositCollectionRequested: false,
-  });
+  const [params, setParams] = useSearchParams();
+  const tenantId = params.get('tenant');
+  if (tenantId) {
+    return <SelectedClientLaunchWorkspace
+      tenantId={tenantId}
+      onBack={() => setParams({})}
+    />;
+  }
+  return <ClientLaunchDirectory onSelect={reference => setParams({ tenant: reference })} />;
+}
 
-  const requestBody = useMemo(() => ({
-    productionBriefReference: form.productionBriefReference,
-    planVersionReference: form.planVersionReference,
-    workspace: { name: form.name, subdomain: form.subdomain, timezone: form.timezone, currency: form.currency },
-    templateVersionReference: form.templateVersionReference,
-    pagePlan: { requestedPageTypes: form.requestedPageTypes, preferredLayoutReferences: {} },
-    paymentPreference: {
-      allowPayLater: form.allowPayLater,
-      onlinePaymentsRequested: form.onlinePaymentsRequested,
-      depositCollectionRequested: form.depositCollectionRequested,
-    },
-  }), [form]);
+function SelectedClientLaunchWorkspace({ tenantId, onBack }: { tenantId: string; onBack: () => void }) {
+  const { session } = useAgencyAuth();
+  const [detail, setDetail] = useState<any>(null);
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+
+  const loadDetail = async () => {
+    const nextDetail = await agencyFetch(`/tenants/${tenantId}`);
+    setDetail(nextDetail);
+  };
 
   useEffect(() => {
-    if (!run?.reference || ['READY', 'CANCELLED'].includes(run.status)) return;
-    const timer = window.setInterval(() => {
-      void agencyFetch(`/provisioning-runs/${run.reference}`).then(setRun).catch(() => undefined);
-    }, 3_000);
-    return () => window.clearInterval(timer);
-  }, [run?.reference, run?.status]);
+    void loadDetail().catch((cause: Error) => setError(cause.message));
+  }, [tenantId]);
 
-  const command = async (operation: () => Promise<any>) => {
-    setBusy(true); setError('');
-    try { return await operation(); } catch (caught: any) { setError(caught.message); return null; } finally { setBusy(false); }
-  };
-  const save = async () => {
-    const result = await command(() => agencyFetch(draftReference ? `/provisioning-drafts/${draftReference}` : '/provisioning-drafts', {
-      method: draftReference ? 'PATCH' : 'POST', body: JSON.stringify(requestBody),
-    }));
-    if (result?.reference) { setDraftReference(result.reference); localStorage.setItem('ks-os-provisioning-draft', result.reference); }
-  };
-  const resume = async () => {
-    const result = await command(() => agencyFetch(`/provisioning-drafts/${draftReference}`));
-    if (!result) return;
-    setForm(value => ({ ...value, ...result.workspace, ...result.paymentPreference, productionBriefReference: result.productionBriefReference, templateVersionReference: result.templateVersionReference, planVersionReference: result.plan?.versionReference || value.planVersionReference, requestedPageTypes: result.pagePlan?.requestedPageTypes || value.requestedPageTypes }));
-  };
-  const validate = async () => {
-    if (!draftReference) await save();
-    const reference = draftReference || localStorage.getItem('ks-os-provisioning-draft');
-    if (!reference) return;
-    const result = await command(() => agencyFetch(`/provisioning-drafts/${reference}/validate`, { method: 'POST' }));
-    if (result) { setValidation(result); setCurrent(12); }
-  };
-  const start = async () => {
-    const result = await command(() => agencyFetch('/provisioning-runs', {
-      method: 'POST',
-      body: JSON.stringify({ provisioningDraftReference: draftReference, idempotencyKey: `agency-ui:${draftReference}:${crypto.randomUUID()}` }),
-    }));
-    if (result) { setRun(result); setCurrent(13); }
-  };
+  const tenant = detail?.tenant;
+  const canManage = Boolean(session?.capabilities.includes('tenants.manage'));
+  const isPlatformOwner = session?.user.role === 'PLATFORM_OWNER';
 
-  return <div className="space-y-5">
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-widest text-violet-300">Agency only</p><h1 className="mt-1 text-2xl font-black">Provision workspace</h1><p className="mt-2 max-w-3xl text-sm text-slate-400">One controlled action creates canonical booking and website draft records from a locked production brief. It never publishes.</p></div><Link to="/agency/fact-finding" className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-black">Open fact-finding</Link></div>
-    </div>
-
-    <ol aria-label="Provisioning steps" className="grid gap-2 md:grid-cols-3 xl:grid-cols-5">{WIZARD_STEPS.map((label, index) => {
-      const state = index < current ? 'COMPLETED' : index === current ? 'IN_PROGRESS' : index > 12 && !validation?.ready ? 'BLOCKED' : 'PENDING';
-      return <li key={label}><button onClick={() => setCurrent(index)} className={`h-full w-full rounded-xl border p-3 text-left text-xs ${tone[state]}`}><span className="block text-[10px] font-black uppercase">{index + 1} · {state.replaceAll('_', ' ')}</span><strong className="mt-1 block">{label}</strong></button></li>;
-    })}</ol>
-
-    {error && <p role="alert" className="rounded-xl border border-rose-800 bg-rose-950/40 p-4 text-sm text-rose-200">{error}</p>}
-
-    {current < 12 && <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-      <h2 className="text-lg font-black">{WIZARD_STEPS[current]}</h2>
-      <p className="mt-1 text-xs text-slate-500">Values remain a resumable draft until the locked brief is validated server-side.</p>
-      <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <Field label="Locked production brief reference" value={form.productionBriefReference} onChange={productionBriefReference => setForm(value => ({ ...value, productionBriefReference }))} />
-        <Field label="Active plan version reference" value={form.planVersionReference} onChange={planVersionReference => setForm(value => ({ ...value, planVersionReference }))} />
-        <Field label="Approved template version reference" value={form.templateVersionReference} onChange={templateVersionReference => setForm(value => ({ ...value, templateVersionReference }))} />
-        <Field label="Workspace name" value={form.name} onChange={name => setForm(value => ({ ...value, name }))} />
-        <Field label="Subdomain" value={form.subdomain} onChange={subdomain => setForm(value => ({ ...value, subdomain }))} />
-        <Field label="Timezone" value={form.timezone} onChange={timezone => setForm(value => ({ ...value, timezone }))} />
-      </div>
-      <fieldset className="mt-5"><legend className="text-xs font-black uppercase tracking-wide text-slate-400">Website page plan</legend><div className="mt-2 flex flex-wrap gap-2">{PAGE_TYPES.map(type => <label key={type} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs"><input type="checkbox" checked={form.requestedPageTypes.includes(type)} onChange={event => setForm(value => ({ ...value, requestedPageTypes: event.target.checked ? [...value.requestedPageTypes, type] : value.requestedPageTypes.filter(item => item !== type) }))} className="mr-2" />{type.replaceAll('_', ' ')}</label>)}</div></fieldset>
-      <fieldset className="mt-5 flex flex-wrap gap-4 text-xs"><legend className="sr-only">Payment preferences</legend>{[
-        ['allowPayLater', 'Allow pay later'], ['onlinePaymentsRequested', 'Online payments requested'], ['depositCollectionRequested', 'Deposit collection requested'],
-      ].map(([key, label]) => <label key={key}><input type="checkbox" checked={Boolean(form[key as keyof typeof form])} onChange={event => setForm(value => ({ ...value, [key]: event.target.checked }))} className="mr-2" />{label}</label>)}</fieldset>
-      <div className="mt-6 flex flex-wrap gap-2"><button disabled={busy} onClick={() => void save()} className="rounded-xl bg-violet-600 px-5 py-3 text-xs font-black disabled:opacity-50">Save draft</button>{draftReference && <button disabled={busy} onClick={() => void resume()} className="rounded-xl border border-slate-700 px-5 py-3 text-xs font-black">Resume saved draft</button>}<button disabled={busy} onClick={() => void validate()} className="rounded-xl border border-emerald-700 px-5 py-3 text-xs font-black text-emerald-300">Validate complete plan</button></div>
-    </section>}
-
-    {current === 12 && <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><h2 className="text-lg font-black">Provisioning review</h2><div className="mt-4 grid gap-3 md:grid-cols-2"><div className="rounded-xl bg-slate-950 p-4"><strong>Locked input</strong><p className="mt-1 text-xs text-slate-400">{form.productionBriefReference || 'Not selected'}</p></div><div className="rounded-xl bg-slate-950 p-4"><strong>Readiness</strong><p className="mt-1 text-xs text-slate-400">{validation?.ready ? 'READY TO PROVISION' : 'Blocking issues remain'}</p></div></div>{validation?.blockingIssues?.map((issue: any) => <p key={issue.code} className="mt-2 rounded-lg border border-rose-900 p-3 text-xs text-rose-200"><strong>{issue.code}</strong> — {issue.message}</p>)}<button disabled={!validation?.ready || busy} onClick={() => void start()} className="mt-5 rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-40">PROVISION WORKSPACE</button></section>}
-
-    {current >= 13 && run && <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><div className="flex items-center justify-between"><div><h2 className="text-lg font-black">{run.status === 'READY' ? 'Workspace completion' : 'Provisioning progress'}</h2><p className="text-xs text-slate-500">{run.completionPercentage}% complete · browser-independent durable run</p></div><span className={`rounded-full border px-3 py-1 text-xs font-black ${tone[run.status] || tone.IN_PROGRESS}`}>{run.status.replaceAll('_', ' ')}</span></div><div className="mt-5 h-2 rounded-full bg-slate-950"><div className="h-2 rounded-full bg-violet-500 transition-all" style={{ width: `${run.completionPercentage}%` }} /></div><div className="mt-5 space-y-2">{run.steps?.map((step: any) => <div key={step.key} className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 text-xs ${tone[step.status] || tone.PENDING}`}><span><strong>{step.key.replaceAll('_', ' ')}</strong><small className="ml-2 opacity-70">{step.safeMessage}</small></span><span>{step.status.replaceAll('_', ' ')}</span></div>)}</div>{['FAILED', 'PARTIALLY_FAILED', 'ACTION_REQUIRED'].includes(run.status) && <div className="mt-5 flex gap-2"><button onClick={() => void command(() => agencyFetch(`/provisioning-runs/${run.reference}/retry`, { method: 'POST', body: JSON.stringify({ reason: 'Agency requested a safe provisioning retry.' }) }).then(setRun))} className="rounded-xl bg-violet-600 px-4 py-2 text-xs font-black">Retry failed step</button><a href="mailto:support@ks-os.com" className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-black">Contact support</a></div>}{run.status === 'READY' && <div className="mt-6 flex flex-wrap gap-2"><Link to={`/agency/sites/${run.siteReference}/studio`} className="rounded-xl bg-violet-600 px-4 py-3 text-xs font-black">OPEN SITE STUDIO</Link>{run.siteReference && <Link to={`/agency/sites/${run.siteReference}/studio`} className="rounded-xl border border-slate-700 px-4 py-3 text-xs font-black">PREVIEW WEBSITE</Link>}<button onClick={() => setCurrent(12)} className="rounded-xl border border-slate-700 px-4 py-3 text-xs font-black">VIEW PROVISIONING REPORT</button></div>}</section>}
+  return <div className="space-y-6">
+    <AgencyFocusedLaunchJourney tenantIdOverride={tenantId} onBack={onBack} />
+    {error ? <p role="alert" className="rounded-xl border border-rose-800 bg-rose-950/35 p-4 text-sm text-rose-200">{error}</p> : null}
+    {notice ? <p role="status" className="rounded-xl border border-emerald-800 bg-emerald-950/35 p-4 text-sm text-emerald-200">{notice}</p> : null}
+    {tenant ? <WorkspaceDataControls
+      tenantId={tenantId}
+      tenantName={tenant.name}
+      lifecycleStatus={tenant.lifecycleStatus}
+      canManage={canManage}
+      isPlatformOwner={isPlatformOwner}
+      onDeleted={onBack}
+      onRefresh={loadDetail}
+      onNotice={setNotice}
+      onError={setError}
+    /> : null}
   </div>;
+}
+
+function ClientLaunchDirectory({ onSelect }: { onSelect: (reference: string) => void }) {
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [plans, setPlans] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [subdomain, setSubdomain] = useState('');
+  const activePlans = useMemo(() => plans.filter(item => item.version?.status === 'ACTIVE'), [plans]);
+
+  const load = () => Promise.all([agencyFetch('/tenants'), agencyFetch('/plans')])
+    .then(([rows, planRows]: [any[], any[]]) => {
+      setTenants(rows.filter(row => !isRemovedWorkspace(row)));
+      setPlans(planRows);
+    });
+
+  useEffect(() => {
+    void load()
+      .catch((cause: Error) => setError(cause.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const createClient = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCreating(true); setError('');
+    try {
+      const form = new FormData(event.currentTarget);
+      const created = await agencyFetch('/tenants', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: String(form.get('name') || '').trim(),
+          legalBusinessName: String(form.get('legalBusinessName') || '').trim(),
+          subdomain: String(form.get('subdomain') || '').trim().toLowerCase(),
+          businessType: String(form.get('businessType') || '').trim(),
+          primaryContactName: String(form.get('primaryContactName') || '').trim(),
+          primaryContactEmail: String(form.get('primaryContactEmail') || '').trim(),
+          planVersionId: String(form.get('planVersionId') || ''),
+          timezone: 'Europe/London',
+          currency: 'GBP',
+        }),
+      });
+      onSelect(created.id || created.agencyReference);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The client could not be created.');
+    } finally { setCreating(false); }
+  };
+
+  return <div className="space-y-6">
+    <section className="rounded-3xl border border-violet-800/60 bg-gradient-to-br from-violet-950 via-slate-950 to-slate-900 p-6 shadow-2xl sm:p-8">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="max-w-3xl">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-300">One client launch path</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-white">Create booking and website together</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Create or open a client to complete fact finding, reuse or add booking services, choose the website design, build the ten-page launch site, review the staging subdomain and connect the production domain.</p>
+        </div>
+        <button type="button" onClick={() => setShowCreate(true)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 text-sm font-black text-slate-950 hover:bg-emerald-400">
+          <Plus className="h-4 w-4" />Create new client
+        </button>
+      </div>
+    </section>
+
+    {error ? <p role="alert" className="rounded-xl border border-rose-800 bg-rose-950/35 p-4 text-sm text-rose-200">{error}</p> : null}
+
+    <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
+      <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+        <Rocket className="h-5 w-5 text-violet-300" />
+        <div><h2 className="text-base font-black text-white">Client launch workspaces</h2><p className="mt-1 text-xs text-slate-500">Every client continues in the same governed timeline.</p></div>
+      </div>
+      {loading ? <p className="flex min-h-48 items-center justify-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Loading clients…</p> : tenants.length === 0 ? <div className="mt-5 rounded-2xl border border-dashed border-slate-700 bg-slate-950 p-8 text-center"><Building2 className="mx-auto h-8 w-8 text-slate-500" /><h3 className="mt-3 text-sm font-black text-white">Create the first client</h3><p className="mt-2 text-xs text-slate-500">Client details, fact finding, booking and website delivery all begin here.</p><button type="button" onClick={() => setShowCreate(true)} className="mt-4 min-h-11 rounded-xl bg-violet-600 px-4 text-xs font-black text-white">Create client</button></div> : <div className="mt-5 grid gap-3 lg:grid-cols-2">{tenants.map(tenant => <button key={tenant.id} type="button" onClick={() => onSelect(tenant.id)} className="group rounded-2xl border border-slate-800 bg-slate-950 p-5 text-left transition hover:border-violet-600 hover:bg-violet-950/20">
+        <div className="flex items-start justify-between gap-4"><div><strong className="text-base text-white">{tenant.name}</strong><p className="mt-1 font-mono text-xs text-indigo-300">{tenant.subdomain}.sites.kasimshah.com</p></div><span className="rounded-full border border-slate-700 px-2 py-1 text-[10px] font-black text-slate-300">{String(tenant.lifecycleStatus).replaceAll('_', ' ')}</span></div>
+        <div className="mt-5 flex items-center justify-between border-t border-slate-800 pt-4 text-xs text-slate-500"><span>{tenant.planKey || 'Plan pending'} · {tenant.primaryContactEmail || 'Contact pending'}</span><span className="font-black text-violet-300 group-hover:text-white">Continue launch →</span></div>
+      </button>)}</div>}
+    </section>
+
+    {showCreate ? <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/85 p-4" role="dialog" aria-modal="true" aria-labelledby="create-client-heading"><form onSubmit={createClient} className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-violet-300">Start client launch</p><h2 id="create-client-heading" className="mt-2 text-2xl font-black text-white">Create the client workspace</h2><p className="mt-2 text-xs leading-5 text-slate-400">After creation, this form opens the same client's commercial, fact-finding, booking, website and domain timeline.</p></div><button type="button" onClick={() => setShowCreate(false)} aria-label="Close create client" className="grid h-11 w-11 place-items-center rounded-xl border border-slate-700 text-slate-300"><X className="h-4 w-4" /></button></div><div className="mt-6 grid gap-4 sm:grid-cols-2"><Field name="name" label="Trading business name" /><Field name="legalBusinessName" label="Legal entity name" /><label className="text-xs font-bold text-slate-300">Workspace subdomain<input name="subdomain" required value={subdomain} onChange={event => setSubdomain(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} className="mt-2 min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 font-mono text-white" /><span className="mt-1 block font-mono text-[10px] text-indigo-400">{subdomain || 'client'}.sites.kasimshah.com</span></label><Field name="businessType" label="Business type" /><Field name="primaryContactName" label="Primary contact name" /><Field name="primaryContactEmail" label="Primary contact email" type="email" /><label className="text-xs font-bold text-slate-300 sm:col-span-2">Package<select name="planVersionId" required className="mt-2 min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 text-white"><option value="">Choose active package…</option>{activePlans.map(item => <option key={item.version.id} value={item.version.id}>{item.plan.name || item.plan.key} · version {item.version.version}</option>)}</select></label></div><button disabled={creating || activePlans.length === 0} className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 text-sm font-black text-slate-950 disabled:opacity-40">{creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}{creating ? 'Creating client…' : 'Create and open launch pipeline'}</button></form></div> : null}
+  </div>;
+}
+
+function Field({ name, label, type = 'text' }: { name: string; label: string; type?: string }) {
+  return <label className="text-xs font-bold text-slate-300">{label}<input name={name} type={type} required className="mt-2 min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 text-white" /></label>;
 }

@@ -18,7 +18,7 @@ export function getSupabaseAdmin(): SupabaseClient {
   return adminClient;
 }
 
-async function findUserByEmail(emailNormalized: string): Promise<User | null> {
+export async function findSupabaseUserByEmail(emailNormalized: string): Promise<User | null> {
   const admin = getSupabaseAdmin();
   for (let page = 1; page <= 10; page += 1) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 100 });
@@ -43,7 +43,7 @@ export async function provisionSupabaseInvitation(emailNormalized: string, redir
   // Supabase correctly refuses a second identity for an address that already
   // exists. Resolve that identity server-side and let the application send a
   // normal access notification; never expose the lookup result to the caller.
-  const existing = await findUserByEmail(emailNormalized);
+  const existing = await findSupabaseUserByEmail(emailNormalized);
   if (existing) return { authUserId: existing.id, delivery: 'EXISTING_ACCOUNT' };
 
   throw Object.assign(new Error('The invitation could not be delivered.'), {
@@ -52,12 +52,54 @@ export async function provisionSupabaseInvitation(emailNormalized: string, redir
   });
 }
 
+export type ManualAuthProvisioningResult = {
+  authUserId: string;
+  created: boolean;
+  temporaryPassword: string | null;
+};
+
+export async function provisionSupabaseUserWithoutEmail(input: {
+  email: string;
+  displayName: string;
+  temporaryPassword: string;
+}): Promise<ManualAuthProvisioningResult> {
+  const emailNormalized = input.email.trim().toLowerCase();
+  const existing = await findSupabaseUserByEmail(emailNormalized);
+  if (existing) {
+    return { authUserId: existing.id, created: false, temporaryPassword: null };
+  }
+
+  const { data, error } = await getSupabaseAdmin().auth.admin.createUser({
+    email: emailNormalized,
+    password: input.temporaryPassword,
+    email_confirm: true,
+    user_metadata: { display_name: input.displayName.trim() },
+  });
+  if (error || !data.user) {
+    throw Object.assign(new Error('The login identity could not be created.'), {
+      statusCode: 502,
+      code: 'AUTH_USER_PROVISIONING_FAILED',
+    });
+  }
+  return { authUserId: data.user.id, created: true, temporaryPassword: input.temporaryPassword };
+}
+
+export async function deleteSupabaseUserIfCreated(authUserId: string): Promise<void> {
+  const { error } = await getSupabaseAdmin().auth.admin.deleteUser(authUserId);
+  if (error) {
+    throw Object.assign(new Error('The partially created login identity could not be rolled back.'), {
+      statusCode: 502,
+      code: 'AUTH_USER_ROLLBACK_FAILED',
+    });
+  }
+}
+
 export async function createDevelopmentAuthUser(email: string, password: string): Promise<User> {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Development authentication seed is disabled in production.');
   }
   const normalized = email.trim().toLowerCase();
-  const existing = await findUserByEmail(normalized);
+  const existing = await findSupabaseUserByEmail(normalized);
   if (existing) {
     const { data, error } = await getSupabaseAdmin().auth.admin.updateUserById(existing.id, {
       password,

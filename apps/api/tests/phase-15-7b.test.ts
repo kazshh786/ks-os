@@ -133,8 +133,9 @@ test('Site Studio resolves native booking destinations on the server', () => {
   assert.match(sources.studioService, /staffServiceAssignments/);
 });
 
-test('Site Studio explicitly defers publication and has no publish mutation', () => {
-  assert.match(sources.studioService, /NOT_AVAILABLE_UNTIL_PHASE_15_9/);
+test('Site Studio reads Phase 15.9 publication state and has no inline publish mutation', () => {
+  assert.match(sources.studioService, /sitePublicationPointers/);
+  assert.match(sources.studioService, /sitePublicationRuns/);
   assert.doesNotMatch(sources.studioService, /async\s+publish|\.publish\(/i);
 });
 

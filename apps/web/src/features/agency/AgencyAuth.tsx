@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { Eye, EyeOff } from 'lucide-react';
 import type { AgencyCapability, AgencyRole } from '@ks-os/contracts';
@@ -15,21 +15,45 @@ const AgencyContext = createContext<AgencyContextValue | undefined>(undefined);
 export const AgencyAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<AgencySession | null>(null);
   const [loading, setLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
+
   const reload = useCallback(async () => {
-    if (!window.location.pathname.startsWith('/agency')) { setSession(null); setLoading(false); return; }
-    setLoading(true);
+    const isInitialLoad = !hasLoadedRef.current;
+    if (!window.location.pathname.startsWith('/agency')) {
+      setSession(null);
+      hasLoadedRef.current = true;
+      setLoading(false);
+      return;
+    }
+    if (isInitialLoad) setLoading(true);
     try {
       const response = await fetchWithAuth('/api/v1/agency/session', { authContext: 'AGENCY' });
       const body = await response.json().catch(() => ({}));
-      setSession(response.ok ? body.data : null);
-    } catch { setSession(null); }
-    finally { setLoading(false); }
+      if (response.ok && body.data) setSession(body.data);
+      else if (isInitialLoad) setSession(null);
+    } catch {
+      // A background token refresh must not unmount the active route or erase
+      // unsaved form input because of a transient session-check failure.
+      if (isInitialLoad) setSession(null);
+    } finally {
+      hasLoadedRef.current = true;
+      if (isInitialLoad) setLoading(false);
+    }
   }, []);
+
   useEffect(() => {
     void reload();
-    const { data } = supabase.auth.onAuthStateChange(() => void reload());
+    const { data } = supabase.auth.onAuthStateChange(event => {
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setLoading(false);
+        return;
+      }
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') void reload();
+    });
     return () => data.subscription.unsubscribe();
   }, [reload]);
+
   const signOut = async () => {
     sessionStorage.removeItem('ks-os-support-session');
     sessionStorage.removeItem('ks-os-support-metadata');
@@ -63,21 +87,60 @@ export const AgencyCapabilityRoute: React.FC<{ capabilities: AgencyCapability[];
   return <>{children}</>;
 };
 
+export interface AgencyRequestError extends Error {
+  code?: string;
+  details?: unknown;
+  status?: number;
+  path?: string;
+  requestId?: string;
+}
+
 export async function agencyFetch(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers);
   if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   const response = await fetchWithAuth(`/api/v1/agency${path}`, { ...options, headers, authContext: 'AGENCY' });
-  const body = response.status === 204 ? null : await response.json();
+  const requestId = response.headers.get('x-request-id') || response.headers.get('x-correlation-id') || undefined;
+  const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+  const expectsJson = contentType.includes('application/json') || contentType.includes('+json');
+  let body: any = null;
+
+  if (response.status !== 204 && expectsJson) {
+    try {
+      body = await response.json();
+    } catch {
+      const parseError = new Error('The agency API returned an unreadable response. Please retry after the API deployment is checked.') as AgencyRequestError;
+      parseError.code = 'AGENCY_API_INVALID_RESPONSE';
+      parseError.status = response.status;
+      parseError.path = path;
+      parseError.requestId = requestId;
+      throw parseError;
+    }
+  } else if (response.status !== 204 && !expectsJson) {
+    // Consume the body so the browser can reuse the connection, but never expose
+    // an HTML proxy or SPA fallback response in the operator interface.
+    await response.text().catch(() => '');
+    const transportError = new Error(`The agency API is unavailable for this action (HTTP ${response.status}). The frontend and Fastify deployment may be out of sync.`) as AgencyRequestError;
+    transportError.code = 'AGENCY_API_UNAVAILABLE';
+    transportError.status = response.status;
+    transportError.path = path;
+    transportError.requestId = requestId;
+    throw transportError;
+  }
+
   if (!response.ok) {
-    const error = new Error(body?.error?.message || 'Agency request failed.') as Error & { code?: string; details?: unknown };
+    const error = new Error(body?.error?.message || 'Agency request failed.') as AgencyRequestError;
     error.code = body?.error?.code;
     error.details = body?.error?.details ?? body?.details;
+    error.status = response.status;
+    error.path = path;
+    error.requestId = requestId;
     throw error;
   }
   return body?.data ?? body;
 }
 
-export const AgencyLoginPage: React.FC = () => {
+/** @deprecated The routed agency sign-in uses AgencyLoginPage.tsx. */
+export const AgencyLoginPageLegacy: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -107,6 +170,8 @@ export const AgencyLoginPage: React.FC = () => {
   };
   return <main className="min-h-screen bg-slate-950 grid place-items-center p-6 text-white"><form onSubmit={submit} className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-8 space-y-5 shadow-2xl"><div><div className="h-11 w-11 rounded-xl bg-violet-600 grid place-items-center font-black mb-4">KS</div><h1 className="text-2xl font-black">Agency portal</h1><p className="text-sm text-slate-400 mt-2">Restricted access for authorised KS OS agency operators.</p></div>{params.get('passwordUpdated') === '1' && <p className="rounded-xl border border-emerald-800 bg-emerald-950/50 p-3 text-sm text-emerald-200">Password updated. Sign in again.</p>}{error && <p role="alert" className="rounded-xl bg-rose-950/50 border border-rose-800 p-3 text-sm text-rose-200">{error}</p>}<label className="block text-sm text-slate-300">Agency email<input autoComplete="email" type="email" required value={email} onChange={event => setEmail(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" /></label><label className="block text-sm text-slate-300">Password<span className="relative mt-2 block"><input autoComplete="current-password" type={showPassword ? 'text' : 'password'} required value={password} onChange={event => setPassword(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 pr-12" /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} title={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(value => !value)} className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-xl text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"><span aria-hidden="true">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</span></button></span></label><button disabled={busy} className="w-full rounded-xl bg-violet-600 py-3 text-sm font-black disabled:opacity-50">{busy ? 'Signing in…' : 'Continue securely'}</button><Link to="/agency/forgot-password" className="block text-center text-xs font-bold text-violet-200">Forgot password?</Link><p className="text-[11px] text-slate-500">Privileged access requires an authenticator and centrally revocable application session.</p></form></main>;
 };
+
+export { AgencyLoginPage } from './AgencyLoginPage.js';
 
 export const AgencyMfaPage: React.FC<{ mode: 'enrol' | 'challenge' }> = ({ mode }) => {
   const [factorId, setFactorId] = useState<string | null>(null);

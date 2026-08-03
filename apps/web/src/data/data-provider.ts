@@ -204,15 +204,24 @@ export interface DataProvider {
 
 import { ApiDataProvider } from './api-data-provider.js';
 
+function withSanitisedPublicAvailability(provider: DataProvider): DataProvider {
+  const getPublicAvailability = provider.getPublicAvailability.bind(provider);
+  provider.getPublicAvailability = (subdomain, input) => getPublicAvailability(
+    subdomain,
+    Object.fromEntries(Object.entries(input ?? {}).filter(([, value]) => value !== undefined && value !== null && value !== '')),
+  );
+  return provider;
+}
+
 // Default to the API provider. Only use mock if explicitly enabled in dev.
 const useMock = import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK_DATA === 'true';
 
-let currentProvider: DataProvider = useMock ? new MockDataProvider() : new ApiDataProvider();
+let currentProvider: DataProvider = withSanitisedPublicAvailability(useMock ? new MockDataProvider() : new ApiDataProvider());
 
 export function getDataProvider(): DataProvider {
   return currentProvider;
 }
 
 export function registerDataProvider(provider: DataProvider) {
-  currentProvider = provider;
+  currentProvider = withSanitisedPublicAvailability(provider);
 }

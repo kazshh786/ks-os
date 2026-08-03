@@ -1,19 +1,42 @@
 import {
   DEFAULT_SITE_JOB_RETRY_POLICY,
+  ActivateCustomDomainPayloadSchema,
+  ActivateFallbackDomainPayloadSchema,
+  ConfigureCustomDomainDnsPayloadSchema,
+  CreateCustomDomainPlanPayloadSchema,
+  CreateSitePublicationPayloadSchema,
+  DiscoverCustomDomainDnsPayloadSchema,
   GenerateMetadataPayloadSchema,
   GeneratePagePayloadSchema,
   GenerateSitePayloadSchema,
   GenerateStructuredDataPayloadSchema,
+  EvaluatePublicationReadinessPayloadSchema,
   RegenerateSectionPayloadSchema,
   ProvisionWorkspacePayloadSchema,
+  InvalidateSiteCachePayloadSchema,
+  RemoveSiteDomainPayloadSchema,
+  RollbackSitePublicationPayloadSchema,
+  RunPublicationHealthChecksPayloadSchema,
+  RunAssetReadinessAuditPayloadSchema,
+  RunBookingIntegrityAuditPayloadSchema,
+  RunContentIntegrityAuditPayloadSchema,
+  RunFullSiteQualityAuditPayloadSchema,
+  RunPerformanceAuditPayloadSchema,
+  RunPhase158AccessibilityAuditPayloadSchema,
+  RunPhase158ConversionAuditPayloadSchema,
+  RunResponsiveUxAuditPayloadSchema,
+  RunTechnicalSeoAuditPayloadSchema,
   SiteJobExecutionError,
   SiteJobHandlerRegistry,
   SiteJobResultSchema,
+  SuspendSiteDomainPayloadSchema,
   TestCancellablePayloadSchema,
   TestLongRunningPayloadSchema,
   TestRetryableFailurePayloadSchema,
   TestSucceedPayloadSchema,
   TestTerminalFailurePayloadSchema,
+  VerifyCustomDomainPayloadSchema,
+  VerifyNameserverDelegationPayloadSchema,
   type SiteJobHandler,
   type SiteJobLeaseContext,
   type SiteJobResult,
@@ -37,6 +60,51 @@ export interface WorkspaceProvisioningJobExecutor {
   execute(payload: unknown, context: SiteJobLeaseContext): Promise<SiteJobResult>;
 }
 
+export type SiteQualityJobType = Extract<SiteJobType,
+  | 'RUN_FULL_SITE_QUALITY_AUDIT'
+  | 'RUN_TECHNICAL_SEO_AUDIT'
+  | 'RUN_ACCESSIBILITY_AUDIT'
+  | 'RUN_RESPONSIVE_UX_AUDIT'
+  | 'RUN_CONVERSION_AUDIT'
+  | 'RUN_BOOKING_INTEGRITY_AUDIT'
+  | 'RUN_PERFORMANCE_AUDIT'
+  | 'RUN_CONTENT_INTEGRITY_AUDIT'
+  | 'RUN_ASSET_READINESS_AUDIT'
+  | 'EVALUATE_PUBLICATION_READINESS'>;
+
+export interface SiteQualityJobExecutor {
+  execute(
+    jobType: SiteQualityJobType,
+    payload: unknown,
+    context: SiteJobLeaseContext,
+  ): Promise<SiteJobResult>;
+  close?(): Promise<void>;
+}
+
+export type SitePublicationJobType = Extract<SiteJobType,
+  | 'CREATE_SITE_PUBLICATION'
+  | 'ACTIVATE_FALLBACK_DOMAIN'
+  | 'CREATE_CUSTOM_DOMAIN_PLAN'
+  | 'DISCOVER_CUSTOM_DOMAIN_DNS'
+  | 'VERIFY_NAMESERVER_DELEGATION'
+  | 'CONFIGURE_CUSTOM_DOMAIN_DNS'
+  | 'VERIFY_CUSTOM_DOMAIN'
+  | 'ACTIVATE_CUSTOM_DOMAIN'
+  | 'RUN_PUBLICATION_HEALTH_CHECKS'
+  | 'ROLLBACK_SITE_PUBLICATION'
+  | 'SUSPEND_SITE_DOMAIN'
+  | 'REMOVE_SITE_DOMAIN'
+  | 'INVALIDATE_SITE_CACHE'>;
+
+export interface SitePublicationJobExecutor {
+  execute(
+    jobType: SitePublicationJobType,
+    payload: unknown,
+    context: SiteJobLeaseContext,
+  ): Promise<SiteJobResult>;
+  close?(): Promise<void>;
+}
+
 const disabledProvisioningExecutor: WorkspaceProvisioningJobExecutor = {
   async execute() {
     throw new SiteJobExecutionError(
@@ -51,6 +119,24 @@ const disabledGenerationExecutor: SiteGenerationJobExecutor = {
     throw new SiteJobExecutionError(
       'TERMINAL_DATA_MISSING',
       'Structured site generation is disabled or its server-side provider is not configured.',
+    );
+  },
+};
+
+const disabledQualityExecutor: SiteQualityJobExecutor = {
+  async execute() {
+    throw new SiteJobExecutionError(
+      'TERMINAL_DATA_MISSING',
+      'Site-quality execution is disabled for this worker.',
+    );
+  },
+};
+
+const disabledPublicationExecutor: SitePublicationJobExecutor = {
+  async execute() {
+    throw new SiteJobExecutionError(
+      'TERMINAL_DATA_MISSING',
+      'Site publication is disabled or its server-side providers are not configured.',
     );
   },
 };
@@ -70,6 +156,42 @@ function generationHandler(
     async execute(payload: unknown, context: SiteJobLeaseContext) {
       const parsed = payloadSchema.parse(payload);
       return executor.execute(jobType, parsed, context);
+    },
+  };
+}
+
+function qualityHandler(
+  jobType: SiteQualityJobType,
+  payloadSchema: SiteJobHandler['payloadSchema'],
+  executor: SiteQualityJobExecutor,
+): SiteJobHandler {
+  return {
+    jobType,
+    payloadSchemaVersion: 1,
+    supportsCancellation: true,
+    defaultRetryPolicy: DEFAULT_SITE_JOB_RETRY_POLICY,
+    payloadSchema,
+    resultSchema: SiteJobResultSchema,
+    async execute(payload: unknown, context: SiteJobLeaseContext) {
+      return executor.execute(jobType, payloadSchema.parse(payload), context);
+    },
+  };
+}
+
+function publicationHandler(
+  jobType: SitePublicationJobType,
+  payloadSchema: SiteJobHandler['payloadSchema'],
+  executor: SitePublicationJobExecutor,
+): SiteJobHandler {
+  return {
+    jobType,
+    payloadSchemaVersion: 1,
+    supportsCancellation: true,
+    defaultRetryPolicy: DEFAULT_SITE_JOB_RETRY_POLICY,
+    payloadSchema,
+    resultSchema: SiteJobResultSchema,
+    async execute(payload: unknown, context: SiteJobLeaseContext) {
+      return executor.execute(jobType, payloadSchema.parse(payload), context);
     },
   };
 }
@@ -187,6 +309,8 @@ export function createSiteJobHandlerRegistry(
   enableTestHandlers = false,
   generationExecutor: SiteGenerationJobExecutor = disabledGenerationExecutor,
   provisioningExecutor: WorkspaceProvisioningJobExecutor = disabledProvisioningExecutor,
+  qualityExecutor: SiteQualityJobExecutor = disabledQualityExecutor,
+  publicationExecutor: SitePublicationJobExecutor = disabledPublicationExecutor,
 ): SiteJobHandlerRegistry {
   const registry = new SiteJobHandlerRegistry()
     .register({
@@ -207,7 +331,30 @@ export function createSiteJobHandlerRegistry(
     .register(generationHandler('GENERATE_PAGE', GeneratePagePayloadSchema, generationExecutor))
     .register(generationHandler('REGENERATE_SECTION', RegenerateSectionPayloadSchema, generationExecutor))
     .register(generationHandler('GENERATE_METADATA', GenerateMetadataPayloadSchema, generationExecutor))
-    .register(generationHandler('GENERATE_STRUCTURED_DATA', GenerateStructuredDataPayloadSchema, generationExecutor));
+    .register(generationHandler('GENERATE_STRUCTURED_DATA', GenerateStructuredDataPayloadSchema, generationExecutor))
+    .register(qualityHandler('RUN_FULL_SITE_QUALITY_AUDIT', RunFullSiteQualityAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_TECHNICAL_SEO_AUDIT', RunTechnicalSeoAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_ACCESSIBILITY_AUDIT', RunPhase158AccessibilityAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_RESPONSIVE_UX_AUDIT', RunResponsiveUxAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_CONVERSION_AUDIT', RunPhase158ConversionAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_BOOKING_INTEGRITY_AUDIT', RunBookingIntegrityAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_PERFORMANCE_AUDIT', RunPerformanceAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_CONTENT_INTEGRITY_AUDIT', RunContentIntegrityAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('RUN_ASSET_READINESS_AUDIT', RunAssetReadinessAuditPayloadSchema, qualityExecutor))
+    .register(qualityHandler('EVALUATE_PUBLICATION_READINESS', EvaluatePublicationReadinessPayloadSchema, qualityExecutor))
+    .register(publicationHandler('CREATE_SITE_PUBLICATION', CreateSitePublicationPayloadSchema, publicationExecutor))
+    .register(publicationHandler('ACTIVATE_FALLBACK_DOMAIN', ActivateFallbackDomainPayloadSchema, publicationExecutor))
+    .register(publicationHandler('CREATE_CUSTOM_DOMAIN_PLAN', CreateCustomDomainPlanPayloadSchema, publicationExecutor))
+    .register(publicationHandler('DISCOVER_CUSTOM_DOMAIN_DNS', DiscoverCustomDomainDnsPayloadSchema, publicationExecutor))
+    .register(publicationHandler('VERIFY_NAMESERVER_DELEGATION', VerifyNameserverDelegationPayloadSchema, publicationExecutor))
+    .register(publicationHandler('CONFIGURE_CUSTOM_DOMAIN_DNS', ConfigureCustomDomainDnsPayloadSchema, publicationExecutor))
+    .register(publicationHandler('VERIFY_CUSTOM_DOMAIN', VerifyCustomDomainPayloadSchema, publicationExecutor))
+    .register(publicationHandler('ACTIVATE_CUSTOM_DOMAIN', ActivateCustomDomainPayloadSchema, publicationExecutor))
+    .register(publicationHandler('RUN_PUBLICATION_HEALTH_CHECKS', RunPublicationHealthChecksPayloadSchema, publicationExecutor))
+    .register(publicationHandler('ROLLBACK_SITE_PUBLICATION', RollbackSitePublicationPayloadSchema, publicationExecutor))
+    .register(publicationHandler('SUSPEND_SITE_DOMAIN', SuspendSiteDomainPayloadSchema, publicationExecutor))
+    .register(publicationHandler('REMOVE_SITE_DOMAIN', RemoveSiteDomainPayloadSchema, publicationExecutor))
+    .register(publicationHandler('INVALIDATE_SITE_CACHE', InvalidateSiteCachePayloadSchema, publicationExecutor));
   if (!enableTestHandlers) return registry;
   return registry
     .register(succeedHandler)

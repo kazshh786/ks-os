@@ -91,6 +91,9 @@ class MemoryPublicSiteRepository implements PublicSiteRepository {
   reviewSessionValidator?: (
     input: Parameters<NonNullable<PublicSiteRepository['isReviewPreviewSessionActive']>>[0],
   ) => boolean | Promise<boolean>;
+  qualitySessionValidator?: (
+    input: Parameters<NonNullable<PublicSiteRepository['isQualityAuditSessionActive']>>[0],
+  ) => boolean | Promise<boolean>;
 
   constructor(snapshot?: PublishedSiteSnapshot, status: SiteStatus = 'LIVE') {
     if (!snapshot) return;
@@ -143,6 +146,12 @@ class MemoryPublicSiteRepository implements PublicSiteRepository {
     input: Parameters<NonNullable<PublicSiteRepository['isReviewPreviewSessionActive']>>[0],
   ) {
     return this.reviewSessionValidator?.(input) ?? false;
+  }
+
+  async isQualityAuditSessionActive(
+    input: Parameters<NonNullable<PublicSiteRepository['isQualityAuditSessionActive']>>[0],
+  ) {
+    return this.qualitySessionValidator?.(input) ?? false;
   }
 }
 
@@ -704,6 +713,95 @@ test('review preview denies a page outside the session scope', async () => {
     request: request(
       fallbackHostname,
       `/site-preview/a/b?token=${token}&path=%2Fservices`,
+    ),
+    repository: setup.repository,
+    config,
+    siteReference: setup.snapshot.siteReference,
+    versionReference: setup.snapshot.versionReference,
+    now: setup.now,
+  });
+  assert.equal(response.status, 404);
+});
+
+test('quality preview requires bearer authentication and exact active audit scope', async () => {
+  const setup = previewSetup();
+  const qualityRunReference = '20000000-0000-4000-8000-000000000098';
+  let validated:
+    | Parameters<NonNullable<PublicSiteRepository['isQualityAuditSessionActive']>>[0]
+    | undefined;
+  setup.repository.qualitySessionValidator = input => {
+    validated = input;
+    return true;
+  };
+  const token = signSitePreviewToken({
+    siteReference: setup.snapshot.siteReference,
+    versionReference: setup.snapshot.versionReference,
+    qualityRunReference,
+    purpose: 'QUALITY_AUDIT',
+    secret: previewSecret,
+    now: setup.now,
+  });
+  const queryResponse = await handlePreviewRequest({
+    request: request(
+      fallbackHostname,
+      `/site-preview/a/b?token=${token}&path=%2F`,
+    ),
+    repository: setup.repository,
+    config,
+    siteReference: setup.snapshot.siteReference,
+    versionReference: setup.snapshot.versionReference,
+    now: setup.now,
+  });
+  assert.equal(queryResponse.status, 404);
+  const bearerResponse = await handlePreviewRequest({
+    request: new Request(
+      `https://${fallbackHostname}/site-preview/a/b?path=%2F`,
+      {
+        headers: {
+          host: fallbackHostname,
+          authorization: `Bearer ${token}`,
+        },
+      },
+    ),
+    repository: setup.repository,
+    config,
+    siteReference: setup.snapshot.siteReference,
+    versionReference: setup.snapshot.versionReference,
+    now: setup.now,
+  });
+  assert.equal(bearerResponse.status, 200);
+  assert.match(bearerResponse.headers.get('cache-control') ?? '', /no-store/);
+  assert.match(bearerResponse.headers.get('x-robots-tag') ?? '', /noindex/);
+  assert.equal(validated?.qualityRunReference, qualityRunReference);
+  assert.equal(validated?.siteReference, setup.snapshot.siteReference);
+  assert.equal(validated?.versionReference, setup.snapshot.versionReference);
+  assert.equal(validated?.requestedPath, '/');
+  const body = await bearerResponse.text();
+  assert.doesNotMatch(body, /site-preview/);
+  assert.doesNotMatch(body, new RegExp(qualityRunReference));
+});
+
+test('quality preview rejects another tenant, version and inactive audit session', async () => {
+  const setup = previewSetup();
+  const qualityRunReference = '20000000-0000-4000-8000-000000000097';
+  setup.repository.qualitySessionValidator = () => false;
+  const token = signSitePreviewToken({
+    siteReference: setup.snapshot.siteReference,
+    versionReference: setup.snapshot.versionReference,
+    qualityRunReference,
+    purpose: 'QUALITY_AUDIT',
+    secret: previewSecret,
+    now: setup.now,
+  });
+  const response = await handlePreviewRequest({
+    request: new Request(
+      `https://${fallbackHostname}/site-preview/a/b?path=%2F`,
+      {
+        headers: {
+          host: fallbackHostname,
+          authorization: `Bearer ${token}`,
+        },
+      },
     ),
     repository: setup.repository,
     config,

@@ -9,6 +9,9 @@ const IntegerEnvironmentValue = (minimum: number, maximum: number) =>
 const BooleanEnvironmentValue = z.enum(['true', 'false'])
   .transform(value => value === 'true');
 
+const OptionalEnvironmentValue = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess(value => value === '' ? undefined : value, schema.optional());
+
 const SiteWorkerEnvironmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z.string().trim().min(1),
@@ -38,6 +41,20 @@ const SiteWorkerEnvironmentSchema = z.object({
     'error',
   ]).default('info'),
   SITE_WORKER_ENABLE_TEST_HANDLERS: BooleanEnvironmentValue.default('false'),
+  SITE_QUALITY_ENABLED: BooleanEnvironmentValue.default('false'),
+  SITE_QUALITY_BROWSER_ENABLED: BooleanEnvironmentValue.default('false'),
+  SITE_QUALITY_BROWSER_CONCURRENCY: IntegerEnvironmentValue(1, 4).default(2),
+  SITE_QUALITY_PAGE_TIMEOUT_MS: IntegerEnvironmentValue(1_000, 120_000)
+    .default(30_000),
+  SITE_QUALITY_RUN_TIMEOUT_MS: IntegerEnvironmentValue(10_000, 3_600_000)
+    .default(900_000),
+  SITE_QUALITY_PREVIEW_ORIGIN: OptionalEnvironmentValue(
+    z.string().url().max(1_000),
+  ),
+  SITE_PREVIEW_TOKEN_SECRET: OptionalEnvironmentValue(
+    z.string().min(32).max(4_096),
+  ),
+  SITE_QUALITY_AI_ENABLED: BooleanEnvironmentValue.default('false'),
 }).passthrough().superRefine((value, context) => {
   if (value.SITE_WORKER_HEARTBEAT_SECONDS
     >= value.SITE_WORKER_LEASE_SECONDS) {
@@ -53,6 +70,39 @@ const SiteWorkerEnvironmentSchema = z.object({
       code: z.ZodIssueCode.custom,
       message: 'Test handlers cannot be enabled in production.',
       path: ['SITE_WORKER_ENABLE_TEST_HANDLERS'],
+    });
+  }
+  if (value.SITE_QUALITY_BROWSER_ENABLED && !value.SITE_QUALITY_ENABLED) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Browser auditing requires the site-quality worker to be enabled.',
+      path: ['SITE_QUALITY_BROWSER_ENABLED'],
+    });
+  }
+  if (value.SITE_QUALITY_BROWSER_ENABLED
+    && (!value.SITE_QUALITY_PREVIEW_ORIGIN || !value.SITE_PREVIEW_TOKEN_SECRET)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Browser auditing requires a preview origin and preview-token secret.',
+      path: ['SITE_QUALITY_PREVIEW_ORIGIN'],
+    });
+  }
+  if (
+    value.NODE_ENV === 'production'
+    && value.SITE_QUALITY_BROWSER_ENABLED
+    && !value.SITE_QUALITY_PREVIEW_ORIGIN?.startsWith('https://')
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Production quality previews must use HTTPS.',
+      path: ['SITE_QUALITY_PREVIEW_ORIGIN'],
+    });
+  }
+  if (value.SITE_QUALITY_AI_ENABLED) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Live AI quality review has no configured provider and must remain disabled.',
+      path: ['SITE_QUALITY_AI_ENABLED'],
     });
   }
 });
@@ -71,6 +121,16 @@ export interface SiteWorkerConfig {
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   enableTestHandlers: boolean;
   generation: ReturnType<typeof parseSiteGenerationConfig>;
+  quality: {
+    enabled: boolean;
+    browserEnabled: boolean;
+    browserConcurrency: number;
+    pageTimeoutMs: number;
+    runTimeoutMs: number;
+    previewOrigin?: string;
+    previewTokenSecret?: string;
+    aiEnabled: boolean;
+  };
 }
 
 export function parseSiteWorkerConfig(
@@ -97,5 +157,19 @@ export function parseSiteWorkerConfig(
     logLevel: parsed.SITE_WORKER_LOG_LEVEL,
     enableTestHandlers: parsed.SITE_WORKER_ENABLE_TEST_HANDLERS,
     generation,
+    quality: {
+      enabled: parsed.SITE_QUALITY_ENABLED,
+      browserEnabled: parsed.SITE_QUALITY_BROWSER_ENABLED,
+      browserConcurrency: parsed.SITE_QUALITY_BROWSER_CONCURRENCY,
+      pageTimeoutMs: parsed.SITE_QUALITY_PAGE_TIMEOUT_MS,
+      runTimeoutMs: parsed.SITE_QUALITY_RUN_TIMEOUT_MS,
+      ...(parsed.SITE_QUALITY_PREVIEW_ORIGIN
+        ? { previewOrigin: parsed.SITE_QUALITY_PREVIEW_ORIGIN.replace(/\/+$/, '') }
+        : {}),
+      ...(parsed.SITE_PREVIEW_TOKEN_SECRET
+        ? { previewTokenSecret: parsed.SITE_PREVIEW_TOKEN_SECRET }
+        : {}),
+      aiEnabled: parsed.SITE_QUALITY_AI_ENABLED,
+    },
   };
 }

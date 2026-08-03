@@ -8,16 +8,25 @@ const labels = (groups: ReturnType<typeof resolveNavigation>) => groups.flatMap(
 describe('navigation resolution', () => {
   it('shows the complete business administration navigation to an owner', () => {
     const groups = resolveNavigation(businessNavigation, { portal: 'business', role: 'owner', permissions: [] });
-    expect(labels(groups)).toEqual(expect.arrayContaining(['Dashboard', 'Booking Calendar', 'Finance', 'Team', 'Business Settings']));
+    expect(labels(groups)).toEqual(expect.arrayContaining(['Dashboard', 'Booking Calendar', 'Tasks', 'Finance', 'Team', 'Business Settings']));
+    expect(labels(groups)).not.toContain('Bookings');
     expect(groups.every(group => group.items.length > 0)).toBe(true);
+  });
+
+  it('promotes tasks after the calendar and places the inbox with customer operations', () => {
+    const primary = businessNavigation.find(group => group.id === 'primary');
+    expect(primary?.items.map(item => item.label)).toEqual(['Dashboard', 'Services', 'Booking Calendar', 'Tasks']);
+    expect(businessNavigation.find(group => group.id === 'customer-operations')?.items.map(item => item.label)).toEqual(['Inbox', 'Customers', 'Forms']);
+    expect(businessNavigation.find(group => group.id === 'work')?.items.map(item => item.label)).toEqual(['Automations']);
   });
 
   it('only shows staff destinations granted by capabilities and removes empty groups', () => {
     const groups = resolveNavigation(businessNavigation, {
       portal: 'business', role: 'staff', permissions: ['BOOKINGS_VIEW_OWN', 'TASKS_VIEW_OWN'],
     });
-    expect(labels(groups)).toEqual(['Booking Calendar', 'Bookings', 'Tasks', 'Security']);
+    expect(labels(groups)).toEqual(['Booking Calendar', 'Tasks', 'Security']);
     expect(labels(groups)).not.toContain('Dashboard');
+    expect(labels(groups)).not.toContain('Bookings');
     expect(labels(groups)).not.toContain('Finance');
     expect(groups.map(group => group.label)).not.toContain('Growth');
   });
@@ -26,10 +35,18 @@ describe('navigation resolution', () => {
     const groups = resolveNavigation(agencyNavigation, {
       portal: 'agency', agencyCapabilities: ['tenants.read', 'support.read', 'support.session.start'],
     });
-    expect(labels(groups)).toEqual(expect.arrayContaining(['Client Businesses', 'Onboarding', 'Support', 'Jobs', 'Webhooks', 'Security']));
-    expect(labels(groups)).not.toContain('Overview');
-    expect(labels(groups)).not.toContain('Billing');
-    expect(labels(groups)).not.toContain('Team');
+    expect(labels(groups)).toEqual(expect.arrayContaining([
+      'Clients',
+      'Onboarding',
+      'Support centre',
+      'System issues',
+      'Background jobs',
+      'Integrations and webhooks',
+      'Security',
+    ]));
+    expect(labels(groups)).not.toContain('Home');
+    expect(labels(groups)).not.toContain('Revenue and billing');
+    expect(labels(groups)).not.toContain('Agency team');
   });
 
   it('honours feature flags without leaving an empty group label', () => {
@@ -67,13 +84,18 @@ describe('route matching', () => {
     const groups = resolveNavigation(businessNavigation, { portal: 'business', role: 'owner', permissions: [] });
     expect(findActiveNavigationItem(groups, '/app/reports/finance')?.label).toBe('Reports');
     expect(findActiveNavigationItem(groups, '/app/settings/booking-page')?.label).toBe('Booking Page');
+    expect(findActiveNavigationItem(groups, '/app/bookings')?.label).toBe('Booking Calendar');
   });
 
   it('replaces managed-business route parameters and matches exact tenant routes', () => {
     const groups = resolveNavigation(managedBusinessNavigation, { portal: 'managed-business', agencyCapabilities: ['tenants.read', 'billing.read'] });
-    const summary = groups[0].items[0];
+    const summary = groups[0].items.find(item => item.id === 'managed-summary')!;
+    const users = groups[0].items.find(item => item.id === 'managed-users')!;
     expect(navigationHref(summary, { tenantId: 'tenant-1' })).toBe('/agency/tenants/tenant-1');
+    expect(navigationHref(users, { tenantId: 'tenant-1' })).toBe('/agency/tenants/tenant-1/users');
     expect(isNavigationItemActive(summary, '/agency/tenants/tenant-1', { tenantId: 'tenant-1' })).toBe(true);
+    expect(isNavigationItemActive(summary, '/agency/tenants/tenant-1/users', { tenantId: 'tenant-1' })).toBe(false);
+    expect(isNavigationItemActive(users, '/agency/tenants/tenant-1/users', { tenantId: 'tenant-1' })).toBe(true);
     expect(isNavigationItemActive(summary, '/agency/tenants/tenant-1/billing', { tenantId: 'tenant-1' })).toBe(false);
   });
 });

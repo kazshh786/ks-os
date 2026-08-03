@@ -1,24 +1,75 @@
 import { buildApp } from './app.js';
 import { env } from './config/env.js';
+import { ConversationDeliveryService } from './modules/conversations/conversation-delivery.service.js';
+import { MailboxService } from './modules/mailboxes/mailbox.service.js';
 
 const server = buildApp();
+const conversationDelivery = new ConversationDeliveryService();
+const mailboxService = new MailboxService();
+let conversationWorkerTimer: NodeJS.Timeout | null = null;
+let conversationWorkerRunning = false;
+let mailboxWorkerTimer: NodeJS.Timeout | null = null;
+let mailboxWorkerRunning = false;
+
+const runConversationWorker = async () => {
+  if (conversationWorkerRunning) return;
+  conversationWorkerRunning = true;
+  try {
+    const result = await conversationDelivery.process(Number(process.env.CONVERSATION_WORKER_BATCH_SIZE || 20));
+    if (result.claimed > 0) server.log.info({ conversationDelivery: result }, 'Conversation delivery batch completed');
+  } catch (error) {
+    server.log.error({ err: error }, 'Conversation delivery batch failed');
+  } finally {
+    conversationWorkerRunning = false;
+  }
+};
+
+const runMailboxWorker = async () => {
+  if (mailboxWorkerRunning) return;
+  mailboxWorkerRunning = true;
+  try {
+    const result = await mailboxService.syncDue(Number(process.env.MAILBOX_SYNC_BATCH_SIZE || 10));
+    if (result.claimed > 0) server.log.info({ mailboxSync: result }, 'Connected mailbox sync batch completed');
+  } catch (error) {
+    server.log.error({ err: error }, 'Connected mailbox sync batch failed');
+  } finally {
+    mailboxWorkerRunning = false;
+  }
+};
 
 const start = async () => {
   try {
     const port = env.PORT;
     const host = '127.0.0.1';
-    
+
     await server.listen({ port, host });
     server.log.info(`Server listening on port ${port} in ${env.NODE_ENV} mode`);
+
+    if (process.env.CONVERSATION_WORKER_ENABLED !== 'false') {
+      const intervalMs = Math.max(1_000, Number(process.env.CONVERSATION_WORKER_INTERVAL_MS || 5_000));
+      conversationWorkerTimer = setInterval(() => void runConversationWorker(), intervalMs);
+      conversationWorkerTimer.unref();
+      void runConversationWorker();
+      server.log.info({ intervalMs }, 'Conversation delivery worker started');
+    }
+
+    if (process.env.MAILBOX_SYNC_ENABLED !== 'false') {
+      const intervalMs = Math.max(15_000, Number(process.env.MAILBOX_SYNC_INTERVAL_MS || 30_000));
+      mailboxWorkerTimer = setInterval(() => void runMailboxWorker(), intervalMs);
+      mailboxWorkerTimer.unref();
+      void runMailboxWorker();
+      server.log.info({ intervalMs }, 'Connected mailbox sync worker started');
+    }
   } catch (err) {
     server.log.error(err);
     process.exit(1);
   }
 };
 
-// Graceful shutdown hooks
 const closeGracefully = async (signal: string) => {
   server.log.info(`Received ${signal}. Shutting down Fastify server...`);
+  if (conversationWorkerTimer) clearInterval(conversationWorkerTimer);
+  if (mailboxWorkerTimer) clearInterval(mailboxWorkerTimer);
   await server.close();
   server.log.info('Fastify server shutdown complete. Exiting.');
   process.exit(0);

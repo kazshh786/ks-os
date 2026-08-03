@@ -33,6 +33,8 @@
     "@ks-os/site-generation": "workspace:*",
     "@ks-os/site-jobs": "workspace:*",
     "@ks-os/site-knowledge": "workspace:*",
+    "@ks-os/site-quality": "workspace:*",
+    "@ks-os/site-publishing": "workspace:*",
     "@ks-os/site-review": "workspace:*",
     "@ks-os/site-schema": "workspace:*",
     "@ks-os/template-intelligence": "workspace:*",

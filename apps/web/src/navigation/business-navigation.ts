@@ -1,7 +1,7 @@
 import {
-  BarChart3, Bell, BookOpenCheck, Boxes, Building2, CalendarDays, ClipboardList, ConciergeBell, CreditCard,
-  FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors, Clock3,
-  Plug, ReceiptText, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
+  BarChart3, Boxes, Building2, CalendarDays, ClipboardList, CreditCard,
+  FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors,
+  Plug, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
 } from 'lucide-react';
 import type { NavigationGroup } from './navigation.types';
 
@@ -11,14 +11,14 @@ export const businessNavigation: NavigationGroup[] = [
     items: [
       { id: 'dashboard', label: 'Dashboard', href: '/app/dashboard', icon: LayoutDashboard, roles: ['owner'] },
       { id: 'services', label: 'Services', href: '/app/services', icon: Scissors, roles: ['owner'] },
-      { id: 'calendar', label: 'Booking Calendar', href: '/app/calendar', icon: CalendarDays, permissionsAny: ['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL'] },
-      { id: 'bookings', label: 'Bookings', href: '/app/bookings', icon: BookOpenCheck, permissionsAny: ['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL'] },
+      { id: 'calendar', label: 'Booking Calendar', href: '/app/calendar', icon: CalendarDays, permissionsAny: ['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL'], activePrefixes: ['/app/bookings'] },
+      { id: 'tasks', label: 'Tasks', href: '/app/tasks/my', icon: ClipboardList, permissionsAny: ['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL'], activePrefixes: ['/app/tasks'] },
     ],
   },
   {
     id: 'customer-operations', label: 'Customer Operations',
     items: [
-      { id: 'walk-in-desk', label: 'Walk-in Desk', href: '/app/calendar?walkin=1', icon: ConciergeBell, permissionsAny: ['BOOKINGS_CREATE'] },
+      { id: 'operations', label: 'Inbox', href: '/app/operations', icon: MessagesSquare, permissionsAny: ['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE'], activePrefixes: ['/app/operations/'] },
       { id: 'customers', label: 'Customers', href: '/app/clients', icon: Users, permissionsAny: ['CLIENTS_VIEW_BASIC'], activePrefixes: ['/app/clients/'] },
       { id: 'forms', label: 'Forms', href: '/app/forms', icon: FormInput, permissionsAny: ['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE'], activePrefixes: ['/app/forms/', '/app/form-submissions/'] },
     ],
@@ -43,19 +43,16 @@ export const businessNavigation: NavigationGroup[] = [
   {
     id: 'work', label: 'Work Management',
     items: [
-      { id: 'tasks', label: 'Tasks', href: '/app/tasks/my', icon: ClipboardList, permissionsAny: ['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL'], activePrefixes: ['/app/tasks'] },
       { id: 'automations', label: 'Automations', href: '/app/automations', icon: Workflow, roles: ['owner'], activePrefixes: ['/app/automations/', '/app/automation-runs/'], requiredEntitlement: 'automations.enabled', requiredPlan: 'GROWTH', lockedBenefit: 'Automate confirmations, reminders, forms, rebooking and follow-up work.' },
-      { id: 'operations', label: 'Operations', href: '/app/operations', icon: Bell, permissionsAny: ['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE'], activePrefixes: ['/app/operations/'] },
     ],
   },
   {
     id: 'admin', label: 'Administration',
     items: [
       { id: 'team', label: 'Team', href: '/app/settings/team', icon: Users, roles: ['owner'], activePrefixes: ['/app/settings/team/'] },
-      { id: 'availability', label: 'Availability', href: '/app/settings/availability', icon: Clock3, roles: ['owner'] },
-      { id: 'locations', label: 'Locations & Resources', href: '/app/settings/locations', icon: MapPinned, roles: ['owner'], activePrefixes: ['/app/settings/resources'] },
-      { id: 'booking-page', label: 'Booking Page', href: '/app/settings/booking-page', icon: Globe2, roles: ['owner'] },
-      { id: 'booking-policies', label: 'Booking Policies', href: '/app/settings/booking/customer-management', icon: ReceiptText, roles: ['owner'] },
+      { id: 'locations', label: 'Locations and resources', href: '/app/settings/locations', icon: MapPinned, roles: ['owner'], activePrefixes: ['/app/settings/resources'] },
+      { id: 'booking-page', label: 'Booking Page', href: '/app/settings/booking-page', icon: Globe2, roles: ['owner'], activePrefixes: ['/app/settings/booking/customer-management'] },
+      { id: 'stripe-payments', label: 'Stripe and Payments', href: '/app/settings/payments', icon: CreditCard, roles: ['owner'], activePrefixes: ['/app/settings/payments/'] },
       { id: 'integrations', label: 'Integrations', href: '/app/settings/integrations', icon: Plug, roles: ['owner'], activePrefixes: ['/app/settings/integrations/'] },
       { id: 'communications', label: 'Communications', href: '/app/settings/communications', icon: MessagesSquare, roles: ['owner'], activePrefixes: ['/app/settings/communications/', '/app/settings/email-history'] },
       { id: 'business-settings', label: 'Business Settings', href: '/app/settings', icon: Settings2, roles: ['owner'] },

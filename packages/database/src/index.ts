@@ -1,14 +1,31 @@
 export * from './schema.js';
+export * from './error-schema.js';
+export * from './design-library-schema.js';
+export * from './booking-schedule-overrides.js';
+export * from './conversation-schema.js';
 export * from './manifest.js';
 export * from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import * as schema from './schema.js';
+import * as coreSchema from './schema.js';
+import * as errorSchema from './error-schema.js';
+import * as designLibrarySchema from './design-library-schema.js';
+import * as bookingScheduleOverrideSchema from './booking-schedule-overrides.js';
+import * as conversationSchema from './conversation-schema.js';
+
+const schema: typeof coreSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema = {
+  ...coreSchema,
+  ...errorSchema,
+  ...designLibrarySchema,
+  ...bookingScheduleOverrideSchema,
+  ...conversationSchema,
+};
+type Database = NodePgDatabase<typeof schema>;
 
 let dbClient: pg.Pool | null = null;
-let database: ReturnType<typeof drizzle<typeof schema>> | null = null;
+let database: Database | null = null;
 
-export function getDatabase(connectionString?: string) {
+export function getDatabase(connectionString?: string): Database {
   if (database) return database;
 
   const url = connectionString || process.env.DATABASE_URL;

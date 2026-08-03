@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@ks-os/site-publishing": "workspace:*",
     "zod": "^3.23.8"
   },
   "devDependencies": {

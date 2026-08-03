@@ -6,6 +6,12 @@ let defaultContextOverride: ApplicationContext | null = null;
 
 export type AuthenticatedRequestInit = RequestInit & { authContext?: ApplicationContext };
 
+function resolveApiUrl(url: string): string {
+  if (!url.startsWith('/api/')) return url;
+  const configuredOrigin = String(import.meta.env.VITE_API_ORIGIN || '').trim().replace(/\/$/, '');
+  return configuredOrigin ? new URL(url, `${configuredOrigin}/`).toString() : url;
+}
+
 function requestContext(url: string, explicit?: ApplicationContext): ApplicationContext {
   if (explicit) return explicit;
   if (defaultContextOverride) return defaultContextOverride;
@@ -19,22 +25,47 @@ export function setDefaultAuthContextOverride(context: ApplicationContext | null
   defaultContextOverride = context;
 }
 
+async function currentAccessToken(): Promise<string | null> {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session) return null;
+  return session.access_token;
+}
+
+async function recoverAccessToken(previousToken: string | null): Promise<string | null> {
+  const storedToken = await currentAccessToken();
+  if (storedToken && storedToken !== previousToken) return storedToken;
+
+  if (!refreshPromise) {
+    const pendingRefresh = (async () => {
+      const { data: { session }, error } = await supabase.auth.refreshSession();
+      if (!error && session) return session.access_token;
+
+      // Another tab or auth listener may have rotated the refresh token first.
+      // Re-read persisted session state rather than revoking a valid browser session.
+      await new Promise(resolve => window.setTimeout(resolve, 50));
+      return currentAccessToken();
+    })();
+    refreshPromise = pendingRefresh;
+    void pendingRefresh.finally(() => {
+      if (refreshPromise === pendingRefresh) refreshPromise = null;
+    });
+  }
+
+  return refreshPromise;
+}
+
 export async function fetchWithAuth(url: string, options: AuthenticatedRequestInit = {}): Promise<Response> {
   const { authContext, ...fetchOptions } = options;
   const context = requestContext(url, authContext);
-  const getAccessToken = async (): Promise<string | null> => {
-    // 1. Check current session
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error || !session) return null;
-    return session.access_token;
-  };
-
-  let token = await getAccessToken();
+  const requestUrl = resolveApiUrl(url);
+  let token = await currentAccessToken();
 
   const makeRequest = async (accessToken: string | null) => {
     const headers = new Headers(fetchOptions.headers);
     headers.set('X-KS-Application-Context', context);
-    if (typeof fetchOptions.body === 'string' && !headers.has('Content-Type')) {
+    if (fetchOptions.body == null) {
+      headers.delete('Content-Type');
+    } else if (typeof fetchOptions.body === 'string' && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }
     if (accessToken) {
@@ -42,26 +73,15 @@ export async function fetchWithAuth(url: string, options: AuthenticatedRequestIn
     }
     const supportToken = sessionStorage.getItem('ks-os-support-session');
     if (supportToken) headers.set('X-KS-Support-Session', supportToken);
-    return fetch(url, { ...fetchOptions, headers });
+    return fetch(requestUrl, { ...fetchOptions, headers });
   };
 
   let response = await makeRequest(token);
 
   if (response.status === 401) {
-    if (!refreshPromise) {
-      refreshPromise = (async () => {
-        const { data: { session }, error } = await supabase.auth.refreshSession();
-        if (error || !session) {
-          await supabase.auth.signOut({ scope: 'local' });
-          return null;
-        }
-        return session.access_token;
-      })();
-    }
-    token = await refreshPromise;
-    refreshPromise = null;
-
-    if (token) {
+    const recoveredToken = await recoverAccessToken(token);
+    if (recoveredToken) {
+      token = recoveredToken;
       response = await makeRequest(token);
     }
   }
@@ -92,5 +112,6 @@ export async function getClientProfile(clientId: string) {
     if (response.status === 403) throw new Error('Access denied');
     throw new Error('Failed to fetch client profile');
   }
-  return response.json();
+  const data = await response.json();
+  return { data };
 }

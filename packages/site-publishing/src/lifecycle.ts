@@ -1,0 +1,43 @@
+import type { PublicationStatus, SiteDomainStatus } from './contracts.js';
+
+const publicationTransitions: Record<PublicationStatus, readonly PublicationStatus[]> = {
+  REQUESTED: ['VALIDATING', 'CANCELLED', 'FAILED'],
+  VALIDATING: ['SNAPSHOTTING', 'CANCELLED', 'FAILED'],
+  SNAPSHOTTING: ['ACTIVATING_HOSTNAMES', 'FAILED'],
+  ACTIVATING_HOSTNAMES: ['SWITCHING_POINTER', 'FAILED'],
+  SWITCHING_POINTER: ['INVALIDATING_CACHE', 'ROLLING_BACK', 'FAILED'],
+  INVALIDATING_CACHE: ['HEALTH_CHECKING', 'ROLLING_BACK', 'FAILED'],
+  HEALTH_CHECKING: ['LIVE', 'ROLLING_BACK', 'FAILED'],
+  LIVE: ['SUPERSEDED', 'ROLLING_BACK'],
+  FAILED: [],
+  CANCEL_REQUESTED: ['CANCELLED', 'FAILED'],
+  CANCELLED: [],
+  ROLLING_BACK: ['ROLLED_BACK', 'FAILED'],
+  ROLLED_BACK: [],
+  SUPERSEDED: [],
+};
+
+export function canTransitionPublication(from: PublicationStatus, to: PublicationStatus) {
+  return publicationTransitions[from].includes(to);
+}
+
+const domainTransitions: Record<SiteDomainStatus, readonly SiteDomainStatus[]> = {
+  RESERVED: ['DNS_DISCOVERY_PENDING', 'VERIFYING', 'REMOVED'],
+  DNS_DISCOVERY_PENDING: ['DNS_REVIEW_REQUIRED', 'FAILED'],
+  DNS_REVIEW_REQUIRED: ['NAMESERVER_ACTION_REQUIRED', 'VERIFYING', 'FAILED'],
+  NAMESERVER_ACTION_REQUIRED: ['NAMESERVER_CHECK_PENDING', 'SUSPENDED'],
+  NAMESERVER_CHECK_PENDING: ['VERIFYING', 'NAMESERVER_ACTION_REQUIRED', 'FAILED'],
+  VERIFYING: ['VERIFIED', 'SSL_PENDING', 'FAILED'],
+  VERIFIED: ['SSL_PENDING', 'ACTIVATING', 'SUSPENDED'],
+  SSL_PENDING: ['ACTIVATING', 'FAILED', 'SUSPENDED'],
+  ACTIVATING: ['ACTIVE', 'DEGRADED', 'FAILED'],
+  ACTIVE: ['DEGRADED', 'SUSPENDED', 'REMOVED'],
+  DEGRADED: ['VERIFYING', 'ACTIVE', 'SUSPENDED', 'REMOVED'],
+  FAILED: ['DNS_DISCOVERY_PENDING', 'VERIFYING', 'SUSPENDED', 'REMOVED'],
+  SUSPENDED: ['VERIFYING', 'ACTIVE', 'REMOVED'],
+  REMOVED: [],
+};
+
+export function canTransitionDomain(from: SiteDomainStatus, to: SiteDomainStatus) {
+  return domainTransitions[from].includes(to);
+}

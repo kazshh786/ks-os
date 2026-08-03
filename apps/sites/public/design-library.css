@@ -1,0 +1,247 @@
+:root {
+  --site-heading-font: Georgia, "Times New Roman", serif;
+  --site-body-font: Inter, ui-sans-serif, system-ui, sans-serif;
+  --site-radius: 0.9rem;
+  --site-section-space: clamp(3rem, 8vw, 7rem);
+  --site-container: 74rem;
+  --site-image-radius: 1rem;
+  --site-motion: 0ms;
+  --site-button-fill: var(--site-primary, #213547);
+  --site-button-text: #fff;
+}
+
+html {
+  font-size: 100%;
+}
+
+body {
+  font-family: var(--site-body-font);
+  text-rendering: optimizeLegibility;
+}
+
+.site-header,
+.site-footer,
+.site-section {
+  width: min(100% - 2rem, var(--site-container));
+}
+
+.site-section {
+  padding-block: var(--site-section-space);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--site-heading-font);
+  text-wrap: balance;
+}
+
+p,
+li,
+dd,
+td,
+th {
+  text-wrap: pretty;
+}
+
+.button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border-radius: var(--site-radius);
+  background: var(--site-button-fill);
+  color: var(--site-button-text);
+  transition: background-color var(--site-motion) ease,
+    color var(--site-motion) ease,
+    border-color var(--site-motion) ease,
+    transform var(--site-motion) ease;
+}
+
+.button.primary {
+  background: var(--site-button-fill);
+  color: var(--site-button-text);
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--site-primary);
+}
+
+.button:hover {
+  text-decoration-thickness: 0.14em;
+}
+
+.button:active {
+  transform: translateY(1px);
+}
+
+.site-logo,
+.hero-image,
+.service-detail-image,
+.staff-profile > img,
+.service-card img,
+.image-grid img,
+.card-grid img {
+  border-radius: var(--site-image-radius);
+}
+
+.service-card,
+.card-grid > article,
+.card-grid > figure,
+.feature-grid > li,
+.faq details,
+.mobile-navigation[open],
+.booking-call-to-action {
+  border-radius: var(--site-radius);
+}
+
+.site-section.variant-editorial {
+  max-width: min(100% - 2rem, 66rem);
+}
+
+.site-section.variant-editorial > h2,
+.site-section.variant-editorial > p {
+  max-width: 45rem;
+}
+
+.site-section.variant-grid .card-grid,
+.site-section.variant-grid .feature-grid,
+.site-section.variant-grid .image-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+}
+
+.site-section.variant-split:not(.hero):not(.service-details):not(.staff-profile) {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  column-gap: clamp(2rem, 7vw, 6rem);
+  align-items: start;
+}
+
+.site-section.variant-split > h2:first-child {
+  grid-column: 1;
+}
+
+.site-section.variant-split > :not(h2:first-child) {
+  grid-column: 2;
+}
+
+.site-section.variant-compact {
+  padding-block: clamp(1.75rem, 4vw, 3.5rem);
+}
+
+.site-section.variant-compact h2 {
+  font-size: clamp(1.75rem, 3vw, 2.6rem);
+}
+
+.site-section.variant-standard {
+  isolation: isolate;
+}
+
+.site-section.variant-featured {
+  width: min(100% - 2rem, calc(var(--site-container) + 4rem));
+  border-radius: var(--site-radius);
+  padding-inline: clamp(1.5rem, 5vw, 4rem);
+  background: var(--site-primary);
+  color: #fff;
+}
+
+.site-section.variant-featured .eyebrow,
+.site-section.variant-featured a:not(.button) {
+  color: #fff;
+}
+
+.site-section.variant-featured .service-card,
+.site-section.variant-featured .card-grid > article,
+.site-section.variant-featured .card-grid > figure,
+.site-section.variant-featured .feature-grid > li,
+.site-section.variant-featured details {
+  color: var(--site-text);
+}
+
+.site-section.variant-quiet {
+  border-block: 1px solid var(--site-border);
+  background: color-mix(in srgb, var(--site-surface) 72%, var(--site-background));
+}
+
+.site-section.variant-quiet h2 {
+  font-size: clamp(1.75rem, 3vw, 2.8rem);
+}
+
+input,
+select,
+textarea,
+button,
+summary,
+a {
+  font: inherit;
+}
+
+summary,
+button,
+.button,
+nav a {
+  min-height: 2.75rem;
+}
+
+summary,
+nav a {
+  display: inline-flex;
+  align-items: center;
+}
+
+:where(a, button, summary, input, select, textarea):focus-visible {
+  outline: 3px solid var(--site-accent);
+  outline-offset: 4px;
+}
+
+@media (max-width: 52rem) {
+  .site-section.variant-split:not(.hero):not(.service-details):not(.staff-profile) {
+    grid-template-columns: 1fr;
+  }
+
+  .site-section.variant-split > h2:first-child,
+  .site-section.variant-split > :not(h2:first-child) {
+    grid-column: 1;
+  }
+
+  .site-section.variant-featured {
+    width: min(100% - 1rem, var(--site-container));
+  }
+}
+
+@media (prefers-contrast: more) {
+  .service-card,
+  .card-grid > article,
+  .card-grid > figure,
+  .feature-grid > li,
+  .faq details,
+  .site-header,
+  .site-footer {
+    border-width: 2px;
+  }
+
+  .button {
+    border-width: 3px;
+  }
+}
+
+@media (forced-colors: active) {
+  .button,
+  .booking-call-to-action,
+  .site-section.variant-featured {
+    forced-color-adjust: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --site-motion: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}

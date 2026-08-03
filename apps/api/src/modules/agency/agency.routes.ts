@@ -4,13 +4,15 @@ import { z } from 'zod';
 import {
   AgencyRoleSchema, BillingExceptionSchema, BillingPlanChangeSchema, CreateAgencyTenantSchema,
   CreateBillingRequestSchema, CreateDeliverableSchema, CreateEntitlementOverrideSchema, CreatePlanVersionSchema,
-  SafeRetrySchema, StartSupportSessionSchema, SupportNoteSchema, UpdateAgencyTenantSchema,
+  DashboardOverviewQuerySchema, SafeRetrySchema, StartSupportSessionSchema, SupportNoteSchema, UpdateAgencyTenantSchema,
   UpdateDeliverableSchema, UpdateOnboardingStageSchema, UpdateTenantOnboardingSchema,
 } from '@ks-os/contracts';
 import { AgencyAuditService, AgencyService, type AgencyActor } from './agency.service.js';
+import { AgencyTenantOverviewService } from './agency-tenant-overview.service.js';
 import { GoCardlessWebhookService } from './gocardless.service.js';
 import { AgencyExportsService } from './agency-exports.service.js';
 import { AgencyBookingService } from './agency-booking.service.js';
+import { ManualTenantUserService } from './manual-tenant-user.service.js';
 
 const Id=z.object({id:z.string().uuid()}); const TenantId=z.object({tenantId:z.string().uuid()});
 const TenantUserId=TenantId.extend({userReference:z.string().uuid()});
@@ -22,6 +24,8 @@ function actor(request:FastifyRequest,capability?:Parameters<FastifyRequest['req
 
 export async function agencyRoutes(app:FastifyInstance){const service=new AgencyService();
   const agencyBooking = new AgencyBookingService();
+  const manualTenantUsers = new ManualTenantUserService();
+  const tenantOverview = new AgencyTenantOverviewService();
   app.get('/session',{config:{rateLimit:{max:20,timeWindow:'1 minute'}}},async(request,reply)=>{
     if(!request.agencyAuth)return reply.code(401).send({success:false,error:{code:'AGENCY_UNAUTHENTICATED',message:'No valid agency session found.'}});
     const session=request.agencyAuth;return{success:true,data:{authenticated:true,context:'AGENCY',user:{email:session.email,displayName:session.displayName,role:session.role},mfa:{required:session.mfaRequired,assuranceLevel:session.assuranceLevel},capabilities:session.capabilities,expiresAt:session.expiresAt}};
@@ -46,11 +50,27 @@ export async function agencyRoutes(app:FastifyInstance){const service=new Agency
   app.get('/tenants',async r=>({data:await service.listTenants(),actor:actor(r,'tenants.read')}));
   app.post('/tenants/:tenantId/owner-invitations',{config:{rateLimit:{max:5,timeWindow:'15 minutes'}}},async(r,reply)=>{const{tenantId}=TenantId.parse(r.params);const body=z.object({email:z.string().email(),displayName:z.string().trim().min(1).max(255)}).strict().parse(r.body);return reply.code(201).send({data:await service.inviteTenantOwner(actor(r,'tenants.manage'),tenantId,body)});});
   app.get('/tenants/:tenantId/users',async r=>{const{tenantId}=TenantId.parse(r.params);return{data:await service.listTenantUsers(actor(r,'tenants.read'),tenantId)};});
+  app.post('/tenants/:tenantId/users',{config:{rateLimit:{max:10,timeWindow:'15 minutes'}}},async(r,reply)=>{const{tenantId}=TenantId.parse(r.params);const body=z.object({email:z.string().email(),displayName:z.string().trim().min(2).max(255),role:z.enum(['owner','staff']),bookingEnabled:z.boolean().optional()}).strict().parse(r.body);return reply.code(201).send({data:await manualTenantUsers.create(actor(r,'tenants.manage'),tenantId,body)});});
   app.post('/tenants/:tenantId/users/:userReference/suspend',async r=>{const{tenantId,userReference}=TenantUserId.parse(r.params);return{data:await service.setTenantUserStatus(actor(r,'tenants.manage'),tenantId,userReference,'SUSPENDED')};});
   app.post('/tenants/:tenantId/users/:userReference/reactivate',async r=>{const{tenantId,userReference}=TenantUserId.parse(r.params);return{data:await service.setTenantUserStatus(actor(r,'tenants.manage'),tenantId,userReference,'ACTIVE')};});
   app.post('/tenants/:tenantId/users/:userReference/revoke-sessions',{config:{rateLimit:{max:10,timeWindow:'5 minutes'}}},async(r,reply)=>{const{tenantId,userReference}=TenantUserId.parse(r.params);await service.revokeTenantUserSessions(actor(r,'tenants.manage'),tenantId,userReference);return reply.code(204).send();});
-  app.post('/tenants',async(r,reply)=>reply.code(201).send({data:await service.createTenant(actor(r,'tenants.manage'),CreateAgencyTenantSchema.parse(r.body))}));
+  app.post('/tenants',async(r,reply)=>{
+    const input=CreateAgencyTenantSchema.parse(r.body);
+    const agencyActor=actor(r,'tenants.manage');
+    const startedAt=Date.now();
+    try{
+      return reply.code(201).send({data:await service.createTenant(agencyActor,input)});
+    }catch(error){
+      // Tenant creation commits before the audit write. If that final audit step
+      // fails, reconcile the just-created tenant so the UI does not report a
+      // false failure or encourage a duplicate submission.
+      const reconciled=(await service.listTenants()).find(tenant=>tenant.subdomain===input.subdomain&&new Date(tenant.createdAt).getTime()>=startedAt-5_000);
+      if(reconciled)return reply.code(201).send({data:reconciled,meta:{reconciledAfterCreate:true}});
+      throw error;
+    }
+  });
   app.get('/tenants/:tenantId',async r=>{const{tenantId}=TenantId.parse(r.params);actor(r,'tenants.read');return{data:await service.getTenant(tenantId)};});
+  app.get('/tenants/:tenantId/overview',async r=>{const{tenantId}=TenantId.parse(r.params);actor(r,'tenants.read');return{data:await tenantOverview.overview(tenantId,DashboardOverviewQuerySchema.parse(r.query))};});
   app.patch('/tenants/:tenantId',async r=>{const{tenantId}=TenantId.parse(r.params);return{data:await service.updateTenant(actor(r,'tenants.manage'),tenantId,UpdateAgencyTenantSchema.parse(r.body))};});
   for(const action of ['suspend','reactivate','offboard'] as const)app.post(`/tenants/:tenantId/${action}`,async r=>{const{tenantId}=TenantId.parse(r.params);const parsed=SafeRetrySchema.safeParse(r.body);const reason=parsed.success?parsed.data.reason:'Confirmed through the agency tenant lifecycle control';return{data:await service.changeLifecycle(actor(r,'tenants.manage'),tenantId,action.toUpperCase() as any,reason)};});
 

@@ -311,8 +311,8 @@ export class PostgresSiteJobRepository implements SiteJobRepository {
           ${jobWorker(job)},
           'Job progress was updated.',
           jsonb_build_object(
-            'current', ${progress.current},
-            'total', ${progress.total}
+            'current', ${progress.current}::integer,
+            'total', ${progress.total}::integer
           )
         )
       `);

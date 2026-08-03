@@ -11,15 +11,22 @@ export function assertSafeMigrationTarget({
   apply,
   databaseUrl,
   explicitDevelopmentOptIn,
+  explicitProductionOptIn,
   nodeEnvironment,
   remoteDevelopmentOptIn,
   allowedProjectRef,
 }) {
   if (!apply) return;
   const environment = (appEnvironment || nodeEnvironment || '').toLowerCase();
+
   if (['production', 'staging'].includes(environment)) {
-    throw new Error(`Refusing migration apply in ${environment}.`);
+    const productionOptIn = explicitProductionOptIn === true || process.env.APPLY_MIGRATIONS === '1';
+    if (!productionOptIn) {
+      throw new Error(`Migration apply in ${environment} requires APPLY_MIGRATIONS=1.`);
+    }
+    return;
   }
+
   if (nodeEnvironment !== 'development' || environment !== 'development') {
     throw new Error('Migration apply requires a designated development environment.');
   }

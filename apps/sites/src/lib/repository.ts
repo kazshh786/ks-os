@@ -9,7 +9,10 @@ import {
   isNull,
   siteDomains,
   sitePreviewTokenRevocations,
+  siteQualityAuditSessions,
+  siteQualityRuns,
   sitePages,
+  sitePublicationPointers,
   siteRenderSnapshots,
   siteReviewCycles,
   siteReviewParticipants,
@@ -52,6 +55,13 @@ export interface PublicSiteRepository {
   isReviewPreviewSessionActive?(input: {
     jti: string;
     reviewCycleReference: string;
+    siteReference: string;
+    versionReference: string;
+    requestedPath: string;
+  }): Promise<boolean>;
+  isQualityAuditSessionActive?(input: {
+    jti: string;
+    qualityRunReference: string;
     siteReference: string;
     versionReference: string;
     requestedPath: string;
@@ -108,6 +118,7 @@ export class DrizzlePublicSiteRepository implements PublicSiteRepository {
         siteReference: sites.publicReference,
         siteStatus: sites.status,
         domainStatus: siteDomains.status,
+        domainType: siteDomains.domainType,
       })
       .from(siteDomains)
       .innerJoin(sites, eq(siteDomains.siteId, sites.id))
@@ -119,7 +130,7 @@ export class DrizzlePublicSiteRepository implements PublicSiteRepository {
         siteReference: domain.siteReference,
         siteStatus: domain.siteStatus as SiteStatus,
         matchedHostname: hostname,
-        matchKind: 'CUSTOM' as const,
+        matchKind: domain.domainType === 'FALLBACK' ? 'FALLBACK' as const : 'CUSTOM' as const,
         domainStatus: domain.domainStatus === 'ACTIVE' ? 'ACTIVE' as const : 'INACTIVE' as const,
       };
     }
@@ -161,12 +172,16 @@ export class DrizzlePublicSiteRepository implements PublicSiteRepository {
         templateVersionReference: templateVersions.publicReference,
       })
       .from(siteRenderSnapshots)
+      .innerJoin(
+        sitePublicationPointers,
+        eq(sitePublicationPointers.activeSnapshotId, siteRenderSnapshots.id),
+      )
       .innerJoin(sites, eq(siteRenderSnapshots.siteId, sites.id))
       .innerJoin(siteVersions, eq(siteRenderSnapshots.siteVersionId, siteVersions.id))
       .innerJoin(templateVersions, eq(siteRenderSnapshots.templateVersionId, templateVersions.id))
       .where(and(
         eq(sites.publicReference, siteReference),
-        eq(siteRenderSnapshots.siteVersionId, sites.publishedVersionId),
+        eq(sitePublicationPointers.siteId, sites.id),
         eq(siteRenderSnapshots.snapshotKind, 'PUBLISHED'),
         eq(siteVersions.status, 'PUBLISHED'),
         eq(templateVersions.status, 'APPROVED'),
@@ -279,5 +294,69 @@ export class DrizzlePublicSiteRepository implements PublicSiteRepository {
       ? '/'
       : `/${session.scopedPageSlug.replace(/^\/+|\/+$/g, '')}`;
     return scopedPath === input.requestedPath;
+  }
+
+  async isQualityAuditSessionActive(input: {
+    jti: string;
+    qualityRunReference: string;
+    siteReference: string;
+    versionReference: string;
+    requestedPath: string;
+  }) {
+    const [session] = await this.database
+      .select({
+        id: siteQualityAuditSessions.id,
+      })
+      .from(siteQualityAuditSessions)
+      .innerJoin(
+        siteQualityRuns,
+        eq(siteQualityAuditSessions.qualityRunId, siteQualityRuns.id),
+      )
+      .innerJoin(sites, eq(siteQualityAuditSessions.siteId, sites.id))
+      .innerJoin(
+        siteVersions,
+        eq(siteQualityAuditSessions.siteVersionId, siteVersions.id),
+      )
+      .innerJoin(sitePages, and(
+        eq(sitePages.siteId, sites.id),
+        eq(sitePages.versionId, siteVersions.id),
+      ))
+      .where(and(
+        eq(siteQualityAuditSessions.tokenJti, input.jti),
+        eq(siteQualityRuns.publicReference, input.qualityRunReference),
+        eq(sites.publicReference, input.siteReference),
+        eq(siteVersions.publicReference, input.versionReference),
+        eq(siteQualityAuditSessions.status, 'ACTIVE'),
+        isNull(siteQualityAuditSessions.revokedAt),
+        gt(siteQualityAuditSessions.expiresAt, new Date()),
+        eq(
+          siteQualityAuditSessions.contentDigestSha256,
+          siteQualityRuns.siteVersionDigestSha256,
+        ),
+        eq(
+          siteQualityAuditSessions.contentDigestSha256,
+          siteVersions.generationContentDigestSha256,
+        ),
+        inArray(siteQualityRuns.status, [
+          'PREPARING',
+          'RENDERING',
+          'RUNNING_DETERMINISTIC_CHECKS',
+          'RUNNING_BROWSER_CHECKS',
+          'RUNNING_AI_REVIEW',
+          'EVALUATING',
+        ]),
+        eq(
+          sitePages.slug,
+          input.requestedPath === '/'
+            ? 'home'
+            : input.requestedPath.replace(/^\/+|\/+$/g, ''),
+        ),
+      ))
+      .limit(1);
+    if (!session) return false;
+    await this.database.update(siteQualityAuditSessions).set({
+      lastAccessedAt: new Date(),
+    }).where(eq(siteQualityAuditSessions.id, session.id));
+    return true;
   }
 }

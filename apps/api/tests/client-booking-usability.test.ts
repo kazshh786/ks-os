@@ -1,0 +1,164 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { BookingPageResponseSchema, FormDraftInputSchema, FormSchemaJsonSchema } from '@ks-os/contracts';
+
+const fieldId = '11111111-1111-4111-8111-111111111111';
+const baseTheme = {
+  backgroundColor: '#f8fafc',
+  cardColor: '#ffffff',
+  primaryColor: '#4f46e5',
+  textColor: '#0f172a',
+  mutedColor: '#64748b',
+  errorColor: '#b91c1c',
+  radius: 'large',
+  density: 'comfortable',
+  progressStyle: 'BAR',
+};
+
+const incompleteSchema = {
+  schemaVersion: 2,
+  fields: [{
+    id: fieldId,
+    key: '',
+    type: 'CONSENT_CHECKBOX',
+    label: '',
+    required: true,
+    readOnly: false,
+    hidden: false,
+    width: '100',
+    validation: {},
+    sensitiveClassification: 'CONSENT',
+    translations: {},
+    accessibility: {},
+  }],
+  pages: [],
+  sections: [],
+  logic: [],
+  theme: baseTheme,
+  settings: { showIntroduction: true, showReview: true, completionMessage: 'Thanks', autosave: true },
+};
+
+test('unfinished consent forms can be saved as drafts but cannot be published', () => {
+  const draft = {
+    title: 'Treatment consent',
+    description: '',
+    internalDescription: '',
+    formType: 'CONSENT',
+    schema: incompleteSchema,
+    acknowledgementText: '',
+    defaultLanguage: 'en-GB',
+    supportedLanguages: ['en-GB'],
+  };
+  assert.equal(FormDraftInputSchema.safeParse(draft).success, true);
+  assert.equal(FormSchemaJsonSchema.safeParse(incompleteSchema).success, false);
+});
+
+test('booking-page contracts persist enabled appointment channels', () => {
+  const parsed = BookingPageResponseSchema.parse({
+    id: '22222222-2222-4222-8222-222222222222',
+    publicSlug: 'test-salon',
+    publicUrl: 'https://test-salon.kasimshah.com/book',
+    previewUrl: 'https://test-salon.kasimshah.com/book?preview=1',
+    title: 'Book online',
+    description: '',
+    enabled: true,
+    published: true,
+    logoUrl: null,
+    coverImageUrl: null,
+    layout: 'STANDARD',
+    theme: {},
+    defaultLanguage: 'en-GB',
+    supportedLanguages: ['en-GB'],
+    defaultLocationId: null,
+    allowedLocationIds: [],
+    allowedServiceIds: [],
+    allowedStaffIds: [],
+    bookingRules: { maximumFutureDays: 42, enabledBookingChannels: ['mobile'] },
+    paymentSettings: {},
+    intakeFormSettings: {},
+    cancellationSettings: {},
+    seoSettings: {},
+    analyticsSettings: { enabled: true },
+    customDomain: null,
+    customDomainStatus: 'NOT_CONFIGURED',
+    publishedAt: null,
+    updatedAt: new Date().toISOString(),
+  });
+  assert.deepEqual(parsed.bookingRules.enabledBookingChannels, ['mobile']);
+  assert.equal(parsed.bookingRules.maximumFutureDays, 42);
+});
+
+test('customer booking UI enforces six weeks, filters disabled channels and uses live available dates', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), '../web/src/features/bookings/PublicBookingFlow.tsx'), 'utf8');
+  const calendarSource = fs.readFileSync(path.resolve(process.cwd(), '../web/src/features/bookings/AvailabilityCalendar.tsx'), 'utf8');
+  const availabilityRoute = fs.readFileSync(path.resolve(process.cwd(), 'src/routes/public/availability-summary.ts'), 'utf8');
+
+  assert.match(source, /const minimumFutureDays = 42/);
+  assert.match(source, /maximumFutureDays = Math\.max\(minimumFutureDays/);
+  assert.match(source, /visibleChannels/);
+  assert.match(source, /<AvailabilityCalendar/);
+  assert.match(source, /minimumDate=\{dateMinimum\}/);
+  assert.match(source, /maximumDate=\{dateMaximum\}/);
+  assert.doesNotMatch(source, /type="date"/);
+  assert.match(source, /No availability on \{selectedDateLabel\}/);
+  assert.match(source, /const canChooseAnyStaff =/);
+  assert.match(source, /See anyone available/);
+  assert.match(source, /Choose another enabled day in the calendar\./);
+  assert.match(source, /aria-live="polite"/);
+  assert.match(source, /cause instanceof Error/);
+  assert.match(source, /code === 'SLOT_UNAVAILABLE' \|\| code === 'SLOT_HELD'/);
+  assert.match(source, /We could not reserve this time right now\. Refresh availability and try again\./);
+
+  assert.match(calendarSource, /available-dates/);
+  assert.match(calendarSource, /const disabled = !inMonth \|\| !inRange \|\| loading \|\| !available/);
+  assert.match(calendarSource, /Only days with at least one live appointment time can be selected\./);
+  assert.match(calendarSource, /aria-label="Appointment calendar"/);
+
+  assert.match(availabilityRoute, /fastify\.get\('\/:subdomain\/available-dates'/);
+  assert.match(availabilityRoute, /maximumFutureDays/);
+  assert.match(availabilityRoute, /availability\.slots\.some/);
+});
+
+test('calendar availability modal saves one appointment channel at a time', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), '../web/src/features/bookings/CalendarAvailabilityDialog.tsx'), 'utf8');
+  assert.match(source, /updateTeamMemberBookingChannels\(member\.id, \{ channel, schedule \}\)/);
+  assert.match(source, /channel === 'in_shop'/);
+  assert.match(source, /booking-schedule-overrides/);
+  assert.match(source, /item\.date === nextOverride\.date && item\.channel === channel/);
+  assert.doesNotMatch(source, /channel: 'mobile', schedule \}\),\s*\]/);
+});
+
+test('availability keeps staff eligible when a location has no explicit staff mappings', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), 'src/modules/availability/availability.service.ts'), 'utf8');
+  assert.match(source, /const locationStaffRows = options\.locationId/);
+  assert.match(source, /const locationStaff = locationStaffRows\.length/);
+  assert.doesNotMatch(source, /const locationStaff = options\.locationId/);
+});
+
+test('availability reads the production staff pricing columns', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), 'src/modules/availability/availability.service.ts'), 'utf8');
+  assert.match(source, /staff_user_id as "staffUserId"/);
+  assert.match(source, /price_override as "priceOverride"/);
+  assert.match(source, /where tenant_id =/);
+  assert.doesNotMatch(source, /staffPricing\.userId/);
+  assert.doesNotMatch(source, /customDurationMinutes/);
+});
+
+test('public availability omits empty optional query values', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), '../web/src/data/data-provider.ts'), 'utf8');
+  assert.match(source, /withSanitisedPublicAvailability/);
+  assert.match(source, /Object\.entries\(input \?\? \{\}\)/);
+  assert.match(source, /value !== undefined && value !== null && value !== ''/);
+  assert.match(source, /currentProvider = withSanitisedPublicAvailability\(provider\)/);
+});
+
+
+test('booking holds derive the business-local date without locale-dependent text', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), 'src/modules/bookings/booking-page.service.ts'), 'utf8');
+  assert.match(source, /formatToParts\(new Date\(input\.startTime\)\)/);
+  assert.match(source, /const localDate = `\$\{year\}-\$\{month\}-\$\{day\}`/);
+  assert.match(source, /new Date\(item\.start\)\.getTime\(\) === requestedStart/);
+  assert.doesNotMatch(source, /Intl\.DateTimeFormat\('en-CA'.*\.format\(new Date\(input\.startTime\)\)/s);
+});

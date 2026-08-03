@@ -10,7 +10,10 @@ import {
 import { JsonSiteWorkerLogger } from './logger.js';
 import { PostgresSiteJobRepository } from './postgres-repository.js';
 import { createConfiguredSiteGenerationExecutor } from './postgres-generation-executor.js';
-import { PostgresWorkspaceProvisioningExecutor } from './postgres-provisioning-executor.js';
+import { UnifiedWorkspaceProvisioningExecutor } from './unified-provisioning-executor.js';
+import { ProductionPlaywrightQualityAdapter } from './playwright-quality-adapter.js';
+import { PostgresSiteQualityExecutor } from './postgres-quality-executor.js';
+import { PostgresSitePublicationExecutor } from './postgres-publication-executor.js';
 import { SiteWorker } from './worker.js';
 
 export async function startSiteWorker(
@@ -25,10 +28,20 @@ export async function startSiteWorker(
       ? createConfiguredSiteGenerationExecutor(database, config.generation)
       : undefined);
   const repository = new PostgresSiteJobRepository(database);
+  const qualityExecutor = new PostgresSiteQualityExecutor(
+    database,
+    config.quality,
+    new ProductionPlaywrightQualityAdapter({
+      pageTimeoutMs: config.quality.pageTimeoutMs,
+    }),
+    config.nodeEnvironment,
+  );
   const registry = createSiteJobHandlerRegistry(
     config.enableTestHandlers,
     resolvedGenerationExecutor,
-    new PostgresWorkspaceProvisioningExecutor(database, config.generation),
+    new UnifiedWorkspaceProvisioningExecutor(database, config.generation),
+    qualityExecutor,
+    new PostgresSitePublicationExecutor(database),
   );
   const logger = new JsonSiteWorkerLogger(config.logLevel);
   const health = new SiteWorkerHealth(repository, registry);
@@ -53,6 +66,7 @@ export async function startSiteWorker(
     stopping = (async () => {
       await worker.shutdown();
       await healthServer.stop();
+      await qualityExecutor.close();
       await closeDatabase();
     })();
     return stopping;
@@ -102,6 +116,10 @@ export * from './logger.js';
 export * from './postgres-repository.js';
 export * from './postgres-generation-executor.js';
 export * from './postgres-provisioning-executor.js';
+export * from './unified-provisioning-executor.js';
+export * from './postgres-quality-executor.js';
+export * from './postgres-publication-executor.js';
+export * from './playwright-quality-adapter.js';
 export * from './provisioning-finalization.js';
 export * from './repository.types.js';
 export * from './worker.js';

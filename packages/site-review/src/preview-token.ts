@@ -13,10 +13,33 @@ export const PreviewTokenPayloadSchema = z.object({
   siteReference: PublicReferenceSchema,
   versionReference: PublicReferenceSchema,
   reviewCycleReference: PublicReferenceSchema.optional(),
-  purpose: z.enum(['AGENCY_REVIEW', 'CLIENT_REVIEW']),
+  qualityRunReference: PublicReferenceSchema.optional(),
+  purpose: z.enum(['AGENCY_REVIEW', 'CLIENT_REVIEW', 'QUALITY_AUDIT']),
   iat: z.number().int().nonnegative(),
   exp: z.number().int().positive(),
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  if (value.purpose === 'QUALITY_AUDIT' && !value.qualityRunReference) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['qualityRunReference'],
+      message: 'Quality-audit preview tokens require a quality run.',
+    });
+  }
+  if (value.purpose !== 'QUALITY_AUDIT' && value.qualityRunReference) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['qualityRunReference'],
+      message: 'Review preview tokens cannot carry a quality run.',
+    });
+  }
+  if (value.purpose === 'QUALITY_AUDIT' && value.reviewCycleReference) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['reviewCycleReference'],
+      message: 'Quality-audit preview tokens cannot carry a review cycle.',
+    });
+  }
+});
 export type PreviewTokenPayload = z.infer<typeof PreviewTokenPayloadSchema>;
 
 export class PreviewTokenError extends Error {
@@ -43,6 +66,7 @@ export function signSitePreviewToken(input: {
   siteReference: string;
   versionReference: string;
   reviewCycleReference?: string;
+  qualityRunReference?: string;
   purpose: PreviewTokenPayload['purpose'];
   secret: string;
   now?: Date;
@@ -62,6 +86,9 @@ export function signSitePreviewToken(input: {
     versionReference: input.versionReference,
     ...(input.reviewCycleReference
       ? { reviewCycleReference: input.reviewCycleReference }
+      : {}),
+    ...(input.qualityRunReference
+      ? { qualityRunReference: input.qualityRunReference }
       : {}),
     purpose: input.purpose,
     iat: now,

@@ -1,4 +1,7 @@
-import type { SiteGenerationRunStatus } from './contracts.js';
+import {
+  SiteGenerationRunStatusSchema,
+  type SiteGenerationRunStatus,
+} from './contracts.js';
 
 const TRANSITIONS: Record<SiteGenerationRunStatus, readonly SiteGenerationRunStatus[]> = {
   PENDING: ['PREPARING_CONTEXT', 'CANCEL_REQUESTED', 'CANCELLED', 'FAILED'],
@@ -22,6 +25,9 @@ export function assertGenerationRunTransition(
   }
 }
 
-export function isReviewableGenerationStatus(status: SiteGenerationRunStatus) {
-  return status === 'READY_FOR_REVIEW';
+export function isReviewableGenerationStatus(
+  status: unknown,
+): status is Extract<SiteGenerationRunStatus, 'READY_FOR_REVIEW'> {
+  const parsed = SiteGenerationRunStatusSchema.safeParse(status);
+  return parsed.success && parsed.data === 'READY_FOR_REVIEW';
 }

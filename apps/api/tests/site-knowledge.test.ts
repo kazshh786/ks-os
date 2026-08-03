@@ -322,6 +322,6 @@ test('the implementation has no NotebookLM, model-provider or external import de
 test('the additive migration is ordered after Phase 15.6A', () => {
   assert.match(
     migrationManifest,
-    /20260725130000_phase_15_6b_expert_knowledge_engine\.sql',[\s\S]*?order: 31/,
+    /20260725090000_phase_15_6a_site_worker_foundation\.sql',[\s\S]*?order: 31,[\s\S]*?20260725130000_phase_15_6b_expert_knowledge_engine\.sql',[\s\S]*?order: 32/,
   );
 });

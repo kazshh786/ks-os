@@ -62,7 +62,7 @@ const TENANTS: BusinessTenant[] = [
   },
   {
     id: 'aura-aesthetics',
-    name: 'Aura Aesthetics & Nails',
+    name: 'Aura Aesthetics and Nails',
     subdomain: 'aura.kasimshah.com',
     customDomain: 'aurasalon.com',
     primaryColor: '#ec4899',
@@ -81,15 +81,15 @@ const TENANTS: BusinessTenant[] = [
 const SERVICES: Record<string, Service[]> = {
   'sovereign-gents': [
     { id: 'sg-haircut', name: 'Signature Haircut', description: 'Precision cut, wash, hot towel finish and custom styling.', price: 35, durationMin: 30, category: 'Hair' },
-    { id: 'sg-beard', name: 'Beard Trim & Hot Towel Shave', description: 'Beard sculpting, razor lines, essential oils and hot towel.', price: 25, durationMin: 30, category: 'Beard' },
-    { id: 'sg-combo', name: 'Sovereign Haircut & Beard Combo', description: 'The ultimate grooming experience including haircut, wash, beard sculpt and luxury hot towel finish.', price: 55, durationMin: 60, category: 'Combos' },
-    { id: 'sg-facial', name: 'Charcoal Face Mask & Peel', description: 'Deep exfoliating charcoal peel to clear pores and refresh the skin.', price: 20, durationMin: 20, category: 'Skincare' }
+    { id: 'sg-beard', name: 'Beard Trim and Hot Towel Shave', description: 'Beard sculpting, razor lines, essential oils and hot towel.', price: 25, durationMin: 30, category: 'Beard' },
+    { id: 'sg-combo', name: 'Sovereign Haircut and Beard Combo', description: 'The ultimate grooming experience including haircut, wash, beard sculpt and luxury hot towel finish.', price: 55, durationMin: 60, category: 'Combos' },
+    { id: 'sg-facial', name: 'Charcoal Face Mask and Peel', description: 'Deep exfoliating charcoal peel to clear pores and refresh the skin.', price: 20, durationMin: 20, category: 'Skincare' }
   ],
   'aura-aesthetics': [
     { id: 'aa-gel-mani', name: 'Gel Manicure', description: 'Nail shaping, cuticle care, high-shine professional Gel bottle polish, and moisture massage.', price: 40, durationMin: 45, category: 'Nails' },
-    { id: 'aa-lash-lift', name: 'Lash Lift & Tint', description: 'Boosts and lifts your natural lashes from the root, including a professional dark tint.', price: 60, durationMin: 60, category: 'Lashes', requiresResource: 'res-facial-suite' },
+    { id: 'aa-lash-lift', name: 'Lash Lift and Tint', description: 'Boosts and lifts your natural lashes from the root, including a professional dark tint.', price: 60, durationMin: 60, category: 'Lashes', requiresResource: 'res-facial-suite' },
     { id: 'aa-hydrafacial', name: 'Advanced Hydrafacial', description: 'Multi-step facial treatment to cleanse, exfoliate, and hydrate the skin with antioxidants.', price: 120, durationMin: 60, category: 'Aesthetics', requiresResource: 'res-facial-suite' },
-    { id: 'aa-brow-lam', name: 'Brow Lamination & Shape', description: 'Restructuring the brow hairs to keep them in a desired fuller shape.', price: 50, durationMin: 45, category: 'Brows' }
+    { id: 'aa-brow-lam', name: 'Brow Lamination and Shape', description: 'Restructuring the brow hairs to keep them in a desired fuller shape.', price: 50, durationMin: 45, category: 'Brows' }
   ]
 };
 
@@ -108,7 +108,7 @@ const STAFF: Record<string, Staff[]> = {
     {
       id: 'st-kasim',
       name: 'Kasim Shah',
-      role: 'Master Barber & Founder',
+      role: 'Master Barber and Founder',
       avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       rating: 5.0,
       servicesHandled: ['sg-haircut', 'sg-beard', 'sg-combo', 'sg-facial'],
@@ -246,7 +246,7 @@ const PRODUCTS: Record<string, Product[]> = {
   ],
   'aura-aesthetics': [
     { id: 'p-serum', name: 'Aura Hyaluronic Hydrating Serum (50ml)', sku: 'AUR-SER-01', price: 45, stock: 15, category: 'Skincare' },
-    { id: 'p-cuticle', name: 'Nourishing Cuticle & Hand Cream (75ml)', sku: 'AUR-CUT-02', price: 16, stock: 40, category: 'Hand Care' },
+    { id: 'p-cuticle', name: 'Nourishing Cuticle and Hand Cream (75ml)', sku: 'AUR-CUT-02', price: 16, stock: 40, category: 'Hand Care' },
     { id: 'p-mist', name: 'Rosewater Glow Refreshing Face Mist (100ml)', sku: 'AUR-MST-03', price: 24, stock: 28, category: 'Skincare' }
   ]
 };
@@ -603,7 +603,7 @@ export class MockDataProvider implements DataProvider {
         appointmentId: 'bk-3',
         bookingReference: 'KS-9210-U',
         clientDisplayName: 'Alex Mercer',
-        serviceName: 'Sovereign Haircut & Beard Combo',
+        serviceName: 'Sovereign Haircut and Beard Combo',
         amount: 5500,
         currency: 'GBP',
         paymentSource: 'STRIPE_ONLINE',
@@ -618,7 +618,7 @@ export class MockDataProvider implements DataProvider {
         appointmentId: 'bk-1',
         bookingReference: 'KS-8394-H',
         clientDisplayName: 'James Harrison',
-        serviceName: 'Sovereign Haircut & Beard Combo',
+        serviceName: 'Sovereign Haircut and Beard Combo',
         amount: 6000,
         currency: 'GBP',
         paymentSource: 'MANUAL_CASH',
@@ -642,7 +642,7 @@ export class MockDataProvider implements DataProvider {
       appointmentId: 'bk-3',
       bookingReference: 'KS-9210-U',
       clientDisplayName: 'Alex Mercer',
-      serviceName: 'Sovereign Haircut & Beard Combo',
+      serviceName: 'Sovereign Haircut and Beard Combo',
       amount: 5500,
       currency: 'GBP',
       paymentSource: 'STRIPE_ONLINE',

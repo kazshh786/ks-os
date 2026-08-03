@@ -136,7 +136,7 @@ export function LockedFeatureCard({
                 • {requiredTier === 'GROWTH' ? '2,500' : '20,000'} monthly bookings
               </p>
               <p className="text-slate-600">
-                • Up to {requiredTier === 'GROWTH' ? '15' : '100'} team members & {requiredTier === 'GROWTH' ? '3' : '20'} locations
+                • Up to {requiredTier === 'GROWTH' ? '15' : '100'} team members and {requiredTier === 'GROWTH' ? '3' : '20'} locations
               </p>
             </div>
             <div className="mt-6 flex justify-end gap-3">

@@ -17,6 +17,11 @@ import {
   siteGenerationFindings,
   siteGenerationRuns,
   sitePages,
+  sitePublicationPointers,
+  sitePublicationRuns,
+  siteQualityRuns,
+  siteRenderSnapshots,
+  siteDomains,
   siteReviewComments,
   siteReviewCycles,
   siteReviewItems,
@@ -68,7 +73,7 @@ export class SiteStudioService {
   async get(siteReference: string) {
     const context = await this.siteContext(siteReference);
     const version = await this.latestVersion(context.id);
-    const [blueprint, generation, review, bookingPage] = await Promise.all([
+    const [blueprint, generation, review, bookingPage, publication] = await Promise.all([
       this.latestBlueprint(context.id),
       this.latestGeneration(context.id),
       this.latestReview(context.id),
@@ -79,6 +84,7 @@ export class SiteStudioService {
         publicSlug: bookingPages.publicSlug,
       }).from(bookingPages).where(eq(bookingPages.tenantId, context.tenantId)).limit(1)
         .then(rows => rows[0] || null),
+      this.publication(context.id),
     ]);
     const [pages, findings, items, comments, changes, links, canonical] = await Promise.all([
       version ? this.pages(version.id) : [],
@@ -105,11 +111,55 @@ export class SiteStudioService {
       findings,
       booking: { page: bookingPage, links },
       canonical,
-      publication: {
-        available: false,
-        status: 'NOT_AVAILABLE_UNTIL_PHASE_15_9',
-        message: 'Publishing, domains, deployment, and provider changes are outside this phase.',
-      },
+      publication,
+    };
+  }
+
+  private async publication(siteId: string) {
+    const [[pointer], [run], [quality], domains] = await Promise.all([
+      this.db.select({
+        snapshotReference: siteRenderSnapshots.publicReference,
+        pointerVersion: sitePublicationPointers.pointerVersion,
+        activatedAt: sitePublicationPointers.activatedAt,
+      }).from(sitePublicationPointers)
+        .innerJoin(siteRenderSnapshots, eq(sitePublicationPointers.activeSnapshotId, siteRenderSnapshots.id))
+        .where(eq(sitePublicationPointers.siteId, siteId)).limit(1),
+      this.db.select({
+        reference: sitePublicationRuns.publicReference,
+        status: sitePublicationRuns.status,
+        reason: sitePublicationRuns.reason,
+        failureCode: sitePublicationRuns.failureCode,
+        createdAt: sitePublicationRuns.createdAt,
+      }).from(sitePublicationRuns).where(eq(sitePublicationRuns.siteId, siteId))
+        .orderBy(desc(sitePublicationRuns.createdAt)).limit(1),
+      this.db.select({
+        reference: siteQualityRuns.publicReference,
+        versionReference: siteVersions.publicReference,
+        status: siteQualityRuns.status,
+        gateStatus: siteQualityRuns.publicationGateStatus,
+        warningCount: siteQualityRuns.warningCount,
+      }).from(siteQualityRuns)
+        .innerJoin(siteVersions, eq(siteQualityRuns.siteVersionId, siteVersions.id))
+        .where(eq(siteQualityRuns.siteId, siteId))
+        .orderBy(desc(siteQualityRuns.createdAt)).limit(1),
+      this.db.select({
+        reference: siteDomains.publicReference,
+        hostname: siteDomains.hostname,
+        type: siteDomains.domainType,
+        role: siteDomains.domainRole,
+        status: siteDomains.status,
+        ownershipStatus: siteDomains.ownershipStatus,
+        sslStatus: siteDomains.sslStatus,
+      }).from(siteDomains).where(eq(siteDomains.siteId, siteId))
+        .orderBy(desc(siteDomains.createdAt)),
+    ]);
+    return {
+      available: true,
+      status: run?.status || (pointer ? 'LIVE' : 'NOT_PUBLISHED'),
+      pointer: pointer || null,
+      latestRun: run || null,
+      quality: quality || null,
+      domains,
     };
   }
 

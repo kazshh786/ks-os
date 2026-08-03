@@ -46,7 +46,7 @@ export default function CompetitorFeatures({ tenant }: CompetitorFeaturesProps) 
     { id: 'f-1', label: 'Are you currently pregnant or breastfeeding?', type: 'radio', options: ['Yes', 'No'], required: true },
     { id: 'f-2', label: 'Please specify any skin allergies or medical concerns', type: 'text', required: false, conditionalOn: 'f-1', conditionalValue: 'Yes' },
     { id: 'f-3', label: 'I authorize treatment and confirm a patch test was completed', type: 'checkbox', required: true },
-    { id: 'f-4', label: 'Digital Signature & Agreement', type: 'signature', required: true }
+    { id: 'f-4', label: 'Digital Signature and Agreement', type: 'signature', required: true }
   ]);
 
   const [formTitle, setFormTitle] = useState('Dermal Treatment Consent Form');
@@ -266,7 +266,7 @@ export default function CompetitorFeatures({ tenant }: CompetitorFeaturesProps) 
   };
 
   const completeClickCollect = (id: string) => {
-    setCollectOrders(collectOrders.map(o => o.id === id ? { ...o, status: 'Completed & Collected' } : o));
+    setCollectOrders(collectOrders.map(o => o.id === id ? { ...o, status: 'Completed and Collected' } : o));
     triggerNotif('Handover complete! Client loyalty points upgraded.');
   };
 
@@ -300,8 +300,8 @@ export default function CompetitorFeatures({ tenant }: CompetitorFeaturesProps) 
     priority: 'high_value' | 'first_in_line' | 'regular';
     dateAdded: string;
   }>>([
-    { id: 'WL-1', clientName: 'Olivia Martinez', phone: '+44 7700 900077', serviceName: 'Signature Balayage & Cut', preferredStaff: 'Kasim', priority: 'high_value', dateAdded: '2026-07-16 14:20' },
-    { id: 'WL-2', clientName: 'James Anderson', phone: '+44 7700 900124', serviceName: 'Executive Beard Sculpt & Groom', preferredStaff: 'Sarah', priority: 'first_in_line', dateAdded: '2026-07-16 15:10' },
+    { id: 'WL-1', clientName: 'Olivia Martinez', phone: '+44 7700 900077', serviceName: 'Signature Balayage and Cut', preferredStaff: 'Kasim', priority: 'high_value', dateAdded: '2026-07-16 14:20' },
+    { id: 'WL-2', clientName: 'James Anderson', phone: '+44 7700 900124', serviceName: 'Executive Beard Sculpt and Groom', preferredStaff: 'Sarah', priority: 'first_in_line', dateAdded: '2026-07-16 15:10' },
     { id: 'WL-3', clientName: 'Sophia Taylor', phone: '+44 7700 900293', serviceName: 'Dermal Infusion Therapy', preferredStaff: 'Any Specialist', priority: 'regular', dateAdded: '2026-07-16 16:05' }
   ]);
 
@@ -1530,7 +1530,7 @@ export default function CompetitorFeatures({ tenant }: CompetitorFeaturesProps) 
                     <input
                       type="text"
                       required
-                      placeholder="e.g. Signature Balayage & Cut"
+                      placeholder="e.g. Signature Balayage and Cut"
                       value={wlService}
                       onChange={(e) => setWlService(e.target.value)}
                       className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-1 focus:ring-slate-950 text-xs font-bold"

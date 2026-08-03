@@ -25,6 +25,7 @@ import { StripeReturn } from './pages/settings/StripeReturn.js';
 import { StripeRefresh } from './pages/settings/StripeRefresh.js';
 import PaymentSuccess from './pages/book/PaymentSuccess.js';
 import PaymentCancel from './pages/book/PaymentCancel.js';
+import PosPaymentCompletePage from './pages/PosPaymentCompletePage.js';
 import { PaymentHistoryPage } from './pages/payments/PaymentHistoryPage.js';
 import { PaymentDetailPage } from './pages/payments/PaymentDetailPage.js';
 import { FinanceOverviewPage } from './pages/finance/FinanceOverviewPage.js';
@@ -84,10 +85,15 @@ import { ExternalReviewsPage, PublicReviewInvitationPage, ReputationInvitationsP
 import { AgencyAuthProvider, AgencyCapabilityRoute, AgencyGuard, AgencyLoginPage, AgencyMfaPage } from './features/agency/AgencyAuth.js';
 import { AccessDeniedPage, AuthCallbackPage, InvitationAcceptancePage, PasswordRecoveryPage, SecuritySettingsPage, SelectBusinessPage, SessionExpiredPage } from './auth/AuthPages.js';
 import { AgencyAnalyticsPage, AgencyComplianceAuditPage as AgencyAuditPage, AgencyFulfilmentPage, AgencyJobsPage, AgencyOverviewPage, AgencyPlanCreatePage, AgencyPlansPage, AgencySupportPage, AgencyTenantBillingPage, AgencyTenantCreatePage, AgencyTenantDetailPageFixed as AgencyTenantDetailPage, AgencyTenantEntitlementsPage, AgencyTenantHealthPage, AgencyTenantsPage, AgencyUserInvitePage, AgencyUsersPage, AgencyWebhooksPage, AgencyWorkQueuePage } from './features/agency/AgencyPages.js';
+import { AgencyErrorLogPage } from './features/agency/AgencyErrorLogPage.js';
 import { AgencyBookingSystemPage } from './features/agency/AgencyBookingSystem.js';
 import { AgencyProvisioningPage } from './features/agency/AgencyProvisioning.js';
 import { AgencyFactFindingPage } from './features/agency/AgencyFactFinding.js';
+import AgencyTemplateLibraryPage from './features/agency/AgencyTemplateLibraryPage.js';
+import AgencyDesignStudioPage from './features/agency/AgencyDesignStudioPage.js';
+import AgencyServicePageOpportunitiesPage from './features/agency/AgencyServicePageOpportunitiesPage.js';
 import { SiteStudioPage } from './features/agency/SiteStudioPage.js';
+import AgencyWorkspaceUsersPage from './features/agency/AgencyWorkspaceUsersPage.js';
 import ClientFactFindingPage from './features/fact-finding/ClientFactFindingPage.js';
 
 const ReputationRoute: React.FC<{ children: React.ReactNode; ownerOnly?: boolean }> = ({ children, ownerOnly = false }) => {
@@ -146,6 +152,7 @@ const AppContent: React.FC = () => {
         <Route path="/forms/complete/:token/success" element={<PublicFormSuccessPage />} />
         <Route path="/review/:token" element={<PublicReviewInvitationPage />} />
         <Route path="/fact-finding" element={<ClientFactFindingPage />} />
+        <Route path="/pos-payment-complete" element={<PosPaymentCompletePage />} />
 
         {/* Public Booking Widgets */}
         <Route element={<PublicBookingLayout />}>
@@ -180,8 +187,6 @@ const AppContent: React.FC = () => {
           <Route path="settings/integrations" element={<RoleRoute allowedRoles={['owner']}><Integrations /></RoleRoute>} />
           <Route path="calendar" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL']}><StaffCalendarPage /></RoleRoute>} />
           <Route path="bookings" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL']}><BookingListPage /></RoleRoute>} />
-          
-          {/* Phase 3: Reception Desk is now connected */}
           <Route path="reception" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="BOOKINGS_CREATE"><ReceptionPage /></RoleRoute>} />
           <Route path="clients/*" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="CLIENTS_VIEW_BASIC"><ClientCRMPage /></RoleRoute>} />
           <Route path="pos" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="POS_USE"><POSCheckoutPage /></RoleRoute>} />
@@ -224,8 +229,6 @@ const AppContent: React.FC = () => {
           <Route path="tasks" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL']}><TasksPage /></RoleRoute>} />
           <Route path="tasks/my" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL']}><TasksPage /></RoleRoute>} />
           <Route path="tasks/:taskId" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL']}><TaskDetailPage /></RoleRoute>} />
-          
-          {/* Finance Routes */}
           <Route path="finance" element={<RoleRoute allowedRoles={['owner']}><FinanceOverviewPage /></RoleRoute>} />
           <Route path="finance/payouts" element={<RoleRoute allowedRoles={['owner']}><PayoutsListPage /></RoleRoute>} />
           <Route path="finance/payouts/:payoutId" element={<RoleRoute allowedRoles={['owner']}><PayoutDetailPage /></RoleRoute>} />
@@ -249,9 +252,13 @@ const AppContent: React.FC = () => {
           <Route path="bookings" element={<AgencyBookingSystemPage />} />
           <Route path="provisioning" element={<AgencyCapabilityRoute capabilities={['provisioning.read']}><AgencyProvisioningPage /></AgencyCapabilityRoute>} />
           <Route path="fact-finding" element={<AgencyCapabilityRoute capabilities={['fact_finding.read']}><AgencyFactFindingPage /></AgencyCapabilityRoute>} />
+          <Route path="service-pages" element={<AgencyCapabilityRoute capabilities={['sites.studio.read']}><AgencyServicePageOpportunitiesPage /></AgencyCapabilityRoute>} />
+          <Route path="design-studio" element={<AgencyCapabilityRoute capabilities={['sites.templates.read']}><AgencyDesignStudioPage /></AgencyCapabilityRoute>} />
+          <Route path="templates" element={<AgencyCapabilityRoute capabilities={['sites.templates.read']}><AgencyTemplateLibraryPage /></AgencyCapabilityRoute>} />
           <Route path="sites/:siteReference/studio" element={<AgencyCapabilityRoute capabilities={['sites.studio.read']}><SiteStudioPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/onboarding" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
+          <Route path="tenants/:tenantId/users" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyWorkspaceUsersPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/billing" element={<AgencyCapabilityRoute capabilities={['billing.read']}><AgencyTenantBillingPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/entitlements" element={<AgencyCapabilityRoute capabilities={['plans.read']}><AgencyTenantEntitlementsPage /></AgencyCapabilityRoute>} />
           <Route path="tenants/:tenantId/fulfilment" element={<AgencyCapabilityRoute capabilities={['fulfilment.read']}><AgencyTenantDetailPage /></AgencyCapabilityRoute>} />
@@ -262,6 +269,7 @@ const AppContent: React.FC = () => {
           <Route path="plans/new" element={<AgencyCapabilityRoute capabilities={['plans.manage']}><AgencyPlanCreatePage /></AgencyCapabilityRoute>} />
           <Route path="fulfilment" element={<AgencyCapabilityRoute capabilities={['fulfilment.read']}><AgencyFulfilmentPage /></AgencyCapabilityRoute>} />
           <Route path="support" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencySupportPage /></AgencyCapabilityRoute>} />
+          <Route path="errors" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencyErrorLogPage /></AgencyCapabilityRoute>} />
           <Route path="webhooks" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencyWebhooksPage /></AgencyCapabilityRoute>} />
           <Route path="jobs" element={<AgencyCapabilityRoute capabilities={['support.read']}><AgencyJobsPage /></AgencyCapabilityRoute>} />
           <Route path="analytics" element={<AgencyCapabilityRoute capabilities={['analytics.read']}><AgencyAnalyticsPage /></AgencyCapabilityRoute>} />
