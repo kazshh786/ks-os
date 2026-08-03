@@ -13,6 +13,7 @@ test('VPS deployment treats API, worker and renderer as one health-checked rollb
   assert.match(script, /db:migrations:plan/);
   assert.match(script, /APPLY_MIGRATIONS/);
   assert.match(script, /node\/v24\.18\.0\/bin/);
+  assert.match(script, /CI="\$\{CI:-true\}"/);
   assert.doesNotMatch(script, /reset --hard|eval /);
 });
 
