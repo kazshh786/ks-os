@@ -14,7 +14,7 @@ Environment=NODE_ENV=production
 Environment=PATH=/home/ksdeploy/.nvm/versions/node/v24.18.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 Environment=SITE_WORKER_HEALTH_HOST=127.0.0.1
 Environment=SITE_WORKER_HEALTH_PORT=8091
-ExecStart=/usr/bin/env pnpm --filter site-worker start
+ExecStart=/home/ksdeploy/.nvm/versions/node/v24.18.0/bin/node /srv/ks-os/apps/site-worker/dist/index.js
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=45

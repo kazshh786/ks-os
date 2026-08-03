@@ -8,11 +8,13 @@
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "types": "./src/index.ts"
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
     },
     "./sms": {
       "import": "./dist/sms/index.js",
-      "types": "./src/sms/index.ts"
+      "types": "./src/sms/index.ts",
+      "default": "./dist/sms/index.js"
     }
   },
   "scripts": {

@@ -15,7 +15,7 @@ Environment=PATH=/home/ksdeploy/.nvm/versions/node/v24.18.0/bin:/usr/local/sbin:
 Environment=HOST=127.0.0.1
 Environment=PORT=5001
 Environment=TRUST_PROXY=true
-ExecStart=/usr/bin/env pnpm --filter sites start
+ExecStart=/home/ksdeploy/.nvm/versions/node/v24.18.0/bin/node /srv/ks-os/apps/sites/dist/server/entry.mjs
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30

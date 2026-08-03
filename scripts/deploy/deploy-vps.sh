@@ -56,14 +56,26 @@ check_http() {
   local label="$1" url="$2" host="${3:-}"
   local status
   if [[ -n "$host" ]]; then
-    status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --header "Host: $host" "$url")"
+    status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+      --retry 59 --retry-connrefused --retry-all-errors --retry-delay 1 \
+      --retry-max-time 60 --header "Host: $host" "$url" || true)"
   else
-    status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$url")"
+    status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+      --retry 59 --retry-connrefused --retry-all-errors --retry-delay 1 \
+      --retry-max-time 60 "$url" || true)"
   fi
   [[ "$status" == "200" ]] || {
     log "$label health check failed with HTTP $status."
     return 1
   }
+}
+
+require_service_owned_ports() {
+  if [[ -f .env ]] && grep --quiet --extended-regexp \
+    '^[[:space:]]*PORT[[:space:]]*=' .env; then
+    log "Refusing deployment because the shared production .env sets PORT. The API and renderer own separate ports through their service configuration."
+    return 1
+  fi
 }
 
 restart_release_services() {
@@ -106,6 +118,7 @@ on_error() {
 trap on_error ERR
 
 require_clean_branch
+require_service_owned_ports
 log "Preparing $DEPLOY_BRANCH from $PREV_COMMIT."
 run git fetch origin "$DEPLOY_BRANCH"
 run git merge --ff-only "origin/$DEPLOY_BRANCH"
