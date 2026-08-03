@@ -488,9 +488,9 @@ export class PostgresSiteJobRepository implements SiteJobRepository {
             ${job.publicReference},
             'FAILED',
             jsonb_build_object(
-              'jobType', ${job.jobType},
-              'failureCode', ${update.failureCode},
-              'attemptNumber', ${job.attemptNumber}
+              'jobType', ${job.jobType}::text,
+              'failureCode', ${update.failureCode}::text,
+              'attemptNumber', ${job.attemptNumber}::integer
             ),
             'WEBSITE',
             'A site job exhausted its retry policy.',
@@ -730,9 +730,9 @@ export class PostgresSiteJobRepository implements SiteJobRepository {
             ${row.public_reference}::text,
             'FAILED',
             jsonb_build_object(
-              'jobType', ${row.job_type},
+              'jobType', ${row.job_type}::text,
               'failureCode', 'LEASE_LOST',
-              'attemptNumber', ${row.attempt_count}
+              'attemptNumber', ${row.attempt_count}::integer
             ),
             'WEBSITE',
             'A site job exhausted its attempts after worker lease expiry.',
