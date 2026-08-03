@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, CheckCircle2, Cloud, Mail, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
 import { fetchWithAuth } from '../../api/client.js';
+import { MetaMessagingIntegration } from '../../components/MetaMessagingIntegration.js';
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
@@ -203,12 +204,14 @@ export function Integrations() {
       <div className="relative max-w-3xl">
         <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-indigo-200"><Cloud className="h-3.5 w-3.5" />Business connections</div>
         <h1 className="mt-4 text-3xl font-black tracking-tight sm:text-4xl">Connect the tools each business owns</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-300">Google Workspace and Zoho Mail connect directly to the customer inbox. The business keeps its real email address while KS OS securely handles replies, booking links, forms and payment requests.</p>
+        <p className="mt-3 text-sm leading-6 text-slate-300">Connect business-owned email, calendars and Meta messaging while KS OS encrypts credentials and keeps each tenant’s data isolated.</p>
       </div>
     </header>
 
     {error && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800">{error}</div>}
     {notice && <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">{notice}</div>}
+
+    <MetaMessagingIntegration />
 
     <section aria-labelledby="mailbox-heading" className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

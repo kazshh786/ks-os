@@ -15,6 +15,7 @@ import { MailboxService } from '../mailboxes/mailbox.service.js';
 import { normalizeSmsPhone } from '../sms/phone.js';
 
 const MAX_ATTEMPTS = 5;
+const FREQUENCY_CAP_DAYS = 7;
 const graphVersion = () => process.env.META_GRAPH_VERSION || '';
 const safeCode = (value: unknown) => String(value || 'PROVIDER_FAILURE').replace(/[^A-Z0-9_:-]/gi, '_').slice(0, 120).toUpperCase();
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character]!));
@@ -41,6 +42,7 @@ export class ConversationDeliveryService {
       conversationId: conversationMessages.conversationId,
       channel: conversationMessages.channelType,
       body: conversationMessages.body,
+      messageMetadata: conversationMessages.metadataJson,
       attemptCount: conversationMessages.attemptCount,
       subject: conversations.subject,
       customerEmail: conversations.customerEmail,
@@ -52,6 +54,7 @@ export class ConversationDeliveryService {
       credentialsReference: communicationChannels.credentialsReference,
       tokenCiphertext: integrationConnections.tokenCiphertext,
       tenantName: tenants.name,
+      packageTier: tenants.packageTier,
       senderDisplayName: tenants.senderDisplayName,
       replyToEmail: tenants.replyToEmail,
     }).from(conversationMessages)
@@ -150,16 +153,97 @@ export class ConversationDeliveryService {
     return payload;
   }
 
+  private async assertMarketingStillAllowed(context: Awaited<ReturnType<ConversationDeliveryService['context']>>, recipient: string) {
+    if (String(context.packageTier || '').toUpperCase() !== 'SCALE') {
+      throw new DeliveryError('WHATSAPP_MARKETING_REQUIRES_SCALE', true);
+    }
+    const phone = `+${String(context.customerPhone || recipient).replace(/\D/g, '')}`;
+    const consent = await this.db.execute(sql`
+      select status
+      from whatsapp_marketing_consents
+      where tenant_id=${context.tenantId}::uuid and recipient_phone=${phone}
+      limit 1
+    `);
+    if (String((consent.rows[0] as any)?.status || '') !== 'OPTED_IN') {
+      throw new DeliveryError('WHATSAPP_MARKETING_CONSENT_REVOKED', true);
+    }
+
+    const capacity = await this.db.execute(sql`
+      select tenant.whatsapp_marketing_monthly_message_limit "monthlyLimit",
+             (
+               select count(*)::int
+               from conversation_messages message
+               where message.tenant_id=tenant.id
+                 and message.id<>${context.messageId}::uuid
+                 and message.channel_type='WHATSAPP'
+                 and message.direction='OUTBOUND'
+                 and message.status<>'FAILED'
+                 and message.metadata_json#>>'{whatsappTemplate,category}'='MARKETING'
+                 and message.created_at>=date_trunc('month', now())
+                 and message.created_at<date_trunc('month', now()) + interval '1 month'
+             ) "priorMarketingCount"
+      from tenants tenant
+      where tenant.id=${context.tenantId}::uuid
+      limit 1
+    `);
+    const limitRow = capacity.rows[0] as any;
+    if (Number(limitRow?.priorMarketingCount || 0) >= Math.max(1, Number(limitRow?.monthlyLimit || 500))) {
+      throw new DeliveryError('WHATSAPP_MARKETING_MONTHLY_LIMIT_REACHED', true);
+    }
+
+    const recent = await this.db.execute(sql`
+      select 1
+      from conversation_messages message
+      join conversations conversation
+        on conversation.id=message.conversation_id and conversation.tenant_id=message.tenant_id
+      where message.tenant_id=${context.tenantId}::uuid
+        and message.id<>${context.messageId}::uuid
+        and message.channel_type='WHATSAPP'
+        and message.direction='OUTBOUND'
+        and message.status<>'FAILED'
+        and message.metadata_json#>>'{whatsappTemplate,category}'='MARKETING'
+        and conversation.customer_phone=${phone}
+        and message.created_at>=now()-${FREQUENCY_CAP_DAYS} * interval '1 day'
+      limit 1
+    `);
+    if (recent.rows[0]) throw new DeliveryError('WHATSAPP_MARKETING_FREQUENCY_CAP', true);
+  }
+
   private async deliverWhatsApp(context: Awaited<ReturnType<ConversationDeliveryService['context']>>) {
     const recipient = this.metaRecipient(context) || context.customerPhone?.replace(/\D/g, '') || '';
     if (!recipient) throw new DeliveryError('WHATSAPP_RECIPIENT_REQUIRED', true);
-    const payload = await this.metaRequest(context, {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: recipient,
-      type: 'text',
-      text: { preview_url: false, body: context.body },
-    });
+    const metadata = (context.messageMetadata || {}) as Record<string, unknown>;
+    const template = metadata.whatsappTemplate as {
+      name?: string;
+      language?: string;
+      category?: string;
+      components?: unknown[];
+    } | undefined;
+
+    if (String(template?.category || '').toUpperCase() === 'MARKETING') {
+      await this.assertMarketingStillAllowed(context, recipient);
+    }
+
+    const requestBody: Record<string, unknown> = template?.name && template.language
+      ? {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: recipient,
+          type: 'template',
+          template: {
+            name: template.name,
+            language: { code: template.language },
+            ...(Array.isArray(template.components) && template.components.length ? { components: template.components } : {}),
+          },
+        }
+      : {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: recipient,
+          type: 'text',
+          text: { preview_url: false, body: context.body },
+        };
+    const payload = await this.metaRequest(context, requestBody);
     const messageId = payload.messages?.[0]?.id;
     if (!messageId) throw new DeliveryError('WHATSAPP_MESSAGE_ID_MISSING');
     return String(messageId);

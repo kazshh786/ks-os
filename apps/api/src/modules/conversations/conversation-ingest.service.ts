@@ -59,6 +59,9 @@ export class ConversationIngestService {
         .limit(1);
 
       const now = new Date();
+      const whatsappServiceWindowExpiresAt = input.channel === 'WHATSAPP'
+        ? new Date(now.getTime() + 24 * 60 * 60 * 1000)
+        : undefined;
       if (!conversation) {
         [conversation] = await tx.insert(conversations).values({
           tenantId: input.tenantId,
@@ -74,6 +77,7 @@ export class ConversationIngestService {
           lastMessageAt: now,
           tags: [],
           metadataJson: { externalRecipientId: input.externalSenderId, ...(input.metadata || {}) },
+          whatsappServiceWindowExpiresAt,
           createdAt: now,
           updatedAt: now,
         }).returning({ id: conversations.id, metadata: conversations.metadataJson });
@@ -116,6 +120,7 @@ export class ConversationIngestService {
         lastMessagePreview: input.body.trim().slice(0, 280),
         lastMessageAt: now,
         metadataJson: { ...(conversation.metadata as Record<string, unknown>), externalRecipientId: input.externalSenderId, ...(input.metadata || {}) },
+        ...(whatsappServiceWindowExpiresAt ? { whatsappServiceWindowExpiresAt } : {}),
         updatedAt: now,
       }).where(and(eq(conversations.id, conversation.id), eq(conversations.tenantId, input.tenantId)));
 
