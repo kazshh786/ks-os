@@ -52,6 +52,10 @@ const generationExecutorSource = readFileSync(
   new URL('../src/postgres-generation-executor.ts', import.meta.url),
   'utf8',
 );
+const provisioningExecutorSource = readFileSync(
+  new URL('../src/postgres-provisioning-executor.ts', import.meta.url),
+  'utf8',
+);
 const publicationExecutorSource = readFileSync(
   new URL('../src/postgres-publication-executor.ts', import.meta.url),
   'utf8',
@@ -621,6 +625,20 @@ test('9b. progress event JSON parameters have concrete Postgres types', () => {
     postgresRepositorySource,
     /'total',\s*\$\{progress\.total\}::integer/,
   );
+});
+
+test('9c. automatic retries reset aggregate progress before replay', () => {
+  assert.match(
+    postgresRepositorySource,
+    /targetStatus\} = 'RETRY_DELAY' THEN 0[\s\S]*targetStatus\} = 'RETRY_DELAY' THEN null[\s\S]*targetStatus\} = 'RETRY_DELAY' THEN null/,
+  );
+});
+
+test('9d. reprovisioning allocates and persists a new blueprint revision atomically', () => {
+  assert.match(provisioningExecutorSource, /SELECT id FROM sites[\s\S]*FOR UPDATE/);
+  assert.match(provisioningExecutorSource, /max\(siteBlueprints\.revision\)/);
+  assert.match(provisioningExecutorSource, /const revision = \(latest\?\.revision \?\? 0\) \+ 1/);
+  assert.match(provisioningExecutorSource, /return this\.db\.transaction/);
 });
 
 test('10. lease owner is recorded', async () => {
