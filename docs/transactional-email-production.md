@@ -37,8 +37,9 @@ secret.
 
 ## Worker timer
 
-Install the two units from scripts/deploy/systemd into /etc/systemd/system,
-adjust User and WorkingDirectory if the VPS layout differs, then run:
+Install the two units from scripts/deploy/systemd into /etc/systemd/system. The
+checked-in service targets the production `ksdeploy` user, `/srv/ks-os` working
+directory and pinned Node 24 runtime. Then run:
 
     sudo systemctl daemon-reload
     sudo systemctl enable --now ks-os-communications-worker.timer

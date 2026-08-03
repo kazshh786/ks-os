@@ -5,11 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=ks-os
-Group=ks-os
-WorkingDirectory=/opt/ks-os
-EnvironmentFile=/etc/ks-os/ks-os.env
-ExecStart=/usr/bin/pnpm workers:communications:run
+User=ksdeploy
+Group=ksdeploy
+WorkingDirectory=/srv/ks-os
+EnvironmentFile=/srv/ks-os/.env
+ExecStart=/home/ksdeploy/.nvm/versions/node/v24.18.0/bin/node --env-file-if-exists=.env scripts/workers/run-communications-cycle.mjs
 PrivateTmp=true
 NoNewPrivileges=true
-
