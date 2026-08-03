@@ -65,4 +65,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260803120000_tenant_automated_email_settings.sql', order: 58, description: 'Tenant-isolated automated email branding, lifecycle switches, and editable template copy' },
   { filename: '20260803170000_allow_proxied_managed_site_records.sql', order: 59, description: 'Allow Cloudflare proxying only for KS OS-managed website A and CNAME routes while preserving DNS-only governance elsewhere' },
   { filename: '20260803183500_allow_booking_system_fact_source.sql', order: 60, description: 'Permit canonical booking-owned facts to enter the existing agency-reviewed fact-finding lifecycle' },
+  { filename: '20260803202000_reconcile_site_generation_ownership_trigger.sql', order: 61, description: 'Reconcile polymorphic site-generation ownership validation without weakening pinned provenance or parent-child scope' },
 ];
