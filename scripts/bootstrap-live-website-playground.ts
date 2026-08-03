@@ -14,6 +14,7 @@ import {
   platformPlanEntitlements,
   platformPlans,
   platformPlanVersions,
+  productionBriefFacts,
   productionBriefs,
   provisioningRuns,
   serviceLocations,
@@ -23,6 +24,7 @@ import {
   staffServiceAssignments,
   templateSources,
   templateVersions,
+  tenantPlanAssignments,
   tenants,
   users,
 } from '@ks-os/database';
@@ -39,6 +41,8 @@ dotenv.config({ path: resolve(process.cwd(), '../../.env'), quiet: true });
 
 const EXPECTED_SUBDOMAIN = 'playground';
 const EXPECTED_HOSTNAME = 'playground.kasimshah.com';
+const EXPECTED_POSTCODE = 'LS1 4AB';
+const REQUIRED_MARKETING_PAGE_LIMIT = 15;
 
 function requireGuard() {
   if (process.env.LIVE_PLAYGROUND_BOOTSTRAP_ENABLED !== 'true') {
@@ -55,26 +59,26 @@ function requireGuard() {
 let db: ReturnType<typeof getDatabase>;
 
 const serviceFixtures = [
-  { name: 'Signature Glow Facial', description: 'A personalised facial with a calm consultation, tailored exfoliation and restorative hydration.', durationMinutes: 60, priceMinor: 8500 },
-  { name: 'Radiance Reset Peel', description: 'A gentle resurfacing treatment designed to brighten dull-looking skin with guided aftercare.', durationMinutes: 45, priceMinor: 7000 },
-  { name: 'Brow Shape & Tint', description: 'A considered brow consultation, shape and tint for a softly defined everyday finish.', durationMinutes: 35, priceMinor: 3800 },
-  { name: 'Lash Lift & Tint', description: 'A natural-looking lift and tint treatment with suitability checks and clear aftercare.', durationMinutes: 60, priceMinor: 6200 },
-  { name: 'Calm Skin Consultation', description: 'A one-to-one skin consultation with practical home-care guidance and a recommended treatment plan.', durationMinutes: 30, priceMinor: 3500 },
+  { name: 'Signature Glow Facial', description: 'A personalised facial with a calm consultation, tailored exfoliation and restorative hydration.', durationMinutes: 60, priceMinor: 6500 },
+  { name: 'Deep Renewal Facial', description: 'A restorative facial tailored to support renewed, well-cared-for skin with clear aftercare guidance.', durationMinutes: 75, priceMinor: 8500 },
+  { name: 'Brow Shape and Tint', description: 'A considered brow consultation, shape and tint for a softly defined everyday finish.', durationMinutes: 30, priceMinor: 3200 },
+  { name: 'Luxury Gel Manicure', description: 'A detailed gel manicure with careful preparation, colour application and practical aftercare.', durationMinutes: 50, priceMinor: 4200 },
+  { name: 'Skin Consultation', description: 'A one-to-one skin consultation with practical home-care guidance and a recommended treatment plan.', durationMinutes: 30, priceMinor: 2500 },
 ] as const;
 
 const staffFixtures = [
   {
     email: 'maya@playground.kasimshah.com',
-    name: 'Maya Ellis',
-    title: 'Founder & Senior Beauty Therapist',
-    bio: 'Maya founded Luma to make expert beauty care feel calm, clear and genuinely personal. She specialises in tailored facial treatments and considered skin planning.',
+    name: 'Maya Bennett',
+    title: 'Lead Skin Therapist',
+    bio: 'Maya is Luma Beauty Studio’s lead skin therapist, known for calm consultations, tailored facial treatments and clear skin-care guidance.',
     role: 'owner' as const,
   },
   {
-    email: 'nia@playground.kasimshah.com',
-    name: 'Nia Clarke',
-    title: 'Beauty Therapist',
-    bio: 'Nia is known for her warm, detail-led approach to brows, lashes and restorative facial treatments. She helps every guest feel comfortable from consultation to aftercare.',
+    email: 'sara@playground.kasimshah.com',
+    name: 'Sara Khan',
+    title: 'Brow and Beauty Specialist',
+    bio: 'Sara specialises in thoughtful brow and beauty treatments, combining a warm welcome with careful detail and straightforward aftercare.',
     role: 'staff' as const,
   },
 ] as const;
@@ -89,7 +93,7 @@ async function actor(): Promise<AgencyActor> {
   return { agencyUserId: row.id, role: row.role as AgencyActor['role'], requestId: 'live-playground-bootstrap' };
 }
 
-async function eligiblePlanVersion() {
+async function eligiblePlanVersion(minimumPageLimit = REQUIRED_MARKETING_PAGE_LIMIT) {
   const rows = await db.select({
     id: platformPlanVersions.id,
     key: platformPlans.key,
@@ -105,8 +109,8 @@ async function eligiblePlanVersion() {
       inArray(platformPlans.key, ['CORE', 'GROWTH', 'SCALE']),
     ))
     .orderBy(asc(platformPlanVersions.monthlyPriceMinor));
-  const plan = rows.find(row => Number((row.value as { limit?: unknown })?.limit) >= 10);
-  if (!plan) throw new Error('No active plan version includes at least ten initial marketing pages.');
+  const plan = rows.find(row => Number((row.value as { limit?: unknown })?.limit) >= minimumPageLimit);
+  if (!plan) throw new Error(`No active plan version includes at least ${minimumPageLimit} initial marketing pages.`);
   return plan;
 }
 
@@ -117,7 +121,22 @@ async function ensureTenant(agency: AgencyService, agencyActor: AgencyActor) {
     if (existing.name !== 'Luma Beauty Studio') {
       throw new Error('The playground subdomain is already owned by a different workspace.');
     }
-    return existing;
+    const plan = await eligiblePlanVersion();
+    const [assignment] = await db.select({ planVersionId: tenantPlanAssignments.planVersionId })
+      .from(tenantPlanAssignments).where(and(
+        eq(tenantPlanAssignments.tenantId, existing.id),
+        eq(tenantPlanAssignments.status, 'ACTIVE'),
+      )).limit(1);
+    if (assignment?.planVersionId !== plan.id) {
+      await agency.changePlan(
+        agencyActor,
+        existing.id,
+        plan.id,
+        'IMMEDIATE',
+        'The fictional live playground requires the governed 15-page marketing plan used by its acceptance fixture.',
+      );
+    }
+    return (await db.select().from(tenants).where(eq(tenants.id, existing.id)).limit(1))[0];
   }
   const plan = await eligiblePlanVersion();
   return agency.createTenant(agencyActor, {
@@ -128,7 +147,7 @@ async function ensureTenant(agency: AgencyService, agencyActor: AgencyActor) {
     timezone: 'Europe/London',
     currency: 'GBP',
     planVersionId: plan.id,
-    primaryContactName: 'Maya Ellis',
+    primaryContactName: 'Maya Bennett',
     primaryContactEmail: 'maya@playground.kasimshah.com',
     foundingClient: false,
     commercialNotes: 'Fictional internal live-playground workspace. No real customer data.',
@@ -143,6 +162,8 @@ async function ensureBookingData(agencyActor: AgencyActor, tenant: typeof tenant
     primaryColor: '#563B47',
     secondaryColor: '#D8B9A8',
     accentColor: '#A36D73',
+    primaryContactName: 'Maya Bennett',
+    primaryContactEmail: 'maya@playground.kasimshah.com',
     minimumCancellationNoticeMinutes: 1440,
     minimumRescheduleNoticeMinutes: 1440,
     lateCancellationMessage: 'Please give at least 24 hours notice when cancelling or rescheduling.',
@@ -150,25 +171,58 @@ async function ensureBookingData(agencyActor: AgencyActor, tenant: typeof tenant
   });
 
   const bookingSetup = new AgencyBookingSetupService();
+  const legacyServiceNames: Record<string, string[]> = {
+    'Deep Renewal Facial': ['Radiance Reset Peel'],
+    'Brow Shape and Tint': ['Brow Shape & Tint'],
+    'Luxury Gel Manicure': ['Lash Lift & Tint'],
+    'Skin Consultation': ['Calm Skin Consultation'],
+  };
+  let bookingSummary = await bookingSetup.summary(tenant.agencyReference);
   for (const fixture of serviceFixtures) {
-    const [existing] = await db.select({ id: services.id }).from(services)
-      .where(and(eq(services.tenantId, tenant.id), eq(services.name, fixture.name))).limit(1);
-    if (!existing) await bookingSetup.createService(agencyActor, tenant.agencyReference, fixture);
+    const existing = bookingSummary.services.find(item =>
+      item.name === fixture.name || (legacyServiceNames[fixture.name] || []).includes(item.name));
+    if (existing) {
+      await bookingSetup.updateService(
+        agencyActor,
+        tenant.agencyReference,
+        existing.reference,
+        { ...fixture, active: true },
+      );
+    } else {
+      await bookingSetup.createService(agencyActor, tenant.agencyReference, fixture);
+    }
+  }
+  bookingSummary = await bookingSetup.summary(tenant.agencyReference);
+  const expectedServiceNames = new Set<string>(serviceFixtures.map(item => item.name));
+  for (const service of bookingSummary.services) {
+    if (service.active && !expectedServiceNames.has(service.name)) {
+      await bookingSetup.setServiceActive(agencyActor, tenant.agencyReference, service.reference, false);
+    }
   }
 
-  let [resolvedLocation] = await db.select().from(locations)
-    .where(and(eq(locations.tenantId, tenant.id), eq(locations.name, 'Luma Beauty Studio — Shoreditch'))).limit(1);
-  if (!resolvedLocation) {
-    [resolvedLocation] = await db.insert(locations).values({
-      tenantId: tenant.id,
-      name: 'Luma Beauty Studio — Shoreditch',
-      address: '18 Willow Lane, Shoreditch, London',
-      postcode: 'E1 6AN',
-      phone: '+442079460958',
+  bookingSummary = await bookingSetup.summary(tenant.agencyReference);
+  const locationToReuse = bookingSummary.locations.find(item => item.active)
+    || bookingSummary.locations[0];
+  const resolvedLocation = await bookingSetup.saveLocation(agencyActor, tenant.agencyReference, {
+    reference: locationToReuse?.reference,
+    name: 'Luma Beauty Studio',
+    address: '18 Market Lane, Leeds, UK',
+    postcode: EXPECTED_POSTCODE,
+    phone: '+442079460958',
+    timezone: 'Europe/London',
+    primary: true,
+    active: true,
+  });
+  for (const extra of bookingSummary.locations.filter(item => item.reference !== resolvedLocation.publicReference)) {
+    await bookingSetup.saveLocation(agencyActor, tenant.agencyReference, {
+      reference: extra.reference,
+      name: extra.name,
+      address: extra.address,
+      postcode: extra.postcode,
       timezone: 'Europe/London',
-      isPrimary: true,
-      isActive: true,
-    }).returning();
+      primary: false,
+      active: false,
+    });
   }
   if (!resolvedLocation) throw new Error('The playground location could not be resolved.');
 
@@ -186,13 +240,12 @@ async function ensureBookingData(agencyActor: AgencyActor, tenant: typeof tenant
       [member] = await db.select().from(users).where(eq(users.publicReference, created.id)).limit(1);
     }
     if (!member) throw new Error(`The fictional staff profile ${fixture.name} could not be resolved.`);
-    await db.update(users).set({
+    await manualUsers.updateProfile(agencyActor, tenant.agencyReference, member.publicReference, {
+      displayName: fixture.name,
       jobTitle: fixture.title,
-      bio: fixture.bio,
+      biography: fixture.bio,
       bookingEnabled: true,
-      accountStatus: 'ACTIVE',
-      updatedAt: new Date(),
-    }).where(eq(users.id, member.id));
+    });
     await db.insert(staffLocations).values({ tenantId: tenant.id, staffUserId: member.id, locationId: resolvedLocation.id })
       .onConflictDoNothing();
     for (const dayOfWeek of [1, 2, 3, 4, 5, 6]) {
@@ -207,6 +260,17 @@ async function ensureBookingData(agencyActor: AgencyActor, tenant: typeof tenant
         eq(bookingChannelSchedules.bookingChannel, 'in_shop'), eq(bookingChannelSchedules.dayOfWeek, dayOfWeek),
       )).limit(1);
       if (!channelSchedule) await db.insert(bookingChannelSchedules).values({ tenantId: tenant.id, userId: member.id, bookingChannel: 'in_shop', dayOfWeek, startTime: hours.start, endTime: hours.end });
+    }
+  }
+
+  const expectedStaffEmails = new Set<string>(staffFixtures.map(item => item.email));
+  const staleMembers = await db.select({
+    reference: users.publicReference,
+    email: users.emailNormalized,
+  }).from(users).where(and(eq(users.tenantId, tenant.id), eq(users.accountStatus, 'ACTIVE')));
+  for (const member of staleMembers) {
+    if (!expectedStaffEmails.has(member.email)) {
+      await agency.setTenantUserStatus(agencyActor, tenant.id, member.reference, 'SUSPENDED');
     }
   }
 
@@ -244,10 +308,10 @@ async function ensureBookingData(agencyActor: AgencyActor, tenant: typeof tenant
 
 function controlledAnswer(question: { fieldMapping?: string | null; questionType: string; options?: unknown }) {
   const mapped: Record<string, unknown> = {
-    'LOCATION.ADDRESS': { line1: '18 Willow Lane', city: 'London', postcode: 'E1 6AN', countryCode: 'GB' },
-    'BUSINESS.DESCRIPTION': 'Luma Beauty Studio is a calm, contemporary fictional beauty studio in Shoreditch, created to demonstrate a complete KS OS website and native booking journey.',
+    'LOCATION.ADDRESS': { line1: '18 Market Lane', city: 'Leeds', postcode: EXPECTED_POSTCODE, countryCode: 'GB' },
+    'BUSINESS.DESCRIPTION': 'Luma Beauty Studio is a calm, contemporary fictional beauty studio in Leeds, created to demonstrate a complete KS OS website and native booking journey.',
     'BUSINESS.CATEGORY': 'BEAUTY_CLINIC',
-    'BUSINESS.AUDIENCE': 'London clients seeking thoughtful, high-quality facial, brow and lash treatments in a welcoming studio.',
+    'BUSINESS.AUDIENCE': 'Leeds clients seeking thoughtful, high-quality skin, brow and beauty treatments in a welcoming studio.',
     'BUSINESS.DIFFERENTIATORS': ['Personalised consultations', 'Clear treatment guidance', 'Calm studio experience'],
     'BUSINESS.BRAND_VOICE': 'Warm, refined, reassuring and clear. Never overclaim results.',
     'BRAND.TONE': 'Warm, modern, calm and expert-led.',
@@ -261,7 +325,7 @@ function controlledAnswer(question: { fieldMapping?: string | null; questionType
     case 'BOOLEAN': return true;
     case 'NUMBER': case 'DURATION': return 30;
     case 'MONEY': return { amountMinor: 3500, currency: 'GBP' };
-    case 'ADDRESS': return { line1: '18 Willow Lane', city: 'London', postcode: 'E1 6AN', countryCode: 'GB' };
+    case 'ADDRESS': return { line1: '18 Market Lane', city: 'Leeds', postcode: EXPECTED_POSTCODE, countryCode: 'GB' };
     case 'OPENING_HOURS': return [1, 2, 3, 4, 5, 6].map(dayOfWeek => ({ dayOfWeek, opensAt: dayOfWeek === 6 ? '09:00' : '09:30', closesAt: dayOfWeek === 6 ? '16:00' : '18:00', closed: false }));
     case 'MULTI_SELECT': return firstOption ? [firstOption] : ['Not applicable'];
     case 'SINGLE_SELECT': return firstOption || 'Not applicable';
@@ -274,17 +338,31 @@ function controlledAnswer(question: { fieldMapping?: string | null; questionType
 }
 
 async function ensureLockedBrief(agencyActor: AgencyActor, tenant: typeof tenants.$inferSelect) {
-  const [locked] = await db.select().from(productionBriefs)
-    .where(and(eq(productionBriefs.tenantId, tenant.id), eq(productionBriefs.status, 'LOCKED_FOR_PROVISIONING')))
+  const [locked] = await db.select({ brief: productionBriefs }).from(productionBriefs)
+    .innerJoin(productionBriefFacts, eq(productionBriefFacts.productionBriefId, productionBriefs.id))
+    .where(and(
+      eq(productionBriefs.tenantId, tenant.id),
+      eq(productionBriefs.status, 'LOCKED_FOR_PROVISIONING'),
+      eq(productionBriefFacts.fieldMapping, 'LOCATION.ADDRESS'),
+      sql`${productionBriefFacts.approvedValueJson}->>'postcode' = ${EXPECTED_POSTCODE}`,
+    ))
     .orderBy(sql`${productionBriefs.briefVersion} desc`).limit(1);
-  if (locked) return locked;
+  if (locked) return locked.brief;
 
   const facts = new FactFindingService();
   const manual = new ManualFactFindingService();
   const sync = new BookingFactSyncService();
-  let [questionnaire] = await db.select().from(factFindingQuestionnaires)
-    .where(and(eq(factFindingQuestionnaires.tenantId, tenant.id), sql`${factFindingQuestionnaires.status} <> 'SUPERSEDED'`))
+  const [canonicalQuestionnaire] = await db.select({ questionnaire: factFindingQuestionnaires })
+    .from(factFindingQuestionnaires)
+    .innerJoin(factFindingResponses, eq(factFindingResponses.questionnaireId, factFindingQuestionnaires.id))
+    .where(and(
+      eq(factFindingQuestionnaires.tenantId, tenant.id),
+      sql`${factFindingQuestionnaires.status} <> 'SUPERSEDED'`,
+      eq(factFindingResponses.fieldMapping, 'LOCATION.ADDRESS'),
+      sql`coalesce(${factFindingResponses.approvedValueJson}, ${factFindingResponses.answerJson})->>'postcode' = ${EXPECTED_POSTCODE}`,
+    ))
     .orderBy(sql`${factFindingQuestionnaires.questionnaireVersion} desc`).limit(1);
+  let questionnaire = canonicalQuestionnaire?.questionnaire;
   if (!questionnaire) {
     const [template] = await db.select().from(factFindingTemplates)
       .where(eq(factFindingTemplates.status, 'ACTIVE'))
@@ -346,10 +424,14 @@ async function ensureLockedBrief(agencyActor: AgencyActor, tenant: typeof tenant
 }
 
 async function ensureProvisioningRun(agencyActor: AgencyActor, tenant: typeof tenants.$inferSelect, briefReference: string) {
-  const [existing] = await db.select().from(provisioningRuns)
-    .where(eq(provisioningRuns.tenantId, tenant.id))
+  const [existing] = await db.select({ run: provisioningRuns }).from(provisioningRuns)
+    .innerJoin(productionBriefs, eq(provisioningRuns.productionBriefId, productionBriefs.id))
+    .where(and(
+      eq(provisioningRuns.tenantId, tenant.id),
+      eq(productionBriefs.publicReference, briefReference),
+    ))
     .orderBy(sql`${provisioningRuns.createdAt} desc`).limit(1);
-  if (existing) return existing;
+  if (existing) return existing.run;
   const plan = await eligiblePlanVersion();
   const [template] = await db.select({ reference: templateVersions.publicReference })
     .from(templateVersions)
@@ -367,8 +449,8 @@ async function ensureProvisioningRun(agencyActor: AgencyActor, tenant: typeof te
     workspace: { name: 'Luma Beauty Studio', subdomain: EXPECTED_SUBDOMAIN, timezone: 'Europe/London', currency: 'GBP' },
     templateVersionReference: template.reference,
     pagePlan: {
-      requestedPageTypes: ['HOME', 'SERVICE_HUB', 'SERVICE_DETAIL', 'ABOUT', 'TEAM_HUB', 'LOCATION_DETAIL', 'RESULTS', 'FAQ', 'CONTACT', 'NEW_CLIENT_GUIDE', 'BOOKING'],
-      targetMarketingPageCount: 10,
+      requestedPageTypes: ['HOME', 'SERVICE_HUB', 'SERVICE_DETAIL', 'ABOUT', 'TEAM_HUB', 'LOCATION_DETAIL', 'CONTACT', 'FAQ', 'POLICIES', 'NEW_CLIENT_GUIDE', 'BOOKING'],
+      targetMarketingPageCount: REQUIRED_MARKETING_PAGE_LIMIT,
       preferredLayoutReferences: {},
       design: { source: 'KS_NATIVE', presetKey: 'NORTHLIGHT', defaultSectionVariant: 'editorial' },
     },

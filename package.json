@@ -34,6 +34,7 @@
     "seed:demo": "pnpm --filter api exec tsx ../../scripts/seed-salon-a-demo.ts",
     "playground:website:bootstrap": "pnpm --filter api exec tsx ../../scripts/bootstrap-live-website-playground.ts",
     "playground:website:bootstrap:typecheck": "pnpm --filter api exec tsc -p ../../scripts/tsconfig.playground-bootstrap.json",
+    "playground:knowledge:activate": "pnpm --filter api exec tsx ../../scripts/activate-live-playground-knowledge-pack.ts",
     "knowledge:import": "pnpm --filter api knowledge:import",
     "knowledge:seed-actor:dev": "pnpm --filter api knowledge:seed-actor:dev",
     "knowledge:verify-active": "pnpm --filter api knowledge:verify-active",

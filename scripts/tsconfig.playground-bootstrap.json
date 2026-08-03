@@ -11,5 +11,8 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": ["bootstrap-live-website-playground.ts"]
+  "include": [
+    "activate-live-playground-knowledge-pack.ts",
+    "bootstrap-live-website-playground.ts"
+  ]
 }

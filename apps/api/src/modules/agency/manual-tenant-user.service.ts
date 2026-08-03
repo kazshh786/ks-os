@@ -15,6 +15,13 @@ export interface ManualTenantUserInput {
   bookingEnabled?: boolean;
 }
 
+export interface ManualTenantUserProfileInput {
+  displayName: string;
+  jobTitle: string;
+  biography: string;
+  bookingEnabled: boolean;
+}
+
 export class ManualTenantUserService {
   private db = getDatabase();
   private audit = new AgencyAuditService();
@@ -104,5 +111,41 @@ export class ManualTenantUserService {
       if (identity.created) await deleteSupabaseUserIfCreated(identity.authUserId);
       throw error;
     }
+  }
+
+  async updateProfile(
+    actor: AgencyActor,
+    tenantReference: string,
+    userReference: string,
+    input: ManualTenantUserProfileInput,
+  ) {
+    const [tenant] = await this.db.select({ id: tenants.id }).from(tenants).where(or(
+      eq(tenants.id, tenantReference),
+      eq(tenants.agencyReference, tenantReference),
+      eq(tenants.subdomain, tenantReference),
+    )).limit(1);
+    if (!tenant) throw fail(404, 'TENANT_NOT_FOUND', 'Business workspace not found.');
+    const [updated] = await this.db.update(users).set({
+      name: input.displayName.trim(),
+      jobTitle: input.jobTitle.trim(),
+      bio: input.biography.trim(),
+      bookingEnabled: input.bookingEnabled,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(users.tenantId, tenant.id),
+      eq(users.publicReference, userReference),
+      eq(users.accountStatus, 'ACTIVE'),
+    )).returning();
+    if (!updated) throw fail(404, 'TENANT_USER_NOT_FOUND', 'Active business user not found.');
+    await this.audit.write(actor, 'TENANT_USER_PROFILE_UPDATED', 'TENANT_USER', updated.id, {
+      tenantId: tenant.id,
+      metadata: { bookingEnabled: updated.bookingEnabled },
+    });
+    return {
+      id: updated.publicReference,
+      displayName: updated.name,
+      jobTitle: updated.jobTitle,
+      bookingEnabled: updated.bookingEnabled,
+    };
   }
 }
