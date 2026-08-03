@@ -13,6 +13,7 @@ KS_OS_RUNTIME_BIN="${KS_OS_RUNTIME_BIN:-/home/ksdeploy/.nvm/versions/node/v24.18
   exit 1
 }
 export PATH="$KS_OS_RUNTIME_BIN:$PATH"
+export CI="${CI:-true}"
 
 DRY_RUN=false
 ROLLBACK_ON_FAILURE=true
