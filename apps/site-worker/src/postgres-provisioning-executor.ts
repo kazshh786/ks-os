@@ -710,7 +710,16 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
       if (!name) continue;
       const email = stableEmail(run.runReference, index);
       const [existing] = await this.db.select({ id: users.id, reference: users.publicReference })
-        .from(users).where(and(eq(users.tenantId, run.tenantId), eq(users.emailNormalized, email))).limit(1);
+        .from(users).where(and(
+          eq(users.tenantId, run.tenantId),
+          eq(users.accountStatus, 'ACTIVE'),
+          or(
+            eq(users.emailNormalized, email),
+            sql`lower(trim(${users.name})) = lower(trim(${name}))`,
+          ),
+        ))
+        .orderBy(sql`case when ${users.emailNormalized} like '%@invalid.ks-os.local' then 1 else 0 end`)
+        .limit(1);
       const row = existing || (await this.db.insert(users).values({
         tenantId: run.tenantId,
         email,

@@ -153,4 +153,116 @@ export class AgencyBookingSetupService {
     });
     return created;
   }
+
+  async updateService(actor: AgencyActor, tenantReference: string, serviceReference: string, input: {
+    name: string;
+    description: string;
+    durationMinutes: number;
+    priceMinor: number;
+    bufferMinutes?: number;
+    active?: boolean;
+  }) {
+    const tenant = await this.tenant(tenantReference);
+    const [updated] = await this.db.update(services).set({
+      name: input.name.trim(),
+      description: input.description.trim(),
+      duration: input.durationMinutes,
+      price: input.priceMinor,
+      bufferTime: input.bufferMinutes || 0,
+      ...(input.active === undefined ? {} : { isActive: input.active }),
+      updatedAt: new Date(),
+    }).where(and(
+      eq(services.tenantId, tenant.id),
+      eq(services.publicReference, serviceReference),
+    )).returning({
+      reference: services.publicReference,
+      name: services.name,
+      durationMinutes: services.duration,
+      priceMinor: services.price,
+      active: services.isActive,
+    });
+    if (!updated) throw fail(404, 'SERVICE_NOT_FOUND', 'The booking service was not found.');
+    await this.audit.write(actor, 'AGENCY_BOOKING_SERVICE_UPDATED', 'SERVICE', updated.reference, {
+      tenantId: tenant.id,
+      category: 'BOOKING',
+      metadata: {
+        durationMinutes: updated.durationMinutes,
+        priceMinor: updated.priceMinor,
+        active: updated.active,
+      },
+    });
+    return updated;
+  }
+
+  async setServiceActive(
+    actor: AgencyActor,
+    tenantReference: string,
+    serviceReference: string,
+    active: boolean,
+  ) {
+    const tenant = await this.tenant(tenantReference);
+    const [updated] = await this.db.update(services).set({
+      isActive: active,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(services.tenantId, tenant.id),
+      eq(services.publicReference, serviceReference),
+    )).returning({ reference: services.publicReference, active: services.isActive });
+    if (!updated) throw fail(404, 'SERVICE_NOT_FOUND', 'The booking service was not found.');
+    await this.audit.write(
+      actor,
+      active ? 'AGENCY_BOOKING_SERVICE_ACTIVATED' : 'AGENCY_BOOKING_SERVICE_DEACTIVATED',
+      'SERVICE',
+      updated.reference,
+      { tenantId: tenant.id, category: 'BOOKING' },
+    );
+    return updated;
+  }
+
+  async saveLocation(actor: AgencyActor, tenantReference: string, input: {
+    reference?: string;
+    name: string;
+    address: string;
+    postcode: string;
+    phone?: string;
+    timezone: string;
+    primary: boolean;
+    active: boolean;
+  }) {
+    const tenant = await this.tenant(tenantReference);
+    const saved = await this.db.transaction(async tx => {
+      if (input.primary) {
+        await tx.update(locations).set({ isPrimary: false, updatedAt: new Date() })
+          .where(eq(locations.tenantId, tenant.id));
+      }
+      const values = {
+        name: input.name.trim(),
+        address: input.address.trim(),
+        postcode: input.postcode.trim(),
+        phone: input.phone?.trim() || null,
+        timezone: input.timezone,
+        isPrimary: input.primary,
+        isActive: input.active,
+        updatedAt: new Date(),
+      };
+      if (input.reference) {
+        const [updated] = await tx.update(locations).set(values).where(and(
+          eq(locations.tenantId, tenant.id),
+          eq(locations.publicReference, input.reference),
+        )).returning();
+        if (!updated) throw fail(404, 'LOCATION_NOT_FOUND', 'The booking location was not found.');
+        return { row: updated, created: false };
+      }
+      const [created] = await tx.insert(locations).values({ tenantId: tenant.id, ...values }).returning();
+      return { row: created, created: true };
+    });
+    await this.audit.write(
+      actor,
+      saved.created ? 'AGENCY_BOOKING_LOCATION_CREATED' : 'AGENCY_BOOKING_LOCATION_UPDATED',
+      'LOCATION',
+      saved.row.publicReference,
+      { tenantId: tenant.id, category: 'BOOKING' },
+    );
+    return saved.row;
+  }
 }

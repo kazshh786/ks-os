@@ -151,6 +151,63 @@ interface PreparedRuntime {
   knowledgeContexts: Map<string, SiteGenerationKnowledgeContext>;
 }
 
+async function failGenerationRun(
+  database: Database,
+  run: RunContext,
+  input: { failureCode: string; failureMessage: string },
+) {
+  const changed = await database.transaction(async transaction => {
+    const [current] = await transaction.select({ status: siteGenerationRuns.status })
+      .from(siteGenerationRuns).where(eq(siteGenerationRuns.id, run.id)).limit(1)
+      .for('update');
+    if (!current || ['READY_FOR_REVIEW', 'FAILED', 'CANCELLED'].includes(current.status)) {
+      return false;
+    }
+    const cancelled = current.status === 'CANCEL_REQUESTED'
+      || input.failureCode === 'CANCELLED_BY_USER';
+    if (input.failureCode === 'CANCELLED_BY_USER' && current.status !== 'CANCEL_REQUESTED') {
+      await transaction.update(siteGenerationRuns).set({ status: 'CANCEL_REQUESTED' })
+        .where(eq(siteGenerationRuns.id, run.id));
+    }
+    await transaction.update(siteGenerationRuns).set({
+      status: cancelled ? 'CANCELLED' : 'FAILED',
+      failureCode: input.failureCode.slice(0, 100),
+      failureMessage: input.failureMessage.slice(0, 500),
+      ...(cancelled ? { cancelledAt: new Date() } : {}),
+      updatedAt: new Date(),
+    }).where(eq(siteGenerationRuns.id, run.id));
+    await transaction.update(siteVersions).set({
+      generationStatus: cancelled ? 'CANCELLED' : 'FAILED',
+      updatedAt: new Date(),
+    }).where(eq(siteVersions.id, run.versionId));
+    await transaction.insert(platformAuditEvents).values({
+      tenantId: run.tenantId,
+      action: cancelled ? 'SITE_GENERATION_CANCELLED' : 'SITE_GENERATION_FAILED',
+      targetType: 'SITE_GENERATION_RUN',
+      targetId: run.reference,
+      outcome: cancelled ? 'CANCELLED' : 'FAILED',
+      metadata: {
+        failureCode: input.failureCode,
+        siteReference: run.siteReference,
+        versionReference: run.versionReference,
+        providerKey: run.providerKey,
+        modelKey: run.modelKey,
+      },
+      eventCategory: 'WEBSITE',
+      description: 'A controlled structured site-generation lifecycle event occurred.',
+      environment: process.env.NODE_ENV || 'development',
+      sourceComponent: 'site-worker',
+    });
+    return true;
+  });
+  if (changed && run.provisioningRunId) {
+    await failProvisionedWorkspace(database, run.id, {
+      code: input.failureCode,
+      message: input.failureMessage,
+    });
+  }
+}
+
 function safeActions(section: SiteSection) {
   const actions: unknown[] = [];
   for (const key of ['primaryAction', 'secondaryAction', 'secondaryActions'] as const) {
@@ -684,16 +741,27 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
     lease: SiteJobLeaseContext,
   ): Promise<SiteJobResult> {
     const run = await this.loadRunForJob(lease.jobReference);
-    await this.assertPayloadOwnership(run, payload.siteReference, payload.requestedByAgencyUserReference);
-    if (run.blueprintReference !== payload.blueprintReference
-      || (payload.knowledgePackReference
-        && run.knowledgePackReference !== payload.knowledgePackReference)) {
-      throw new SiteJobExecutionError(
-        'TERMINAL_PERMISSION_FAILURE',
-        'The stored generation job does not match its pinned run.',
-      );
+    let runtime: PreparedRuntime;
+    try {
+      await this.assertPayloadOwnership(run, payload.siteReference, payload.requestedByAgencyUserReference);
+      if (run.blueprintReference !== payload.blueprintReference
+        || (payload.knowledgePackReference
+          && run.knowledgePackReference !== payload.knowledgePackReference)) {
+        throw new SiteJobExecutionError(
+          'TERMINAL_PERMISSION_FAILURE',
+          'The stored generation job does not match its pinned run.',
+        );
+      }
+      runtime = await this.prepareRuntime(run);
+    } catch (error) {
+      if (error instanceof SiteJobExecutionError) {
+        await failGenerationRun(this.database, run, {
+          failureCode: error.code,
+          failureMessage: error.message,
+        });
+      }
+      throw error;
     }
-    const runtime = await this.prepareRuntime(run);
     const persistence = new PostgresGenerationPersistence(
       this.database,
       run,
@@ -2092,39 +2160,7 @@ class PostgresGenerationPersistence implements SiteGenerationPersistence {
   }
 
   async failRun(input: { failureCode: string; failureMessage: string }) {
-    await this.database.transaction(async transaction => {
-      const [current] = await transaction.select({ status: siteGenerationRuns.status })
-        .from(siteGenerationRuns).where(eq(siteGenerationRuns.id, this.run.id)).limit(1);
-      if (!current || current.status === 'READY_FOR_REVIEW') return;
-      const cancelled = current.status === 'CANCEL_REQUESTED'
-        || input.failureCode === 'CANCELLED_BY_USER';
-      if (input.failureCode === 'CANCELLED_BY_USER' && current.status !== 'CANCEL_REQUESTED') {
-        await transaction.update(siteGenerationRuns).set({ status: 'CANCEL_REQUESTED' })
-          .where(eq(siteGenerationRuns.id, this.run.id));
-      }
-      await transaction.update(siteGenerationRuns).set({
-        status: cancelled ? 'CANCELLED' : 'FAILED',
-        failureCode: input.failureCode.slice(0, 100),
-        failureMessage: input.failureMessage.slice(0, 500),
-        ...(cancelled ? { cancelledAt: new Date() } : {}),
-      }).where(eq(siteGenerationRuns.id, this.run.id));
-      await transaction.update(siteVersions).set({
-        generationStatus: cancelled ? 'CANCELLED' : 'FAILED',
-        updatedAt: new Date(),
-      }).where(eq(siteVersions.id, this.run.versionId));
-      await this.audit(
-        transaction,
-        cancelled ? 'SITE_GENERATION_CANCELLED' : 'SITE_GENERATION_FAILED',
-        cancelled ? 'CANCELLED' : 'FAILED',
-        { failureCode: input.failureCode },
-      );
-    });
-    if (this.run.provisioningRunId) {
-      await failProvisionedWorkspace(this.database, this.run.id, {
-        code: input.failureCode,
-        message: input.failureMessage,
-      });
-    }
+    await failGenerationRun(this.database, this.run, input);
   }
 
   private async persistClaimsAndFindings(

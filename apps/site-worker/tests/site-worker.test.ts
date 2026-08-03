@@ -1264,6 +1264,16 @@ test('67aa. quality browser configuration is explicit and fail-closed', () => {
   assert.equal(quality.browserConcurrency, 2);
 });
 
+test('67ac. terminal generation preflight failures persist the run and provisioning failure', () => {
+  assert.match(generationExecutorSource, /async function failGenerationRun/);
+  assert.match(generationExecutorSource, /runtime = await this\.prepareRuntime\(run\)/);
+  assert.match(
+    generationExecutorSource,
+    /catch \(error\)[\s\S]*error instanceof SiteJobExecutionError[\s\S]*await failGenerationRun\(this\.database, run/,
+  );
+  assert.match(generationExecutorSource, /await failProvisionedWorkspace\(database, run\.id/);
+});
+
 test('67ab. live AI quality review remains disabled without a configured provider', () => {
   assert.throws(() => parseSiteWorkerConfig({
     DATABASE_URL: 'postgresql://test.invalid/test',
