@@ -18,10 +18,14 @@ test('provisioning verifies fact-set digests in the brief builder order', () => 
   );
   assert.match(
     workerSource,
-    /from\(productionBriefFacts\)[\s\S]*?innerJoin\(factFindingResponses[\s\S]*?orderBy\(asc\(factFindingResponses\.createdAt\)\)/,
+    /snapshotFacts[\s\S]*?from\(productionBriefFacts\)[\s\S]*?sourceResponses[\s\S]*?from\(factFindingResponses\)[\s\S]*?orderBy\(asc\(factFindingResponses\.createdAt\)\)/,
   );
-  assert.doesNotMatch(
+  assert.match(
     workerSource,
-    /factRows[\s\S]*?orderBy\(asc\(productionBriefFacts\.id\)\)/,
+    /factsByResponseId[\s\S]*?sourceResponses\.flatMap/,
+  );
+  assert.match(
+    workerSource,
+    /factSetComplete[\s\S]*?!factSetComplete/,
   );
 });

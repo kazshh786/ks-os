@@ -92,6 +92,7 @@ interface ProvisioningContext {
   pagePlan: unknown;
   paymentPreference: unknown;
   briefId: string;
+  questionnaireId: string;
   briefReference: string;
   briefStatus: string;
   briefDigest: string;
@@ -480,6 +481,7 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
       pagePlan: provisioningDrafts.pagePlanJson,
       paymentPreference: provisioningDrafts.paymentPreferenceJson,
       briefId: productionBriefs.id,
+      questionnaireId: productionBriefs.questionnaireId,
       briefReference: productionBriefs.publicReference,
       briefStatus: productionBriefs.status,
       briefDigest: productionBriefs.contentDigestSha256,
@@ -526,7 +528,8 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
         s.id as "siteId", s.public_reference as "siteReference",
         pd.id as "draftId", pd.public_reference as "draftReference", pd.workspace_json as workspace,
         pd.page_plan_json as "pagePlan", pd.payment_preference_json as "paymentPreference",
-        pb.id as "briefId", pb.public_reference as "briefReference", pb.status as "briefStatus",
+        pb.id as "briefId", pb.questionnaire_id as "questionnaireId",
+        pb.public_reference as "briefReference", pb.status as "briefStatus",
         pb.content_digest_sha256 as "briefDigest", pb.approved_fact_set_digest_sha256 as "factSetDigest",
         pb.approved_asset_set_digest_sha256 as "assetSetDigest", pr.plan_version_id as "planVersionId",
         pp.key as "planKey", tv.id as "templateVersionId", tv.public_reference as "templateVersionReference",
@@ -550,18 +553,31 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
   }
 
   private async assertPinnedPayload(run: ProvisioningContext, payload: Payload) {
-    const factRows = await this.db.select({
-      responseReference: factFindingResponses.publicReference,
+    const snapshotFacts = await this.db.select({
+      responseId: productionBriefFacts.sourceResponseId,
       valueDigestSha256: productionBriefFacts.valueDigestSha256,
       approvedValue: productionBriefFacts.approvedValueJson,
     }).from(productionBriefFacts)
-      .innerJoin(factFindingResponses, eq(productionBriefFacts.sourceResponseId, factFindingResponses.id))
-      .where(eq(productionBriefFacts.productionBriefId, run.briefId))
-      // buildBrief pins the fact-set digest in response creation order. The
-      // snapshot row IDs are generated independently during insertion, so
-      // sorting by them cannot reproduce the locked brief's sequence.
+      .where(eq(productionBriefFacts.productionBriefId, run.briefId));
+    // Replay the builder's response query before projecting the immutable
+    // snapshot. A joined query can choose a different order for responses
+    // created in the same transaction even with the same ORDER BY clause.
+    const sourceResponses = await this.db.select({
+      id: factFindingResponses.id,
+      responseReference: factFindingResponses.publicReference,
+    }).from(factFindingResponses)
+      .where(and(
+        eq(factFindingResponses.questionnaireId, run.questionnaireId),
+        eq(factFindingResponses.status, 'AGENCY_APPROVED'),
+      ))
       .orderBy(asc(factFindingResponses.createdAt));
-    const valuesIntact = factRows.every(row => digest(row.approvedValue) === row.valueDigestSha256);
+    const factsByResponseId = new Map(snapshotFacts.map(fact => [fact.responseId, fact]));
+    const factRows = sourceResponses.flatMap(response => {
+      const fact = factsByResponseId.get(response.id);
+      return fact ? [{ ...fact, responseReference: response.responseReference }] : [];
+    });
+    const valuesIntact = snapshotFacts.every(row => digest(row.approvedValue) === row.valueDigestSha256);
+    const factSetComplete = factRows.length === snapshotFacts.length;
     const factSetDigest = digest(factRows.map(row => [row.responseReference, row.valueDigestSha256]));
     if (run.runReference !== payload.provisioningRunReference
       || run.draftReference !== payload.provisioningDraftReference
@@ -574,7 +590,7 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
     }
     // The database trigger pins all three locked brief digests. Recompute each
     // approved value and the ordered response snapshot independently here.
-    if (!valuesIntact || factSetDigest !== run.factSetDigest) {
+    if (!valuesIntact || !factSetComplete || factSetDigest !== run.factSetDigest) {
       throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The approved fact snapshot no longer matches the locked production brief.');
     }
   }
