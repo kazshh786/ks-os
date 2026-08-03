@@ -6,13 +6,10 @@ let defaultContextOverride: ApplicationContext | null = null;
 
 export type AuthenticatedRequestInit = RequestInit & { authContext?: ApplicationContext };
 
-const defaultProductionApiOrigin = 'https://api.kasimshah.com';
-
 function resolveApiUrl(url: string): string {
   if (!url.startsWith('/api/')) return url;
   const configuredOrigin = String(import.meta.env.VITE_API_ORIGIN || '').trim().replace(/\/$/, '');
-  const origin = configuredOrigin || (import.meta.env.PROD ? defaultProductionApiOrigin : '');
-  return origin ? new URL(url, `${origin}/`).toString() : url;
+  return configuredOrigin ? new URL(url, `${configuredOrigin}/`).toString() : url;
 }
 
 function requestContext(url: string, explicit?: ApplicationContext): ApplicationContext {

@@ -14,7 +14,7 @@
     "build:web": "pnpm --filter web build",
     "build:api": "pnpm --filter api build",
     "build:site-worker": "pnpm --filter site-worker build",
-    "typecheck": "pnpm --filter \"*\" typecheck",
+    "typecheck": "pnpm --filter \"*\" typecheck && pnpm run cloudflare:types:check",
     "lint": "pnpm --filter \"*\" lint",
     "test": "pnpm --filter \"*\" test",
     "verify": "pnpm --filter \"*\" verify",
@@ -37,7 +37,11 @@
     "knowledge:verify-active": "pnpm --filter api knowledge:verify-active",
     "knowledge:import:dev": "pnpm --filter api knowledge:import:dev",
     "knowledge:seed-actor:dev-project": "pnpm --filter api knowledge:seed-actor:dev-project",
-    "knowledge:verify-active:dev": "pnpm --filter api knowledge:verify-active:dev"
+    "knowledge:verify-active:dev": "pnpm --filter api knowledge:verify-active:dev",
+    "deploy:cloudflare": "pnpm exec wrangler deploy",
+    "deploy:cloudflare:preview": "pnpm exec wrangler versions upload",
+    "cloudflare:types": "pnpm exec wrangler types apps/web/worker/env.d.ts --include-runtime=false",
+    "cloudflare:types:check": "pnpm exec wrangler types apps/web/worker/env.d.ts --include-runtime=false --check"
   },
   "dependencies": {
     "date-fns": "^4.4.0",
@@ -46,6 +50,7 @@
   "devDependencies": {
     "@types/pg": "^8.20.0",
     "pg": "^8.22.0",
-    "supabase": "2.109.1"
+    "supabase": "2.109.1",
+    "wrangler": "4.114.0"
   }
 }
