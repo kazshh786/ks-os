@@ -557,7 +557,10 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
     }).from(productionBriefFacts)
       .innerJoin(factFindingResponses, eq(productionBriefFacts.sourceResponseId, factFindingResponses.id))
       .where(eq(productionBriefFacts.productionBriefId, run.briefId))
-      .orderBy(asc(productionBriefFacts.id));
+      // buildBrief pins the fact-set digest in response creation order. The
+      // snapshot row IDs are generated independently during insertion, so
+      // sorting by them cannot reproduce the locked brief's sequence.
+      .orderBy(asc(factFindingResponses.createdAt));
     const valuesIntact = factRows.every(row => digest(row.approvedValue) === row.valueDigestSha256);
     const factSetDigest = digest(factRows.map(row => [row.responseReference, row.valueDigestSha256]));
     if (run.runReference !== payload.provisioningRunReference
