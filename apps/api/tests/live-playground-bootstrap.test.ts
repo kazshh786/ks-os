@@ -5,10 +5,14 @@ import test from 'node:test';
 const bootstrapPath = new URL('../../../scripts/bootstrap-live-website-playground.ts', import.meta.url);
 const knowledgePath = new URL('../../../scripts/activate-live-playground-knowledge-pack.ts', import.meta.url);
 const provisioningExecutorPath = new URL('../../site-worker/src/postgres-provisioning-executor.ts', import.meta.url);
-const [bootstrap, knowledge, provisioningExecutor] = await Promise.all([
+const provisioningServicePath = new URL('../src/modules/provisioning/provisioning.service.ts', import.meta.url);
+const generationServicePath = new URL('../src/modules/sites/site-generation.service.ts', import.meta.url);
+const [bootstrap, knowledge, provisioningExecutor, provisioningService, generationService] = await Promise.all([
   readFile(bootstrapPath, 'utf8'),
   readFile(knowledgePath, 'utf8'),
   readFile(provisioningExecutorPath, 'utf8'),
+  readFile(provisioningServicePath, 'utf8'),
+  readFile(generationServicePath, 'utf8'),
 ]);
 
 test('live playground fixture is pinned to the exact Leeds acceptance data', () => {
@@ -38,6 +42,7 @@ test('live playground reconciliation uses audited services and a complete Growth
     'bookingSetup.saveLocation',
     'manualUsers.updateProfile',
     'agency.setTenantUserStatus',
+    'generation.reconcileTerminalJobState',
   ]) assert.match(bootstrap, new RegExp(operation.replace('.', '\\.')));
   assert.match(bootstrap, /REQUIRED_MARKETING_PAGE_LIMIT = 15/);
   for (const pageType of [
@@ -63,4 +68,13 @@ test('knowledge activation adds every missing governed page playbook and remains
 test('provisioning reuses a real active staff identity before creating an invalid placeholder', () => {
   assert.match(provisioningExecutor, /lower\(trim\(\$\{users\.name\}\)\) = lower\(trim\(\$\{name\}\)\)/);
   assert.match(provisioningExecutor, /case when \$\{users\.emailNormalized\} like '%@invalid\.ks-os\.local' then 1 else 0 end/);
+});
+
+test('controlled recovery reuses only a draft site and reconciles only a terminal linked job', () => {
+  assert.match(provisioningService, /eq\(sites\.status, 'DRAFT'\)/);
+  assert.match(provisioningService, /reusedDraftSite: Boolean\(reusableDraftSite\)/);
+  assert.match(generationService, /actor\.role !== 'PLATFORM_OWNER'/);
+  assert.match(generationService, /\['FAILED', 'DEAD_LETTER'\]\.includes\(run\.jobStatus\)/);
+  assert.match(generationService, /SITE_GENERATION_STATE_RECONCILED/);
+  assert.match(generationService, /status: 'PARTIALLY_FAILED'/);
 });

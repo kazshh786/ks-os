@@ -248,7 +248,13 @@ export class ProvisioningService {
       .from(provisioningRuns).where(eq(provisioningRuns.identityDigestSha256, identity)).limit(1);
     if (existing) return { ...(await this.getRun(existing.reference)), idempotentReplay: true };
 
-    const site = await this.sites.create(actor, {
+    const [reusableDraftSite] = await this.db.select({
+      reference: sites.publicReference,
+    }).from(sites).where(and(
+      eq(sites.tenantId, context.tenantId),
+      eq(sites.status, 'DRAFT'),
+    )).orderBy(desc(sites.createdAt)).limit(1);
+    const site = reusableDraftSite || await this.sites.create(actor, {
       tenantReference: context.tenantBusinessReference,
       displayName: `${record(context.draft.workspaceJson).name || context.tenantName} website`,
       idempotencyKey: `provisioning:${context.draft.publicReference}`,
@@ -342,7 +348,11 @@ export class ProvisioningService {
     }
     await this.audit.write(actor, 'WORKSPACE_PROVISIONING_REQUESTED', 'PROVISIONING_RUN', run.reference, {
       tenantId: context.tenantId,
-      metadata: { draftReference: context.draft.publicReference, siteReference: site.reference },
+      metadata: {
+        draftReference: context.draft.publicReference,
+        siteReference: site.reference,
+        reusedDraftSite: Boolean(reusableDraftSite),
+      },
     });
     return { ...(await this.getRun(run.reference)), idempotentReplay: false };
   }

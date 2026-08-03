@@ -19,6 +19,9 @@ import {
   provisioningRuns,
   serviceLocations,
   services,
+  siteGenerationRuns,
+  siteJobs,
+  sites,
   staffLocations,
   staffSchedules,
   staffServiceAssignments,
@@ -36,6 +39,7 @@ import { BookingFactSyncService } from '../apps/api/src/modules/provisioning/boo
 import { BookingAwareProvisioningService } from '../apps/api/src/modules/provisioning/booking-aware-provisioning.service.js';
 import { FactFindingService } from '../apps/api/src/modules/provisioning/fact-finding.service.js';
 import { ManualFactFindingService } from '../apps/api/src/modules/provisioning/manual-fact-finding.service.js';
+import { AgencySiteGenerationService } from '../apps/api/src/modules/sites/site-generation.service.js';
 
 dotenv.config({ path: resolve(process.cwd(), '../../.env'), quiet: true });
 
@@ -464,6 +468,29 @@ async function ensureProvisioningRun(agencyActor: AgencyActor, tenant: typeof te
   });
 }
 
+async function reconcileStrandedGeneration(agencyActor: AgencyActor, tenant: typeof tenants.$inferSelect) {
+  const stranded = await db.select({
+    siteReference: sites.publicReference,
+    runReference: siteGenerationRuns.publicReference,
+  }).from(siteGenerationRuns)
+    .innerJoin(sites, eq(siteGenerationRuns.siteId, sites.id))
+    .innerJoin(siteJobs, eq(siteGenerationRuns.siteJobId, siteJobs.id))
+    .where(and(
+      eq(siteGenerationRuns.tenantId, tenant.id),
+      inArray(siteGenerationRuns.status, ['PENDING', 'PREPARING_CONTEXT', 'GENERATING', 'VALIDATING', 'REPAIRING']),
+      inArray(siteJobs.status, ['FAILED', 'DEAD_LETTER']),
+    ));
+  const generation = new AgencySiteGenerationService(db, undefined, process.env);
+  for (const run of stranded) {
+    await generation.reconcileTerminalJobState(
+      agencyActor,
+      run.siteReference,
+      run.runReference,
+      'Reconcile the preflight failure that preceded durable run-state persistence, then start the exact-fixture provisioning revision.',
+    );
+  }
+}
+
 async function main() {
   requireGuard();
   db = getDatabase();
@@ -476,6 +503,7 @@ async function main() {
   }
   const brief = await ensureLockedBrief(agencyActor, tenant);
   const briefReference = 'reference' in brief ? brief.reference : brief.publicReference;
+  await reconcileStrandedGeneration(agencyActor, tenant);
   const run = await ensureProvisioningRun(agencyActor, tenant, briefReference);
   process.stdout.write(`${JSON.stringify({
     tenantReference: tenant.businessReference,
