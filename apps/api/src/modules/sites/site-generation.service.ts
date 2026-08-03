@@ -12,6 +12,9 @@ import {
   getDatabase,
   knowledgePacks,
   locations,
+  provisioningActivity,
+  provisioningRuns,
+  provisioningRunSteps,
   services,
   siteBlueprintPages,
   siteBlueprints,
@@ -402,6 +405,101 @@ export class AgencySiteGenerationService {
       category: 'WEBSITE',
     });
     return { reference: runReference, status: 'PENDING' as const };
+  }
+
+  async reconcileTerminalJobState(
+    actor: AgencyActor,
+    siteReference: string,
+    runReference: string,
+    reason: string,
+  ) {
+    if (actor.role !== 'PLATFORM_OWNER') {
+      throw fail(403, 'AGENCY_ACCESS_DENIED', 'Only a platform owner can reconcile terminal generation state.');
+    }
+    return this.database.transaction(async transaction => {
+      const [run] = await transaction.select({
+        id: siteGenerationRuns.id,
+        tenantId: siteGenerationRuns.tenantId,
+        status: siteGenerationRuns.status,
+        versionId: siteGenerationRuns.siteVersionId,
+        provisioningRunId: siteGenerationRuns.provisioningRunId,
+        jobStatus: siteJobs.status,
+        jobFailureCode: siteJobs.failureCode,
+        jobFailureMessage: siteJobs.failureMessage,
+      }).from(siteGenerationRuns)
+        .innerJoin(sites, eq(siteGenerationRuns.siteId, sites.id))
+        .innerJoin(siteJobs, eq(siteGenerationRuns.siteJobId, siteJobs.id))
+        .where(and(
+          eq(sites.publicReference, siteReference),
+          eq(siteGenerationRuns.publicReference, runReference),
+        )).limit(1).for('update');
+      if (!run) throw fail(404, 'SITE_GENERATION_RUN_NOT_FOUND', 'Generation run not found.');
+      if (['FAILED', 'CANCELLED', 'READY_FOR_REVIEW'].includes(run.status)) {
+        return { reference: runReference, status: run.status, idempotentReplay: true as const };
+      }
+      if (!['FAILED', 'DEAD_LETTER'].includes(run.jobStatus)) {
+        throw fail(
+          409,
+          'SITE_GENERATION_JOB_NOT_TERMINAL',
+          'Only a generation run whose durable job failed terminally can be reconciled.',
+        );
+      }
+      const failureCode = (run.jobFailureCode || 'TERMINAL_JOB_STATE_RECONCILED').slice(0, 100);
+      const failureMessage = (
+        run.jobFailureMessage
+        || 'The durable generation job failed before its run lifecycle was persisted.'
+      ).slice(0, 500);
+      await transaction.update(siteGenerationRuns).set({
+        status: 'FAILED',
+        failureCode,
+        failureMessage,
+        updatedAt: new Date(),
+      }).where(eq(siteGenerationRuns.id, run.id));
+      if (run.versionId) {
+        await transaction.update(siteVersions).set({
+          generationStatus: 'FAILED',
+          updatedAt: new Date(),
+        }).where(eq(siteVersions.id, run.versionId));
+      }
+      if (run.provisioningRunId) {
+        await transaction.update(provisioningRunSteps).set({
+          status: 'FAILED',
+          failureCode,
+          safeMessage: failureMessage,
+          completedAt: new Date(),
+          updatedAt: new Date(),
+        }).where(and(
+          eq(provisioningRunSteps.provisioningRunId, run.provisioningRunId),
+          eq(provisioningRunSteps.stepKey, 'GENERATE_SITE'),
+        ));
+        await transaction.update(provisioningRuns).set({
+          status: 'PARTIALLY_FAILED',
+          currentStep: 'GENERATE_SITE',
+          failureCode,
+          failureMessage,
+          retryable: false,
+          failedAt: new Date(),
+          updatedAt: new Date(),
+        }).where(eq(provisioningRuns.id, run.provisioningRunId));
+        await transaction.insert(provisioningActivity).values({
+          provisioningRunId: run.provisioningRunId,
+          tenantId: run.tenantId,
+          eventType: 'SITE_GENERATION_STATE_RECONCILED',
+          statusTo: 'PARTIALLY_FAILED',
+          stepKey: 'GENERATE_SITE',
+          safeMessage: 'A platform owner reconciled a terminal generation job with its stranded run state.',
+          agencyUserId: actor.agencyUserId,
+        });
+      }
+      await this.audit.write(actor, 'SITE_GENERATION_STATE_RECONCILED', 'SITE_GENERATION_RUN', runReference, {
+        tenantId: run.tenantId,
+        reason,
+        category: 'WEBSITE',
+        metadata: { siteReference, jobStatus: run.jobStatus, failureCode },
+        tx: transaction,
+      });
+      return { reference: runReference, status: 'FAILED' as const, idempotentReplay: false as const };
+    });
   }
 
   async regeneratePage(actor: AgencyActor, siteReference: string, versionReference: string, pageReference: string) {
