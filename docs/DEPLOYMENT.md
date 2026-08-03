@@ -77,6 +77,8 @@ APPLY_MIGRATIONS=1 bash scripts/deploy/deploy-vps.sh
 
 The release is successful only when the API, worker health, worker readiness, and renderer health all return HTTP 200. A failed release checks out the previous application commit, rebuilds it, and restarts all three services. Database down-migrations are never automatic; use a new compensating migration when required.
 
+The shared production `/srv/ks-os/.env` must not define the generic `PORT` key. The API owns port 5000 and the renderer owns port 5001 through their service configuration; a shared value can make the renderer bind the API port. The deploy script rejects this ambiguous configuration.
+
 ## Guarded Luma playground bootstrap
 
 Run only after migrations, service health, Cloudflare/Plesk routing, and production environment validation succeed:
