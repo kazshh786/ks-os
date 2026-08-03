@@ -39,6 +39,7 @@
     "knowledge:seed-actor:dev-project": "pnpm --filter api knowledge:seed-actor:dev-project",
     "knowledge:verify-active:dev": "pnpm --filter api knowledge:verify-active:dev",
     "deploy:cloudflare": "pnpm exec wrangler deploy",
+    "workers:communications:run": "node --env-file-if-exists=.env scripts/workers/run-communications-cycle.mjs",
     "deploy:cloudflare:preview": "pnpm exec wrangler versions upload",
     "cloudflare:types": "pnpm exec wrangler types apps/web/worker/env.d.ts --include-runtime=false",
     "cloudflare:types:check": "pnpm exec wrangler types apps/web/worker/env.d.ts --include-runtime=false --check"

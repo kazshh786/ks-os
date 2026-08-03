@@ -589,7 +589,8 @@ export class ApiDataProvider implements DataProvider {
 
   async updateCommunicationsSettings(settings: UpdateCommunicationsSettingsRequest): Promise<void> {
     const res = await fetchWithAuth('/api/v1/communications/settings', {
-      method: 'PATCH',
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings)
     });
     if (!res.ok) throw new Error('Failed to update communications settings');
@@ -597,7 +598,7 @@ export class ApiDataProvider implements DataProvider {
 
   async getEmailHistory(query: EmailHistoryQuery): Promise<{ data: EmailHistoryItem[], nextCursor?: string }> {
     const params = new URLSearchParams(query as any).toString();
-    const res = await fetchWithAuth(`/api/v1/communications/history?${params}`);
+    const res = await fetchWithAuth(`/api/v1/communications/email-history?${params}`);
     if (!res.ok) throw new Error('Failed to fetch email history');
     return res.json();
   }

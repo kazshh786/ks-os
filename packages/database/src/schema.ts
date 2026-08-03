@@ -102,6 +102,20 @@ export const users = pgTable('users', {
   authStatusIdx: index('users_auth_status_idx').on(table.authUserId, table.accountStatus),
 }));
 
+// Server-managed configuration for tenant-branded transactional email. The
+// JSON document is validated by the API contract before every write; keeping
+// it in a dedicated table avoids exposing provider configuration through the
+// tenant record or Supabase Data API.
+export const tenantEmailAutomationSettings = pgTable('tenant_email_automation_settings', {
+  tenantId: uuid('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
+  settingsJson: jsonb('settings_json').default({}).notNull(),
+  updatedByUserId: uuid('updated_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  updatedByIdx: index('tenant_email_automation_settings_updated_by_idx').on(table.updatedByUserId),
+}));
+
 export const staffInvitations = pgTable('staff_invitations', {
   id: uuid('id').defaultRandom().primaryKey(), tenantId: uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),
   emailNormalized: varchar('email_normalized',{length:255}).notNull(), name: varchar('name',{length:255}).notNull(), role: varchar('role',{length:20}).default('staff').notNull(),

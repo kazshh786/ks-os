@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
   appointments, clients, customerClientLinks, getDatabase, reviewInvitations, reviewInvitationRules,
   reviewProviderConnections, reviewProviderLocationMappings, tenants,
@@ -7,6 +7,11 @@ import {
 import { ReviewClickSchema, type ReviewProvider, type ReviewProviderMode } from '@ks-os/contracts';
 import { EmailService } from '../email/email.service.js';
 import { SmsService } from '../sms/sms.service.js';
+import {
+  EmailSettingsService,
+  emailBrandingTemplateData,
+  renderAutomatedEmailCopy,
+} from '../email/email-settings.service.js';
 import { TrustpilotProvider } from './reputation.providers.js';
 import {
   decryptProviderCredentials, deriveProviderReference, deriveReviewInvitationToken, hashPublicToken,
@@ -21,6 +26,7 @@ type Destination = { provider: ReviewProvider; url?: string; connectionId: strin
 export class ReviewInvitationService {
   private db = getDatabase();
   private trustpilot = new TrustpilotProvider();
+  private emailSettings = new EmailSettingsService();
 
   private async resolveProvider(tenantId: string, locationId: string | null, provider: ReviewProvider, query = this.db): Promise<Destination | null> {
     const connections = await query.select().from(reviewProviderConnections).where(and(
@@ -54,6 +60,7 @@ export class ReviewInvitationService {
       .leftJoin(clients, and(eq(clients.id, appointments.clientId), eq(clients.tenantId, tenantId)))
       .where(and(eq(appointments.id, appointmentId), eq(appointments.tenantId, tenantId))).limit(1);
     if (!context?.appointment || !context.client) return { scheduled: false, reason: 'CLIENT_NOT_FOUND' };
+    const emailSettings = await this.emailSettings.get(tenantId, query);
 
     const rules = await query.select().from(reviewInvitationRules).where(and(
       eq(reviewInvitationRules.tenantId, tenantId), eq(reviewInvitationRules.status, 'ACTIVE'),
@@ -61,6 +68,7 @@ export class ReviewInvitationService {
     )).orderBy(asc(reviewInvitationRules.createdAt));
     const rule = selectScopedConfiguration(rules, context.appointment.locationId) as (typeof rules)[number] | null;
     if (!rule) return { scheduled: false, reason: 'NO_ACTIVE_RULE' };
+    if (rule.channel === 'EMAIL' && !emailSettings.automations.customerThankYouEnabled) return { scheduled: false, reason: 'THANK_YOU_EMAIL_DISABLED' };
 
     const [portalLink] = await query.select({ id: customerClientLinks.id }).from(customerClientLinks).where(and(
       eq(customerClientLinks.tenantId, tenantId), eq(customerClientLinks.clientId, context.client.id), eq(customerClientLinks.status, 'ACTIVE'),
@@ -75,17 +83,30 @@ export class ReviewInvitationService {
     });
     if (!eligibility.eligible) return { scheduled: false, reason: eligibility.reason };
 
-    for (const provider of providersForMode(rule.providerMode as ReviewProviderMode)) {
-      if (!await this.resolveProvider(tenantId, context.appointment.locationId, provider, query)) return { scheduled: false, reason: 'REVIEW_PROVIDER_NOT_AVAILABLE' };
+    const [history] = await query.select({
+      previousCompletedVisits: sql<number>`count(*)::int`,
+    }).from(appointments).where(and(
+      eq(appointments.tenantId, tenantId),
+      eq(appointments.clientId, context.client.id),
+      eq(appointments.status, 'COMPLETED'),
+      sql`${appointments.id} <> ${appointmentId}::uuid`,
+    ));
+    const providerMode: ReviewProviderMode = rule.channel === 'EMAIL'
+      ? (Number(history?.previousCompletedVisits ?? 0) > 0 ? 'TRUSTPILOT' : 'GOOGLE')
+      : rule.providerMode as ReviewProviderMode;
+    for (const provider of providersForMode(providerMode)) {
+      if (!await this.resolveProvider(tenantId, context.appointment.locationId, provider, query)) {
+        return { scheduled: false, reason: 'REVIEW_PROVIDER_NOT_AVAILABLE' };
+      }
     }
 
     const invitationId = randomUUID();
     const token = deriveReviewInvitationToken(invitationId);
-    const idempotencyKey = reviewInvitationIdempotencyKey(tenantId, appointmentId, rule.providerMode as ReviewProviderMode, rule.ruleVersion);
+    const idempotencyKey = reviewInvitationIdempotencyKey(tenantId, appointmentId, providerMode, rule.ruleVersion);
     const scheduledFor = new Date(completedAt.getTime() + rule.delayMinutes * 60_000);
     const [invitation] = await query.insert(reviewInvitations).values({
       id: invitationId, tenantId, appointmentId, clientId: context.client.id, locationId: context.appointment.locationId,
-      ruleId: rule.id, provider: rule.providerMode, channel: rule.channel, status: 'SCHEDULED', tokenHash: hashPublicToken(token),
+      ruleId: rule.id, provider: providerMode, channel: rule.channel, status: 'SCHEDULED', tokenHash: hashPublicToken(token),
       providerReferenceId: deriveProviderReference(idempotencyKey), scheduledFor, nextAttemptAt: scheduledFor,
       expiresAt: new Date(scheduledFor.getTime() + 30 * 24 * 60 * 60_000), idempotencyKey,
     }).onConflictDoNothing().returning();
@@ -140,12 +161,41 @@ export class ReviewInvitationService {
           await this.db.update(reviewInvitations).set({ status: 'SUPPRESSED', failureCode: eligibility.reason, updatedAt: new Date() }).where(eq(reviewInvitations.id, row.invitation.id));
           continue;
         }
+        const emailSettings = await this.emailSettings.get(row.invitation.tenantId);
+        if (row.invitation.channel === 'EMAIL' && !emailSettings.automations.customerThankYouEnabled) {
+          await this.db.update(reviewInvitations).set({ status: 'SUPPRESSED', failureCode: 'THANK_YOU_EMAIL_DISABLED', updatedAt: new Date() }).where(eq(reviewInvitations.id, row.invitation.id));
+          continue;
+        }
         const destinations = await this.destinationsFor(row.invitation, row.client);
+        const reviewProvider = row.invitation.provider as 'GOOGLE' | 'TRUSTPILOT';
+        const [priorGoogleSupport] = reviewProvider === 'TRUSTPILOT'
+          ? await this.db.select({ id: reviewInvitations.id }).from(reviewInvitations).where(and(
+            eq(reviewInvitations.tenantId, row.invitation.tenantId),
+            eq(reviewInvitations.clientId, row.client.id),
+            isNotNull(reviewInvitations.googleClickedAt),
+          )).limit(1)
+          : [];
+        const configuredTemplate = reviewProvider === 'TRUSTPILOT'
+          ? emailSettings.templates.customerThankYouTrustpilot
+          : emailSettings.templates.customerThankYouGoogle;
+        const replacements = {
+          businessName: emailSettings.branding.businessName,
+          customerName: row.client.name,
+          appointmentDate: new Intl.DateTimeFormat('en-GB', { dateStyle: 'long', timeZone: row.tenant.timezone }).format(row.appointment.startTime),
+          reviewProvider: reviewProvider === 'GOOGLE' ? 'Google' : 'Trustpilot',
+        };
+        const renderedCopy = renderAutomatedEmailCopy(configuredTemplate, replacements);
+        if (reviewProvider === 'TRUSTPILOT' && priorGoogleSupport) {
+          renderedCopy.emailBody = renderedCopy.emailBody + '\n\nThank you as well for supporting us on Google.';
+        }
         const common = {
-          tenantName: row.tenant.senderDisplayName || row.tenant.name, tenantPrimaryColor: row.tenant.primaryColor,
+          ...emailBrandingTemplateData(emailSettings.branding),
+          tenantPrimaryColor: row.tenant.primaryColor,
           customerName: row.client.name, reviewInvitationId: row.invitation.id,
           message: row.rule.messageTemplate.replaceAll('{{salonName}}', row.tenant.senderDisplayName || row.tenant.name),
-          appointmentDate: new Intl.DateTimeFormat('en-GB', { dateStyle: 'long', timeZone: row.tenant.timezone }).format(row.appointment.startTime),
+          appointmentDate: replacements.appointmentDate,
+          reviewProvider,
+          ...renderedCopy,
         };
         let queued = true;
         if (row.invitation.channel === 'EMAIL') {

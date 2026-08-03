@@ -35,6 +35,7 @@ import { DisputesListPage } from './pages/finance/DisputesListPage.js';
 import { DisputeDetailPage } from './pages/finance/DisputeDetailPage.js';
 import { Communications } from './pages/settings/Communications.js';
 import { EmailHistory } from './pages/settings/EmailHistory.js';
+import { AutomatedEmailsPage } from './features/email-marketing/AutomatedEmailsPage.js';
 import SaaSDashboardPage from './pages/SaaSDashboardPage.js';
 import { SmsSettings } from './pages/settings/SmsSettings.js';
 import CustomerBookingManagementSettings from './pages/settings/CustomerBookingManagementSettings.js';
@@ -183,6 +184,8 @@ const AppContent: React.FC = () => {
           <Route path="reputation" element={<ReputationRoute><ReputationOverviewPage /></ReputationRoute>} />
           <Route path="reputation/reviews" element={<ReputationRoute><ExternalReviewsPage /></ReputationRoute>} />
           <Route path="reputation/invitations" element={<ReputationRoute><ReputationInvitationsPage /></ReputationRoute>} />
+          <Route path="email-marketing/automated-emails" element={<RoleRoute allowedRoles={['owner']}><AutomatedEmailsPage /></RoleRoute>} />
+          <Route path="email-marketing/history" element={<RoleRoute allowedRoles={['owner']}><EmailHistory /></RoleRoute>} />
           <Route path="settings/integrations/reviews" element={<ReputationRoute ownerOnly><ReviewConnectionsPage /></ReputationRoute>} />
           <Route path="settings/integrations" element={<RoleRoute allowedRoles={['owner']}><Integrations /></RoleRoute>} />
           <Route path="calendar" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL']}><StaffCalendarPage /></RoleRoute>} />
@@ -213,7 +216,7 @@ const AppContent: React.FC = () => {
           <Route path="settings/payments/return" element={<RoleRoute allowedRoles={['owner']}><StripeReturn /></RoleRoute>} />
           <Route path="settings/payments/refresh" element={<RoleRoute allowedRoles={['owner']}><StripeRefresh /></RoleRoute>} />
           <Route path="settings/communications" element={<RoleRoute allowedRoles={['owner']}><Communications /></RoleRoute>} />
-          <Route path="settings/email-history" element={<RoleRoute allowedRoles={['owner']}><EmailHistory /></RoleRoute>} />
+          <Route path="settings/email-history" element={<Navigate to="/app/email-marketing/history" replace />} />
           <Route path="settings/communications/sms" element={<RoleRoute allowedRoles={['owner']}><SmsSettings /></RoleRoute>} />
           <Route path="settings/booking/customer-management" element={<RoleRoute allowedRoles={['owner']}><CustomerBookingManagementSettings /></RoleRoute>} />
           <Route path="settings/booking-page" element={<RoleRoute allowedRoles={['owner']}><BookingPageSettings /></RoleRoute>} />

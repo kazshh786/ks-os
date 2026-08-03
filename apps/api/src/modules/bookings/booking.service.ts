@@ -16,6 +16,11 @@ import { SmsService } from '../sms/sms.service.js';
 import { BusinessEventsService, stableEventId } from '../automations/business-events.service.js';
 import { FormsService } from '../forms/forms.service.js';
 import { env } from '../../config/env.js';
+import {
+  EmailSettingsService,
+  emailBrandingTemplateData,
+  renderAutomatedEmailCopy,
+} from '../email/email-settings.service.js';
 
 type OperationalRow = Awaited<ReturnType<BookingRepository['listOperationalBookings']>>['rows'][number];
 
@@ -66,6 +71,7 @@ export class BookingService {
   private repository: BookingRepository;
   private emailService: EmailService;
   private smsService: SmsService;
+  private emailSettings = new EmailSettingsService();
   private businessEvents = new BusinessEventsService();
 
   constructor() {
@@ -76,19 +82,42 @@ export class BookingService {
 
   private async enqueueEmailReminders(tx:any, tenant:any, booking:any, bookingId:string, startTime:Date, idSuffix:string) {
     if (!tenant?.appointmentRemindersEnabled || !booking.clientEmail) return;
-    const hours = tenant.smsReminderTiming === '24_and_48_hours_before' ? [48, 24] : tenant.smsReminderTiming === 'none' ? [] : [tenant.smsReminderTiming?.startsWith('48') ? 48 : 24];
+    const settings = await this.emailSettings.get(booking.tenantId || tenant.id, tx);
+    const hours = [
+      ...(settings.automations.reminderThreeDaysEnabled ? [72] : []),
+      ...(settings.automations.reminderOneDayEnabled ? [24] : []),
+    ];
     const fmt = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: tenant.timezone });
     const parts = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: tenant.timezone }).format(startTime);
     const time = new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: tenant.timezone }).format(startTime);
     for (const h of hours) {
       const scheduledFor = new Date(startTime.getTime() - h * 3600000);
+      const template = h === 72 ? settings.templates.reminderThreeDays : settings.templates.reminderOneDay;
+      const replacements = {
+        businessName: settings.branding.businessName,
+        customerName: booking.clientName || booking.clientNameFallback || 'there',
+        serviceName: booking.serviceName || 'your appointment',
+        bookingDate: parts,
+        bookingTime: time,
+        staffName: booking.staffName || 'our team',
+      };
       if (scheduledFor > new Date()) await this.emailService.enqueueEmail({
         tenantId: booking.tenantId || tenant.id,
         recipientEmail: booking.clientEmail,
         recipientName: booking.clientName || booking.clientNameFallback,
         replyToEmail: tenant.replyToEmail || undefined,
         templateKey: 'appointment-reminder',
-        templateDataJson: { tenantName: tenant.senderDisplayName || tenant.name, tenantPrimaryColor: tenant.primaryColor, customerName: booking.clientName || booking.clientNameFallback || 'there', bookingDate: parts, bookingTime: time, serviceName: booking.serviceName || 'your appointment', appointmentDateTime: fmt.format(startTime) },
+        templateDataJson: {
+          ...emailBrandingTemplateData(settings.branding),
+          tenantPrimaryColor: tenant.primaryColor,
+          customerName: replacements.customerName,
+          bookingDate: parts,
+          bookingTime: time,
+          serviceName: replacements.serviceName,
+          appointmentDateTime: fmt.format(startTime),
+          reminderHours: h,
+          ...renderAutomatedEmailCopy(template, replacements),
+        },
         idempotencyKey: `appointment-reminder-email:${bookingId}:${idSuffix}:${h}`,
         relatedEntityType: 'appointment',
         relatedEntityId: bookingId,
@@ -355,10 +384,21 @@ export class BookingService {
     if (!booking || booking.status !== 'CONFIRMED') return;
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
     if (!tenant) return;
-    const tenantName = tenant.senderDisplayName || tenant.name;
+    const settings = await this.emailSettings.get(tenantId, db);
+    const tenantName = settings.branding.businessName;
     const localDateTime = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: tenant.timezone }).format(booking.startTime);
+    const bookingDate = new Intl.DateTimeFormat('en-GB', { dateStyle: 'full', timeZone: tenant.timezone }).format(booking.startTime);
+    const bookingTime = new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: tenant.timezone }).format(booking.startTime);
+    const replacements = {
+      businessName: tenantName,
+      customerName: booking.clientName || booking.clientNameFallback || 'there',
+      serviceName: booking.serviceName || 'Service',
+      staffName: booking.staffName || 'our team',
+      bookingDate,
+      bookingTime,
+    };
 
-    if (tenant.bookingConfirmationEnabled && booking.clientEmail) {
+    if (settings.bookingConfirmationEnabled && booking.clientEmail) {
       await this.emailService.enqueueEmail({
         tenantId,
         recipientEmail: booking.clientEmail,
@@ -366,19 +406,20 @@ export class BookingService {
         replyToEmail: tenant.replyToEmail || undefined,
         templateKey: 'booking-confirmed',
         templateDataJson: {
-          tenantName,
+          ...emailBrandingTemplateData(settings.branding),
           tenantPrimaryColor: tenant.primaryColor,
-          customerName: booking.clientName || booking.clientNameFallback || 'there',
-          serviceName: booking.serviceName || 'Service',
+          customerName: replacements.customerName,
+          serviceName: replacements.serviceName,
           startTime: booking.startTime.toISOString(),
           timezone: tenant.timezone,
+          ...renderAutomatedEmailCopy(settings.templates.customerBookingConfirmation, replacements),
         },
         idempotencyKey: `public-booking-confirmed:${bookingId}`,
         relatedEntityType: 'appointment',
         relatedEntityId: bookingId,
       }, db);
-      await this.enqueueEmailReminders(db, tenant, booking, bookingId, booking.startTime, 'public-confirmed');
     }
+    await this.enqueueEmailReminders(db, tenant, booking, bookingId, booking.startTime, 'public-confirmed');
 
     const recipients = await db.select({ id: users.id, email: users.email, name: users.name }).from(users).where(and(
       eq(users.tenantId, tenantId),
@@ -386,17 +427,24 @@ export class BookingService {
       or(eq(users.role, 'owner'), eq(users.id, booking.userId)),
     ));
     for (const recipient of recipients) {
-      await this.emailService.enqueueEmail({
+      if (settings.automations.businessBookingConfirmationEnabled) await this.emailService.enqueueEmail({
         tenantId,
         recipientEmail: recipient.email,
         recipientName: recipient.name,
-        replyToEmail: tenant.replyToEmail || undefined,
-        templateKey: 'staff-operational-notification',
+        replyToEmail: settings.replyToEmail || undefined,
+        templateKey: 'business-booking-confirmed',
         templateDataJson: {
-          tenantName,
+          ...emailBrandingTemplateData(settings.branding),
           tenantPrimaryColor: tenant.primaryColor,
-          staffName: recipient.name,
-          message: `New booking: ${booking.serviceName || 'Service'} for ${booking.clientName || booking.clientNameFallback || 'a customer'} on ${localDateTime}.`,
+          recipientName: recipient.name,
+          customerName: replacements.customerName,
+          customerEmail: booking.clientEmail,
+          customerPhone: booking.clientPhone,
+          serviceName: replacements.serviceName,
+          staffName: booking.staffName,
+          bookingDate,
+          bookingTime,
+          ...renderAutomatedEmailCopy(settings.templates.businessBookingConfirmation, replacements),
         },
         idempotencyKey: `business-booking-confirmed:${bookingId}:${recipient.id}`,
         relatedEntityType: 'appointment',
@@ -463,29 +511,8 @@ export class BookingService {
         const eventType = newStatus === 'CONFIRMED' ? 'BOOKING_CONFIRMED' : newStatus === 'CANCELLED' ? 'BOOKING_CANCELLED' : newStatus === 'CHECKED_IN' ? 'APPOINTMENT_CHECKED_IN' : newStatus === 'COMPLETED' ? 'APPOINTMENT_COMPLETED' : null;
         if (eventType) await this.businessEvents.emit({ id: stableEventId(eventType,bookingId,newStatus), tenantId:auth.tenantId, type:eventType, occurredAt:new Date().toISOString(), sourceType:'appointment', sourceId:bookingId, payload:{ appointmentId:bookingId, previousStatus:booking.status, status:newStatus } },tx);
         const [tenant] = await tx.select().from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1);
-        
-        if (newStatus === 'CONFIRMED' && tenant?.bookingConfirmationEnabled && booking.clientEmail) {
-          await this.emailService.enqueueEmail({
-            tenantId: auth.tenantId,
-            recipientEmail: booking.clientEmail,
-            recipientName: booking.clientName || booking.clientNameFallback,
-            replyToEmail: tenant.replyToEmail || undefined,
-            templateKey: 'booking-confirmed',
-            templateDataJson: {
-              tenantName: tenant.senderDisplayName || tenant.name,
-              tenantPrimaryColor: tenant.primaryColor,
-              timezone: tenant.timezone,
-              clientName: booking.clientName || booking.clientNameFallback,
-              serviceName: booking.serviceName,
-              staffName: booking.staffName,
-              startTime: booking.startTime.toISOString(),
-              location: booking.bookingChannel === 'mobile' ? booking.mobileAddress : 'In-Shop',
-            },
-            idempotencyKey: `confirm-${bookingId}-${newStatus}`,
-            relatedEntityType: 'appointment',
-            relatedEntityId: bookingId
-          }, tx);
-        }
+
+        if (newStatus === 'CONFIRMED') await this.notifyPublicBookingConfirmed(auth.tenantId, bookingId, newStatus, tx);
         if (newStatus === 'CONFIRMED' && tenant?.smsEnabled && tenant.smsBookingConfirmationEnabled && booking.clientPhone) {
           const localTime = new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:tenant.timezone}).format(booking.startTime);
           await this.smsService.enqueue({tenantId:auth.tenantId,clientId:booking.clientId!,appointmentId:bookingId,recipientPhone:booking.clientPhone,templateKey:'booking-confirmed',templateData:{appointmentDateTime:localTime},idempotencyKey:`sms-confirm-${bookingId}`},tx);
@@ -494,7 +521,6 @@ export class BookingService {
             for(const h of hours){const scheduled=new Date(booking.startTime.getTime()-h*3600000);if(scheduled>new Date()) await this.smsService.enqueue({tenantId:auth.tenantId,clientId:booking.clientId!,appointmentId:bookingId,recipientPhone:booking.clientPhone,templateKey:'appointment-reminder',templateData:{appointmentDateTime:localTime},idempotencyKey:`sms-reminder-${bookingId}-${h}`,scheduledFor:scheduled,validUntil:booking.startTime},tx);}
           }
         }
-        if (newStatus === 'CONFIRMED') await this.enqueueEmailReminders(tx, tenant, booking, bookingId, booking.startTime, 'confirmed');
         if (newStatus === 'CANCELLED' && tenant?.bookingCancellationEnabled && booking.clientEmail) {
           await this.emailService.enqueueEmail({
             tenantId: auth.tenantId,

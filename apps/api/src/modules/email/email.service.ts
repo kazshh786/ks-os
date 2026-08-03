@@ -49,6 +49,8 @@ const SUBJECTS: Record<string, string> = {
   'site-review-notification': 'Website review update',
   'fact-finding-invitation': 'Complete your business questionnaire',
   'fact-finding-notification': 'Your business questionnaire needs attention',
+  'business-booking-confirmed': 'New booking confirmed',
+  'business-payment-received': 'Payment received',
 };
 
 const FROM_ENV: Record<string, string> = {
@@ -69,6 +71,8 @@ const FROM_ENV: Record<string, string> = {
   'site-review-notification': 'EMAIL_AUTH_FROM',
   'fact-finding-invitation': 'EMAIL_AUTH_FROM',
   'fact-finding-notification': 'EMAIL_AUTH_FROM',
+  'business-booking-confirmed': 'EMAIL_BOOKINGS_FROM',
+  'business-payment-received': 'EMAIL_PAYMENTS_FROM',
 };
 
 export const EMAIL_SUBJECTS = SUBJECTS;
@@ -225,15 +229,18 @@ export class EmailService {
           delete templateData.invitationToken;
         }
         const rendered = await renderEmail(email.template_key, templateData);
-        const tenantName = String(templateData.tenantName || 'Your salon');
+        const tenantName = String(templateData.tenantName || 'Your business');
+        const senderName = tenantName.replace(/[\r\n\"<>]/g, '').trim().slice(0, 120) || 'Your business';
         const fromAddress = process.env[FROM_ENV[email.template_key] || 'EMAIL_BOOKINGS_FROM'];
         if (!fromAddress) throw new Error('EMAIL_FROM_NOT_CONFIGURED');
+        const configuredSubject = String(templateData.emailSubject || SUBJECTS[email.template_key] || 'Update from KS OS')
+          .replace(/[\r\n]/g, ' ').trim().slice(0, 160);
 
         const response = await resend.emails.send({
-          from: `${tenantName} via KS OS <${fromAddress}>`,
+          from: senderName + ' <' + fromAddress + '>',
           to: email.recipient_name ? `${email.recipient_name} <${email.recipient_email}>` : email.recipient_email,
           replyTo: email.reply_to_email || process.env.EMAIL_SUPPORT_REPLY_TO,
-          subject: SUBJECTS[email.template_key] || 'Update from KS OS',
+          subject: configuredSubject,
           html: rendered.html,
           text: rendered.text,
         }, { idempotencyKey: email.idempotency_key });

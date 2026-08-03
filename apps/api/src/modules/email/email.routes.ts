@@ -1,8 +1,9 @@
 import { FastifyPluginAsync } from 'fastify';
-import { getDatabase, tenants, emailOutbox } from '@ks-os/database';
+import { getDatabase, emailOutbox } from '@ks-os/database';
 import { eq, desc } from 'drizzle-orm';
 import { UpdateCommunicationsSettingsSchema, EmailHistoryQuerySchema } from '@ks-os/contracts';
 import { EmailService } from './email.service.js';
+import { EmailSettingsService } from './email-settings.service.js';
 
 const maskEmail = (value: string) => {
   const [local, domain] = value.split('@');
@@ -12,34 +13,10 @@ const maskEmail = (value: string) => {
 export const emailRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/settings', async (request, reply) => {
     request.requireAuth();
-    const db = getDatabase();
-    
-    const tenantRows = await db.select()
-      .from(tenants)
-      .where(eq(tenants.id, request.auth!.tenantId))
-      .limit(1);
-
-    if (tenantRows.length === 0) {
-      return reply.code(404).send({ error: 'Tenant not found' });
-    }
-
-    const tenant = tenantRows[0];
-    
-    return reply.send({
-      replyToEmail: tenant.replyToEmail,
-      senderDisplayName: tenant.senderDisplayName,
-      bookingConfirmationEnabled: tenant.bookingConfirmationEnabled,
-      bookingCancellationEnabled: tenant.bookingCancellationEnabled,
-      bookingRescheduleEnabled: tenant.bookingRescheduleEnabled,
-      appointmentRemindersEnabled: tenant.appointmentRemindersEnabled,
-      formDeliveryEnabled: tenant.formDeliveryEnabled,
-      formRemindersEnabled: tenant.formRemindersEnabled,
-      paymentConfirmationEnabled: tenant.paymentConfirmationEnabled,
-      formReminderTiming: tenant.formReminderTiming
-    });
+    return reply.send(await new EmailSettingsService().get(request.auth!.tenantId));
   });
 
-  fastify.put('/settings', async (request, reply) => {
+  fastify.route({ method: ['PUT', 'PATCH'], url: '/settings', handler: async (request, reply) => {
     request.requireAuth();
     if (request.auth!.role !== 'owner') {
       return reply.code(403).send({ error: 'Forbidden' });
@@ -51,15 +28,15 @@ export const emailRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const db = getDatabase();
-    await db.update(tenants)
-      .set({
-        ...parseResult.data,
-        updatedAt: new Date()
-      })
-      .where(eq(tenants.id, request.auth!.tenantId));
+    await db.transaction(tx => new EmailSettingsService().update(
+      request.auth!.tenantId,
+      request.auth!.tenantUserId,
+      parseResult.data,
+      tx,
+    ));
 
     return reply.send({ success: true });
-  });
+  } });
 
   fastify.get('/email-history', async (request, reply) => {
     request.requireAuth();

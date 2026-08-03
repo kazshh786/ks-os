@@ -1,0 +1,15 @@
+[Unit]
+Description=KS OS communications and lifecycle worker
+After=network-online.target ks-os-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ks-os
+Group=ks-os
+WorkingDirectory=/opt/ks-os
+EnvironmentFile=/etc/ks-os/ks-os.env
+ExecStart=/usr/bin/pnpm workers:communications:run
+PrivateTmp=true
+NoNewPrivileges=true
+

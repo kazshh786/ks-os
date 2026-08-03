@@ -1,7 +1,7 @@
 import {
   BarChart3, Boxes, Building2, CalendarDays, ClipboardList, CreditCard,
   FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors,
-  Plug, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
+  Mail, Plug, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
 } from 'lucide-react';
 import type { NavigationGroup } from './navigation.types';
 
@@ -37,6 +37,7 @@ export const businessNavigation: NavigationGroup[] = [
       { id: 'analytics', label: 'Analytics', href: '/app/analytics', icon: BarChart3, roles: ['owner'], requiredEntitlement: 'analytics.advanced', requiredPlan: 'GROWTH', lockedBenefit: 'Understand booking conversion, customer retention, staff utilisation and location performance.' },
       { id: 'reports', label: 'Reports', href: '/app/reports', icon: FileText, roles: ['owner'], activePrefixes: ['/app/reports/'] },
       { id: 'reviews', label: 'Reviews', href: '/app/reputation', icon: Sparkles, permissionsAny: ['REPUTATION_VIEW'], activePrefixes: ['/app/reputation/'] },
+      { id: 'email-marketing', label: 'Email Marketing', href: '/app/email-marketing/automated-emails', icon: Mail, roles: ['owner'], activePrefixes: ['/app/email-marketing/'] },
       { id: 'inventory', label: 'Inventory', href: '/app/inventory', icon: Boxes, roles: ['owner'], requiredEntitlement: 'inventory.enabled', requiredPlan: 'GROWTH', lockedBenefit: 'Monitor stock levels and product performance alongside checkout activity.' },
     ],
   },

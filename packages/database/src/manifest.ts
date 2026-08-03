@@ -62,4 +62,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260731102000_connected_mailbox_timestamp.sql', order: 55, description: 'Connected mailbox authorization timestamp and bounded Google/Zoho sync index' },
   { filename: '20260801043000_booking_commitment_payment_policy.sql', order: 56, description: 'Require deposit-first or full upfront Stripe payments for paid public bookings while free services remain payment-free' },
   { filename: '20260727120000_race_safe_public_booking.sql', order: 57, description: 'Race-safe authoritative public booking creation with PostgreSQL advisory locking' },
+  { filename: '20260803120000_tenant_automated_email_settings.sql', order: 58, description: 'Tenant-isolated automated email branding, lifecycle switches, and editable template copy' },
 ];

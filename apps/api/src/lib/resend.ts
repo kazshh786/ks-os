@@ -6,6 +6,9 @@ let resendInstance: any = null;
 export const getResend = (): any => {
   if (!resendInstance) {
     const apiKey = process.env.RESEND_API_KEY;
+    if (process.env.NODE_ENV === 'production' && (!apiKey || apiKey === 'fake' || apiKey === 'mock')) {
+      throw new Error('RESEND_API_KEY is required in production');
+    }
     if (!apiKey || apiKey === 'fake' || apiKey === 'mock' || process.env.NODE_ENV === 'test') {
       resendInstance = {
         emails: {

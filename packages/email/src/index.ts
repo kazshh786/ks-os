@@ -18,6 +18,8 @@ import { SiteReviewInvitationEmail } from './templates/site-review-invitation.js
 import { SiteReviewNotificationEmail } from './templates/site-review-notification.js';
 import { FactFindingInvitationEmail } from './templates/fact-finding-invitation.js';
 import { FactFindingNotificationEmail } from './templates/fact-finding-notification.js';
+import { BusinessBookingConfirmedEmail } from './templates/business-booking-confirmed.js';
+import { BusinessPaymentReceivedEmail } from './templates/business-payment-received.js';
 
 export const templates = {
   'booking-confirmed': BookingConfirmedEmail,
@@ -37,6 +39,8 @@ export const templates = {
   'site-review-notification': SiteReviewNotificationEmail,
   'fact-finding-invitation': FactFindingInvitationEmail,
   'fact-finding-notification': FactFindingNotificationEmail,
+  'business-booking-confirmed': BusinessBookingConfirmedEmail,
+  'business-payment-received': BusinessPaymentReceivedEmail,
 } as const;
 
 export type TemplateKey = keyof typeof templates;

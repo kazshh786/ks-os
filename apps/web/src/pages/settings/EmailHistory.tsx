@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getDataProvider } from '../../data/data-provider.js';
 import { useAuth } from '../../auth/useAuth.js';
 import { EmailHistoryItem } from '@ks-os/contracts';
+import { EmailMarketingTabs } from '../../features/email-marketing/EmailMarketingTabs.js';
 
 export function EmailHistory() {
   const { role } = useAuth();
@@ -43,8 +44,10 @@ export function EmailHistory() {
   }
 
   return (
-    <div className="p-6 max-w-5xl">
-      <h2 className="text-2xl font-bold mb-6">Email History</h2>
+    <div className="mx-auto max-w-7xl space-y-6">
+      <header><h1 className="text-3xl font-black text-slate-950">Email marketing</h1><p className="mt-2 text-sm text-slate-500">Review the delivery status of automated business emails without exposing customer addresses.</p></header>
+      <EmailMarketingTabs />
+      <h2 className="text-2xl font-bold">Email history</h2>
 
       {error && (
         <div className="bg-red-50 text-red-600 p-4 rounded-md mb-6">

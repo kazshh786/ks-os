@@ -817,7 +817,34 @@ export class MockDataProvider implements DataProvider {
       formDeliveryEnabled: true,
       formRemindersEnabled: true,
       paymentConfirmationEnabled: true,
-      formReminderTiming: '24_hours_after_assignment'
+      formReminderTiming: '24_hours_after_assignment',
+      branding: {
+        businessName: 'Sovereign Gents Barbershop',
+        businessEmail: 'hello@sovereigngents.com',
+        businessPhone: '020 7946 0123',
+        businessAddress: '18 King Street, London',
+        websiteUrl: 'https://example.com',
+        logoUrl: null,
+        instagramUrl: 'https://instagram.com/sovereigngents',
+        facebookUrl: null,
+        tiktokUrl: null,
+      },
+      automations: {
+        businessBookingConfirmationEnabled: true,
+        reminderThreeDaysEnabled: true,
+        reminderOneDayEnabled: true,
+        customerThankYouEnabled: true,
+        businessPaymentReceivedEnabled: true,
+      },
+      templates: {
+        customerBookingConfirmation: { subject: 'Your booking with {{businessName}} is confirmed', heading: 'Booking confirmed', body: 'Hi {{customerName}}, your {{serviceName}} booking is confirmed. We look forward to seeing you.' },
+        businessBookingConfirmation: { subject: 'New booking: {{customerName}} — {{serviceName}}', heading: 'A new booking is confirmed', body: '{{customerName}} is booked for {{serviceName}} on {{bookingDate}} at {{bookingTime}} with {{staffName}}.' },
+        reminderThreeDays: { subject: 'Your appointment with {{businessName}} is in 3 days', heading: 'Your appointment is coming up', body: 'Hi {{customerName}}, this is a friendly reminder that your {{serviceName}} appointment is in 3 days.' },
+        reminderOneDay: { subject: 'Your appointment with {{businessName}} is tomorrow', heading: 'See you tomorrow', body: 'Hi {{customerName}}, this is a reminder that your {{serviceName}} appointment is tomorrow.' },
+        customerThankYouGoogle: { subject: 'Thank you for visiting {{businessName}}', heading: 'Thank you for choosing us', body: 'Hi {{customerName}}, thank you for visiting us. If you have a moment, an honest Google review would mean a lot to our team.' },
+        customerThankYouTrustpilot: { subject: 'Thank you for coming back to {{businessName}}', heading: 'Thank you for your continued support', body: 'Hi {{customerName}}, thank you for choosing us again. If you have a moment, we would be grateful for an honest Trustpilot review.' },
+        businessPaymentReceived: { subject: 'Payment received: {{customerName}} — {{amount}} {{currency}}', heading: 'Payment received', body: 'A payment of {{amount}} {{currency}} has been received from {{customerName}} for {{serviceName}}.' },
+      },
     });
   }
 

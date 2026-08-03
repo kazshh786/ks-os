@@ -1,10 +1,15 @@
 import { PaymentsRepository } from './payments.repository.js';
 import type { PaymentHistoryQuery, PaymentHistoryItem, PaymentDetailResponse, CreateRefundRequest, CreateRefundResponse, DerivedPaymentState, PaymentSource } from '@ks-os/contracts';
 import { getDatabase, stripeRefunds, checkoutTransactions, stripeConnections, users, appointments, clients, services, tenants } from '@ks-os/database';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 import { getStripeClient } from '../../lib/stripe.js';
 import { BusinessEventsService, stableEventId } from '../automations/business-events.service.js';
 import { EmailService } from '../email/email.service.js';
+import {
+  EmailSettingsService,
+  emailBrandingTemplateData,
+  renderAutomatedEmailCopy,
+} from '../email/email-settings.service.js';
 
 function mapPaymentSource(method: string, purpose: string): PaymentSource {
   if (method === 'STRIPE_ONLINE' || (method === 'CARD' && purpose === 'booking_payment')) return 'STRIPE_ONLINE';
@@ -25,12 +30,14 @@ function deriveState(status: string, refundedAmount: number, totalAmount: number
 export class PaymentsService {
   private businessEvents = new BusinessEventsService();
   private email = new EmailService();
+  private emailSettings = new EmailSettingsService();
   constructor(private readonly repository = new PaymentsRepository()) {}
 
   async enqueuePaymentEmail(tx: any, tenantId: string, transactionId: string, templateKey: 'payment-confirmed' | 'refund-updated', idempotencyKey: string, extra: Record<string, unknown> = {}) {
     const [row] = await tx.select({
       transactionId: checkoutTransactions.id,
       appointmentId: checkoutTransactions.appointmentId,
+      assignedUserId: appointments.userId,
       amount: checkoutTransactions.totalAmount,
       currency: tenants.currency,
       tenantName: tenants.name,
@@ -49,26 +56,71 @@ export class PaymentsService {
       .leftJoin(tenants, eq(tenants.id, checkoutTransactions.tenantId))
       .where(and(eq(checkoutTransactions.id, transactionId), eq(checkoutTransactions.tenantId, tenantId)))
       .limit(1);
-    if (!row?.clientEmail || !row.paymentConfirmationEnabled) return { queued: false as const, reason: 'NO_RECIPIENT' as const };
-    return this.email.enqueueEmail({
-      tenantId,
-      recipientEmail: row.clientEmail,
-      recipientName: row.clientName || row.appointmentClientName || undefined,
-      replyToEmail: row.replyToEmail || undefined,
-      templateKey,
-      templateDataJson: {
-        tenantName: row.senderDisplayName || row.tenantName,
-        tenantPrimaryColor: row.tenantPrimaryColor,
-        clientName: row.clientName || row.appointmentClientName || 'there',
-        serviceName: row.serviceName,
-        amount: (row.amount / 100).toFixed(2),
-        currency: row.currency || 'GBP',
-        ...extra,
-      },
-      idempotencyKey,
-      relatedEntityType: row.appointmentId ? 'appointment' : 'payment',
-      relatedEntityId: row.appointmentId || row.transactionId,
-    }, tx);
+    if (!row) return { queued: false as const, reason: 'PAYMENT_NOT_FOUND' as const };
+    const settings = await this.emailSettings.get(tenantId, tx);
+    const customerName = row.clientName || row.appointmentClientName || 'Customer';
+    const amount = (row.amount / 100).toFixed(2);
+    const currency = row.currency || 'GBP';
+    const commonData = {
+      ...emailBrandingTemplateData(settings.branding),
+      tenantPrimaryColor: row.tenantPrimaryColor,
+      clientName: customerName,
+      customerName,
+      serviceName: row.serviceName,
+      amount,
+      currency,
+      ...extra,
+    };
+    let customerQueued = false;
+    if (row.clientEmail && row.paymentConfirmationEnabled) {
+      const result = await this.email.enqueueEmail({
+        tenantId,
+        recipientEmail: row.clientEmail,
+        recipientName: customerName,
+        replyToEmail: settings.replyToEmail || undefined,
+        templateKey,
+        templateDataJson: commonData,
+        idempotencyKey,
+        relatedEntityType: row.appointmentId ? 'appointment' : 'payment',
+        relatedEntityId: row.appointmentId || row.transactionId,
+      }, tx);
+      customerQueued = result.queued;
+    }
+
+    let businessRecipients = 0;
+    if (templateKey === 'payment-confirmed' && settings.automations.businessPaymentReceivedEnabled) {
+      const recipients = await tx.select({ id: users.id, email: users.email, name: users.name }).from(users).where(and(
+        eq(users.tenantId, tenantId),
+        eq(users.accountStatus, 'ACTIVE'),
+        or(eq(users.role, 'owner'), row.assignedUserId ? eq(users.id, row.assignedUserId) : undefined),
+      ));
+      const replacements = {
+        businessName: settings.branding.businessName,
+        customerName,
+        serviceName: row.serviceName || 'the booking',
+        amount,
+        currency,
+      };
+      for (const recipient of recipients) {
+        await this.email.enqueueEmail({
+          tenantId,
+          recipientEmail: recipient.email,
+          recipientName: recipient.name,
+          replyToEmail: settings.replyToEmail || undefined,
+          templateKey: 'business-payment-received',
+          templateDataJson: {
+            ...commonData,
+            recipientName: recipient.name,
+            ...renderAutomatedEmailCopy(settings.templates.businessPaymentReceived, replacements),
+          },
+          idempotencyKey: `business-payment-received:${idempotencyKey}:${recipient.id}`,
+          relatedEntityType: row.appointmentId ? 'appointment' : 'payment',
+          relatedEntityId: row.appointmentId || row.transactionId,
+        }, tx);
+        businessRecipients += 1;
+      }
+    }
+    return { queued: customerQueued, businessRecipients };
   }
 
   async getPaymentHistory(tenantId: string, query: PaymentHistoryQuery): Promise<PaymentHistoryItem[]> {

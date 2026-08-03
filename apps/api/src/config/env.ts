@@ -92,8 +92,10 @@ const EnvSchema = z.object({
   ,EMAIL_PAYMENTS_FROM: z.string().email().optional()
   ,EMAIL_FORMS_FROM: z.string().email().optional()
   ,EMAIL_SUPPORT_REPLY_TO: z.string().email().optional()
-  ,RESEND_API_KEY: z.string().optional()
-  ,RESEND_WEBHOOK_SECRET: z.string().optional()
+  ,EMAIL_OUTBOX_WORKER_SECRET: z.string().min(32).optional()
+  ,AUTOMATION_WORKER_SECRET: z.string().min(32).optional()
+  ,RESEND_API_KEY: z.string().min(10).optional()
+  ,RESEND_WEBHOOK_SECRET: z.string().min(16).optional()
   ,SITE_REVIEW_INVITATION_SECRET: z.string().min(32).optional()
   ,SITE_PREVIEW_TOKEN_SECRET: z.string().min(32).optional()
   ,PUBLIC_SITES_PREVIEW_ORIGIN: z.string().url().optional()
@@ -111,7 +113,7 @@ const EnvSchema = z.object({
   }
   if(value.NODE_ENV==='production'){
     if(value.DEV_AUTH_ENABLED)ctx.addIssue({code:z.ZodIssueCode.custom,path:['DEV_AUTH_ENABLED'],message:'Development authentication cannot be enabled in production'});
-    const required=['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SECRET_KEY','AUDIT_IP_HASH_SECRET','PRIVACY_WORKER_SECRET','FRONTEND_ORIGIN','PUBLIC_APP_ORIGIN','INTEGRATION_ENCRYPTION_KEY','BOOKING_RATE_LIMIT_SALT','SITE_REVIEW_INVITATION_SECRET','SITE_PREVIEW_TOKEN_SECRET','PUBLIC_SITES_PREVIEW_ORIGIN','FACT_FINDING_INVITATION_SECRET','FACT_FINDING_CLIENT_ORIGIN'] as const;
+    const required=['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SECRET_KEY','AUDIT_IP_HASH_SECRET','PRIVACY_WORKER_SECRET','FRONTEND_ORIGIN','PUBLIC_APP_ORIGIN','INTEGRATION_ENCRYPTION_KEY','BOOKING_RATE_LIMIT_SALT','SITE_REVIEW_INVITATION_SECRET','SITE_PREVIEW_TOKEN_SECRET','PUBLIC_SITES_PREVIEW_ORIGIN','FACT_FINDING_INVITATION_SECRET','FACT_FINDING_CLIENT_ORIGIN','RESEND_API_KEY','RESEND_WEBHOOK_SECRET','EMAIL_AUTH_FROM','EMAIL_BOOKINGS_FROM','EMAIL_PAYMENTS_FROM','EMAIL_FORMS_FROM','EMAIL_SUPPORT_REPLY_TO','EMAIL_OUTBOX_WORKER_SECRET','AUTOMATION_WORKER_SECRET','REVIEW_INVITATION_TOKEN_SECRET'] as const;
     for(const key of required)if(!value[key])ctx.addIssue({code:z.ZodIssueCode.custom,path:[key],message:`${key} is required in production`});
     for(const key of ['SUPABASE_URL','FRONTEND_ORIGIN','PUBLIC_APP_ORIGIN','PUBLIC_SITES_PREVIEW_ORIGIN','FACT_FINDING_CLIENT_ORIGIN'] as const){const configured=value[key];if(configured&&!configured.startsWith('https://'))ctx.addIssue({code:z.ZodIssueCode.custom,path:[key],message:`${key} must use HTTPS in production`});}
     const raw=process.env.DATABASE_URL||'';if(!raw)ctx.addIssue({code:z.ZodIssueCode.custom,path:['DATABASE_URL'],message:'DATABASE_URL is required in production'});
