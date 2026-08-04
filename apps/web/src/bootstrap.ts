@@ -10,6 +10,7 @@ const path = normalisePublicPath(window.location.pathname);
 const isPublicPage = isPublicSitePath(path);
 const entryName = isPublicPage ? 'public-site' : 'application';
 const recoveryKey = `ks-os-deployment-recovery:${entryName}`;
+let deploymentReloadRequested = false;
 
 function cleanRecoveryParameter() {
   const url = new URL(window.location.href);
@@ -20,9 +21,12 @@ function cleanRecoveryParameter() {
 }
 
 function requestLatestDeployment(reason: unknown): boolean {
+  if (deploymentReloadRequested) return true;
+
   const hasRetried = window.sessionStorage.getItem(recoveryKey) === '1';
   if (hasRetried) return false;
 
+  deploymentReloadRequested = true;
   window.sessionStorage.setItem(recoveryKey, '1');
   console.warn('KS OS detected a replaced deployment asset and is requesting the latest build.', reason);
 
