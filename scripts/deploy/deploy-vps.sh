@@ -102,7 +102,7 @@ rollback() {
   run git switch --detach "$PREV_COMMIT"
   run git branch --force "$DEPLOY_BRANCH" "$PREV_COMMIT"
   run git switch "$DEPLOY_BRANCH"
-  run pnpm install --frozen-lockfile
+  run pnpm install --frozen-lockfile --prod=false
   run pnpm run build
   write_release_version
   restart_release_services
@@ -122,7 +122,8 @@ require_service_owned_ports
 log "Preparing $DEPLOY_BRANCH from $PREV_COMMIT."
 run git fetch origin "$DEPLOY_BRANCH"
 run git merge --ff-only "origin/$DEPLOY_BRANCH"
-run pnpm install --frozen-lockfile
+# Production NODE_ENV may otherwise make pnpm omit TypeScript and other build tools.
+run pnpm install --frozen-lockfile --prod=false
 run pnpm run build
 run pnpm deploy:preflight
 run pnpm db:migrations:validate
