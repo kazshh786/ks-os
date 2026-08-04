@@ -128,7 +128,7 @@ const servicesRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(409).send({ success: false, error: { code: 'SERVICE_ORDER_MISMATCH', message: 'The service list changed. Refresh the page and try again.' } });
     }
 
-    const orderRows = input.serviceIds.map((id, sortOrder) => ({ id, sortOrder }));
+    const orderRows = input.serviceIds.map((id, sortOrder) => ({ id, sort_order: sortOrder }));
     await getDatabase().execute(sql`
       update services as service
       set sort_order = ordered.sort_order,
