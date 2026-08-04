@@ -38,6 +38,59 @@ const serviceResponse = (service: ServiceRow) => ({
 const canManageServices = (request: any) => request.auth!.role === 'owner'
   || request.auth!.permissions.includes('BUSINESS_SETTINGS_MANAGE');
 
+async function archiveServiceForTenant(tenantId: string, serviceId: string): Promise<boolean> {
+  return getDatabase().transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${tenantId}::text, 0))`);
+
+    const result = await tx.execute(sql`
+      update services
+      set is_active = false,
+          updated_at = now()
+      where id = ${serviceId}::uuid
+        and tenant_id = ${tenantId}::uuid
+        and is_active = true
+      returning id
+    `);
+
+    if (!result.rows[0]) return false;
+
+    await tx.execute(sql`
+      update staff_service_assignments
+      set is_active = false,
+          updated_at = now()
+      where tenant_id = ${tenantId}::uuid
+        and service_id = ${serviceId}::uuid
+        and is_active = true
+    `);
+
+    await tx.execute(sql`
+      update booking_pages
+      set allowed_service_ids = array_remove(allowed_service_ids, ${serviceId}::uuid),
+          updated_at = now()
+      where tenant_id = ${tenantId}::uuid
+        and ${serviceId}::uuid = any(allowed_service_ids)
+    `);
+
+    await tx.execute(sql`
+      with ranked as (
+        select id,
+               row_number() over (order by sort_order asc, created_at asc, id asc) - 1 as next_sort_order
+        from services
+        where tenant_id = ${tenantId}::uuid
+          and is_active = true
+      )
+      update services as service
+      set sort_order = ranked.next_sort_order,
+          updated_at = now()
+      from ranked
+      where service.id = ranked.id
+        and service.sort_order is distinct from ranked.next_sort_order
+    `);
+
+    return true;
+  });
+}
+
 const servicesRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/api/v1/services', async (request, reply) => {
     request.requireAuth();
@@ -174,61 +227,30 @@ const servicesRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({ success: true, data: serviceResponse(service) });
   });
 
-  fastify.delete('/api/v1/services/:serviceId', {
-    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
-  }, async (request, reply) => {
+  const archiveHandler = async (request: any, reply: any) => {
     request.requireAuth();
     if (!canManageServices(request)) {
       return reply.code(403).send({ success: false, error: { code: 'SERVICE_ACCESS_DENIED', message: 'Business settings access is required.' } });
     }
 
     const { serviceId } = ServiceParamsSchema.parse(request.params);
-    const deleted = await getDatabase().transaction(async tx => {
-      const result = await tx.execute(sql`
-        update services
-        set is_active = false,
-            updated_at = now()
-        where id = ${serviceId}::uuid
-          and tenant_id = ${request.auth!.tenantId}::uuid
-          and is_active = true
-        returning id
-      `);
-
-      if (!result.rows[0]) return false;
-
-      await tx.update(staffServiceAssignments).set({
-        isActive: false,
-        updatedAt: new Date(),
-      }).where(and(
-        eq(staffServiceAssignments.tenantId, request.auth!.tenantId),
-        eq(staffServiceAssignments.serviceId, serviceId),
-      ));
-
-      await tx.execute(sql`
-        with ranked as (
-          select id,
-                 row_number() over (order by sort_order asc, created_at asc, id asc) - 1 as next_sort_order
-          from services
-          where tenant_id = ${request.auth!.tenantId}::uuid
-            and is_active = true
-        )
-        update services as service
-        set sort_order = ranked.next_sort_order,
-            updated_at = now()
-        from ranked
-        where service.id = ranked.id
-          and service.sort_order is distinct from ranked.next_sort_order
-      `);
-
-      return true;
-    });
-
-    if (!deleted) {
+    const archived = await archiveServiceForTenant(request.auth!.tenantId, serviceId);
+    if (!archived) {
       return reply.code(404).send({ success: false, error: { code: 'SERVICE_NOT_FOUND', message: 'The service could not be found.' } });
     }
 
-    return reply.code(204).send();
-  });
+    return reply.send({ success: true, data: { id: serviceId, archived: true } });
+  };
+
+  // POST is the primary browser command because it remains reliable through
+  // strict proxies. DELETE is retained for API compatibility.
+  fastify.post('/api/v1/services/:serviceId/archive', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, archiveHandler);
+
+  fastify.delete('/api/v1/services/:serviceId', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, archiveHandler);
 };
 
 export default servicesRoutes;
