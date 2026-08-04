@@ -66,13 +66,13 @@ describe('services API', () => {
     });
   });
 
-  it('soft deletes a service through the authenticated API', async () => {
-    fetchWithAuth.mockResolvedValue(jsonResponse({}, true));
+  it('archives a service through a proxy-safe authenticated command', async () => {
+    fetchWithAuth.mockResolvedValue(jsonResponse({ success: true }, true));
 
     await deleteServiceRecord('service-id');
 
-    expect(fetchWithAuth).toHaveBeenCalledWith('/api/v1/services/service-id', {
-      method: 'DELETE',
+    expect(fetchWithAuth).toHaveBeenCalledWith('/api/v1/services/service-id/archive', {
+      method: 'POST',
     });
   });
 

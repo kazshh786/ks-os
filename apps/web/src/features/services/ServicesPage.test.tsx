@@ -30,6 +30,24 @@ const signatureService = {
   category: 'General',
 };
 
+const hairService = (id: string, name: string) => ({
+  id,
+  name,
+  description: `${name} description.`,
+  durationMin: 45,
+  price: 50,
+  category: 'Hair',
+});
+
+const nailsService = {
+  id: 'nails-1',
+  name: 'Gel manicure',
+  description: 'Gel manicure description.',
+  durationMin: 60,
+  price: 45,
+  category: 'Nails',
+};
+
 describe('ServicesPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -43,10 +61,11 @@ describe('ServicesPage', () => {
     getServices.mockResolvedValue([signatureService]);
   });
 
-  it('shows the full service list and descriptions', async () => {
+  it('shows services inside their visible category', async () => {
     render(<MemoryRouter initialEntries={['/app/services']}><ServicesPage /></MemoryRouter>);
 
-    expect(await screen.findByRole('heading', { name: 'Signature treatment' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'General' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Signature treatment' })).toBeInTheDocument();
     expect(screen.getByText('A complete demo treatment.')).toBeInTheDocument();
     expect(screen.getByText('45 minutes')).toBeInTheDocument();
   });
@@ -77,10 +96,11 @@ describe('ServicesPage', () => {
       durationMin: 30,
       category: 'Consultations',
     });
-    expect(await screen.findByRole('heading', { name: 'Consultation' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Consultations' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Consultation' })).toBeInTheDocument();
   });
 
-  it('loads an existing service into the form, saves the changes, and closes the editor', async () => {
+  it('loads an existing service into the form, saves the changes, and shows its new category', async () => {
     updateServiceRecord.mockResolvedValue({
       id: 'service-1',
       name: 'Updated signature treatment',
@@ -113,33 +133,45 @@ describe('ServicesPage', () => {
       durationMin: 60,
       category: 'Premium',
     }));
-    expect(await screen.findByRole('heading', { name: 'Updated signature treatment' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Premium' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Updated signature treatment' })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Edit service' })).not.toBeInTheDocument());
-    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
   });
 
-  it('moves a service and persists the complete new order', async () => {
+  it('moves an entire category and persists every service in the new order', async () => {
     getServices.mockResolvedValue([
-      signatureService,
-      {
-        id: 'service-2',
-        name: 'Consultation',
-        description: 'A detailed consultation.',
-        durationMin: 30,
-        price: 25,
-        category: 'Consultations',
-      },
+      hairService('hair-1', 'Haircut'),
+      hairService('hair-2', 'Blow dry'),
+      nailsService,
     ]);
     const user = userEvent.setup();
     render(<MemoryRouter initialEntries={['/app/services']}><ServicesPage /></MemoryRouter>);
 
-    await user.click(await screen.findByRole('button', { name: 'Move Signature treatment down' }));
+    await user.click(await screen.findByRole('button', { name: 'Move Nails category up' }));
 
-    await waitFor(() => expect(reorderServiceRecords).toHaveBeenCalledWith(['service-2', 'service-1']));
-    const serviceList = screen.getByRole('heading', { name: 'Full service list' }).closest('section');
+    await waitFor(() => expect(reorderServiceRecords).toHaveBeenCalledWith(['nails-1', 'hair-1', 'hair-2']));
+    const serviceList = screen.getByRole('heading', { name: 'Service categories' }).closest('section');
     expect(serviceList).not.toBeNull();
-    const headings = within(serviceList!).getAllByRole('heading', { level: 3 });
-    expect(headings.map(heading => heading.textContent)).toEqual(['Consultation', 'Signature treatment']);
+    const categoryHeadings = within(serviceList!).getAllByRole('heading', { level: 3 });
+    expect(categoryHeadings.map(heading => heading.textContent)).toEqual(['Nails', 'Hair']);
+  });
+
+  it('moves a service only within its own category', async () => {
+    getServices.mockResolvedValue([
+      hairService('hair-1', 'Haircut'),
+      hairService('hair-2', 'Blow dry'),
+      nailsService,
+    ]);
+    const user = userEvent.setup();
+    render(<MemoryRouter initialEntries={['/app/services']}><ServicesPage /></MemoryRouter>);
+
+    await user.click(await screen.findByRole('button', { name: 'Move Blow dry up within Hair' }));
+
+    await waitFor(() => expect(reorderServiceRecords).toHaveBeenCalledWith(['hair-2', 'hair-1', 'nails-1']));
+    const hairSection = screen.getByRole('heading', { name: 'Hair' }).closest('section');
+    expect(hairSection).not.toBeNull();
+    const serviceHeadings = within(hairSection!).getAllByRole('heading', { level: 4 });
+    expect(serviceHeadings.map(heading => heading.textContent)).toEqual(['Blow dry', 'Haircut']);
   });
 
   it('confirms and removes a service from future choices', async () => {

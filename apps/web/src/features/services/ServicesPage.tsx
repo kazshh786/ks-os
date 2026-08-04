@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
-import { ChevronDown, ChevronUp, Clock3, GripVertical, Pencil, Plus, PoundSterling, Scissors, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { ChevronDown, ChevronUp, Clock3, FolderOpen, Pencil, Plus, PoundSterling, Scissors, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { getDataProvider } from '../../data/data-provider';
 import type { Service } from '../../data/types';
+import {
+  groupServicesByCategory,
+  moveServiceCategory,
+  moveServiceWithinCategory,
+  regroupServices,
+} from './service-order';
 import { deleteServiceRecord, reorderServiceRecords, updateServiceRecord } from './services-api';
 
 const emptyDraft = { name: '', description: '', price: '', durationMin: '30', category: 'General' };
@@ -16,6 +22,9 @@ const draftFromService = (service: Service) => ({
   category: service.category,
 });
 
+const sameServiceOrder = (left: Service[], right: Service[]) => left.length === right.length
+  && left.every((service, index) => service.id === right[index]?.id);
+
 export function ServicesPage({ tenantOverride = null }: { tenantOverride?: import('../../data/types').BusinessTenant | null }) {
   const { activeTenant: workspaceTenant } = useWorkspace();
   const activeTenant = tenantOverride || workspaceTenant;
@@ -27,13 +36,13 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
   const [saving, setSaving] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
-  const [draggedServiceId, setDraggedServiceId] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(searchParams.get('add') === '1');
   const nameInput = useRef<HTMLInputElement>(null);
   const locallyCreatedIds = useRef(new Set<string>());
   const isEditing = editingServiceId !== null;
+  const categoryGroups = groupServicesByCategory(services);
 
   useEffect(() => {
     let active = true;
@@ -43,7 +52,7 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
       .then(rows => active && setServices(current => {
         const localRows = current.filter(service => locallyCreatedIds.current.has(service.id));
         const serverIds = new Set(rows.map(service => service.id));
-        return [...rows, ...localRows.filter(service => !serverIds.has(service.id))];
+        return regroupServices([...rows, ...localRows.filter(service => !serverIds.has(service.id))]);
       }))
       .catch(() => active && setError('Could not load services. Please try again.'))
       .finally(() => active && setLoading(false));
@@ -90,13 +99,23 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
     };
 
     try {
+      let nextServices: Service[];
       if (editingServiceId) {
         const updated = await updateServiceRecord(editingServiceId, input);
-        setServices(current => current.map(service => service.id === updated.id ? updated : service));
+        nextServices = regroupServices(services.map(service => service.id === updated.id ? updated : service));
       } else {
         const created = await getDataProvider().createService(activeTenant.id, input);
         locallyCreatedIds.current.add(created.id);
-        setServices(current => [...current, created]);
+        nextServices = regroupServices([...services, created]);
+      }
+
+      setServices(nextServices);
+      if (!sameServiceOrder(services, nextServices)) {
+        try {
+          await reorderServiceRecords(nextServices.map(service => service.id));
+        } catch {
+          setError('The service was saved, but its category order could not be updated. Refresh and try moving it again.');
+        }
       }
       closeForm();
     } catch (cause) {
@@ -107,7 +126,7 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
   };
 
   const saveServiceOrder = async (nextServices: Service[], message: string) => {
-    if (reordering) return;
+    if (reordering || sameServiceOrder(services, nextServices)) return;
     const previousServices = services;
     setServices(nextServices);
     setReordering(true);
@@ -121,40 +140,20 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
       setError(cause instanceof Error ? cause.message : 'Could not save the service order');
     } finally {
       setReordering(false);
-      setDraggedServiceId(null);
     }
   };
 
-  const moveService = (serviceId: string, direction: -1 | 1) => {
-    const currentIndex = services.findIndex(service => service.id === serviceId);
-    const nextIndex = currentIndex + direction;
-    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= services.length || reordering) return;
-
-    const nextServices = [...services];
-    const [movedService] = nextServices.splice(currentIndex, 1);
-    nextServices.splice(nextIndex, 0, movedService);
-    void saveServiceOrder(nextServices, `${movedService.name} moved to position ${nextIndex + 1}.`);
+  const moveCategory = (key: string, label: string, direction: -1 | 1) => {
+    const nextServices = moveServiceCategory(services, key, direction);
+    const nextIndex = groupServicesByCategory(nextServices).findIndex(group => group.key === key);
+    void saveServiceOrder(nextServices, `${label} category moved to position ${nextIndex + 1}.`);
   };
 
-  const dropService = (event: DragEvent<HTMLElement>, targetServiceId: string) => {
-    event.preventDefault();
-    if (!draggedServiceId || draggedServiceId === targetServiceId || reordering) {
-      setDraggedServiceId(null);
-      return;
-    }
-
-    const sourceIndex = services.findIndex(service => service.id === draggedServiceId);
-    const targetIndex = services.findIndex(service => service.id === targetServiceId);
-    if (sourceIndex < 0 || targetIndex < 0) {
-      setDraggedServiceId(null);
-      return;
-    }
-
-    const nextServices = [...services];
-    const [movedService] = nextServices.splice(sourceIndex, 1);
-    nextServices.splice(targetIndex, 0, movedService);
-    const finalPosition = nextServices.findIndex(service => service.id === movedService.id) + 1;
-    void saveServiceOrder(nextServices, `${movedService.name} moved to position ${finalPosition}.`);
+  const moveService = (service: Service, direction: -1 | 1) => {
+    const nextServices = moveServiceWithinCategory(services, service.id, direction);
+    const group = groupServicesByCategory(nextServices).find(category => category.services.some(item => item.id === service.id));
+    const nextIndex = group?.services.findIndex(item => item.id === service.id) ?? 0;
+    void saveServiceOrder(nextServices, `${service.name} moved to position ${nextIndex + 1} in ${group?.label || service.category}.`);
   };
 
   const deleteService = async (service: Service) => {
@@ -166,7 +165,7 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
     try {
       await deleteServiceRecord(service.id);
       locallyCreatedIds.current.delete(service.id);
-      setServices(current => current.filter(item => item.id !== service.id));
+      setServices(current => regroupServices(current.filter(item => item.id !== service.id)));
       if (editingServiceId === service.id) closeForm();
       setAnnouncement(`${service.name} deleted.`);
     } catch (cause) {
@@ -182,9 +181,9 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
     <section className="overflow-hidden rounded-3xl bg-slate-950 text-white shadow-sm">
       <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-300">Service catalog</p>
-          <h1 className="mt-2 text-3xl font-black">Your services, all in one place</h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-300">Create, edit, reorder, and remove the treatments customers can book. The order here is the order customers will see.</p>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-indigo-300">Service catalogue</p>
+          <h1 className="mt-2 text-3xl font-black">Organise services by category</h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-300">Move whole categories into the order customers should see, then arrange each service within its category.</p>
         </div>
         <button type="button" onClick={openCreateForm} className="flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-500 px-5 text-sm font-black text-white hover:bg-indigo-400">
           <Plus aria-hidden="true" className="h-5 w-5" /> Add service
@@ -198,13 +197,13 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-black">{isEditing ? 'Edit service' : 'Add a service'}</h2>
-          <p className="mt-1 text-sm text-slate-500">{isEditing ? 'Changes will update future booking choices and checkout information.' : 'This will appear at the end of the service list and booking choices.'}</p>
+          <p className="mt-1 text-sm text-slate-500">Choose a category to place this service in the correct section.</p>
         </div>
         <button type="button" onClick={closeForm} className="text-sm font-bold text-slate-500 hover:text-slate-950">Cancel</button>
       </div>
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <label className="text-sm font-bold text-slate-700">Service name<input ref={nameInput} required value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} placeholder="e.g. Deep tissue massage" className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal" /></label>
-        <label className="text-sm font-bold text-slate-700">Category<input value={draft.category} onChange={event => setDraft(current => ({ ...current, category: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal" /></label>
+        <label className="text-sm font-bold text-slate-700">Category<input list="service-category-options" value={draft.category} onChange={event => setDraft(current => ({ ...current, category: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal" /><datalist id="service-category-options">{categoryGroups.map(group => <option key={group.key} value={group.label} />)}</datalist></label>
         <label className="sm:col-span-2 text-sm font-bold text-slate-700">Description<textarea required value={draft.description} onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} placeholder="Explain what the service includes and who it is for." rows={3} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal" /></label>
         <label className="text-sm font-bold text-slate-700">Price (£)<input required min="0" step="0.01" type="number" value={draft.price} onChange={event => setDraft(current => ({ ...current, price: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal" /></label>
         <label className="text-sm font-bold text-slate-700">Duration (minutes)<input required min="5" max="1440" step="5" type="number" value={draft.durationMin} onChange={event => setDraft(current => ({ ...current, durationMin: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal" /></label>
@@ -216,50 +215,43 @@ export function ServicesPage({ tenantOverride = null }: { tenantOverride?: impor
 
     <section aria-labelledby="service-list-heading">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div><h2 id="service-list-heading" className="text-xl font-black">Full service list</h2><p className="mt-1 text-sm text-slate-500">{services.length} {services.length === 1 ? 'service' : 'services'} available. Drag cards or use the arrow buttons to change their order.</p></div>
+        <div><h2 id="service-list-heading" className="text-xl font-black">Service categories</h2><p className="mt-1 text-sm text-slate-500">{categoryGroups.length} {categoryGroups.length === 1 ? 'category' : 'categories'} · {services.length} {services.length === 1 ? 'service' : 'services'}</p></div>
         {!showForm && <button type="button" onClick={openCreateForm} className="hidden items-center gap-2 text-sm font-black text-indigo-700 sm:flex"><Plus aria-hidden="true" className="h-4 w-4" />Add another</button>}
       </div>
+
       {loading ? <p className="mt-5 text-sm text-slate-500">Loading services…</p> : services.length === 0 ? <div className="mt-5 rounded-2xl border-2 border-dashed border-slate-200 bg-white p-10 text-center"><Scissors aria-hidden="true" className="mx-auto h-8 w-8 text-slate-400" /><h3 className="mt-3 font-black">No services yet</h3><p className="mt-1 text-sm text-slate-500">Add your first service so customers can start booking.</p><button type="button" onClick={openCreateForm} className="mt-4 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white">Add your first service</button></div> :
-        <div className="mt-5 grid gap-4 md:grid-cols-2">{services.map((service, index) => <article
-          key={service.id}
-          draggable={!reordering && deletingServiceId !== service.id}
-          onDragStart={event => {
-            setDraggedServiceId(service.id);
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', service.id);
-          }}
-          onDragEnd={() => setDraggedServiceId(null)}
-          onDragOver={event => {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'move';
-          }}
-          onDrop={event => dropService(event, service.id)}
-          className={`rounded-2xl border bg-white p-5 shadow-sm transition ${draggedServiceId === service.id ? 'border-indigo-400 opacity-60' : 'border-slate-200'}`}
-        >
-          <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
-            <div className="flex items-center gap-2 text-xs font-black text-slate-500"><GripVertical aria-hidden="true" className="h-4 w-4" />Position {index + 1}</div>
-            <div className="flex items-center gap-1">
-              <button type="button" disabled={index === 0 || reordering} onClick={() => moveService(service.id, -1)} aria-label={`Move ${service.name} up`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-35"><ChevronUp aria-hidden="true" className="h-4 w-4" /></button>
-              <button type="button" disabled={index === services.length - 1 || reordering} onClick={() => moveService(service.id, 1)} aria-label={`Move ${service.name} down`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-35"><ChevronDown aria-hidden="true" className="h-4 w-4" /></button>
+        <div className="mt-5 space-y-5">{categoryGroups.map((group, categoryIndex) => <section key={group.key} aria-labelledby={`service-category-${categoryIndex}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+          <header className="flex flex-col gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><FolderOpen aria-hidden="true" className="h-5 w-5" /></span>
+              <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600">Category {categoryIndex + 1}</p><h3 id={`service-category-${categoryIndex}`} className="text-lg font-black text-slate-950">{group.label}</h3><p className="text-xs font-bold text-slate-500">{group.services.length} {group.services.length === 1 ? 'service' : 'services'}</p></div>
             </div>
-          </div>
-          <div className="flex items-start justify-between gap-4">
-            <div><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-indigo-700">{service.category}</span><h3 className="mt-3 text-lg font-black">{service.name}</h3></div>
-            <span className="text-lg font-black">£{service.price.toFixed(2)}</span>
-          </div>
-          <p className="mt-3 min-h-10 text-sm leading-6 text-slate-600">{service.description || 'No description has been added yet.'}</p>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-            <div className="flex gap-4 text-xs font-bold text-slate-500"><span className="flex items-center gap-1.5"><Clock3 aria-hidden="true" className="h-4 w-4" />{service.durationMin} minutes</span><span className="flex items-center gap-1.5"><PoundSterling aria-hidden="true" className="h-4 w-4" />{service.price.toFixed(2)}</span></div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => openEditForm(service)} aria-label={`Edit ${service.name}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700">
-                <Pencil aria-hidden="true" className="h-3.5 w-3.5" /> Edit
-              </button>
-              <button type="button" disabled={deletingServiceId === service.id} onClick={() => void deleteService(service)} aria-label={`Delete ${service.name}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-3 text-xs font-black text-rose-700 hover:bg-rose-50 disabled:opacity-60">
-                <Trash2 aria-hidden="true" className="h-3.5 w-3.5" /> {deletingServiceId === service.id ? 'Deleting…' : 'Delete'}
-              </button>
+              <span className="mr-1 text-xs font-bold text-slate-500">Move category</span>
+              <button type="button" disabled={categoryIndex === 0 || reordering} onClick={() => moveCategory(group.key, group.label, -1)} aria-label={`Move ${group.label} category up`} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-35"><ChevronUp aria-hidden="true" className="h-4 w-4" /></button>
+              <button type="button" disabled={categoryIndex === categoryGroups.length - 1 || reordering} onClick={() => moveCategory(group.key, group.label, 1)} aria-label={`Move ${group.label} category down`} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-35"><ChevronDown aria-hidden="true" className="h-4 w-4" /></button>
             </div>
-          </div>
-        </article>)}</div>}
+          </header>
+
+          <div className="grid gap-4 p-4 md:grid-cols-2">{group.services.map((service, serviceIndex) => <article key={service.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-indigo-700">{group.label}</span><p className="mt-2 text-xs font-bold text-slate-500">Service {serviceIndex + 1} of {group.services.length}</p></div>
+              <div className="flex items-center gap-1">
+                <button type="button" disabled={serviceIndex === 0 || reordering} onClick={() => moveService(service, -1)} aria-label={`Move ${service.name} up within ${group.label}`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-35"><ChevronUp aria-hidden="true" className="h-4 w-4" /></button>
+                <button type="button" disabled={serviceIndex === group.services.length - 1 || reordering} onClick={() => moveService(service, 1)} aria-label={`Move ${service.name} down within ${group.label}`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-35"><ChevronDown aria-hidden="true" className="h-4 w-4" /></button>
+              </div>
+            </div>
+            <div className="flex items-start justify-between gap-4"><h4 className="text-lg font-black text-slate-950">{service.name}</h4><span className="text-lg font-black">£{service.price.toFixed(2)}</span></div>
+            <p className="mt-3 min-h-10 text-sm leading-6 text-slate-600">{service.description || 'No description has been added yet.'}</p>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+              <div className="flex gap-4 text-xs font-bold text-slate-500"><span className="flex items-center gap-1.5"><Clock3 aria-hidden="true" className="h-4 w-4" />{service.durationMin} minutes</span><span className="flex items-center gap-1.5"><PoundSterling aria-hidden="true" className="h-4 w-4" />{service.price.toFixed(2)}</span></div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => openEditForm(service)} aria-label={`Edit ${service.name}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"><Pencil aria-hidden="true" className="h-3.5 w-3.5" /> Edit</button>
+                <button type="button" disabled={deletingServiceId === service.id} onClick={() => void deleteService(service)} aria-label={`Delete ${service.name}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-3 text-xs font-black text-rose-700 hover:bg-rose-50 disabled:opacity-60"><Trash2 aria-hidden="true" className="h-3.5 w-3.5" /> {deletingServiceId === service.id ? 'Deleting…' : 'Delete'}</button>
+              </div>
+            </div>
+          </article>)}</div>
+        </section>)}</div>}
     </section>
   </div>;
 }

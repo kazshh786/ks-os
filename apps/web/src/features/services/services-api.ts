@@ -48,8 +48,8 @@ export async function reorderServiceRecords(serviceIds: string[]): Promise<void>
 }
 
 export async function deleteServiceRecord(serviceId: string): Promise<void> {
-  const response = await fetchWithAuth(`/api/v1/services/${serviceId}`, {
-    method: 'DELETE',
+  const response = await fetchWithAuth(`/api/v1/services/${serviceId}/archive`, {
+    method: 'POST',
   });
 
   if (!response.ok) {
