@@ -70,4 +70,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260804003000_reconcile_appointment_payment_modes.sql', order: 63, description: 'Reconcile legacy appointment payment-mode constraints with current public booking deposit, full-payment, and no-payment states' },
   { filename: '20260804010000_stripe_connection_mode.sql', order: 64, description: 'Persist each tenant Stripe connection live/test boundary for safe platform key changes' },
   { filename: '20260804103000_reconcile_stripe_webhook_events.sql', order: 65, description: 'Reconcile the legacy Stripe webhook ledger with the canonical idempotent processing columns' },
+  { filename: '20260804131500_service_catalog_ordering.sql', order: 66, description: 'Persist tenant service catalogue ordering for booking choices and safe service removal' },
 ];
