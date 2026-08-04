@@ -24,7 +24,7 @@
     "db:migrations:apply": "node --env-file-if-exists=.env scripts/database/migrate.mjs --apply",
     "db:reconcile:report": "node --env-file-if-exists=.env scripts/database/reconcile.mjs",
     "db:reconcile:apply": "node --env-file-if-exists=.env scripts/database/reconcile-apply.mjs",
-    "deploy:preflight": "node --env-file-if-exists=.env scripts/deploy/preflight.mjs",
+    "deploy:preflight": "node --env-file-if-exists=.env scripts/deploy/preflight.mjs && node scripts/deploy/check-email-runtime.mjs",
     "deploy:verify": "pnpm test",
     "deploy:vps:dry-run": "bash scripts/deploy/deploy-vps.sh --dry-run",
     "deploy": "scripts/deploy/deploy-vps.sh",
