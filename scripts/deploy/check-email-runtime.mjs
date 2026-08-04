@@ -51,7 +51,7 @@ try {
   if (!dependencyFailure) throw error;
 
   console.warn('Email renderer dependency tree is incomplete; forcing a frozen pnpm reinstall.');
-  execFileSync('pnpm', ['install', '--frozen-lockfile', '--force'], {
+  execFileSync('pnpm', ['install', '--frozen-lockfile', '--prod=false', '--force'], {
     cwd: process.cwd(),
     stdio: 'inherit',
     env: process.env,
