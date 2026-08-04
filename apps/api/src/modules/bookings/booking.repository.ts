@@ -220,7 +220,13 @@ export class BookingRepository {
       )
     `);
 
-    const booking = result.rows[0] as any;
+    const rawBooking = result.rows[0] as any;
+    const booking = rawBooking ? {
+      ...rawBooking,
+      appointment_id: rawBooking.appointment_id || rawBooking.id,
+      booking_reference: rawBooking.booking_reference || rawBooking.public_reference,
+      appointment_status: rawBooking.appointment_status || rawBooking.status,
+    } : rawBooking;
     const appointmentId = booking?.appointment_id || booking?.id;
     if (appointmentId && resourceId) {
       await dbOrTx.update(appointments)

@@ -67,4 +67,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260803183500_allow_booking_system_fact_source.sql', order: 60, description: 'Permit canonical booking-owned facts to enter the existing agency-reviewed fact-finding lifecycle' },
   { filename: '20260803202000_reconcile_site_generation_ownership_trigger.sql', order: 61, description: 'Reconcile polymorphic site-generation ownership validation without weakening pinned provenance or parent-child scope' },
   { filename: '20260803213000_allow_terminal_generation_after_knowledge_supersession.sql', order: 62, description: 'Allow terminal generation failure persistence after pinned knowledge supersession without permitting continued generation' },
+  { filename: '20260804003000_reconcile_appointment_payment_modes.sql', order: 63, description: 'Reconcile legacy appointment payment-mode constraints with current public booking deposit, full-payment, and no-payment states' },
 ];
