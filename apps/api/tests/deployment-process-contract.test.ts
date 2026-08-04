@@ -14,7 +14,14 @@ test('VPS deployment treats API, worker and renderer as one health-checked rollb
   assert.match(script, /APPLY_MIGRATIONS/);
   assert.match(script, /node\/v24\.18\.0\/bin/);
   assert.match(script, /CI="\$\{CI:-true\}"/);
+  assert.equal((script.match(/pnpm install --frozen-lockfile --prod=false/g) || []).length, 2);
   assert.doesNotMatch(script, /reset --hard|eval /);
+});
+
+test('email runtime repair preserves TypeScript and other build dependencies', async () => {
+  const script = await read('scripts/deploy/check-email-runtime.mjs');
+  assert.match(script, /'--frozen-lockfile', '--prod=false', '--force'/);
+  assert.match(script, /@ks-os\/email', 'build'/);
 });
 
 test('systemd units run as ksdeploy with production environment files and graceful restart policy', async () => {
