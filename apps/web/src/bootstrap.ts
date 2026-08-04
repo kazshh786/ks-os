@@ -5,8 +5,9 @@ if (!root) {
 }
 
 const path = window.location.pathname.replace(/\/+$/, '') || '/';
+const isPackagesPage = path === '/packages' || path.startsWith('/packages/');
 const isMarketingPage = path === '/' || path === '/services' || path.startsWith('/services/');
-const entryName = isMarketingPage ? 'marketing' : 'application';
+const entryName = isPackagesPage ? 'packages' : isMarketingPage ? 'marketing' : 'application';
 const retryKey = `ks-os-entry-retry:${entryName}`;
 
 function cleanRetryParameter() {
@@ -18,12 +19,13 @@ function cleanRetryParameter() {
 }
 
 function showLoadingState() {
+  const loadingName = isPackagesPage ? 'KS OS packages' : isMarketingPage ? 'Kasim Shah' : 'KS OS';
   root.innerHTML = `
     <div role="status" aria-live="polite" style="min-height:100vh;display:grid;place-items:center;background:#f8fafc;color:#0f172a;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px">
       <div style="display:grid;justify-items:center;gap:16px;text-align:center">
         <div aria-hidden="true" style="height:36px;width:36px;border:3px solid #e2e8f0;border-top-color:#4f46e5;border-radius:9999px;animation:ks-os-spin .8s linear infinite"></div>
         <div>
-          <p style="margin:0;font-size:15px;font-weight:800">Loading ${isMarketingPage ? 'Kasim Shah' : 'KS OS'}</p>
+          <p style="margin:0;font-size:15px;font-weight:800">Loading ${loadingName}</p>
           <p style="margin:6px 0 0;font-size:13px;color:#64748b">Preparing the page…</p>
         </div>
       </div>
@@ -51,8 +53,12 @@ async function loadEntry() {
   showLoadingState();
 
   try {
-    if (isMarketingPage) {
+    if (isPackagesPage) {
+      await import('./packages.tsx');
+    } else if (isMarketingPage) {
       await import('./marketing.tsx');
+      const { installPackagesEnhancements } = await import('./packages-enhancer.ts');
+      installPackagesEnhancements();
     } else {
       await import('./main.tsx');
     }
