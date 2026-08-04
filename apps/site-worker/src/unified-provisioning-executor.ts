@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import {
   getDatabase,
   locations,
@@ -420,86 +420,130 @@ export class UnifiedWorkspaceProvisioningExecutor extends PostgresWorkspaceProvi
     const serviceIds = new Map(serviceRows.map(service => [service.reference, service.id]));
     const locationIds = new Map(locationRows.map(location => [location.reference, location.id]));
     const staffIds = new Map(staffRows.map(staff => [staff.reference, staff]));
-    const [blueprint] = await this.database.insert(siteBlueprints).values({
-      tenantId: run.tenantId,
-      siteId: run.siteId,
-      templateVersionId: run.templateVersionId,
-      planAssignmentId: assignment.id,
-      provisioningRunId: run.runId,
-      name: request.name!,
-      status: 'REVIEW_REQUIRED',
-      revision: 1,
-      sourceDataDigest: plan.sourceDataDigest,
-      engineVersion: plan.engineVersion,
-      proposedMarketingPageCount: plan.entitlementUsage.proposedMarketingPageCount,
-      entitlementMarketingPageLimit: plan.entitlementUsage.marketingPageLimit,
-      functionalPageCount: plan.entitlementUsage.functionalPageCount,
-      requiredLegalPageCount: plan.entitlementUsage.requiredLegalPageCount,
-      unusedMarketingPageAllowance: plan.entitlementUsage.unusedMarketingPageAllowance,
-      entitlementOverrideApplied: plan.entitlementUsage.overrideApplied,
-      readinessJson: plan.readiness,
-      generatedAt: new Date(),
-      generatedByAgencyUserId: run.requestedByAgencyUserId,
-    }).returning({ id: siteBlueprints.id, reference: siteBlueprints.publicReference });
-    const insertedPages = await this.database.insert(siteBlueprintPages).values(plan.pages.map((page, index) => ({
-      tenantId: run.tenantId,
-      blueprintId: blueprint.id,
-      pageType: page.pageType,
-      conversionRole: page.conversionRole,
-      entitlementKind: page.entitlementKind,
-      allocation: 'INITIAL',
-      title: page.titleLabel,
-      proposedSlug: page.plannedSlug,
-      templateLayoutId: page.layoutReference ? layoutIds.get(page.layoutReference) || null : null,
-      serviceId: page.serviceReference ? serviceIds.get(page.serviceReference) || null : null,
-      locationId: page.locationReference ? locationIds.get(page.locationReference) || null : null,
-      staffUserId: page.staffReference ? staffIds.get(page.staffReference)?.id || null : null,
-      navigationGroup: page.navigationGroup,
-      navigationOrder: page.navigationOrder,
-      consumesMarketingEntitlement: page.consumesMarketingEntitlement,
-      generationPriority: page.generationPriority,
-      selectionScore: page.selectionScore,
-      selectionReasonsJson: page.selectionReasons,
-      bookingRequirementsJson: page.bookingRequirements,
-      layoutSelectionReason: page.layoutSelectionReason,
-      agencyNotes: page.agencyNotes || null,
-      sortOrder: index,
-      rationale: page.selectionReasons.join(', ').slice(0, 1000),
-    }))).returning({ id: siteBlueprintPages.id });
-    if (plan.actionItems.length) {
-      await this.database.insert(siteBlueprintActionItems).values(plan.actionItems.map(item => ({
+    return this.database.transaction(async tx => {
+      // Production composes this specialised executor, so revision allocation must
+      // be safe here as well as in the base executor used by isolated workflows.
+      await tx.execute(sql`SELECT id FROM sites WHERE id = ${run.siteId}::uuid FOR UPDATE`);
+      const [transactionExisting] = await tx.select({ reference: siteBlueprints.publicReference })
+        .from(siteBlueprints).where(eq(siteBlueprints.provisioningRunId, run.runId)).limit(1);
+      if (transactionExisting) {
+        return [{ type: 'SITE_BLUEPRINT', reference: transactionExisting.reference }];
+      }
+
+      const blueprintResult = await tx.execute(sql<{ id: string; reference: string }>`
+        INSERT INTO site_blueprints (
+          tenant_id,
+          site_id,
+          template_version_id,
+          plan_assignment_id,
+          provisioning_run_id,
+          name,
+          status,
+          revision,
+          source_data_digest,
+          engine_version,
+          proposed_marketing_page_count,
+          entitlement_marketing_page_limit,
+          functional_page_count,
+          required_legal_page_count,
+          unused_marketing_page_allowance,
+          entitlement_override_applied,
+          readiness_json,
+          generated_at,
+          generated_by_agency_user_id
+        )
+        SELECT
+          ${run.tenantId}::uuid,
+          locked_site.id,
+          ${run.templateVersionId}::uuid,
+          ${assignment.id}::uuid,
+          ${run.runId}::uuid,
+          ${request.name!},
+          'REVIEW_REQUIRED',
+          coalesce(max(existing.revision), 0) + 1,
+          ${plan.sourceDataDigest},
+          ${plan.engineVersion},
+          ${plan.entitlementUsage.proposedMarketingPageCount},
+          ${plan.entitlementUsage.marketingPageLimit},
+          ${plan.entitlementUsage.functionalPageCount},
+          ${plan.entitlementUsage.requiredLegalPageCount},
+          ${plan.entitlementUsage.unusedMarketingPageAllowance},
+          ${plan.entitlementUsage.overrideApplied},
+          ${JSON.stringify(plan.readiness)}::jsonb,
+          now(),
+          ${run.requestedByAgencyUserId}::uuid
+        FROM sites AS locked_site
+        LEFT JOIN site_blueprints AS existing
+          ON existing.site_id = locked_site.id
+        WHERE locked_site.id = ${run.siteId}::uuid
+        GROUP BY locked_site.id
+        RETURNING id, public_reference AS reference
+      `);
+      const [blueprint] = blueprintResult.rows as unknown as Array<{ id: string; reference: string }>;
+      if (!blueprint) {
+        throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The locked site is unavailable for blueprint generation.');
+      }
+
+      const insertedPages = await tx.insert(siteBlueprintPages).values(plan.pages.map((page, index) => ({
         tenantId: run.tenantId,
         blueprintId: blueprint.id,
-        category: item.category,
-        severity: item.severity,
-        code: item.code,
-        message: item.message,
-        subjectPublicReference: item.subjectReference,
-        safeMetadataJson: item.safeMetadata,
-      })));
-    }
-    await this.database.update(provisioningRuns).set({
-      blueprintId: blueprint.id,
-      updatedAt: new Date(),
-    }).where(eq(provisioningRuns.id, run.runId));
-    if (!insertedPages.length) {
-      throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The generated blueprint contains no pages.');
-    }
-    await this.database.insert(platformAuditEvents).values({
-      agencyUserId: run.requestedByAgencyUserId,
-      tenantId: run.tenantId,
-      action: 'TEN_PAGE_SITE_BLUEPRINT_GENERATED',
-      targetType: 'SITE_BLUEPRINT',
-      targetId: blueprint.reference,
-      eventCategory: 'WEBSITE',
-      sourceComponent: 'site-worker',
-      description: 'The launch pipeline selected the strongest booking-led marketing pages within the ten-page target.',
-      metadata: {
-        provisioningRunReference: run.runReference,
-        targetMarketingPageCount,
-        selectedMarketingPageCount: plan.entitlementUsage.proposedMarketingPageCount,
-      },
+        pageType: page.pageType,
+        conversionRole: page.conversionRole,
+        entitlementKind: page.entitlementKind,
+        allocation: 'INITIAL',
+        title: page.titleLabel,
+        proposedSlug: page.plannedSlug,
+        templateLayoutId: page.layoutReference ? layoutIds.get(page.layoutReference) || null : null,
+        serviceId: page.serviceReference ? serviceIds.get(page.serviceReference) || null : null,
+        locationId: page.locationReference ? locationIds.get(page.locationReference) || null : null,
+        staffUserId: page.staffReference ? staffIds.get(page.staffReference)?.id || null : null,
+        navigationGroup: page.navigationGroup,
+        navigationOrder: page.navigationOrder,
+        consumesMarketingEntitlement: page.consumesMarketingEntitlement,
+        generationPriority: page.generationPriority,
+        selectionScore: page.selectionScore,
+        selectionReasonsJson: page.selectionReasons,
+        bookingRequirementsJson: page.bookingRequirements,
+        layoutSelectionReason: page.layoutSelectionReason,
+        agencyNotes: page.agencyNotes || null,
+        sortOrder: index,
+        rationale: page.selectionReasons.join(', ').slice(0, 1000),
+      }))).returning({ id: siteBlueprintPages.id });
+      if (plan.actionItems.length) {
+        await tx.insert(siteBlueprintActionItems).values(plan.actionItems.map(item => ({
+          tenantId: run.tenantId,
+          blueprintId: blueprint.id,
+          category: item.category,
+          severity: item.severity,
+          code: item.code,
+          message: item.message,
+          subjectPublicReference: item.subjectReference,
+          safeMetadataJson: item.safeMetadata,
+        })));
+      }
+      await tx.update(provisioningRuns).set({
+        blueprintId: blueprint.id,
+        updatedAt: new Date(),
+      }).where(eq(provisioningRuns.id, run.runId));
+      if (!insertedPages.length) {
+        throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The generated blueprint contains no pages.');
+      }
+      await tx.insert(platformAuditEvents).values({
+        agencyUserId: run.requestedByAgencyUserId,
+        tenantId: run.tenantId,
+        action: 'TEN_PAGE_SITE_BLUEPRINT_GENERATED',
+        targetType: 'SITE_BLUEPRINT',
+        targetId: blueprint.reference,
+        eventCategory: 'WEBSITE',
+        sourceComponent: 'site-worker',
+        description: 'The launch pipeline selected the strongest booking-led marketing pages within the ten-page target.',
+        metadata: {
+          provisioningRunReference: run.runReference,
+          targetMarketingPageCount,
+          selectedMarketingPageCount: plan.entitlementUsage.proposedMarketingPageCount,
+        },
+      });
+      return [{ type: 'SITE_BLUEPRINT', reference: blueprint.reference }];
     });
-    return [{ type: 'SITE_BLUEPRINT', reference: blueprint.reference }];
   }
 }
