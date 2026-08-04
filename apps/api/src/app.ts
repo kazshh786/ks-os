@@ -3,6 +3,7 @@ import rateLimit from '@fastify/rate-limit';
 import registerSecurity from './plugins/security.js';
 import registerRequestContext from './plugins/request-context.js';
 import registerErrorHandler from './plugins/error-handler.js';
+import registerPublicServiceCatalogOrder from './plugins/public-service-catalog-order.js';
 import registerRoutes from './routes/health.js';
 import authPlugin from './plugins/auth.js';
 import sessionRoutes from './routes/session.js';
@@ -136,6 +137,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   registerErrorHandler(fastify);
   fastify.register(registerSecurity);
   fastify.register(registerRequestContext);
+  registerPublicServiceCatalogOrder(fastify);
 
   fastify.register(publicBookingRoutes, { prefix: '/api/v1/public' });
   fastify.register(publicAvailabilitySummaryRoutes, { prefix: '/api/v1/public' });
