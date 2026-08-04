@@ -52,8 +52,8 @@ const generationExecutorSource = readFileSync(
   new URL('../src/postgres-generation-executor.ts', import.meta.url),
   'utf8',
 );
-const provisioningExecutorSource = readFileSync(
-  new URL('../src/postgres-provisioning-executor.ts', import.meta.url),
+const unifiedProvisioningExecutorSource = readFileSync(
+  new URL('../src/unified-provisioning-executor.ts', import.meta.url),
   'utf8',
 );
 const publicationExecutorSource = readFileSync(
@@ -634,13 +634,15 @@ test('9c. automatic retries reset aggregate progress before replay', () => {
   );
 });
 
-test('9d. reprovisioning allocates and persists a new blueprint revision atomically', () => {
-  assert.match(provisioningExecutorSource, /SELECT id FROM sites[\s\S]*FOR UPDATE/);
-  assert.match(provisioningExecutorSource, /INSERT INTO site_blueprints[\s\S]*FROM sites AS locked_site/);
-  assert.match(provisioningExecutorSource, /locked_site\.id,[\s\S]*coalesce\(max\(existing\.revision\), 0\) \+ 1/);
-  assert.match(provisioningExecutorSource, /ON existing\.site_id = locked_site\.id/);
-  assert.match(provisioningExecutorSource, /GROUP BY locked_site\.id/);
-  assert.match(provisioningExecutorSource, /return this\.db\.transaction/);
+test('9d. the production provisioning executor allocates a new blueprint revision atomically', () => {
+  assert.match(compositionSource, /new UnifiedWorkspaceProvisioningExecutor/);
+  assert.match(unifiedProvisioningExecutorSource, /SELECT id FROM sites[\s\S]*FOR UPDATE/);
+  assert.match(unifiedProvisioningExecutorSource, /INSERT INTO site_blueprints[\s\S]*FROM sites AS locked_site/);
+  assert.match(unifiedProvisioningExecutorSource, /locked_site\.id,[\s\S]*coalesce\(max\(existing\.revision\), 0\) \+ 1/);
+  assert.match(unifiedProvisioningExecutorSource, /ON existing\.site_id = locked_site\.id/);
+  assert.match(unifiedProvisioningExecutorSource, /GROUP BY locked_site\.id/);
+  assert.match(unifiedProvisioningExecutorSource, /return this\.database\.transaction/);
+  assert.doesNotMatch(unifiedProvisioningExecutorSource, /revision:\s*1/);
 });
 
 test('9e. expired lease recovery resets aggregate progress before replay', () => {
