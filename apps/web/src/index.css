@@ -26,10 +26,11 @@ h1, h2, h3, h4, h5, h6, .font-serif {
   color: #a5f3fc;
 }
 
-/* Feature-led real-cost comparison, inspired by a software replacement matrix. */
+/* Dense but readable real-cost matrix. */
 section.bg-slate-950 table {
+  table-layout: fixed;
   border-collapse: separate !important;
-  border-spacing: 0 0.75rem !important;
+  border-spacing: 0 0.5rem !important;
 }
 
 section.bg-slate-950 table thead tr {
@@ -38,54 +39,65 @@ section.bg-slate-950 table thead tr {
 
 section.bg-slate-950 table thead th {
   border: 0 !important;
-  padding-top: 1rem !important;
-  padding-bottom: 1rem !important;
-  color: #ffffff !important;
-  font-size: 0.75rem !important;
-  letter-spacing: 0.16em !important;
+  padding: 1rem 1.25rem !important;
+  color: #e2e8f0 !important;
+  font-size: 0.8rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: none !important;
 }
 
 section.bg-slate-950 table thead th:first-child {
-  border-radius: 1rem 0 0 1rem;
+  width: 31%;
+  border-radius: 0.9rem 0 0 0.9rem;
+}
+
+section.bg-slate-950 table thead th:nth-child(2) {
+  width: 29%;
+  color: #fecdd3 !important;
 }
 
 section.bg-slate-950 table thead th:last-child {
-  border-radius: 0 1rem 1rem 0;
+  width: 40%;
+  border-radius: 0 0.9rem 0.9rem 0;
   color: #c7d2fe !important;
 }
 
 section.bg-slate-950 table tbody tr {
   border: 0 !important;
-  filter: drop-shadow(0 8px 16px rgba(2, 6, 23, 0.14));
 }
 
 section.bg-slate-950 table tbody td {
-  border: 0 !important;
+  border-top: 1px solid #e2e8f0 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
   background: #ffffff;
-  padding-top: 1.15rem !important;
-  padding-bottom: 1.15rem !important;
+  padding: 0.95rem 1.25rem !important;
   color: #475569 !important;
-  line-height: 1.55;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  vertical-align: middle;
 }
 
 section.bg-slate-950 table tbody td:first-child {
-  width: 34%;
-  border-radius: 1rem 0 0 1rem;
+  border-left: 1px solid #e2e8f0 !important;
+  border-radius: 0.85rem 0 0 0.85rem;
   color: #0f172a !important;
   font-weight: 800 !important;
 }
 
 section.bg-slate-950 table tbody td:nth-child(2) {
-  width: 31%;
-  font-size: 0.84rem;
+  color: #64748b !important;
   font-weight: 700;
 }
 
 section.bg-slate-950 table tbody td:last-child {
   position: relative;
-  width: 35%;
-  border-radius: 0 1rem 1rem 0;
-  padding-left: 3.65rem !important;
+  border-right: 1px solid #c7d2fe !important;
+  border-top-color: #c7d2fe !important;
+  border-bottom-color: #c7d2fe !important;
+  border-radius: 0 0.85rem 0.85rem 0;
+  background: #eef2ff;
+  padding-left: 3.25rem !important;
   color: #3730a3 !important;
   font-weight: 800 !important;
 }
@@ -94,26 +106,63 @@ section.bg-slate-950 table tbody td:last-child::before {
   content: '✓';
   position: absolute;
   top: 50%;
-  left: 1.5rem;
+  left: 1.2rem;
   display: grid;
-  width: 1.8rem;
-  height: 1.8rem;
+  width: 1.55rem;
+  height: 1.55rem;
   place-items: center;
   transform: translateY(-50%);
   border-radius: 9999px;
-  background: #0f172a;
-  color: #a5b4fc;
-  font-size: 0.95rem;
+  background: #4338ca;
+  color: #ffffff;
+  font-size: 0.78rem;
   font-weight: 900;
-  box-shadow: 0 0 0 4px #eef2ff;
 }
 
+/* Category separators are represented by rows with empty comparison cells. */
+section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) td {
+  border: 0 !important;
+  background: transparent !important;
+  padding: 1.15rem 0.25rem 0.35rem !important;
+}
+
+section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) td:first-child {
+  width: 100%;
+  color: #a5b4fc !important;
+  font-size: 0.72rem;
+  font-weight: 900 !important;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) td:nth-child(2),
+section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) td:last-child {
+  display: none;
+}
+
+/* The final total row carries the decision, so it is visually dominant. */
 section.bg-slate-950 table tbody tr:last-child td {
-  background: #eef2ff;
+  border-color: #818cf8 !important;
+  padding-top: 1.25rem !important;
+  padding-bottom: 1.25rem !important;
+  font-size: 0.98rem;
 }
 
 section.bg-slate-950 table tbody tr:last-child td:first-child {
-  color: #4338ca !important;
+  background: #111827;
+  color: #ffffff !important;
+  font-size: 1.05rem;
+}
+
+section.bg-slate-950 table tbody tr:last-child td:nth-child(2) {
+  background: #fff7ed;
+  color: #9a3412 !important;
+}
+
+section.bg-slate-950 table tbody tr:last-child td:last-child {
+  background: #e0e7ff;
+  color: #312e81 !important;
+  font-size: 1rem;
 }
 
 @media (max-width: 767px) {
@@ -129,7 +178,7 @@ section.bg-slate-950 table tbody tr:last-child td:first-child {
 
   section.bg-slate-950 table tbody {
     display: grid;
-    gap: 1rem;
+    gap: 0.85rem;
   }
 
   section.bg-slate-950 table tbody tr {
@@ -145,8 +194,9 @@ section.bg-slate-950 table tbody tr:last-child td:first-child {
   section.bg-slate-950 table tbody td:last-child {
     display: block;
     width: auto;
+    border: 0 !important;
     border-radius: 0;
-    padding: 1rem 1.25rem !important;
+    padding: 0.9rem 1.1rem !important;
   }
 
   section.bg-slate-950 table tbody td:first-child {
@@ -160,25 +210,52 @@ section.bg-slate-950 table tbody tr:last-child td:first-child {
     display: block;
     width: auto;
     height: auto;
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.3rem;
     transform: none;
     border-radius: 0;
     background: transparent;
-    box-shadow: none;
     font-size: 0.65rem;
     font-weight: 900;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
   }
 
   section.bg-slate-950 table tbody td:nth-child(2)::before {
     content: 'Bought separately';
-    color: #e11d48;
+    color: #be123c;
   }
 
   section.bg-slate-950 table tbody td:last-child::before {
-    content: 'Included with KS OS';
+    content: 'With KS OS';
     color: #4f46e5;
+  }
+
+  section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) {
+    overflow: visible;
+    background: transparent;
+  }
+
+  section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) td:first-child {
+    display: block;
+    padding: 1.4rem 0.15rem 0.25rem !important;
+    background: transparent;
+    font-size: 0.7rem;
+  }
+
+  section.bg-slate-950 table tbody tr:last-child {
+    border: 2px solid #818cf8;
+  }
+
+  section.bg-slate-950 table tbody tr:last-child td:first-child {
+    background: #111827;
+  }
+
+  section.bg-slate-950 table tbody tr:last-child td:nth-child(2) {
+    background: #fff7ed;
+  }
+
+  section.bg-slate-950 table tbody tr:last-child td:last-child {
+    background: #e0e7ff;
   }
 }
 
