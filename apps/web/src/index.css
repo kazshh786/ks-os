@@ -6,8 +6,24 @@
   --font-serif: "Lora", Georgia, Cambria, serif;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 h1, h2, h3, h4, h5, h6, .font-serif {
   font-family: "Lora", "Times New Roman", serif;
+}
+
+#comparison h2 {
+  color: #ffffff;
+}
+
+#comparison .text-slate-600 {
+  color: #cbd5e1;
+}
+
+#comparison .text-cyan-700 {
+  color: #a5f3fc;
 }
 
 /* Modernized Dropdown Selectors Across the Board */
@@ -35,4 +51,3 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
   background-color: #ffffff;
 }
-
