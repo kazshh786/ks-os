@@ -133,11 +133,11 @@ export const packages: PackageDefinition[] = [
     audience: 'Sole traders and small service businesses that need a complete professional presence and the essential tools to operate online.',
     launchPrice: '£197',
     monthlyPrice: '£97',
-    summary: 'A complete website, new logo, professional copywriting, business email, business card and leaflet design, booking tools, CRM and ongoing support.',
+    summary: 'A complete website, new logo, professional copywriting, business email, business card and leaflet design, booking tools, CRM, monthly social content and ongoing support.',
     icon: Rocket,
     launchIncludes: ['New professional logo', 'Brand colours and typography', 'Professionally designed business website', 'Unlimited reasonable pages required for launch', 'Mobile-responsive design', 'Website copywriting included', 'Service and business content creation', 'Business card design', 'Promotional leaflet design', 'Print-ready artwork files', 'Online booking integration', 'Google Business Profile integration', 'Google review integration', 'Trustpilot review integration', 'Zoho professional business email', 'Domain connection', 'Website launch'],
-    monthlyIncludes: ['KS OS business-management platform', 'Online appointment booking', 'Customer CRM', 'Services and pricing management', 'Appointment calendar', 'Customer records and notes', 'Basic reporting', 'Website hosting', 'Website maintenance', 'Security and backups', 'Software updates', 'Standard technical support'],
-    notes: ['Printing costs are charged separately.'],
+    monthlyIncludes: ['KS OS business-management platform', 'Online appointment booking', 'Customer CRM', 'Services and pricing management', 'Appointment calendar', 'Customer records and notes', '4 professionally designed branded social-media posts per month', 'Basic reporting', 'Website hosting', 'Website maintenance', 'Security and backups', 'Software updates', 'Standard technical support'],
+    notes: ['Printing costs are charged separately.', 'The monthly social-media allowance covers design and content creation. Account management, community replies, paid advertising and extra posts are quoted separately.'],
   },
   {
     id: 'growth',
@@ -145,12 +145,12 @@ export const packages: PackageDefinition[] = [
     audience: 'Established businesses that want stronger operational tools, automation and customer-growth features.',
     launchPrice: '£297',
     monthlyPrice: '£197',
-    summary: 'Everything needed to run and grow an established business, including Google Workspace, advanced CRM, staff management, automation, review collection and reporting.',
+    summary: 'Everything needed to run and grow an established business, including Google Workspace, advanced CRM, staff management, automation, review collection, reporting and 8 branded social posts each month.',
     icon: TrendingUp,
     popular: true,
     launchIncludes: ['Everything included in Essential', 'Google Workspace business email', 'Advanced forms and customer journeys', 'Staff and service configuration', 'Existing customer-data import', 'Payment and deposit setup', 'Automated review-request setup', 'Customer follow-up configuration', 'Advanced KS OS onboarding'],
-    monthlyIncludes: ['Everything included in Essential', 'Advanced customer CRM', 'Staff calendars and permissions', 'Stock and product management', 'Deposits and payment management', 'Memberships and customer packages', 'Gift cards', 'Automated appointment follow-ups', 'Automated Google review requests', 'Automated Trustpilot review requests', 'Customer reactivation campaigns', 'Customer segmentation', 'Advanced business reporting', 'Staff-performance reporting', 'Priority technical support'],
-    notes: ['Printing costs and additional Google Workspace licences are charged separately.'],
+    monthlyIncludes: ['Everything included in Essential', '8 professionally designed branded social-media posts per month', 'Advanced customer CRM', 'Staff calendars and permissions', 'Stock and product management', 'Deposits and payment management', 'Memberships and customer packages', 'Gift cards', 'Automated appointment follow-ups', 'Automated Google review requests', 'Automated Trustpilot review requests', 'Customer reactivation campaigns', 'Customer segmentation', 'Advanced business reporting', 'Staff-performance reporting', 'Priority technical support'],
+    notes: ['Printing costs and additional Google Workspace licences are charged separately.', 'The Growth social-media allowance replaces the Essential allowance and covers 8 posts in total each month. Account management, community replies, paid advertising and extra posts are quoted separately.'],
   },
   {
     id: 'scale',
@@ -158,27 +158,34 @@ export const packages: PackageDefinition[] = [
     audience: 'Ambitious businesses, larger teams and owners who want strategic marketing and sales support alongside their digital platform.',
     launchPrice: '£397',
     monthlyPrice: '£297',
-    summary: 'A complete digital growth platform with advanced automation, reporting and a monthly one-to-one marketing and sales strategy session.',
+    summary: 'A complete digital growth platform with advanced automation, reporting, 12 branded social posts per month and a monthly one-to-one marketing and sales strategy session.',
     icon: Building2,
     launchIncludes: ['Everything included in Growth', 'Advanced marketing automation setup', 'Custom customer journeys', 'Multi-team or multi-location configuration', 'Advanced reporting configuration', 'Custom workflows', 'Full data migration support', 'Dedicated launch and training session'],
-    monthlyIncludes: ['Everything included in Growth', 'Advanced marketing automation', 'Custom CRM workflows', 'Multi-location management where required', 'Advanced dashboards', 'Location and team comparisons', 'Higher communication allowances', 'Priority technical support', 'Monthly performance report', 'Monthly marketing and sales consultation', 'Campaign and promotional planning', 'Customer-retention strategy', 'Lead-conversion advice', 'Rebooking and upselling strategy', 'Quarterly business-growth roadmap'],
-    notes: ['Includes one scheduled 60-minute marketing and sales consultation each month.', 'Printing costs, advertising budgets and additional third-party subscriptions are charged separately.'],
+    monthlyIncludes: ['Everything included in Growth', '12 professionally designed branded social-media posts per month', 'Advanced marketing automation', 'Custom CRM workflows', 'Multi-location management where required', 'Advanced dashboards', 'Location and team comparisons', 'Higher communication allowances', 'Priority technical support', 'Monthly performance report', 'Monthly marketing and sales consultation', 'Campaign and promotional planning', 'Customer-retention strategy', 'Lead-conversion advice', 'Rebooking and upselling strategy', 'Quarterly business-growth roadmap'],
+    notes: ['Includes one scheduled 60-minute marketing and sales consultation each month.', 'The Scale social-media allowance replaces the Growth allowance and covers 12 posts in total each month.', 'Printing costs, advertising budgets, social account management, community replies and additional third-party subscriptions are charged separately.'],
   },
 ];
 
-export const includedWithEveryPackage = ['A professionally designed website', 'A new logo', 'Website copywriting', 'Business card design', 'Leaflet design', 'Mobile-responsive layouts', 'Online booking integration', 'Google review integration', 'Trustpilot review integration', 'Website hosting', 'Maintenance and security', 'Ongoing software updates'];
+export const includedWithEveryPackage = ['A professionally designed website', 'A new logo', 'Website copywriting', 'Business card design', 'Leaflet design', 'Mobile-responsive layouts', 'Online booking integration', 'Google review integration', 'Trustpilot review integration', 'Website hosting', 'Maintenance and security', 'Ongoing software updates', 'A monthly branded social-media content allowance'];
 
-export const additionalCosts = ['Business card or leaflet printing', 'Professional photography or videography', 'Paid stock imagery', 'Advertising spend', 'Social-media management', 'Ongoing graphic-design requests', 'Unlimited design revisions', 'Additional email licences', 'Premium Trustpilot subscriptions', 'Third-party software subscriptions', 'Bespoke functionality outside KS OS', 'Complete redesigns requested after launch approval'];
+export const additionalCosts = ['Business card or leaflet printing', 'Professional photography or videography', 'Paid stock imagery', 'Advertising spend', 'Social-media account management and community management', 'Social posts above the package allowance', 'Ongoing graphic-design requests outside the agreed allowance', 'Unlimited design revisions', 'Additional email licences', 'Premium Trustpilot subscriptions', 'Third-party software subscriptions', 'Bespoke functionality outside KS OS', 'Complete redesigns requested after launch approval'];
 
 export const standardScope = ['One initial logo direction with agreed refinements', 'One website design direction', 'Two structured revision rounds', 'One business card design', 'One leaflet design', 'Reasonable website copy required for launch'];
 
 export const stackComparison = [
-  ['Website, hosting and landing pages', '£35–£250+/mo', 'Included, designed and managed'],
+  ['Professional website design and build', '£500–£3,000+ one-off', 'Included in the launch package'],
+  ['Website hosting, maintenance and security', '£20–£100+/mo', 'Included and managed'],
   ['CRM and customer pipeline', '£20–£400+/mo', 'Included and configured around your process'],
   ['Booking and team scheduling', '£10–£50+/user/mo', 'Included with your services, staff and rules'],
-  ['Workflow automation', '£20–£150+/mo', 'Included, built and monitored for you'],
-  ['Email and SMS platform', '£20–£200+/mo plus usage', 'Included; usage costs remain transparent'],
-  ['Reviews and reputation tools', '£40–£200+/mo', 'Included and connected to real journeys'],
+  ['Sales funnels and landing pages', '£20–£150+/mo', 'Included in the connected website system'],
+  ['Forms, surveys and lead capture', '£10–£75+/mo', 'Included and connected to customer records'],
+  ['Email and SMS communication tools', '£20–£200+/mo plus usage', 'Included; usage costs remain transparent'],
+  ['Workflow automation', '£20–£200+/mo', 'Included, built and monitored for you'],
+  ['Reviews and reputation tools', '£40–£200+/mo', 'Included and connected to real customer journeys'],
   ['Reporting and analytics', '£20–£150+/mo', 'Included in one connected dashboard'],
-  ['Setup, integrations and ongoing support', '£150–£600+/mo', 'A core part of the KS OS service'],
+  ['Business card and leaflet design', '£125–£400+ one-off', 'Design and print-ready artwork included'],
+  ['Business card and leaflet printing', '£40–£250+ per print run', 'Quoted separately by quantity, stock and finish'],
+  ['Branded social-media content', '4 posts £100–£250/mo · 8 posts £200–£500/mo · 12 posts £300–£750/mo', 'Essential 4 · Growth 8 · Scale 12 posts per month'],
+  ['Setup, integrations and ongoing support', '£150–£600+/mo', 'A core part of every KS OS package'],
+  ['Pricing context', 'Illustrative UK market ranges; supplier pricing varies', 'Your confirmed scope and allowances are agreed before launch'],
 ];
