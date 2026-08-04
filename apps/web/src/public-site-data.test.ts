@@ -23,13 +23,18 @@ describe('public package content', () => {
     expect(stackComparison).toContainEqual(['Creative and ongoing support', '', '']);
   });
 
-  it('shows printing, Growth social content and a final first-year total', () => {
-    expect(stackComparison.some(([feature]) => feature === 'Business card and leaflet printing')).toBe(true);
-    expect(stackComparison.some(([feature]) => feature === '8 branded social-media posts')).toBe(true);
+  it('uses single top-end prices instead of ranges', () => {
+    const pricedRows = stackComparison.filter(([, separatePrice]) => separatePrice);
+    expect(pricedRows.every(([, separatePrice]) => !separatePrice.includes('–'))).toBe(true);
+    expect(stackComparison).toContainEqual(['Website design and build', '£3,000+ one-off', 'Included in the Growth launch package']);
+    expect(stackComparison).toContainEqual(['8 branded social-media posts', '£500+/mo', 'Included in Growth']);
+  });
+
+  it('ends with a monthly total beside the Growth monthly price', () => {
     expect(stackComparison.at(-1)).toEqual([
-      'Typical first-year total',
-      '£6,985–£34,900+ before printing and usage',
-      'Growth: £2,661 in year one — £297 launch + £197/mo',
+      'Total monthly cost',
+      '£2,625+/mo before printing, usage and extra licences',
+      'KS OS Growth: £197/mo',
     ]);
   });
 });
