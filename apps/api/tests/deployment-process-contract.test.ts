@@ -14,7 +14,11 @@ test('VPS deployment treats API, worker and renderer as one health-checked rollb
   assert.match(script, /APPLY_MIGRATIONS/);
   assert.match(script, /node\/v24\.18\.0\/bin/);
   assert.match(script, /CI="\$\{CI:-true\}"/);
-  assert.equal((script.match(/pnpm install --frozen-lockfile --prod=false/g) || []).length, 2);
+  assert.match(script, /install_workspace_dependencies\(\)/);
+  assert.equal((script.match(/install_workspace_dependencies/g) || []).length, 3);
+  assert.match(script, /pnpm install --frozen-lockfile --prod=false/);
+  assert.match(script, /pnpm install --frozen-lockfile --prod=false --force/);
+  assert.match(script, /pnpm --filter @ks-os\/email exec tsc --version/);
   assert.doesNotMatch(script, /reset --hard|eval /);
 });
 
