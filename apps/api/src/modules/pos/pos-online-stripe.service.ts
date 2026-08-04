@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { getDatabase, stripeConnections, tenants } from '@ks-os/database';
 import Stripe from 'stripe';
-import { getStripeClient } from '../../lib/stripe.js';
+import { assertStripeConnectedAccountReady, getStripeClient, getStripePublishableKey } from '../../lib/stripe.js';
 
 // PR #80 introduced this bounded presentation choice in the POS service but
 // referenced a contract export that does not exist. Keep the type local because
@@ -32,13 +32,14 @@ export class PosOnlineStripeService {
     if (connection.connectionStatus !== 'READY' || !connection.chargesEnabled) {
       throw fail('STRIPE_ACCOUNT_NOT_READY', 'The connected Stripe account is not ready to take payments.');
     }
+    await assertStripeConnectedAccountReady(connection.stripeAccountId);
     return connection;
   }
 
   private applicationFeeAmount(amountInCents: number) {
     const percentageBps = Number.parseInt(process.env.STRIPE_APPLICATION_FEE_BPS || '0', 10) || 0;
     const fixedFee = Number.parseInt(process.env.STRIPE_APPLICATION_FEE_FIXED || '0', 10) || 0;
-    return Math.max(0, Math.floor((amountInCents * percentageBps) / 10_000) + fixedFee);
+    return Math.min(amountInCents, Math.max(0, Math.floor((amountInCents * percentageBps) / 10_000) + fixedFee));
   }
 
   async createSession(input: {
@@ -48,7 +49,7 @@ export class PosOnlineStripeService {
     context: OnlineSaleContext;
   }) {
     const connection = await this.requireReadyConnection(input.tenantId);
-    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
+    const publishableKey = getStripePublishableKey();
     if (!publishableKey) {
       throw fail('STRIPE_PUBLISHABLE_KEY_MISSING', 'Online POS payments are not configured yet.');
     }

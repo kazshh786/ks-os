@@ -828,6 +828,7 @@ export const stripeConnections = pgTable('stripe_connections', {
     .unique()
     .references(() => tenants.id, { onDelete: 'cascade' }),
   stripeAccountId: varchar('stripe_account_id', { length: 255 }).notNull().unique(),
+  livemode: boolean('livemode'),
   accountType: varchar('account_type', { length: 50 }).notNull(),
   connectionStatus: varchar('connection_status', { length: 50 }).notNull(),
   detailsSubmitted: boolean('details_submitted').default(false).notNull(),

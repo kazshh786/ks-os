@@ -16,6 +16,7 @@ export class StripeRepository {
         target: stripeConnections.tenantId,
         set: {
           stripeAccountId: data.stripeAccountId,
+          livemode: data.livemode,
           accountType: data.accountType,
           connectionStatus: data.connectionStatus,
           detailsSubmitted: data.detailsSubmitted,

@@ -341,6 +341,7 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : '';
       if (['SLOT_UNAVAILABLE', 'SLOT_HELD', 'HOLD_EXPIRED', 'HOLD_MISMATCH'].includes(message)) { setError('This slot is no longer available. No booking or duplicate payment was created.'); goToStep(1); setHold(null); setSlot(null); }
+      else if (message === 'PAYMENTS_NOT_AVAILABLE') setError('Secure online payment is temporarily unavailable. No booking was created; the business needs to reconnect Stripe for this environment.');
       else setError('We could not confirm the booking. Your booking reference will only appear after a successful confirmation.');
     } finally { setSubmitting(false); }
   };

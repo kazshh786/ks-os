@@ -23,9 +23,15 @@ export async function stripeRoutes(fastify: FastifyInstance) {
   });
 
   const handleError = (err: any, reply: any) => {
-    const code = err?.message || err?.name || 'STRIPE_REQUEST_FAILED';
+    const messageCode = typeof err?.message === 'string' && /^[A-Z0-9_]+$/.test(err.message)
+      ? err.message
+      : null;
+    const code = messageCode
+      || (typeof err?.name === 'string' && err.name.startsWith('STRIPE_') ? err.name : null)
+      || 'STRIPE_REQUEST_FAILED';
     const codeMap: Record<string, number> = {
       STRIPE_NOT_CONFIGURED: 500,
+      STRIPE_KEY_MODE_MISMATCH: 500,
       STRIPE_CONNECTION_NOT_FOUND: 404,
       STRIPE_CONNECTION_ALREADY_EXISTS: 409,
       STRIPE_ACCOUNT_CREATE_FAILED: 502,
@@ -39,6 +45,7 @@ export async function stripeRoutes(fastify: FastifyInstance) {
     };
     const messageMap: Record<string, string> = {
       STRIPE_NOT_CONFIGURED: 'Stripe is not configured for this environment.',
+      STRIPE_KEY_MODE_MISMATCH: 'Stripe live and test keys cannot be mixed. Update both platform keys together.',
       STRIPE_CONNECTION_NOT_FOUND: 'No Stripe connection has been started for this business.',
       STRIPE_ACCOUNT_CREATE_FAILED: 'Stripe could not start the account setup. Please try again.',
       STRIPE_ACCOUNT_RETRIEVE_FAILED: 'Stripe account status is temporarily unavailable.',

@@ -233,7 +233,11 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         staffId: data.staffId,
         locationId: data.locationId,
       });
-      const [bookedService] = await db.select({ requiresDeposit: services.requiresDeposit }).from(services)
+      const [bookedService] = await db.select({
+        requiresDeposit: services.requiresDeposit,
+        price: services.price,
+        discount: services.discount,
+      }).from(services)
         .where(and(eq(services.id, data.serviceId), eq(services.tenantId, tenant.id), eq(services.isActive, true)))
         .limit(1);
       if (!bookedService) return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
@@ -243,6 +247,11 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         : paymentSettings.mode === 'DEPOSIT' ? 'deposit_required'
           : paymentSettings.mode === 'CUSTOMER_CHOICE' ? data.paymentMode
             : 'pay_later';
+      const baseServiceAmount = Math.max(0, bookedService.price - bookedService.discount);
+      if (verifiedPaymentMode !== 'pay_later' && baseServiceAmount > 0) {
+        const { StripeService } = await import('../../modules/integrations/stripe/stripe.service.js');
+        await new StripeService().assertBookingPaymentsReady(tenant.id);
+      }
       const booking = await db.transaction(async tx => {
         const hold = await bookingPageService.validateHoldForBooking(tx, page.id, data);
         const created = await bookingService.createPublicBooking(
@@ -409,7 +418,7 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         return reply.code(err.statusCode).send({ error: { code: err.code || 'BOOKING_CONFLICT', message: err.message } });
       }
       const message = err.message || '';
-      if (message === 'STRIPE_ACCOUNT_NOT_READY') {
+      if (['STRIPE_ACCOUNT_NOT_READY', 'STRIPE_NOT_CONFIGURED', 'STRIPE_KEY_MODE_MISMATCH'].includes(message)) {
         return reply.code(402).send({ error: { code: 'PAYMENTS_NOT_AVAILABLE', message: 'Payments are not currently available for this shop.' } });
       }
       if (/no longer available|outside booking channel schedule/i.test(message)) {
