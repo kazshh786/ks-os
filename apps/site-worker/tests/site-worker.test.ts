@@ -32,6 +32,7 @@ import {
   SiteJobLeaseLostError,
 } from '../src/repository.types.js';
 import { SiteWorker } from '../src/worker.js';
+import { blueprintPathToSiteSlug } from '../src/postgres-generation-executor.js';
 
 const migration = readFileSync(
   new URL(
@@ -650,6 +651,16 @@ test('9e. expired lease recovery resets aggregate progress before replay', () =>
     postgresRepositorySource,
     /previous_status IN \('LEASED', 'PROCESSING'\) THEN 0[\s\S]*previous_status IN \('LEASED', 'PROCESSING'\) THEN null[\s\S]*previous_status IN \('LEASED', 'PROCESSING'\) THEN null/,
   );
+});
+
+test('9f. canonical blueprint paths become renderer-safe hierarchical slugs', () => {
+  assert.equal(blueprintPathToSiteSlug('/'), 'home');
+  assert.equal(
+    blueprintPathToSiteSlug('/services/signature-glow-facial'),
+    'services/signature-glow-facial',
+  );
+  assert.throws(() => blueprintPathToSiteSlug('services/signature-glow-facial'));
+  assert.throws(() => blueprintPathToSiteSlug('/services//signature-glow-facial'));
 });
 
 test('10. lease owner is recorded', async () => {

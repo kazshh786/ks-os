@@ -80,6 +80,9 @@ import {
   type VerifiedBusinessFacts,
 } from '@ks-os/site-generation';
 import {
+  SiteSlugSchema,
+} from '@ks-os/contracts';
+import {
   GenerateMetadataPayloadSchema,
   GeneratePagePayloadSchema,
   GenerateSitePayloadSchema,
@@ -109,6 +112,20 @@ import {
 } from './provisioning-finalization.js';
 
 type Database = ReturnType<typeof getDatabase>;
+
+export function blueprintPathToSiteSlug(path: string): string {
+  if (path === '/') return 'home';
+  const slug = path.startsWith('/')
+    ? SiteSlugSchema.safeParse(path.slice(1))
+    : null;
+  if (!slug?.success) {
+    throw new SiteJobExecutionError(
+      'TERMINAL_VALIDATION_FAILURE',
+      'A blueprint page path must be canonical and site-relative.',
+    );
+  }
+  return slug.data;
+}
 
 interface RunContext {
   id: string;
@@ -1158,7 +1175,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         blueprintPageReference: page.reference,
         pageReference,
         title: page.title,
-        slug: page.slug,
+        slug: blueprintPathToSiteSlug(page.slug),
         pageType: page.pageType,
         conversionRole: page.conversionRole,
         layoutReference: page.layoutReference,

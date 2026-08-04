@@ -122,7 +122,12 @@ export const SiteSlugSchema = z
   .string()
   .min(1)
   .max(120)
-  .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/);
+  .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/);
+export const SiteCanonicalPathSchema = z
+  .string()
+  .min(1)
+  .max(120)
+  .regex(/^\/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*)?$/);
 export const TenantSubdomainSchema = z
   .string()
   .min(2)
@@ -227,7 +232,7 @@ export const SiteBlueprintPageSchema = z.object({
   pageType: SitePageTypeSchema,
   conversionRole: SiteConversionRoleSchema,
   title: z.string().trim().min(1).max(160),
-  proposedSlug: SiteSlugSchema,
+  proposedSlug: SiteCanonicalPathSchema,
   allocation: SitePageAllocationSchema.default('INITIAL'),
   layoutReference: PublicReferenceSchema.optional(),
   sortOrder: z.number().int().min(0).max(10_000),
