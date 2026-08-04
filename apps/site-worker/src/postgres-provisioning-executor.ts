@@ -973,23 +973,57 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
       const [transactionExisting] = await tx.select({ reference: siteBlueprints.publicReference })
         .from(siteBlueprints).where(eq(siteBlueprints.provisioningRunId, run.runId)).limit(1);
       if (transactionExisting) return [{ type: 'SITE_BLUEPRINT', reference: transactionExisting.reference }];
-      const [blueprint] = await tx.insert(siteBlueprints).values({
-        tenantId: run.tenantId, siteId: run.siteId, templateVersionId: run.templateVersionId,
-        planAssignmentId: assignment.id, provisioningRunId: run.runId, name: request.name!, status: 'REVIEW_REQUIRED',
-        revision: sql<number>`(
-          SELECT coalesce(max(existing.revision), 0) + 1
-          FROM site_blueprints AS existing
-          WHERE existing.site_id = ${run.siteId}::uuid
-        )`,
-        sourceDataDigest: plan.sourceDataDigest, engineVersion: plan.engineVersion,
-        proposedMarketingPageCount: plan.entitlementUsage.proposedMarketingPageCount,
-        entitlementMarketingPageLimit: plan.entitlementUsage.marketingPageLimit,
-        functionalPageCount: plan.entitlementUsage.functionalPageCount,
-        requiredLegalPageCount: plan.entitlementUsage.requiredLegalPageCount,
-        unusedMarketingPageAllowance: plan.entitlementUsage.unusedMarketingPageAllowance,
-        entitlementOverrideApplied: plan.entitlementUsage.overrideApplied,
-        readinessJson: plan.readiness, generatedAt: new Date(), generatedByAgencyUserId: run.requestedByAgencyUserId,
-      }).returning({ id: siteBlueprints.id, reference: siteBlueprints.publicReference });
+      const blueprintResult = await tx.execute(sql<{ id: string; reference: string }>`
+        INSERT INTO site_blueprints (
+          tenant_id,
+          site_id,
+          template_version_id,
+          plan_assignment_id,
+          provisioning_run_id,
+          name,
+          status,
+          revision,
+          source_data_digest,
+          engine_version,
+          proposed_marketing_page_count,
+          entitlement_marketing_page_limit,
+          functional_page_count,
+          required_legal_page_count,
+          unused_marketing_page_allowance,
+          entitlement_override_applied,
+          readiness_json,
+          generated_at,
+          generated_by_agency_user_id
+        )
+        SELECT
+          ${run.tenantId}::uuid,
+          locked_site.id,
+          ${run.templateVersionId}::uuid,
+          ${assignment.id}::uuid,
+          ${run.runId}::uuid,
+          ${request.name!},
+          'REVIEW_REQUIRED',
+          coalesce(max(existing.revision), 0) + 1,
+          ${plan.sourceDataDigest},
+          ${plan.engineVersion},
+          ${plan.entitlementUsage.proposedMarketingPageCount},
+          ${plan.entitlementUsage.marketingPageLimit},
+          ${plan.entitlementUsage.functionalPageCount},
+          ${plan.entitlementUsage.requiredLegalPageCount},
+          ${plan.entitlementUsage.unusedMarketingPageAllowance},
+          ${plan.entitlementUsage.overrideApplied},
+          ${JSON.stringify(plan.readiness)}::jsonb,
+          now(),
+          ${run.requestedByAgencyUserId}::uuid
+        FROM sites AS locked_site
+        LEFT JOIN site_blueprints AS existing
+          ON existing.site_id = locked_site.id
+        WHERE locked_site.id = ${run.siteId}::uuid
+        GROUP BY locked_site.id
+        RETURNING id, public_reference AS reference
+      `);
+      const [blueprint] = blueprintResult.rows as unknown as Array<{ id: string; reference: string }>;
+      if (!blueprint) throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The locked site is unavailable for blueprint generation.');
       const insertedPages = await tx.insert(siteBlueprintPages).values(plan.pages.map((page, index) => ({
         tenantId: run.tenantId, blueprintId: blueprint.id, pageType: page.pageType,
         conversionRole: page.conversionRole, entitlementKind: page.entitlementKind, allocation: 'INITIAL',
