@@ -30,11 +30,11 @@ describe('public package content', () => {
     expect(stackComparison).toContainEqual(['8 branded social-media posts', '£500+/mo', 'Included in Growth']);
   });
 
-  it('ends with a monthly total beside the Growth monthly price', () => {
+  it('ends with only the two monthly prices', () => {
     expect(stackComparison.at(-1)).toEqual([
       'Total monthly cost',
-      '£2,625+/mo before printing, usage and extra licences',
-      'KS OS Growth: £197/mo',
+      '£2,625+ / month',
+      '£197 / month',
     ]);
   });
 });

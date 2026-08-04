@@ -191,5 +191,5 @@ export const stackComparison = [
   ['Business card and leaflet design', '£400+ one-off', 'Included with print-ready artwork'],
   ['Business card and leaflet printing', '£250+ per print run', 'Quoted separately'],
   ['Setup, integrations and support', '£600+/mo', 'Included'],
-  ['Total monthly cost', '£2,625+/mo before printing, usage and extra licences', 'KS OS Growth: £197/mo'],
+  ['Total monthly cost', '£2,625+ / month', '£197 / month'],
 ];
