@@ -26,6 +26,162 @@ h1, h2, h3, h4, h5, h6, .font-serif {
   color: #a5f3fc;
 }
 
+/* Feature-led real-cost comparison, inspired by a software replacement matrix. */
+section.bg-slate-950 table {
+  border-collapse: separate !important;
+  border-spacing: 0 0.75rem !important;
+}
+
+section.bg-slate-950 table thead tr {
+  background: #020617 !important;
+}
+
+section.bg-slate-950 table thead th {
+  border: 0 !important;
+  padding-top: 1rem !important;
+  padding-bottom: 1rem !important;
+  color: #ffffff !important;
+  font-size: 0.75rem !important;
+  letter-spacing: 0.16em !important;
+}
+
+section.bg-slate-950 table thead th:first-child {
+  border-radius: 1rem 0 0 1rem;
+}
+
+section.bg-slate-950 table thead th:last-child {
+  border-radius: 0 1rem 1rem 0;
+  color: #c7d2fe !important;
+}
+
+section.bg-slate-950 table tbody tr {
+  border: 0 !important;
+  filter: drop-shadow(0 8px 16px rgba(2, 6, 23, 0.14));
+}
+
+section.bg-slate-950 table tbody td {
+  border: 0 !important;
+  background: #ffffff;
+  padding-top: 1.15rem !important;
+  padding-bottom: 1.15rem !important;
+  color: #475569 !important;
+  line-height: 1.55;
+}
+
+section.bg-slate-950 table tbody td:first-child {
+  width: 34%;
+  border-radius: 1rem 0 0 1rem;
+  color: #0f172a !important;
+  font-weight: 800 !important;
+}
+
+section.bg-slate-950 table tbody td:nth-child(2) {
+  width: 31%;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+section.bg-slate-950 table tbody td:last-child {
+  position: relative;
+  width: 35%;
+  border-radius: 0 1rem 1rem 0;
+  padding-left: 3.65rem !important;
+  color: #3730a3 !important;
+  font-weight: 800 !important;
+}
+
+section.bg-slate-950 table tbody td:last-child::before {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 1.5rem;
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  place-items: center;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+  background: #0f172a;
+  color: #a5b4fc;
+  font-size: 0.95rem;
+  font-weight: 900;
+  box-shadow: 0 0 0 4px #eef2ff;
+}
+
+section.bg-slate-950 table tbody tr:last-child td {
+  background: #eef2ff;
+}
+
+section.bg-slate-950 table tbody tr:last-child td:first-child {
+  color: #4338ca !important;
+}
+
+@media (max-width: 767px) {
+  section.bg-slate-950 table {
+    display: block;
+    min-width: 0 !important;
+    border-spacing: 0 !important;
+  }
+
+  section.bg-slate-950 table thead {
+    display: none;
+  }
+
+  section.bg-slate-950 table tbody {
+    display: grid;
+    gap: 1rem;
+  }
+
+  section.bg-slate-950 table tbody tr {
+    display: grid;
+    overflow: hidden;
+    border-radius: 1rem;
+    background: #ffffff;
+  }
+
+  section.bg-slate-950 table tbody td,
+  section.bg-slate-950 table tbody td:first-child,
+  section.bg-slate-950 table tbody td:nth-child(2),
+  section.bg-slate-950 table tbody td:last-child {
+    display: block;
+    width: auto;
+    border-radius: 0;
+    padding: 1rem 1.25rem !important;
+  }
+
+  section.bg-slate-950 table tbody td:first-child {
+    background: #f8fafc;
+    font-size: 1rem;
+  }
+
+  section.bg-slate-950 table tbody td:nth-child(2)::before,
+  section.bg-slate-950 table tbody td:last-child::before {
+    position: static;
+    display: block;
+    width: auto;
+    height: auto;
+    margin-bottom: 0.35rem;
+    transform: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  section.bg-slate-950 table tbody td:nth-child(2)::before {
+    content: 'Bought separately';
+    color: #e11d48;
+  }
+
+  section.bg-slate-950 table tbody td:last-child::before {
+    content: 'Included with KS OS';
+    color: #4f46e5;
+  }
+}
+
 /* Modernized Dropdown Selectors Across the Board */
 select {
   appearance: none !important;
