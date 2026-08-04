@@ -248,9 +248,15 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
           : paymentSettings.mode === 'CUSTOMER_CHOICE' ? data.paymentMode
             : 'pay_later';
       const baseServiceAmount = Math.max(0, bookedService.price - bookedService.discount);
+      const depositPercentage = Math.min(100, Math.max(0, Number(paymentSettings.depositPercentage || 0)));
+      const expectedAmountDue = verifiedPaymentMode === 'deposit_required'
+        ? Math.ceil(baseServiceAmount * (depositPercentage > 0 ? depositPercentage : 100) / 100)
+        : baseServiceAmount;
       if (verifiedPaymentMode !== 'pay_later' && baseServiceAmount > 0) {
         const { StripeService } = await import('../../modules/integrations/stripe/stripe.service.js');
-        await new StripeService().assertBookingPaymentsReady(tenant.id);
+        const stripeService = new StripeService();
+        stripeService.assertBookingPaymentAmount(expectedAmountDue, tenant.currency || 'GBP');
+        await stripeService.assertBookingPaymentsReady(tenant.id);
       }
       const booking = await db.transaction(async tx => {
         const hold = await bookingPageService.validateHoldForBooking(tx, page.id, data);
@@ -372,7 +378,6 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       let paymentStatus = 'NOT_REQUIRED';
       let checkoutUrl = undefined;
       const quotedAmount = booking.quoted_amount || 0;
-      const depositPercentage = Math.min(100, Math.max(0, Number(paymentSettings.depositPercentage || 0)));
       const amountDue = verifiedPaymentMode === 'deposit_required'
         ? Math.ceil(quotedAmount * (depositPercentage > 0 ? depositPercentage : 100) / 100)
         : quotedAmount;
@@ -418,7 +423,12 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         return reply.code(err.statusCode).send({ error: { code: err.code || 'BOOKING_CONFLICT', message: err.message } });
       }
       const message = err.message || '';
-      if (['STRIPE_ACCOUNT_NOT_READY', 'STRIPE_NOT_CONFIGURED', 'STRIPE_KEY_MODE_MISMATCH'].includes(message)) {
+      const stripeErrorCode = err.code || err.name || message;
+      if (stripeErrorCode === 'STRIPE_PAYMENT_AMOUNT_INVALID') {
+        return reply.code(422).send({ error: { code: 'PAYMENT_AMOUNT_INVALID', message: 'The online payment amount is outside Stripe limits. No booking was created.' } });
+      }
+      if (['STRIPE_ACCOUNT_NOT_READY', 'STRIPE_NOT_CONFIGURED', 'STRIPE_KEY_MODE_MISMATCH'].includes(stripeErrorCode)
+        || ['STRIPE_ACCOUNT_NOT_READY', 'STRIPE_NOT_CONFIGURED', 'STRIPE_KEY_MODE_MISMATCH'].includes(message)) {
         return reply.code(402).send({ error: { code: 'PAYMENTS_NOT_AVAILABLE', message: 'Payments are not currently available for this shop.' } });
       }
       if (/no longer available|outside booking channel schedule/i.test(message)) {

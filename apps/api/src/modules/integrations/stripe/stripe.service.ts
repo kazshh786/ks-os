@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { bookingPages, getDatabase, tenants } from '@ks-os/database';
 import { StripeRepository } from './stripe.repository.js';
-import { assertStripeConnectedAccountReady, getStripeClient, getStripeConfiguredMode } from '../../../lib/stripe.js';
+import { assertStripeCheckoutAmount, assertStripeConnectedAccountReady, getStripeClient, getStripeConfiguredMode } from '../../../lib/stripe.js';
 import { deriveStripeConnectionStatus } from './stripe.mapper.js';
 
 const connectUrl = (kind: 'return' | 'refresh') => {
@@ -42,6 +42,10 @@ function verifiedBookingOrigin(page?: { customDomain: string | null; customDomai
 
 export class StripeService {
   private repo = new StripeRepository();
+
+  assertBookingPaymentAmount(amount: number, currency: string) {
+    assertStripeCheckoutAmount(amount, currency);
+  }
 
   private accountIsMissingFromActivePlatform(error: unknown) {
     const stripeError = error as { type?: string; code?: string; statusCode?: number };
@@ -258,6 +262,7 @@ export class StripeService {
     amount: number,
     currency: string,
   ) {
+    assertStripeCheckoutAmount(amount, currency);
     const connection = await this.assertBookingPaymentsReady(tenantId);
 
     const db = getDatabase();
@@ -272,7 +277,7 @@ export class StripeService {
 
     const bps = parseInt(process.env.STRIPE_APPLICATION_FEE_BPS || '0', 10);
     const fixed = parseInt(process.env.STRIPE_APPLICATION_FEE_FIXED || '0', 10);
-    const application_fee_amount = Math.floor((amount * bps) / 10000) + fixed;
+    const application_fee_amount = Math.min(amount, Math.max(0, Math.floor((amount * bps) / 10000) + fixed));
 
     const stripe = getStripeClient();
     const expiresAt = Math.floor(Date.now() / 1000) + (parseInt(process.env.BOOKING_PAYMENT_HOLD_MINUTES || '30') * 60);

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
-import { getStripeConfiguredMode, getStripePublishableKey } from '../src/lib/stripe.js';
+import { assertStripeCheckoutAmount, getStripeConfiguredMode, getStripePublishableKey } from '../src/lib/stripe.js';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
@@ -45,12 +45,33 @@ test('paid bookings and every POS Stripe path preflight the active connected acc
   const retailPos = source('src/modules/pos/retail-pos-stripe.service.ts');
 
   assert.match(bookingRoute, /assertBookingPaymentsReady\(tenant\.id\)/);
+  assert.match(bookingRoute, /assertBookingPaymentAmount\(expectedAmountDue/);
   assert.match(bookingRoute, /baseServiceAmount > 0/);
   assert.match(bookingFlow, /business needs to reconnect Stripe for this environment/);
+  assert.match(bookingFlow, /PAYMENT_AMOUNT_INVALID/);
   assert.match(onlinePos, /assertStripeConnectedAccountReady\(connection\.stripeAccountId\)/);
   assert.match(appointmentPos, /assertStripeConnectedAccountReady\(connection\.stripeAccountId\)/);
   assert.match(retailPos, /assertStripeConnectedAccountReady\(connection\.stripeAccountId\)/);
   assert.match(onlinePos, /getStripePublishableKey\(\)/);
+  assert.match(onlinePos, /assertStripeCheckoutAmount\(input\.amountInCents, tenant\.currency\)/);
+  assert.match(appointmentPos, /assertStripeCheckoutAmount\(input\.amountInCents, tenant\.currency\)/);
+  assert.match(retailPos, /assertStripeCheckoutAmount\(input\.amountInCents, tenant\.currency\)/);
+});
+
+test('Stripe minimum charge validation runs before booking or POS payment creation', () => {
+  assert.throws(() => assertStripeCheckoutAmount(29, 'GBP'), (error: unknown) => (
+    error instanceof Error && error.name === 'STRIPE_PAYMENT_AMOUNT_INVALID'
+  ));
+  assert.doesNotThrow(() => assertStripeCheckoutAmount(30, 'GBP'));
+  assert.throws(() => assertStripeCheckoutAmount(49, 'USD'));
+  assert.doesNotThrow(() => assertStripeCheckoutAmount(50, 'EUR'));
+
+  const bookingRoute = source('src/routes/public/booking.ts');
+  assert.ok(
+    bookingRoute.indexOf('assertBookingPaymentAmount(expectedAmountDue')
+      < bookingRoute.indexOf('const booking = await db.transaction'),
+    'Stripe amount validation must happen before the booking transaction',
+  );
 });
 
 test('Connect replaces an inaccessible or opposite-mode tenant account', () => {

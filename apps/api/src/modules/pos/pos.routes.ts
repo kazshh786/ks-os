@@ -134,7 +134,7 @@ fastify.post('/api/v1/pos/stripe/online-sessions', async (request, reply) => {
     if (code === 'POS_APPOINTMENT_NOT_FOUND' || code === 'PRODUCT_NOT_FOUND') status = 404;
     if (code === 'POS_ACCESS_DENIED' || code === 'ENTITLEMENT_REQUIRED') status = 403;
     if (code === 'INSUFFICIENT_STOCK' || code === 'STRIPE_ACCOUNT_NOT_READY' || code === 'STRIPE_PUBLISHABLE_KEY_MISSING') status = 409;
-    if (code === 'INVALID_PAYMENT_TOTAL') status = 400;
+    if (code === 'INVALID_PAYMENT_TOTAL' || code === 'STRIPE_PAYMENT_AMOUNT_INVALID') status = 400;
     request.log.error({ err: error }, 'Could not start online POS payment');
     return reply.status(status).send({ error: { code, message: error.message || 'The online payment could not be started.' } });
   }
@@ -197,7 +197,7 @@ fastify.get('/api/v1/pos/stripe/online-sessions/:sessionId', async (request, rep
         || code === 'STRIPE_READER_BUSY'
         || code === 'STRIPE_READER_NOT_SERVER_DRIVEN'
       ) status = 409;
-      if (code === 'INVALID_PAYMENT_TOTAL') status = 400;
+      if (code === 'INVALID_PAYMENT_TOTAL' || code === 'STRIPE_PAYMENT_AMOUNT_INVALID') status = 400;
       request.log.error({ err: error }, 'Could not start Stripe Terminal payment');
       return reply.status(status).send({ error: { code, message: error.message || 'The Stripe payment could not be started.' } });
     }
@@ -295,6 +295,7 @@ fastify.get('/api/v1/pos/stripe/online-sessions/:sessionId', async (request, rep
         case 'INVALID_PAYMENT_METHOD':
         case 'INVALID_PAYMENT_SPLIT':
         case 'INVALID_PAYMENT_TOTAL':
+        case 'STRIPE_PAYMENT_AMOUNT_INVALID':
         case 'STRIPE_CONFIRMATION_REQUIRED':
         case 'STRIPE_PAYMENT_INTENT_REQUIRED':
         case 'STRIPE_MANUAL_CONFIRMATION_REQUIRED':

@@ -31,6 +31,7 @@ const statusFor = (code: string) => {
     || code === 'INVALID_PAYMENT_COMPONENTS'
     || code === 'INVALID_PAYMENT_COMPONENT_AMOUNT'
     || code === 'INVALID_PAYMENT_TOTAL'
+    || code === 'STRIPE_PAYMENT_AMOUNT_INVALID'
     || code === 'STRIPE_CONFIRMATION_REQUIRED'
     || code === 'STRIPE_PAYMENT_INTENT_REQUIRED'
     || code === 'STRIPE_MANUAL_CONFIRMATION_REQUIRED'

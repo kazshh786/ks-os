@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { getDatabase, stripeConnections, tenants } from '@ks-os/database';
 import Stripe from 'stripe';
-import { assertStripeConnectedAccountReady, getStripeClient, getStripePublishableKey } from '../../lib/stripe.js';
+import { assertStripeCheckoutAmount, assertStripeConnectedAccountReady, getStripeClient, getStripePublishableKey } from '../../lib/stripe.js';
 
 // PR #80 introduced this bounded presentation choice in the POS service but
 // referenced a contract export that does not exist. Keep the type local because
@@ -61,6 +61,7 @@ export class PosOnlineStripeService {
       .where(eq(tenants.id, input.tenantId))
       .limit(1);
     if (!tenant) throw fail('TENANT_NOT_FOUND', 'Business account was not found.');
+    assertStripeCheckoutAmount(input.amountInCents, tenant.currency);
 
     const stripe = getStripeClient();
     const origin = process.env.FRONTEND_ORIGIN || process.env.PUBLIC_APP_ORIGIN || 'http://localhost:3000';

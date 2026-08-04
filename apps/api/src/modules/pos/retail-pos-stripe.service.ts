@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { getDatabase, stripeConnections, tenants } from '@ks-os/database';
-import { assertStripeConnectedAccountReady, getStripeClient } from '../../lib/stripe.js';
+import { assertStripeCheckoutAmount, assertStripeConnectedAccountReady, getStripeClient } from '../../lib/stripe.js';
 
 const fail = (name: string, message: string) => {
   const error = new Error(message);
@@ -50,6 +50,7 @@ export class RetailPosStripeService {
 
     if (!tenant) throw fail('TENANT_NOT_FOUND', 'Business account was not found.');
     if (input.amountInCents <= 0) throw fail('INVALID_PAYMENT_TOTAL', 'The payment total must be greater than zero.');
+    assertStripeCheckoutAmount(input.amountInCents, tenant.currency);
 
     const reader = await stripe.terminal.readers.retrieve(
       input.readerId,
