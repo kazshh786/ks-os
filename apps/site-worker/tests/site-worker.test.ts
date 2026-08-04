@@ -636,8 +636,8 @@ test('9c. automatic retries reset aggregate progress before replay', () => {
 
 test('9d. reprovisioning allocates and persists a new blueprint revision atomically', () => {
   assert.match(provisioningExecutorSource, /SELECT id FROM sites[\s\S]*FOR UPDATE/);
-  assert.match(provisioningExecutorSource, /max\(siteBlueprints\.revision\)/);
-  assert.match(provisioningExecutorSource, /const revision = \(latest\?\.revision \?\? 0\) \+ 1/);
+  assert.match(provisioningExecutorSource, /coalesce\(max\(existing\.revision\), 0\) \+ 1/);
+  assert.match(provisioningExecutorSource, /WHERE existing\.site_id = \$\{run\.siteId\}::uuid/);
   assert.match(provisioningExecutorSource, /return this\.db\.transaction/);
 });
 
