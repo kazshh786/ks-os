@@ -177,8 +177,9 @@ function Header() {
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
         <Link to="/" aria-label="Kasim Shah home" className="inline-flex items-center"><KasimShahLogo /></Link>
-        <nav className="hidden items-center gap-7 lg:flex" aria-label="Primary navigation">
+        <nav className="hidden items-center gap-5 lg:flex xl:gap-7" aria-label="Primary navigation">
           <Link to="/services" className="text-sm font-bold text-slate-600 transition hover:text-indigo-700">KS OS services</Link>
+          <a href="/#about-kasim" className="text-sm font-bold text-slate-600 transition hover:text-indigo-700">About Kasim</a>
           <a href="/#control" className="text-sm font-bold text-slate-600 transition hover:text-indigo-700">How it works</a>
           <a href="/#comparison" className="text-sm font-bold text-slate-600 transition hover:text-indigo-700">Compare costs</a>
           <a href="/#faq" className="text-sm font-bold text-slate-600 transition hover:text-indigo-700">FAQs</a>
@@ -193,6 +194,7 @@ function Header() {
         <nav className="border-t border-slate-200 bg-white px-5 py-5 lg:hidden" aria-label="Mobile navigation">
           <div className="mx-auto grid max-w-7xl gap-2">
             <Link to="/services" className="rounded-xl px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100">KS OS services</Link>
+            <a href="/#about-kasim" className="rounded-xl px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100">About Kasim</a>
             <a href="/#control" className="rounded-xl px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100">How it works</a>
             <a href="/#comparison" className="rounded-xl px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100">Compare costs</a>
             <a href="/#faq" className="rounded-xl px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100">FAQs</a>
@@ -209,7 +211,7 @@ function Footer() {
     <footer className="border-t border-slate-800 bg-slate-950 text-slate-300">
       <div className="mx-auto grid max-w-7xl gap-10 px-5 py-12 md:grid-cols-[1.4fr_1fr_1fr] lg:px-8">
         <div className="max-w-md"><KasimShahLogo inverse /><div className="mt-6 flex items-center gap-3"><KsOsLogo inverse className="h-6" /><span className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-indigo-200">The offer</span></div><p className="mt-5 text-sm leading-7 text-slate-400">A done-for-you business operating system built and managed by Kasim Shah, with your team kept in control.</p></div>
-        <div><p className="text-xs font-black uppercase tracking-[0.2em] text-white">Explore</p><div className="mt-4 grid gap-3 text-sm"><Link to="/services" className="hover:text-white">KS OS services</Link><a href="/#comparison" className="hover:text-white">Compare costs</a><a href={BOOKING_URL} className="hover:text-white">Book a consultation</a></div></div>
+        <div><p className="text-xs font-black uppercase tracking-[0.2em] text-white">Explore</p><div className="mt-4 grid gap-3 text-sm"><Link to="/services" className="hover:text-white">KS OS services</Link><a href="/#about-kasim" className="hover:text-white">About Kasim</a><a href="/#comparison" className="hover:text-white">Compare costs</a><a href={BOOKING_URL} className="hover:text-white">Book a consultation</a></div></div>
         <div><p className="text-xs font-black uppercase tracking-[0.2em] text-white">Access</p><div className="mt-4 grid gap-3 text-sm"><a href="/login" className="hover:text-white">Client sign in</a><a href="/customer/login" className="hover:text-white">Customer portal</a><span className="inline-flex items-center gap-2 text-slate-500"><LockKeyhole className="h-4 w-4" /> Securely powered by KS OS</span></div></div>
       </div>
       <div className="border-t border-slate-800 px-5 py-5 text-center text-xs text-slate-500">© {new Date().getFullYear()} Kasim Shah. KS OS is a Kasim Shah product.</div>
@@ -262,8 +264,47 @@ function ProductPreview() {
   );
 }
 
+function WhoIsKasimShah() {
+  const impact = [
+    ['10+ years', 'Commercial UX, digital strategy and design'],
+    ['+25%', 'Conversion uplift on key AO.com journeys'],
+    ['+29%', 'Platform engagement growth delivered at Zuto'],
+    ['+23%', 'Automation efficiency delivered at Anywhere Works'],
+  ];
+  const brands = ['AO.com', 'Zuto', 'Samsung', 'Intel', 'Neff'];
+
+  return (
+    <section id="about-kasim" className="overflow-hidden bg-white px-5 py-20 sm:py-28 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="grid items-center gap-14 lg:grid-cols-[0.9fr_1.1fr]">
+          <div>
+            <SectionHeading eyebrow="Who is Kasim Shah?" title="A decade of enterprise experience, now brought directly to your business." />
+            <div className="mt-7 space-y-5 text-base leading-8 text-slate-600 sm:text-lg">
+              <p>I have spent more than 10 years working across UX, conversion, brand and digital strategy—inside major UK online businesses and on campaigns for global household names.</p>
+              <p>From improving high-traffic e-commerce journeys at AO.com to transforming customer platforms at Zuto, my work has increased conversion, engagement and operational performance, helping generate hundreds of thousands of pounds through online platforms.</p>
+              <p>KS OS is how I bring that same commercial thinking, research discipline and technical capability to growing businesses—without the cost or complexity of building an enterprise team.</p>
+            </div>
+            <a href={BOOKING_URL} className="mt-8 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-4 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-indigo-700">Bring this experience into your business <ArrowRight className="h-4 w-4" /></a>
+          </div>
+          <div className="relative overflow-hidden rounded-2xl bg-slate-950 p-6 text-white shadow-[0_28px_90px_rgba(15,23,42,0.22)] sm:p-9">
+            <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-indigo-500/25 blur-3xl" />
+            <div className="relative grid gap-3 sm:grid-cols-2">{impact.map(([value, label]) => <div key={value} className="rounded-xl border border-white/10 bg-white/[0.05] p-5"><p className="text-3xl font-black tracking-[-0.045em] text-white">{value}</p><p className="mt-2 text-sm font-semibold leading-6 text-slate-300">{label}</p></div>)}</div>
+            <div className="relative mt-6 rounded-xl border border-white/10 bg-white/[0.04] p-5">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-indigo-300">Experience across</p>
+              <div className="mt-4 flex flex-wrap gap-2">{brands.map(brand => <span key={brand} className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-200">{brand}</span>)}</div>
+            </div>
+            <div className="relative mt-6 rounded-xl bg-indigo-600 p-6">
+              <p className="text-lg font-black leading-8 text-white">This is not a generic template. It is a decade of commercial digital experience applied to the way your business attracts, converts and serves customers.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function HomePage() {
-  usePageMetadata('Kasim Shah | KS OS business operating system', 'KS OS is the done-for-you business operating system offered by Kasim Shah for websites, bookings, CRM, automation, communications, payments and analytics.');
+  usePageMetadata('Kasim Shah | KS OS business operating system', 'KS OS is the done-for-you business operating system offered by Kasim Shah, backed by more than a decade of commercial UX, conversion, brand and digital strategy experience.');
   const [faq, setFaq] = useState<number | null>(0);
   const faqs = [
     ['Is KS OS another piece of software I have to set up?', 'No. KS OS is delivered as a managed solution by Kasim Shah. We map your processes, configure the platform, build the journeys and support ongoing improvements.'],
@@ -290,6 +331,8 @@ function HomePage() {
       </section>
 
       <section className="border-y border-slate-200 bg-white"><div className="mx-auto grid max-w-7xl gap-6 px-5 py-8 text-center sm:grid-cols-3 lg:px-8">{[[Layers3, 'One platform', 'Instead of a patchwork of subscriptions'], [Headphones, 'One accountable partner', 'Instead of five different support teams'], [ShieldCheck, 'Your rules and data', 'Instead of losing control to complexity']].map(([Icon, title, copy]) => { const ItemIcon = Icon as LucideIcon; return <div key={title as string} className="flex items-center justify-center gap-4 sm:text-left"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-700"><ItemIcon className="h-5 w-5" /></span><div><p className="font-black text-slate-950">{title as string}</p><p className="mt-1 text-xs leading-5 text-slate-500">{copy as string}</p></div></div>; })}</div></section>
+
+      <WhoIsKasimShah />
 
       <section className="bg-slate-50 px-5 py-20 sm:py-28 lg:px-8"><div className="mx-auto max-w-7xl"><SectionHeading eyebrow="The KS OS offer" title="Everything your business needs to attract, convert and serve customers" copy="Choose the capabilities you need now. KS OS connects them into one operating system and Kasim Shah manages the technical detail behind the scenes." centre /><div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-3">{services.map((service, index) => <ServiceCard key={service.slug} service={service} featured={index === 0} />)}</div></div></section>
 
