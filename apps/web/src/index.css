@@ -6,8 +6,24 @@
   --font-serif: "Lora", Georgia, Cambria, serif;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 h1, h2, h3, h4, h5, h6, .font-serif {
   font-family: "Lora", "Times New Roman", serif;
+}
+
+#comparison h2 {
+  color: #ffffff;
+}
+
+#comparison .text-slate-600 {
+  color: #cbd5e1;
+}
+
+#comparison .text-cyan-700 {
+  color: #a5f3fc;
 }
 
 /* Modernized Dropdown Selectors Across the Board */
@@ -15,7 +31,7 @@ select {
   appearance: none !important;
   -webkit-appearance: none !important;
   -moz-appearance: none !important;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='%23round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
   background-repeat: no-repeat !important;
   background-position: right 0.75rem center !important;
   background-size: 0.95rem !important;
@@ -35,4 +51,3 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
   background-color: #ffffff;
 }
-
