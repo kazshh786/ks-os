@@ -127,6 +127,7 @@ const CustomerVisiblePolicyTextSchema = z.string().trim().min(1).max(1000)
 export const CustomerBookingPolicySettingsSchema = z.object({
   customerCancellationEnabled: z.boolean(),
   customerReschedulingEnabled: z.boolean(),
+  allowAppointmentsPastClosingTime: z.boolean().default(false),
   minimumCancellationNoticeMinutes: CustomerBookingNoticeMinutesSchema,
   minimumRescheduleNoticeMinutes: CustomerBookingNoticeMinutesSchema,
   maximumCustomerReschedules: CustomerBookingMaximumReschedulesSchema,
