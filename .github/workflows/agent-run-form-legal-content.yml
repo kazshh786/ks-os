@@ -1,0 +1,36 @@
+name: Run form legal content patch
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Apply the reviewed patch
+        run: |
+          awk '
+            /^[[:space:]]*python - <<.PY.$/ { capture=1; next }
+            capture && /^[[:space:]]*PY$/ { exit }
+            capture { sub(/^          /, ""); print }
+          ' .github/workflows/agent-apply-form-legal-content.yml > /tmp/apply-form-legal-content.py
+          python /tmp/apply-form-legal-content.py
+      - name: Commit the product changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/contracts/src/forms.ts \
+            apps/web/src/pages/PublicWorkspaceFormPage.tsx \
+            apps/web/src/pages/FormEditorPage.tsx \
+            apps/web/src/pages/FormEditorPage.test.tsx
+          git commit -m "feat: add dedicated form legal content fields [legal-content-applied]"
+          git push origin HEAD:${{ github.head_ref }}
