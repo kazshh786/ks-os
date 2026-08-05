@@ -19,12 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.13.1 --activate
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-      - name: Enable pnpm
-        run: corepack enable && corepack prepare pnpm@11.13.1 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Typecheck contracts
