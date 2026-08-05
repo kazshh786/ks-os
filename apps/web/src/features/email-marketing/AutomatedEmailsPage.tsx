@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type {
+  AutomatedEmailTemplate,
   AutomatedEmailTemplates,
   CommunicationsSettingsResponse,
   EmailAutomationOptions,
@@ -16,6 +17,12 @@ type TemplateKey = keyof AutomatedEmailTemplates;
 type BrandingKey = keyof EmailBranding;
 type AutomationKey = keyof EmailAutomationOptions;
 type PublishedForm = { id: string; title: string; status: string };
+
+const LEGACY_TEMPLATE_FALLBACK: AutomatedEmailTemplate = {
+  subject: 'An update from {{businessName}}',
+  heading: 'An update for you',
+  body: 'Hi {{customerName}}, please review the details below.',
+};
 
 const templateMeta: Array<{ key: TemplateKey; label: string; detail: string; audience: string }> = [
   { key: 'customerBookingConfirmation', label: 'Booking confirmed', detail: 'Sent immediately after a booking becomes confirmed.', audience: 'Customer' },
@@ -97,7 +104,13 @@ export function AutomatedEmailsPage() {
   } : current);
   const updateTemplate = (field: 'subject' | 'heading' | 'body', value: string) => setSettings(current => current ? {
     ...current,
-    templates: { ...current.templates, [selectedTemplate]: { ...current.templates[selectedTemplate], [field]: value } },
+    templates: {
+      ...current.templates,
+      [selectedTemplate]: {
+        ...(current.templates[selectedTemplate] || LEGACY_TEMPLATE_FALLBACK),
+        [field]: value,
+      },
+    },
   } : current);
 
   const save = async (event: FormEvent) => {
@@ -132,7 +145,7 @@ export function AutomatedEmailsPage() {
   };
 
   const activeMeta = templateMeta.find(item => item.key === selectedTemplate)!;
-  const activeTemplate = settings.templates[selectedTemplate];
+  const activeTemplate = settings.templates[selectedTemplate] || LEGACY_TEMPLATE_FALLBACK;
 
   return <form onSubmit={save} className="mx-auto max-w-7xl space-y-6">
     <header className="overflow-hidden rounded-[32px] bg-gradient-to-br from-slate-950 via-violet-950 to-slate-950 p-6 text-white shadow-xl sm:p-8">
