@@ -51,7 +51,7 @@
     "resend": "^6.17.2",
     "stripe": "^22.3.2",
     "svix": "^1.21.0",
-    "twilio": "5.10.3",
+    "twilio": "6.0.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {
