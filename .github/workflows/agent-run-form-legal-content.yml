@@ -23,6 +23,7 @@ jobs:
             capture && /^[[:space:]]*PY$/ { exit }
             capture { sub(/^          /, ""); print }
           ' .github/workflows/agent-apply-form-legal-content.yml > /tmp/apply-form-legal-content.py
+          sed -i 's/^  issues\.push/    issues.push/' /tmp/apply-form-legal-content.py
           python /tmp/apply-form-legal-content.py
       - name: Commit the product changes
         run: |
