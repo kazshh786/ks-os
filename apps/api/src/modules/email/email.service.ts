@@ -201,7 +201,7 @@ export class EmailService {
         await this.issues.report({
           tenantId: params.tenantId,
           category: 'FORM',
-          issueType: 'MAIN_BOOKING_FORM_ASSIGNMENT_FAILED',
+          issueType: 'FORM_DELIVERY_FAILED',
           severity: 'WARNING',
           title: 'Main booking form could not be attached',
           message: 'The booking confirmation remains queued, but its configured main form could not be attached.',
