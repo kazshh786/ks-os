@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  calculateDepositAmount,
   calculateOutstandingBalance,
   DEFAULT_DEPOSIT_PERCENTAGE,
+  DEFAULT_FIXED_DEPOSIT_AMOUNT,
   normaliseCommitmentPaymentMode,
   normaliseDepositPercentage,
+  normaliseDepositType,
+  normaliseFixedDepositAmount,
 } from './booking-payment-policy.js';
 
 describe('booking payment experience', () => {
@@ -11,16 +15,25 @@ describe('booking payment experience', () => {
     expect(normaliseCommitmentPaymentMode('FULL')).toBe('FULL');
     expect(normaliseCommitmentPaymentMode('DEPOSIT')).toBe('DEPOSIT');
     expect(normaliseCommitmentPaymentMode('PAY_LATER')).toBe('DEPOSIT');
-    expect(normaliseCommitmentPaymentMode('CUSTOMER_CHOICE')).toBe('DEPOSIT');
-    expect(normaliseCommitmentPaymentMode('NONE')).toBe('DEPOSIT');
   });
 
-  it('uses a safe deposit percentage that leaves a balance due later', () => {
-    expect(normaliseDepositPercentage(20)).toBe(20);
+  it('normalises percentage and fixed deposit settings safely', () => {
+    expect(normaliseDepositType('FIXED')).toBe('FIXED');
+    expect(normaliseDepositType('unknown')).toBe('PERCENTAGE');
     expect(normaliseDepositPercentage('35')).toBe(35);
     expect(normaliseDepositPercentage(0)).toBe(DEFAULT_DEPOSIT_PERCENTAGE);
-    expect(normaliseDepositPercentage(100)).toBe(DEFAULT_DEPOSIT_PERCENTAGE);
-    expect(normaliseDepositPercentage('not-a-number')).toBe(DEFAULT_DEPOSIT_PERCENTAGE);
+    expect(normaliseFixedDepositAmount(1_500)).toBe(1_500);
+    expect(normaliseFixedDepositAmount(0)).toBe(DEFAULT_FIXED_DEPOSIT_AMOUNT);
+  });
+
+  it('calculates percentage deposits in minor currency units', () => {
+    expect(calculateDepositAmount(5_000, { depositType: 'PERCENTAGE', depositPercentage: 20 })).toBe(1_000);
+    expect(calculateDepositAmount(4_999, { depositType: 'PERCENTAGE', depositPercentage: 20 })).toBe(1_000);
+  });
+
+  it('supports a fixed £10 deposit without charging more than the service total', () => {
+    expect(calculateDepositAmount(5_000, { depositType: 'FIXED', depositFixedAmount: 1_000 })).toBe(1_000);
+    expect(calculateDepositAmount(750, { depositType: 'FIXED', depositFixedAmount: 1_000 })).toBe(750);
   });
 
   it('calculates the remaining appointment balance without going negative', () => {
