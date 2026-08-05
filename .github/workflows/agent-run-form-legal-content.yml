@@ -23,8 +23,36 @@ jobs:
             capture && /^[[:space:]]*PY$/ { exit }
             capture { sub(/^          /, ""); print }
           ' .github/workflows/agent-apply-form-legal-content.yml > /tmp/apply-form-legal-content.py
-          sed -i 's/^  issues\.push/    issues.push/' /tmp/apply-form-legal-content.py
+          python - <<'PY'
+          from pathlib import Path
+          script = Path('/tmp/apply-form-legal-content.py')
+          text = script.read_text()
+          marker = '"""  if (!acknowledgement.trim()) {'
+          position = text.index(marker)
+          start = text.rfind('replace_once(', 0, position)
+          end = text.index('\n)\n', position) + 3
+          script.write_text(text[:start] + text[end:])
+          PY
           python /tmp/apply-form-legal-content.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/pages/FormEditorPage.tsx')
+          text = path.read_text()
+          old = """  if (!acknowledgement.trim()) {
+            issues.push({ key: 'acknowledgement', message: 'Add the final acknowledgement customers sign before submitting.' });
+          }
+          """
+          new = """  if (hasTermsAcceptance && !schema.settings.termsAndConditionsText?.trim()) {
+            issues.push({ key: 'terms', message: 'Add the terms and conditions clients will read before accepting.' });
+          }
+          if (!acknowledgement.trim()) {
+            issues.push({ key: 'acknowledgement', message: 'Add the final acknowledgement customers sign before submitting.' });
+          }
+          """
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected acknowledgement validation once, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Commit the product changes
         run: |
           git config user.name "github-actions[bot]"
