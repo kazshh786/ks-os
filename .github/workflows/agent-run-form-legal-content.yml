@@ -27,31 +27,41 @@ jobs:
           from pathlib import Path
           script = Path('/tmp/apply-form-legal-content.py')
           text = script.read_text()
-          marker = '"""  if (!acknowledgement.trim()) {'
-          position = text.index(marker)
-          start = text.rfind('replace_once(', 0, position)
-          end = text.index('\n)\n', position) + 3
-          script.write_text(text[:start] + text[end:])
+          for marker in ('"""  if (!acknowledgement.trim()) {', '"""  settings: {'):
+              position = text.index(marker)
+              start = text.rfind('replace_once(', 0, position)
+              end = text.index('\n)\n', position) + 3
+              text = text[:start] + text[end:]
+          script.write_text(text)
           PY
           python /tmp/apply-form-legal-content.py
           python - <<'PY'
           from pathlib import Path
-          path = Path('apps/web/src/pages/FormEditorPage.tsx')
-          text = path.read_text()
-          old = """  if (!acknowledgement.trim()) {
-            issues.push({ key: 'acknowledgement', message: 'Add the final acknowledgement customers sign before submitting.' });
-          }
-          """
-          new = """  if (hasTermsAcceptance && !schema.settings.termsAndConditionsText?.trim()) {
-            issues.push({ key: 'terms', message: 'Add the terms and conditions clients will read before accepting.' });
-          }
-          if (!acknowledgement.trim()) {
-            issues.push({ key: 'acknowledgement', message: 'Add the final acknowledgement customers sign before submitting.' });
-          }
-          """
+          import re
+
+          editor = Path('apps/web/src/pages/FormEditorPage.tsx')
+          text = editor.read_text()
+          pattern = re.compile(r"  if \(!acknowledgement\.trim\(\)\) \{\n\s+issues\.push\(\{ key: 'acknowledgement', message: 'Add the final acknowledgement customers sign before submitting\.' \}\);\n  \}\n")
+          replacement = (
+              "  if (hasTermsAcceptance && !schema.settings.termsAndConditionsText?.trim()) {\n"
+              "    issues.push({ key: 'terms', message: 'Add the terms and conditions clients will read before accepting.' });\n"
+              "  }\n"
+              "  if (!acknowledgement.trim()) {\n"
+              "    issues.push({ key: 'acknowledgement', message: 'Add the final acknowledgement customers sign before submitting.' });\n"
+              "  }\n"
+          )
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected acknowledgement validation once, found {count}')
+          editor.write_text(text)
+
+          test = Path('apps/web/src/pages/FormEditorPage.test.tsx')
+          text = test.read_text()
+          old = "  settings: {\n    showIntroduction: true,\n    showReview: true,\n    completionMessage: 'Thank you.',\n    autosave: true,\n  },"
+          new = "  settings: {\n    showIntroduction: true,\n    showReview: true,\n    termsAndConditionsText: '',\n    completionMessage: 'Thank you.',\n    autosave: true,\n  },"
           if text.count(old) != 1:
-              raise SystemExit(f'Expected acknowledgement validation once, found {text.count(old)}')
-          path.write_text(text.replace(old, new, 1))
+              raise SystemExit(f'Expected test settings once, found {text.count(old)}')
+          test.write_text(text.replace(old, new, 1))
           PY
       - name: Commit the product changes
         run: |
