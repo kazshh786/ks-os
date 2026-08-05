@@ -138,7 +138,7 @@ describe('consent form details', () => {
 
     await screen.findByText('Aisha Khan');
     const message = screen.getByLabelText('Success message');
-    const website = screen.getByLabelText('Website clients return to');
+    const website = screen.getByLabelText(/Website clients return to/);
     await user.clear(message);
     await user.type(message, 'Thank you. Return to our website to book your next visit.');
     await user.type(website, 'https://client.example.com');
