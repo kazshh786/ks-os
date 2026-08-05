@@ -47,7 +47,7 @@
     "fastify": "^5.2.1",
     "fastify-plugin": "^6.0.0",
     "fastify-raw-body": "^5.0.0",
-    "libphonenumber-js": "1.12.29",
+    "libphonenumber-js": "1.13.10",
     "resend": "^6.17.2",
     "stripe": "^22.3.2",
     "svix": "^1.21.0",

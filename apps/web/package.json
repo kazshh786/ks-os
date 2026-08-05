@@ -14,7 +14,7 @@
     "@ks-os/auth": "workspace:*",
     "@ks-os/contracts": "workspace:*",
     "@stripe/react-stripe-js": "6.8.0",
-    "@stripe/stripe-js": "9.12.0",
+    "@stripe/stripe-js": "9.12.1",
     "@supabase/supabase-js": "^2.110.7",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",

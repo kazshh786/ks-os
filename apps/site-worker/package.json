@@ -26,7 +26,7 @@
     "@ks-os/workspace-provisioning": "workspace:*",
     "axe-core": "4.12.1",
     "drizzle-orm": "^0.45.2",
-    "playwright": "1.62.0",
+    "playwright": "1.62.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
