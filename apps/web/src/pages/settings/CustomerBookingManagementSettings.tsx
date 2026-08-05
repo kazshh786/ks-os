@@ -31,21 +31,13 @@ export default function CustomerBookingManagementSettings({ embedded = false }: 
   const update = <K extends keyof CustomerBookingPolicySettings>(key: K, value: CustomerBookingPolicySettings[K]) => setSettings({ ...settings, [key]: value });
   const save = async (event: React.FormEvent) => {
     event.preventDefault(); setSaving(true); setMessage(''); setError('');
-    try { setSettings(await request({ method: 'PATCH', body: JSON.stringify(settings) })); setMessage('Customer booking policies saved.'); }
+    try { setSettings(await request({ method: 'PATCH', body: JSON.stringify({ ...settings, allowAppointmentsPastClosingTime: undefined }) })); setMessage('Customer booking policies saved.'); }
     catch { setError('The policies could not be saved. Please try again.'); }
     finally { setSaving(false); }
   };
   return <section className={embedded ? 'space-y-5' : 'mx-auto max-w-3xl space-y-5'}>
-    {!embedded && <div><h1 className="text-2xl font-black text-slate-900">Customer booking management</h1><p className="mt-1 text-sm text-slate-600">Control booking availability and when customers may cancel or reschedule online. These defaults are operational settings, not legal advice.</p></div>}
+    {!embedded && <div><h1 className="text-2xl font-black text-slate-900">Customer booking management</h1><p className="mt-1 text-sm text-slate-600">Control when customers may cancel or reschedule online. These defaults are operational settings, not legal advice.</p></div>}
     <form onSubmit={save} className="space-y-5 rounded-2xl border bg-white p-5 shadow-sm">
-      <fieldset className="space-y-3"><legend className="font-bold text-slate-900">Availability</legend>
-        <Toggle
-          label="Allow appointments to finish after closing time"
-          description="Customers can select any start time before closing, even when the service duration or buffer runs beyond the day's availability."
-          checked={settings.allowAppointmentsPastClosingTime}
-          onChange={(value) => update('allowAppointmentsPastClosingTime', value)}
-        />
-      </fieldset>
       <fieldset className="space-y-3"><legend className="font-bold text-slate-900">Online actions</legend>
         <Toggle label="Allow customers to cancel online" checked={settings.customerCancellationEnabled} onChange={(value) => update('customerCancellationEnabled', value)} />
         <Toggle label="Allow customers to reschedule online" checked={settings.customerReschedulingEnabled} onChange={(value) => update('customerReschedulingEnabled', value)} />
@@ -65,8 +57,8 @@ export default function CustomerBookingManagementSettings({ embedded = false }: 
   </section>;
 }
 
-function Toggle({ label, description, checked, onChange }: { label: string; description?: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return <label className="flex items-start justify-between gap-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-800"><span><span className="block font-semibold">{label}</span>{description && <span className="mt-1 block text-xs font-normal leading-5 text-slate-500">{description}</span>}</span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0" /></label>;
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
+  return <label className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800"><span>{label}</span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-5 w-5" /></label>;
 }
 
 function Select<T extends number>({ label, value, values, formatter, onChange }: { label: string; value: T; values: readonly T[]; formatter: (value: T) => string; onChange: (value: T) => void }) {
