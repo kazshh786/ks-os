@@ -29,7 +29,7 @@ describe('consent form success page', () => {
 
     renderAssignedSuccess();
 
-    expect(screen.getByRole('heading', { name: 'Consent form submitted' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Form submitted' })).toBeInTheDocument();
     expect(screen.getByText('Thank you. Your consent is ready for your appointment.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Back to Client Salon/i })).toHaveAttribute('href', 'https://client.example.com/');
   });
