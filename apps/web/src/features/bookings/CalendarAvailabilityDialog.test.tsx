@@ -3,21 +3,23 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CalendarAvailabilityDialog } from './CalendarAvailabilityDialog';
 
-const fetchWithAuth = vi.fn();
-const listTeam = vi.fn();
-const getBookingPageSettings = vi.fn();
-const getTeamMember = vi.fn();
-const updateTeamMemberSchedule = vi.fn();
-const updateTeamMemberBookingChannels = vi.fn();
+const mocks = vi.hoisted(() => ({
+  fetchWithAuth: vi.fn(),
+  listTeam: vi.fn(),
+  getBookingPageSettings: vi.fn(),
+  getTeamMember: vi.fn(),
+  updateTeamMemberSchedule: vi.fn(),
+  updateTeamMemberBookingChannels: vi.fn(),
+}));
 
-vi.mock('../../api/client', () => ({ fetchWithAuth }));
+vi.mock('../../api/client', () => ({ fetchWithAuth: mocks.fetchWithAuth }));
 vi.mock('../../data/data-provider', () => ({
   getDataProvider: () => ({
-    listTeam,
-    getBookingPageSettings,
-    getTeamMember,
-    updateTeamMemberSchedule,
-    updateTeamMemberBookingChannels,
+    listTeam: mocks.listTeam,
+    getBookingPageSettings: mocks.getBookingPageSettings,
+    getTeamMember: mocks.getTeamMember,
+    updateTeamMemberSchedule: mocks.updateTeamMemberSchedule,
+    updateTeamMemberBookingChannels: mocks.updateTeamMemberBookingChannels,
   }),
 }));
 
@@ -35,12 +37,12 @@ const response = (data: unknown) => ({ ok: true, json: vi.fn().mockResolvedValue
 describe('CalendarAvailabilityDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    listTeam.mockResolvedValue({ members: [{ userId: 'owner-1', name: 'Studio Owner', role: 'owner', accountStatus: 'ACTIVE' }] });
-    getBookingPageSettings.mockResolvedValue({ bookingRules: { enabledBookingChannels: ['in_shop'] } });
-    getTeamMember.mockResolvedValue(member);
-    updateTeamMemberSchedule.mockResolvedValue(member);
-    updateTeamMemberBookingChannels.mockResolvedValue(member);
-    fetchWithAuth.mockResolvedValue(response({ allowAppointmentsPastClosingTime: false }));
+    mocks.listTeam.mockResolvedValue({ members: [{ userId: 'owner-1', name: 'Studio Owner', role: 'owner', accountStatus: 'ACTIVE' }] });
+    mocks.getBookingPageSettings.mockResolvedValue({ bookingRules: { enabledBookingChannels: ['in_shop'] } });
+    mocks.getTeamMember.mockResolvedValue(member);
+    mocks.updateTeamMemberSchedule.mockResolvedValue(member);
+    mocks.updateTeamMemberBookingChannels.mockResolvedValue(member);
+    mocks.fetchWithAuth.mockResolvedValue(response({ allowAppointmentsPastClosingTime: false }));
   });
 
   it('loads and saves the closing-time option with weekly availability', async () => {
@@ -52,7 +54,7 @@ describe('CalendarAvailabilityDialog', () => {
     fireEvent.click(toggle);
     fireEvent.click(screen.getByRole('button', { name: 'Save weekly hours' }));
 
-    await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledWith(
+    await waitFor(() => expect(mocks.fetchWithAuth).toHaveBeenCalledWith(
       '/api/v1/settings/booking/customer-management',
       expect.objectContaining({
         method: 'PATCH',
