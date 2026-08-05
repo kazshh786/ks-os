@@ -27,10 +27,14 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Build web workspace dependencies
+        run: pnpm --filter "web^..." build
       - name: Typecheck contracts
         run: pnpm --filter @ks-os/contracts typecheck
       - name: Typecheck web
         run: pnpm --filter web typecheck
+      - name: Build API workspace dependencies
+        run: pnpm --filter "api^..." build
       - name: Typecheck API
         run: pnpm --filter api typecheck
       - name: Build web
