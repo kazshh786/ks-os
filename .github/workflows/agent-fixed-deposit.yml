@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/fixed-deposit-amount
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
