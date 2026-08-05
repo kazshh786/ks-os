@@ -9,6 +9,8 @@ const previewValues: Record<string, string> = {
   bookingTime: '14:30',
   amount: '45.00',
   currency: 'GBP',
+  status: 'processed',
+  formName: 'Consultation form',
   reviewProvider: 'Google',
 };
 
@@ -35,9 +37,9 @@ export function AutomatedEmailPreview({ template, branding, primaryColor = '#0f1
           <div className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700"><strong>Service:</strong> Signature appointment<br /><strong>Date:</strong> Friday, 14 August 2026<br /><strong>Time:</strong> 14:30</div>
         </div>
         <div className="border-t border-slate-100 px-6 py-5 text-center text-xs leading-5 text-slate-500">
+          {socialLinks.length > 0 && <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"><div className="font-black text-slate-900">Check us out on our socials</div><div className="mt-1 font-bold text-slate-700">{socialLinks.map(([label]) => label).join(' · ')}</div></div>}
           {branding.businessAddress && <div>{branding.businessAddress}</div>}
           <div>{[branding.businessPhone, branding.businessEmail].filter(Boolean).join(' · ')}</div>
-          {socialLinks.length > 0 && <div className="mt-2 font-bold text-slate-700">{socialLinks.map(([label]) => label).join(' · ')}</div>}
           <div className="mt-3 text-[10px]">Sent securely by KS OS on behalf of {branding.businessName}.</div>
         </div>
       </div>
