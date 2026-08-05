@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { shouldApplyResendOutboxStatus } from '../src/modules/webhooks/resend/resend-webhook.service.js';
+import { shouldApplyResendOutboxStatus } from '../src/modules/webhooks/resend/resend-delivery-status.js';
 
 test('Resend webhook events cannot regress a stronger outbox state', () => {
   assert.equal(shouldApplyResendOutboxStatus('DELIVERED', 'SENT'), false);
