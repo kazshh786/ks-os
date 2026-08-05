@@ -4,7 +4,8 @@ import { LockKeyhole } from 'lucide-react';
 import BookingWizardPage from './BookingWizardPage.js';
 import PaymentSuccess from './book/PaymentSuccess.js';
 import PaymentCancel from './book/PaymentCancel.js';
-import PublicWorkspaceFormPage, { PublicWorkspaceFormLegalPage, PublicWorkspaceFormSuccessPage } from './PublicWorkspaceFormPage.js';
+import PublicWorkspaceFormPage, { PublicWorkspaceFormLegalPage } from './PublicWorkspaceFormPage.js';
+import { WorkspaceConsentFormSuccessPage } from './ConsentFormSuccessPage.js';
 
 function PublicBookingSurface({ children }: { children: React.ReactNode }) {
   return (
@@ -29,7 +30,7 @@ export const NotFoundPage: React.FC = () => {
   }
   if (/^\/form\/[^/]+\/acknowledgement$/i.test(path)) return <PublicWorkspaceFormLegalPage documentType="acknowledgement" />;
   if (/^\/form\/[^/]+\/terms$/i.test(path)) return <PublicWorkspaceFormLegalPage documentType="terms" />;
-  if (/^\/form\/[^/]+\/success$/i.test(path)) return <PublicWorkspaceFormSuccessPage />;
+  if (/^\/form\/[^/]+\/success$/i.test(path)) return <WorkspaceConsentFormSuccessPage />;
   if (/^\/form\/[^/]+$/i.test(path)) return <PublicWorkspaceFormPage />;
 
   return (
