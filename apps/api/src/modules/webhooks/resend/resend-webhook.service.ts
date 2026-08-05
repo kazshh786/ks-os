@@ -22,6 +22,27 @@ const STATUS_BY_EVENT: Record<string, string> = {
   'email.failed': 'FAILED',
 };
 
+const STATUS_PRIORITY: Readonly<Record<string, number>> = Object.freeze({
+  PENDING: 0,
+  PROCESSING: 0,
+  RETRY: 0,
+  QUEUED: 0,
+  SENT: 10,
+  DELAYED: 20,
+  DELIVERED: 30,
+  FAILED: 40,
+  BOUNCED: 50,
+  COMPLAINED: 60,
+  DEAD_LETTER: 70,
+});
+
+export const shouldApplyResendOutboxStatus = (currentStatus: string, nextStatus: string) => {
+  const nextPriority = STATUS_PRIORITY[nextStatus];
+  if (nextPriority === undefined) return false;
+  const currentPriority = STATUS_PRIORITY[currentStatus] ?? -1;
+  return nextPriority > currentPriority;
+};
+
 const PROVIDER_STATUS_BY_EVENT: Record<string, string> = {
   'email.sent': 'sent',
   'email.delivered': 'delivered',
@@ -173,45 +194,48 @@ export class ResendWebhookService {
         return;
       }
 
-      await tx.update(emailOutbox).set({
-        status,
-        deliveredAt: status === 'DELIVERED' ? new Date() : message.deliveredAt,
-        failedAt: ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status) ? new Date() : message.failedAt,
-        lastErrorCode: ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status) ? status : message.lastErrorCode,
-      }).where(eq(emailOutbox.id, message.id));
-      if (status === 'BOUNCED' || status === 'COMPLAINED') {
-        await tx.insert(emailSuppressions).values({ recipientEmailNormalized: message.recipientEmail.toLowerCase(), reason: status })
-          .onConflictDoUpdate({ target: emailSuppressions.recipientEmailNormalized, set: { reason: status } });
-      }
-      if (message.relatedEntityType === 'review_invitation' && message.relatedEntityId && message.tenantId) {
-        await tx.update(reviewInvitations).set({
-          status: status === 'DELIVERED' ? 'DELIVERED' : ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status) ? 'FAILED' : undefined,
-          deliveredAt: status === 'DELIVERED' ? new Date() : undefined,
-          failureCode: ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status) ? `EMAIL_${status}` : undefined,
-          updatedAt: new Date(),
-        }).where(and(eq(reviewInvitations.id, message.relatedEntityId), eq(reviewInvitations.tenantId, message.tenantId)));
-      }
-      if (message.tenantId && ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status)) {
-        const formDelivery = message.templateKey.startsWith('form-');
-        const issueType = formDelivery ? 'FORM_DELIVERY_FAILED' : status === 'BOUNCED' ? 'EMAIL_BOUNCED' : 'EMAIL_FAILED';
-        await this.issues.report({
-          tenantId: message.tenantId,
-          category: formDelivery ? 'FORM' : 'EMAIL',
-          issueType,
-          severity: status === 'COMPLAINED' ? 'CRITICAL' : 'WARNING',
-          title: formDelivery ? 'Form delivery failed' : status === 'BOUNCED' ? 'Email bounced' : 'Email delivery failed',
-          message: 'A provider reported a permanent transactional email delivery problem.',
-          sourceType: 'EMAIL_OUTBOX',
-          sourceId: message.id,
-          deduplicationKey: `${issueType}:${message.id}`,
-          relatedAppointmentId: message.relatedEntityType === 'appointment' ? message.relatedEntityId : null,
-          metadata: { providerStatus: status },
-        }, tx);
-      }
-      if (message.tenantId && status === 'DELIVERED') {
-        await this.issues.resolve(message.tenantId, `EMAIL_FAILED:${message.id}`, tx);
-        await this.issues.resolve(message.tenantId, `EMAIL_BOUNCED:${message.id}`, tx);
-        await this.issues.resolve(message.tenantId, `FORM_DELIVERY_FAILED:${message.id}`, tx);
+      const shouldApplyStatus = shouldApplyResendOutboxStatus(message.status, status);
+      if (shouldApplyStatus) {
+        await tx.update(emailOutbox).set({
+          status,
+          deliveredAt: status === 'DELIVERED' ? new Date() : message.deliveredAt,
+          failedAt: ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status) ? new Date() : message.failedAt,
+          lastErrorCode: ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status) ? status : message.lastErrorCode,
+        }).where(eq(emailOutbox.id, message.id));
+        if (status === 'BOUNCED' || status === 'COMPLAINED') {
+          await tx.insert(emailSuppressions).values({ recipientEmailNormalized: message.recipientEmail.toLowerCase(), reason: status })
+            .onConflictDoUpdate({ target: emailSuppressions.recipientEmailNormalized, set: { reason: status } });
+        }
+        if (message.relatedEntityType === 'review_invitation' && message.relatedEntityId && message.tenantId) {
+          await tx.update(reviewInvitations).set({
+            status: status === 'DELIVERED' ? 'DELIVERED' : ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status) ? 'FAILED' : undefined,
+            deliveredAt: status === 'DELIVERED' ? new Date() : undefined,
+            failureCode: ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status) ? `EMAIL_${status}` : undefined,
+            updatedAt: new Date(),
+          }).where(and(eq(reviewInvitations.id, message.relatedEntityId), eq(reviewInvitations.tenantId, message.tenantId)));
+        }
+        if (message.tenantId && ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status)) {
+          const formDelivery = message.templateKey.startsWith('form-');
+          const issueType = formDelivery ? 'FORM_DELIVERY_FAILED' : status === 'BOUNCED' ? 'EMAIL_BOUNCED' : 'EMAIL_FAILED';
+          await this.issues.report({
+            tenantId: message.tenantId,
+            category: formDelivery ? 'FORM' : 'EMAIL',
+            issueType,
+            severity: status === 'COMPLAINED' ? 'CRITICAL' : 'WARNING',
+            title: formDelivery ? 'Form delivery failed' : status === 'BOUNCED' ? 'Email bounced' : 'Email delivery failed',
+            message: 'A provider reported a permanent transactional email delivery problem.',
+            sourceType: 'EMAIL_OUTBOX',
+            sourceId: message.id,
+            deduplicationKey: `${issueType}:${message.id}`,
+            relatedAppointmentId: message.relatedEntityType === 'appointment' ? message.relatedEntityId : null,
+            metadata: { providerStatus: status },
+          }, tx);
+        }
+        if (message.tenantId && status === 'DELIVERED') {
+          await this.issues.resolve(message.tenantId, `EMAIL_FAILED:${message.id}`, tx);
+          await this.issues.resolve(message.tenantId, `EMAIL_BOUNCED:${message.id}`, tx);
+          await this.issues.resolve(message.tenantId, `FORM_DELIVERY_FAILED:${message.id}`, tx);
+        }
       }
       await tx.update(emailWebhookEvents).set({ processedAt: new Date() }).where(eq(emailWebhookEvents.eventId, eventId));
     });
