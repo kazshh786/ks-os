@@ -74,6 +74,7 @@ const schema = {
   settings: {
     showIntroduction: true,
     showReview: true,
+    termsAndConditionsText: '',
     completionMessage: 'Thank you.',
     autosave: true,
   },
@@ -168,6 +169,26 @@ describe('visual consent form builder', () => {
       }),
     })));
   });
+
+  it('saves dedicated terms and acknowledgement page content', async () => {
+  const user = userEvent.setup();
+  renderExistingForm();
+
+  await screen.findByLabelText('Full name');
+  await user.type(screen.getByLabelText('Terms and conditions page content'), 'Appointments must be cancelled with 24 hours notice.');
+  await user.clear(screen.getByLabelText('Consent acknowledgement page content'));
+  await user.type(screen.getByLabelText('Consent acknowledgement page content'), 'I confirm that I understand and accept the information provided.');
+  await user.click(screen.getByRole('button', { name: 'Save draft' }));
+
+  await waitFor(() => expect(updateForm).toHaveBeenCalledWith(formId, expect.objectContaining({
+    acknowledgementText: 'I confirm that I understand and accept the information provided.',
+    schema: expect.objectContaining({
+      settings: expect.objectContaining({
+        termsAndConditionsText: 'Appointments must be cancelled with 24 hours notice.',
+      }),
+    }),
+  })));
+});
 
   it('saves an incomplete consent form as a draft', async () => {
     getForm.mockResolvedValue({

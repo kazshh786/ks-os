@@ -124,6 +124,7 @@ const ThemeSchema = z.object({
 const SettingsSchema = z.object({
   showIntroduction: z.boolean().default(true),
   showReview: z.boolean().default(true),
+  termsAndConditionsText: text(120_000).optional(),
   estimatedMinutes: z.number().int().min(1).max(180).optional(),
   completionMessage: text(2000).default('Thank you. Your response was received.'),
   autosave: z.boolean().default(true),
