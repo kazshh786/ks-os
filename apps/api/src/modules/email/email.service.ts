@@ -26,6 +26,8 @@ import {
   validateEmailIdempotencyKey,
   validateEmailTemplateData,
 } from './email-safety.js';
+import { applyEmailRuntimeSettings, EmailSettingsService } from './email-settings.service.js';
+import { MainBookingFormService } from './main-booking-form.service.js';
 
 export type EnqueueEmailParams = {
   tenantId?: string;
@@ -92,6 +94,8 @@ const productionEmailSafetyEnabled = () => env.NODE_ENV === 'production';
 
 export class EmailService {
   private issues = new OperationsIssueReporter();
+  private settings = new EmailSettingsService();
+  private mainBookingForm = new MainBookingFormService();
 
   async enqueueEmail(params: EnqueueEmailParams, tx?: any) {
     const dbOrTx = tx || getDatabase();
@@ -109,7 +113,13 @@ export class EmailService {
       return { queued: false, reason: 'INVALID_IDEMPOTENCY_KEY' as const };
     }
 
-    const templateDataJson = prepareEmailTemplateData(params.templateKey, params.templateDataJson);
+    const runtimeSettings = params.tenantId ? await this.settings.get(params.tenantId, dbOrTx) : null;
+    let templateDataJson = prepareEmailTemplateData(
+      params.templateKey,
+      runtimeSettings
+        ? applyEmailRuntimeSettings(params.templateKey, params.templateDataJson, runtimeSettings)
+        : params.templateDataJson,
+    );
     if (production) {
       const templateValidation = validateEmailTemplateData(params.templateKey, templateDataJson, true);
       if (!templateValidation.valid) {
@@ -130,7 +140,7 @@ export class EmailService {
     const scheduledFor = params.scheduledFor ?? new Date();
     if (!Number.isFinite(scheduledFor.getTime())) return { queued: false, reason: 'INVALID_SCHEDULE' as const };
 
-    await dbOrTx.insert(emailOutbox).values({
+    const [inserted] = await dbOrTx.insert(emailOutbox).values({
       ...params,
       recipientEmail: recipient.email,
       recipientName: normalizeEmailDisplayName(params.recipientName),
@@ -140,8 +150,71 @@ export class EmailService {
       status: 'PENDING',
       scheduledFor,
       nextAttemptAt: scheduledFor,
-    }).onConflictDoNothing({ target: emailOutbox.idempotencyKey });
-    return { queued: true as const };
+    }).onConflictDoNothing({ target: emailOutbox.idempotencyKey }).returning({ id: emailOutbox.id });
+
+    let mainFormAttached = false;
+    if (
+      inserted
+      && params.templateKey === 'booking-confirmed'
+      && params.tenantId
+      && params.relatedEntityType === 'appointment'
+      && params.relatedEntityId
+      && runtimeSettings?.mainBookingFormId
+      && runtimeSettings.formDeliveryEnabled
+    ) {
+      try {
+        const form = await this.mainBookingForm.prepare({
+          tenantId: params.tenantId,
+          appointmentId: params.relatedEntityId,
+          formId: runtimeSettings.mainBookingFormId,
+          formReminderTiming: runtimeSettings.formReminderTiming,
+          formRemindersEnabled: runtimeSettings.formRemindersEnabled,
+        }, dbOrTx);
+        if (form) {
+          mainFormAttached = true;
+          templateDataJson = prepareEmailTemplateData(params.templateKey, {
+            ...templateDataJson,
+            mainFormName: form.formName,
+            mainFormLink: form.formLink,
+          });
+          await dbOrTx.update(emailOutbox).set({ templateDataJson }).where(eq(emailOutbox.id, inserted.id));
+          if (form.reminderScheduledFor) {
+            await this.enqueueEmail({
+              tenantId: params.tenantId,
+              recipientEmail: recipient.email,
+              recipientName: params.recipientName,
+              replyToEmail: normalizedReplyTo,
+              templateKey: 'form-reminder',
+              templateDataJson: {
+                customerName: params.recipientName || String(templateDataJson.customerName || 'there'),
+                formName: form.formName,
+                formLink: form.formLink,
+              },
+              idempotencyKey: `main-form-reminder:${form.assignmentId}`,
+              relatedEntityType: 'form_assignment',
+              relatedEntityId: form.assignmentId,
+              scheduledFor: form.reminderScheduledFor,
+            }, dbOrTx);
+          }
+        }
+      } catch (error) {
+        await this.issues.report({
+          tenantId: params.tenantId,
+          category: 'FORM',
+          issueType: 'MAIN_BOOKING_FORM_ASSIGNMENT_FAILED',
+          severity: 'WARNING',
+          title: 'Main booking form could not be attached',
+          message: 'The booking confirmation remains queued, but its configured main form could not be attached.',
+          sourceType: 'EMAIL_OUTBOX',
+          sourceId: inserted.id,
+          deduplicationKey: `MAIN_BOOKING_FORM_ASSIGNMENT_FAILED:${inserted.id}`,
+          relatedAppointmentId: params.relatedEntityId,
+          metadata: { errorCode: error instanceof Error ? error.message.slice(0, 255) : 'UNKNOWN_ERROR' },
+        });
+      }
+    }
+
+    return { queued: true as const, inserted: Boolean(inserted), mainFormAttached };
   }
 
   cancelAppointmentReminders(tenantId: string, appointmentId: string, tx?: any) {
