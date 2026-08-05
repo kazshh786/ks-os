@@ -127,6 +127,7 @@ const SettingsSchema = z.object({
   termsAndConditionsText: text(120_000).optional(),
   estimatedMinutes: z.number().int().min(1).max(180).optional(),
   completionMessage: text(2000).default('Thank you. Your response was received.'),
+  completionRedirectUrl: text(2048).url().regex(/^https?:\/\//i).optional(),
   autosave: z.boolean().default(true),
 }).strict().default({});
 
