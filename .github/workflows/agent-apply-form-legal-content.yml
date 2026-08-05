@@ -1,0 +1,166 @@
+name: Apply form legal content fields
+
+on:
+  push:
+    branches:
+      - agent/forms-legal-content-fields
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/forms-legal-content-fields
+          fetch-depth: 0
+      - name: Add dedicated legal content fields
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one match in {path}, found {count}: {old[:100]!r}")
+              file.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'packages/contracts/src/forms.ts',
+              """const SettingsSchema = z.object({
+            showIntroduction: z.boolean().default(true),
+            showReview: z.boolean().default(true),
+            estimatedMinutes: z.number().int().min(1).max(180).optional(),
+            completionMessage: text(2000).default('Thank you. Your response was received.'),
+            autosave: z.boolean().default(true),
+          }).strict().default({});""",
+              """const SettingsSchema = z.object({
+            showIntroduction: z.boolean().default(true),
+            showReview: z.boolean().default(true),
+            termsAndConditionsText: text(120_000).default(''),
+            estimatedMinutes: z.number().int().min(1).max(180).optional(),
+            completionMessage: text(2000).default('Thank you. Your response was received.'),
+            autosave: z.boolean().default(true),
+          }).strict().default({});""",
+          )
+
+          replace_once(
+              'apps/web/src/pages/PublicWorkspaceFormPage.tsx',
+              """function termsContent(schema: FormSchemaJson): string {
+            return schema.fields.find(field => field.type === 'TERMS_ACCEPTANCE' && field.description?.trim())?.description?.trim() || '';
+          }""",
+              """function termsContent(schema: FormSchemaJson): string {
+            return schema.settings.termsAndConditionsText?.trim()
+              || schema.fields.find(field => field.type === 'TERMS_ACCEPTANCE' && field.description?.trim())?.description?.trim()
+              || '';
+          }""",
+          )
+
+          replace_once(
+              'apps/web/src/pages/FormEditorPage.tsx',
+              """  ExternalLink,
+            GripVertical,""",
+              """  ExternalLink,
+            FileText,
+            GripVertical,""",
+          )
+
+          replace_once(
+              'apps/web/src/pages/FormEditorPage.tsx',
+              """function publishIssuesFor(schema: FormSchemaJson, acknowledgement: string): PublishIssue[] {
+            const issues: PublishIssue[] = [];""",
+              """function publishIssuesFor(schema: FormSchemaJson, acknowledgement: string): PublishIssue[] {
+            const issues: PublishIssue[] = [];
+            const hasTermsAcceptance = schema.fields.some(field => field.type === 'TERMS_ACCEPTANCE');""",
+          )
+
+          replace_once(
+              'apps/web/src/pages/FormEditorPage.tsx',
+              """  if (!acknowledgement.trim()) {
+            issues.push({ key: 'acknowledgement', message: 'Add the final acknowledgement customers sign before submitting.' });
+          }
+          return [...new Map(issues.map(issue => [`${issue.fieldId || 'form'}:${issue.message}`, issue])).values()];""",
+              """  if (hasTermsAcceptance && !schema.settings.termsAndConditionsText?.trim()) {
+            issues.push({ key: 'terms', message: 'Add the terms and conditions clients will read before accepting.' });
+          }
+          if (!acknowledgement.trim()) {
+            issues.push({ key: 'acknowledgement', message: 'Add the final acknowledgement customers sign before submitting.' });
+          }
+          return [...new Map(issues.map(issue => [`${issue.fieldId || 'form'}:${issue.message}`, issue])).values()];""",
+          )
+
+          replace_once(
+              'apps/web/src/pages/FormEditorPage.tsx',
+              """        <section className=\"mt-6\"><label className=\"block text-sm font-bold text-slate-800\">Final acknowledgement<textarea value={acknowledgement} onChange={event => { setAcknowledgement(event.target.value); markDirty(); }} rows={4} className=\"mt-1.5 w-full rounded-xl border border-slate-200 p-3 font-normal\" /></label></section>""",
+              """        <section className=\"mt-7 border-t border-slate-200 pt-6\">
+          <div className=\"flex items-start gap-3\"><FileText className=\"mt-0.5 h-5 w-5 text-indigo-600\" /><div><h3 className=\"font-black text-slate-950\">Legal content</h3><p className=\"mt-1 text-xs leading-5 text-slate-500\">Add the full wording shown on the linked legal pages. This is separate from the short checkbox labels on the form.</p></div></div>
+          <div className=\"mt-5 space-y-5\">
+            <label className=\"block text-sm font-bold text-slate-800\">Terms and conditions page<textarea aria-label=\"Terms and conditions page content\" value={schema.settings.termsAndConditionsText || ''} onChange={event => change({ ...schema, settings: { ...schema.settings, termsAndConditionsText: event.target.value } })} rows={10} placeholder=\"Paste the full terms and conditions here…\" className=\"mt-1.5 w-full resize-y rounded-xl border border-slate-200 p-3 font-normal leading-6 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100\" /></label>
+            <p className=\"-mt-3 text-xs leading-5 text-slate-500\">Use blank lines for paragraphs, # for headings, and - or numbered lines for lists. Website addresses become clickable automatically.</p>
+            <label className=\"block text-sm font-bold text-slate-800\">Consent acknowledgement page<textarea aria-label=\"Consent acknowledgement page content\" value={acknowledgement} onChange={event => { setAcknowledgement(event.target.value); markDirty(); }} rows={7} placeholder=\"Add the acknowledgement the client confirms and signs…\" className=\"mt-1.5 w-full resize-y rounded-xl border border-slate-200 p-3 font-normal leading-6 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100\" /></label>
+            <p className=\"-mt-3 text-xs leading-5 text-slate-500\">This wording appears on the consent acknowledgement page and beside the final confirmation before submission.</p>
+            {isLive && <div className=\"grid grid-cols-2 gap-2\"><a href={`${liveUrl}/terms`} target=\"_blank\" rel=\"noreferrer\" className=\"inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:border-indigo-300 hover:text-indigo-700\"><ExternalLink size={14} />View terms</a><a href={`${liveUrl}/acknowledgement`} target=\"_blank\" rel=\"noreferrer\" className=\"inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:border-indigo-300 hover:text-indigo-700\"><ExternalLink size={14} />View acknowledgement</a></div>}
+          </div>
+        </section>""",
+          )
+
+          replace_once(
+              'apps/web/src/pages/FormEditorPage.test.tsx',
+              """  settings: {
+            showIntroduction: true,
+            showReview: true,
+            completionMessage: 'Thank you.',
+            autosave: true,
+          },""",
+              """  settings: {
+            showIntroduction: true,
+            showReview: true,
+            termsAndConditionsText: '',
+            completionMessage: 'Thank you.',
+            autosave: true,
+          },""",
+          )
+
+          insert_before = """  it('saves an incomplete consent form as a draft', async () => {"""
+          legal_test = """  it('saves dedicated terms and acknowledgement page content', async () => {
+            const user = userEvent.setup();
+            renderExistingForm();
+
+            await screen.findByLabelText('Full name');
+            await user.type(screen.getByLabelText('Terms and conditions page content'), 'Appointments must be cancelled with 24 hours notice.');
+            await user.clear(screen.getByLabelText('Consent acknowledgement page content'));
+            await user.type(screen.getByLabelText('Consent acknowledgement page content'), 'I confirm that I understand and accept the information provided.');
+            await user.click(screen.getByRole('button', { name: 'Save draft' }));
+
+            await waitFor(() => expect(updateForm).toHaveBeenCalledWith(formId, expect.objectContaining({
+              acknowledgementText: 'I confirm that I understand and accept the information provided.',
+              schema: expect.objectContaining({
+                settings: expect.objectContaining({
+                  termsAndConditionsText: 'Appointments must be cancelled with 24 hours notice.',
+                }),
+              }),
+            })));
+          });
+
+"""
+          replace_once(
+              'apps/web/src/pages/FormEditorPage.test.tsx',
+              insert_before,
+              legal_test + insert_before,
+          )
+          PY
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/contracts/src/forms.ts \
+            apps/web/src/pages/PublicWorkspaceFormPage.tsx \
+            apps/web/src/pages/FormEditorPage.tsx \
+            apps/web/src/pages/FormEditorPage.test.tsx
+          git commit -m "feat: add dedicated form legal content fields [legal-content-applied]"
+          git push origin HEAD:agent/forms-legal-content-fields
