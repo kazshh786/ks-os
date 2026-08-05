@@ -15,7 +15,7 @@ import {
 import { eq, and, gt, gte, lt, ne, notInArray, sql } from 'drizzle-orm';
 import { AvailabilityQuery, AvailabilityResult, AvailabilitySlot } from '@ks-os/contracts';
 import { parseLocalTimeToUtc } from './availability.utils.js';
-import { resolveEffectiveAvailabilityWindows } from './availability-schedule.js';
+import { canOfferSlotWithinSchedule, resolveEffectiveAvailabilityWindows } from './availability-schedule.js';
 
 export type AvailabilityCalculationOptions = {
   excludeAppointmentId?: string;
@@ -40,6 +40,7 @@ export async function calculateAvailability(
     id: tenants.id,
     timezone: tenants.timezone,
     currency: tenants.currency,
+    allowAppointmentsPastClosingTime: sql<boolean>`coalesce(${tenants}.allow_appointments_past_closing_time, false)`,
   }).from(tenants).where(eq(tenants.id, tenantId!)).limit(1);
   if (!tenant) throw new Error('Tenant not found');
 
@@ -197,7 +198,16 @@ export async function calculateAvailability(
     const startMinutes = startHour * 60 + startMinute;
     const endMinutes = endHour * 60 + endMinute;
 
-    for (let minute = startMinutes; minute + totalDurationWithBuffer <= endMinutes; minute += 30) {
+    for (
+      let minute = startMinutes;
+      canOfferSlotWithinSchedule({
+        startMinute: minute,
+        totalDurationMinutes: totalDurationWithBuffer,
+        scheduleEndMinute: endMinutes,
+        allowAppointmentsPastClosingTime: tenant.allowAppointmentsPastClosingTime,
+      });
+      minute += 30
+    ) {
       const hour = Math.floor(minute / 60).toString().padStart(2, '0');
       const minutePart = (minute % 60).toString().padStart(2, '0');
       const slotStart = parseLocalTimeToUtc(date, `${hour}:${minutePart}`, tenant.timezone);
