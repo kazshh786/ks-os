@@ -33,6 +33,12 @@ function isSelected(value: unknown, option: string) {
   return String(value ?? '') === option;
 }
 
+function publicTermsPath(): string | null {
+  if (typeof window === 'undefined') return null;
+  const match = window.location.pathname.match(/^\/form\/[^/]+/i);
+  return match ? `${match[0]}/terms` : null;
+}
+
 export function FormFieldControl({
   field,
   value,
@@ -76,8 +82,11 @@ export function FormFieldControl({
   } else if (field.type === 'YES_NO') {
     const options = [{ label: 'Yes', value: true }, { label: 'No', value: false }];
     control = <div className="mt-3 grid grid-cols-2 gap-2" role="group" aria-label={label}>{options.map(option => <button key={option.label} type="button" disabled={disabled} aria-pressed={value === option.value} onClick={() => onChange(option.value)} className={`rounded-2xl border px-4 py-3 text-sm font-black transition ${value === option.value ? 'border-indigo-600 bg-indigo-600 text-white shadow-md' : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50'}`}>{option.label}</button>)}</div>;
-  } else if (['CONSENT_CHECKBOX', 'TERMS_ACCEPTANCE'].includes(field.type)) {
+  } else if (field.type === 'CONSENT_CHECKBOX') {
     control = <label className={`mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition ${value === true ? 'border-indigo-500 bg-indigo-50 shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-indigo-300'}`}><input {...common} type="checkbox" checked={value === true} onChange={event => onChange(event.target.checked)} className="mt-0.5 h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" /><span className="text-sm font-semibold leading-5 text-slate-700">{field.description || 'I confirm that I have read and agree to this consent statement.'}</span></label>;
+  } else if (field.type === 'TERMS_ACCEPTANCE') {
+    const termsPath = builderMode ? null : publicTermsPath();
+    control = <label className={`mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition ${value === true ? 'border-indigo-500 bg-indigo-50 shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-indigo-300'}`}><input {...common} type="checkbox" checked={value === true} onChange={event => onChange(event.target.checked)} className="mt-0.5 h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" /><span className="text-sm font-semibold leading-5 text-slate-700">I have read and agree to the {termsPath ? <a href={termsPath} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()} className="font-black text-indigo-700 underline decoration-indigo-300 underline-offset-4 hover:text-indigo-900">terms and conditions</a> : 'terms and conditions'}.</span></label>;
   } else if (field.type === 'TOGGLE') {
     control = <button type="button" disabled={disabled} aria-label={label} aria-pressed={value === true} onClick={() => onChange(value !== true)} className={`mt-3 flex w-full items-center justify-between rounded-2xl border p-4 text-left text-sm font-bold transition ${value === true ? 'border-indigo-500 bg-indigo-50 text-indigo-950' : 'border-slate-200 bg-white text-slate-700'}`}><span>{value === true ? 'Enabled' : 'Disabled'}</span><span className={`relative h-6 w-11 rounded-full transition ${value === true ? 'bg-indigo-600' : 'bg-slate-300'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition ${value === true ? 'left-6' : 'left-1'}`} /></span></button>;
   } else if (field.type === 'SINGLE_CHOICE') {
