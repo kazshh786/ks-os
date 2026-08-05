@@ -55,7 +55,7 @@ const fieldShape = {
   id,
   type: FieldTypeSchema,
   internalLabel: text(255).optional(),
-  description: text(1000).optional(),
+  description: text(200_000).optional(),
   helpText: text(1000).optional(),
   placeholder: text(255).optional(),
   required: z.boolean().default(false),
