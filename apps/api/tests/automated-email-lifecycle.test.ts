@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { UpdateCommunicationsSettingsSchema } from '@ks-os/contracts';
 import {
+  applyEmailRuntimeSettings,
   DEFAULT_AUTOMATED_EMAIL_TEMPLATES,
   interpolateEmailCopy,
   renderAutomatedEmailCopy,
@@ -10,10 +11,20 @@ import {
 
 const source = (path: string) => readFileSync(new URL('../src/' + path, import.meta.url), 'utf8');
 
+const branding = {
+  businessName: 'Glow Studio',
+  businessEmail: 'hello@glow.example',
+  businessPhone: '020 0000 0000',
+  businessAddress: '10 High Street',
+  websiteUrl: 'https://glow.example',
+  logoUrl: null,
+  instagramUrl: 'https://instagram.com/glow',
+  facebookUrl: null,
+  tiktokUrl: null,
+};
+
 test('editable copy is plain text, bounded and rejects subject header injection', () => {
-  const valid = UpdateCommunicationsSettingsSchema.safeParse({
-    templates: DEFAULT_AUTOMATED_EMAIL_TEMPLATES,
-  });
+  const valid = UpdateCommunicationsSettingsSchema.safeParse({ templates: DEFAULT_AUTOMATED_EMAIL_TEMPLATES });
   assert.equal(valid.success, true);
 
   const injected = UpdateCommunicationsSettingsSchema.safeParse({
@@ -26,6 +37,22 @@ test('editable copy is plain text, bounded and rejects subject header injection'
     },
   });
   assert.equal(injected.success, false);
+});
+
+test('phase 3 exposes complete editable customer lifecycle templates', () => {
+  for (const key of [
+    'customerBookingCancellation',
+    'customerBookingReschedule',
+    'customerPaymentConfirmation',
+    'customerRefundUpdate',
+    'formAssignment',
+    'formReminder',
+    'customerPortalAccess',
+  ] as const) {
+    assert.ok(DEFAULT_AUTOMATED_EMAIL_TEMPLATES[key].subject);
+    assert.ok(DEFAULT_AUTOMATED_EMAIL_TEMPLATES[key].heading);
+    assert.ok(DEFAULT_AUTOMATED_EMAIL_TEMPLATES[key].body);
+  }
 });
 
 test('template tokens interpolate known values and preserve unknown placeholders', () => {
@@ -45,6 +72,37 @@ test('template tokens interpolate known values and preserve unknown placeholders
   assert.match(rendered.emailBody, /Facial/);
 });
 
+test('runtime settings apply editable copy and social branding centrally', () => {
+  const result = applyEmailRuntimeSettings('booking-cancelled', {
+    customerName: 'Amelia',
+    serviceName: 'Facial',
+  }, {
+    replyToEmail: null,
+    senderDisplayName: null,
+    bookingConfirmationEnabled: true,
+    bookingCancellationEnabled: true,
+    bookingRescheduleEnabled: true,
+    appointmentRemindersEnabled: true,
+    formDeliveryEnabled: true,
+    formRemindersEnabled: true,
+    paymentConfirmationEnabled: true,
+    formReminderTiming: '24_hours_before_appointment',
+    mainBookingFormId: null,
+    branding,
+    automations: {
+      businessBookingConfirmationEnabled: true,
+      reminderThreeDaysEnabled: true,
+      reminderOneDayEnabled: true,
+      customerThankYouEnabled: true,
+      businessPaymentReceivedEnabled: true,
+    },
+    templates: DEFAULT_AUTOMATED_EMAIL_TEMPLATES,
+  });
+  assert.match(String(result.emailSubject), /Glow Studio/);
+  assert.match(String(result.emailBody), /Amelia/);
+  assert.equal(result.instagramUrl, 'https://instagram.com/glow');
+});
+
 test('booking lifecycle schedules independent 72-hour and 24-hour email reminders', () => {
   const bookings = source('modules/bookings/booking.service.ts');
   assert.match(bookings, /reminderThreeDaysEnabled \? \[72\]/);
@@ -54,6 +112,18 @@ test('booking lifecycle schedules independent 72-hour and 24-hour email reminder
   const reminderBlock = bookings.slice(reminderStart, reminderEnd);
   assert.doesNotMatch(reminderBlock, /smsReminderTiming/);
   assert.match(reminderBlock, /renderAutomatedEmailCopy/);
+});
+
+test('main booking form is gated by the booking-confirmation outbox insert', () => {
+  const email = source('modules/email/email.service.ts');
+  const mainForm = source('modules/email/main-booking-form.service.ts');
+  assert.match(email, /inserted\s*&&\s*params\.templateKey === 'booking-confirmed'/);
+  assert.match(email, /runtimeSettings\?\.mainBookingFormId/);
+  assert.match(email, /main-form-reminder:\$\{form\.assignmentId\}/);
+  assert.match(mainForm, /randomBytes\(32\)/);
+  assert.match(mainForm, /publicTokenHash: hashToken\(token\)/);
+  assert.match(mainForm, /deliveryContext: 'MAIN_BOOKING_EMAIL'/);
+  assert.match(mainForm, /inArray\(formAssignments\.status, \['PENDING', 'OPENED'\]\)/);
 });
 
 test('business booking and payment notifications use dedicated branded templates', () => {
