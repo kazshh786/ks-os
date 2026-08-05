@@ -51,9 +51,7 @@ function nextWalkInTime(timezone: string) {
 function normalizeWalkInStart(selectedStart: Date) {
   const now = Date.now();
   const selectedTime = selectedStart.getTime();
-  if (selectedTime >= now - walkInRecentWindowMs && selectedTime < now + 2 * 60_000) {
-    return new Date(now + 60_000);
-  }
+  if (selectedTime >= now - walkInRecentWindowMs && selectedTime < now + 2 * 60_000) return new Date(now + 60_000);
   return selectedStart;
 }
 
@@ -67,8 +65,6 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
-  const [forms, setForms] = useState<Array<{ id: string; title: string; status: string }>>([]);
-  const [intakeFormIds, setIntakeFormIds] = useState<string[]>([]);
   const [confirmPastBooking, setConfirmPastBooking] = useState(false);
   const [loadingClient, setLoadingClient] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -82,7 +78,6 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
     if (initialDate <= today || mode === 'walk-in') setTime(next.time);
     setServiceId(current => current || services[0]?.id || '');
     setStaffId(current => current || staff[0]?.id || '');
-    void getDataProvider().listForms().then(rows => setForms(rows.filter((form: any) => form.status === 'PUBLISHED'))).catch(() => setForms([]));
     closeButton.current?.focus();
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -134,14 +129,13 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
         paymentMode: 'pay_later',
         payNow: false,
         internalNote: notes || null,
-        intakeFormIds,
         notifyCustomer: mode === 'booking',
         confirmPastBooking,
         walkIn: mode === 'walk-in',
       });
       onCreated();
       onClose();
-      setName(''); setEmail(''); setPhone(''); setNotes(''); setConfirmPastBooking(false); setIntakeFormIds([]);
+      setName(''); setEmail(''); setPhone(''); setNotes(''); setConfirmPastBooking(false);
     } catch (cause) {
       setError(cause instanceof Error && cause.message === 'SLOT_UNAVAILABLE' ? 'That time is no longer available. Choose another time.' : cause instanceof Error ? cause.message : 'The booking could not be created.');
     } finally {
@@ -152,7 +146,7 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
   return <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-6" role="presentation" data-calendar-dialog-layer="true">
     <section role="dialog" aria-modal="true" aria-labelledby="create-booking-title" className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
       <header className="flex items-start justify-between gap-4">
-        <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{mode === 'walk-in' ? 'Walk-in desk' : 'Calendar booking'}</p><h2 id="create-booking-title" className="mt-1 text-2xl font-black text-slate-950">{mode === 'walk-in' ? 'Add walk-in' : 'Create booking'}</h2><p className="mt-1 text-sm text-slate-500">{mode === 'walk-in' ? 'The customer will be added to the calendar as checked in and ready for service.' : 'Availability is checked again by the server before this is saved.'}</p>{initialClientId && <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-700"><Link2 className="h-3.5 w-3.5" />{loadingClient ? 'Loading customer…' : 'Linked from customer inbox'}</p>}</div>
+        <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{mode === 'walk-in' ? 'Walk-in desk' : 'Calendar booking'}</p><h2 id="create-booking-title" className="mt-1 text-2xl font-black text-slate-950">{mode === 'walk-in' ? 'Add walk-in' : 'Create booking'}</h2><p className="mt-1 text-sm text-slate-500">{mode === 'walk-in' ? 'The customer will be added to the calendar as checked in and ready for service.' : 'The configured main booking form is included in the confirmation email. Send any additional forms manually from Forms.'}</p>{initialClientId && <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-700"><Link2 className="h-3.5 w-3.5" />{loadingClient ? 'Loading customer…' : 'Linked from customer inbox'}</p>}</div>
         <button ref={closeButton} type="button" onClick={onClose} aria-label="Close create booking" className="rounded-lg border p-2 text-slate-600 hover:bg-slate-50"><X className="h-5 w-5" /></button>
       </header>
       <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -165,7 +159,6 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
         <label className="text-sm font-semibold text-slate-700">Email{mode === 'walk-in' && <span className="ml-1 text-xs font-medium text-slate-400">Optional</span>}<input required={mode !== 'walk-in'} type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="email" className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
         <label className="text-sm font-semibold text-slate-700">Phone{mode === 'walk-in' && <span className="ml-1 text-xs font-medium text-slate-400">Optional</span>}<input required={mode !== 'walk-in'} minLength={phone ? 7 : undefined} maxLength={30} type="tel" value={phone} onChange={event => setPhone(event.target.value)} autoComplete="tel" className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
         <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Internal notes<textarea value={notes} onChange={event => setNotes(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
-        {forms.length > 0 && <fieldset className="rounded-xl border border-slate-200 p-4 sm:col-span-2"><legend className="px-1 text-sm font-black text-slate-800">Intake forms</legend><p className="mb-3 text-xs text-slate-500">Selected forms will be assigned to the customer and linked to this booking.</p><div className="space-y-2">{forms.map(form => <label key={form.id} className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={intakeFormIds.includes(form.id)} onChange={event => setIntakeFormIds(current => event.target.checked ? [...current, form.id] : current.filter(id => id !== form.id))} />{form.title}</label>)}</div></fieldset>}
         {isPastBooking && <label className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 sm:col-span-2"><input required type="checkbox" checked={confirmPastBooking} onChange={event => setConfirmPastBooking(event.target.checked)} className="mt-0.5" /><span><strong className="block">Confirm historical booking</strong>This appointment is in the past. Save it as a completed booking in the customer and business history.</span></label>}
         {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800 sm:col-span-2">{error}</p>}
         <div className="flex justify-end gap-3 sm:col-span-2"><button type="button" onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm font-bold">Cancel</button><button disabled={saving || loadingClient || !services.length || !staff.length} className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">{saving ? 'Checking availability…' : mode === 'walk-in' ? 'Check in walk-in' : 'Create booking'}</button></div>
