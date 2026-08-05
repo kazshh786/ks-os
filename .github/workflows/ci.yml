@@ -19,9 +19,12 @@ jobs:
           ref: agent/fixed-deposit-amount
           fetch-depth: 0
       - name: Apply implementation
-        run: node scripts/apply-fixed-deposit-option.mjs
+        run: |
+          node scripts/fix-apply-fixed-deposit-script.mjs
+          node scripts/apply-fixed-deposit-option.mjs
       - name: Commit implementation
         run: |
+          rm -f scripts/fix-apply-fixed-deposit-script.mjs
           git checkout origin/main -- .github/workflows/ci.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
