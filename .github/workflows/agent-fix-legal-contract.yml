@@ -1,0 +1,35 @@
+name: Fix legal content contract compatibility
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Keep the new schema setting backward compatible
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('packages/contracts/src/forms.ts')
+          text = path.read_text()
+          old = "  termsAndConditionsText: text(120_000).default(''),"
+          new = "  termsAndConditionsText: text(120_000).optional(),"
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected terms setting once, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/contracts/src/forms.ts
+          git commit -m "fix: keep form legal content backward compatible"
+          git push origin HEAD:${{ github.head_ref }}
