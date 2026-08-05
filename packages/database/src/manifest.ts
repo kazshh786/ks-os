@@ -72,4 +72,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260804103000_reconcile_stripe_webhook_events.sql', order: 65, description: 'Reconcile the legacy Stripe webhook ledger with the canonical idempotent processing columns' },
   { filename: '20260804131500_service_catalog_ordering.sql', order: 66, description: 'Persist tenant service catalogue ordering for booking choices and safe service removal' },
   { filename: '20260805144500_allow_appointments_past_closing_time.sql', order: 67, description: 'Allow tenant-controlled appointment starts before closing when service duration or buffer extends beyond the schedule end' },
+  { filename: '20260805161000_fixed_booking_deposit_amount.sql', order: 68, description: 'Allow booking deposits to use either a percentage or a tenant-currency fixed amount capped at the service total' },
 ];

@@ -28,12 +28,21 @@ function sanitiseBookingSlug(value: string): string {
 }
 
 function normalisePage(settings: BookingPageResponse): BookingPageResponse {
+  const percentage = Number(settings.paymentSettings.depositPercentage);
+  const fixedAmount = Number(settings.paymentSettings.depositFixedAmount);
   return {
     ...settings,
     bookingRules: {
       ...settings.bookingRules,
       maximumFutureDays: Math.max(minimumCustomerWindowDays, settings.bookingRules.maximumFutureDays || minimumCustomerWindowDays),
       enabledBookingChannels: settings.bookingRules.enabledBookingChannels?.length ? settings.bookingRules.enabledBookingChannels : ['in_shop'],
+    },
+    paymentSettings: {
+      ...settings.paymentSettings,
+      mode: settings.paymentSettings.mode === 'FULL' ? 'FULL' : 'DEPOSIT',
+      depositType: settings.paymentSettings.depositType === 'FIXED' ? 'FIXED' : 'PERCENTAGE',
+      depositPercentage: Number.isFinite(percentage) && percentage >= 1 && percentage <= 99 ? Math.round(percentage) : 20,
+      depositFixedAmount: Number.isFinite(fixedAmount) && fixedAmount >= 1 ? Math.round(fixedAmount) : 1_000,
     },
   };
 }
@@ -235,8 +244,13 @@ export function BookingPageSettings() {
           <div className="mt-5 grid grid-cols-2 gap-4">
             <label className="text-sm font-bold">Minimum notice (minutes)<input type="number" min={0} value={page.bookingRules.minimumNoticeMinutes} onChange={event => update('bookingRules', { ...page.bookingRules, minimumNoticeMinutes: Number(event.target.value) })} className="mt-1 w-full rounded-xl border p-3" /></label>
             <label className="text-sm font-bold">Future booking window (days)<input type="number" min={minimumCustomerWindowDays} max={730} value={page.bookingRules.maximumFutureDays} onChange={event => update('bookingRules', { ...page.bookingRules, maximumFutureDays: Math.max(minimumCustomerWindowDays, Number(event.target.value)) })} className="mt-1 w-full rounded-xl border p-3" /><span className="mt-1 block text-xs font-normal text-slate-500">Minimum 42 days.</span></label>
-            <label className="text-sm font-bold">Payment requirement<select value={page.paymentSettings.mode} onChange={event => update('paymentSettings', { ...page.paymentSettings, mode: event.target.value as BookingPageResponse['paymentSettings']['mode'] })} className="mt-1 w-full rounded-xl border bg-white p-3"><option value="NONE">No payment</option><option value="PAY_LATER">Pay later</option><option value="DEPOSIT">Deposit</option><option value="FULL">Full payment</option><option value="CUSTOMER_CHOICE">Customer choice</option></select></label>
-            <label className="text-sm font-bold">Deposit %<input type="number" min={0} max={100} value={page.paymentSettings.depositPercentage} onChange={event => update('paymentSettings', { ...page.paymentSettings, depositPercentage: Number(event.target.value) })} className="mt-1 w-full rounded-xl border p-3" /></label>
+            <label className="text-sm font-bold">Payment for paid services<select value={page.paymentSettings.mode} onChange={event => update('paymentSettings', { ...page.paymentSettings, mode: event.target.value as BookingPageResponse['paymentSettings']['mode'] })} className="mt-1 w-full rounded-xl border bg-white p-3"><option value="DEPOSIT">Deposit first</option><option value="FULL">Full payment upfront</option></select><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">Free services skip payment automatically. Paid services use Stripe before confirmation.</span></label>
+            {page.paymentSettings.mode === 'DEPOSIT' && <>
+              <label className="text-sm font-bold">Deposit calculation<select value={page.paymentSettings.depositType || 'PERCENTAGE'} onChange={event => update('paymentSettings', { ...page.paymentSettings, depositType: event.target.value as 'PERCENTAGE' | 'FIXED' })} className="mt-1 w-full rounded-xl border bg-white p-3"><option value="PERCENTAGE">Percentage of service price</option><option value="FIXED">Fixed amount in pounds</option></select><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">Choose whether every service uses the same percentage or the same pound amount.</span></label>
+              {(page.paymentSettings.depositType || 'PERCENTAGE') === 'PERCENTAGE'
+                ? <label className="text-sm font-bold">Deposit percentage<input type="number" min={1} max={99} step={1} value={page.paymentSettings.depositPercentage} onChange={event => update('paymentSettings', { ...page.paymentSettings, depositPercentage: Number(event.target.value) })} className="mt-1 w-full rounded-xl border p-3" /><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">Customers pay this percentage online and the balance at the appointment.</span></label>
+                : <label className="text-sm font-bold">Fixed deposit (£)<input type="number" min={0.01} step={0.01} value={(page.paymentSettings.depositFixedAmount ?? 1_000) / 100} onChange={event => update('paymentSettings', { ...page.paymentSettings, depositFixedAmount: Math.max(1, Math.round(Number(event.target.value) * 100)) })} className="mt-1 w-full rounded-xl border p-3" /><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">For example, enter 10 for a £10 deposit. Cheaper services are capped at their full price.</span></label>}
+            </>}
           </div>
           <label className="mt-4 block text-sm font-bold">Cancellation policy<textarea value={page.cancellationSettings.policyText} onChange={event => update('cancellationSettings', { ...page.cancellationSettings, policyText: event.target.value })} rows={3} className="mt-1 w-full rounded-xl border p-3" /></label>
           <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><div><p>Customer cancellation and rescheduling approval rules are managed here with the booking page.</p><button type="button" onClick={() => setPoliciesOpen(true)} className="mt-2 font-black text-indigo-700 underline">Open customer booking policies</button></div></div>

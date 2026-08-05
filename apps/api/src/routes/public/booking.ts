@@ -14,6 +14,7 @@ import { safeReferrerHost } from '../../modules/bookings/booking-page.utils.js';
 import { FormsService } from '../../modules/forms/forms.service.js';
 
 import { 
+  calculateDepositAmount,
   CreateBookingRequestSchema, 
   AvailabilityQuerySchema,
   BookingPageSlugSchema,
@@ -241,16 +242,20 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         .where(and(eq(services.id, data.serviceId), eq(services.tenantId, tenant.id), eq(services.isActive, true)))
         .limit(1);
       if (!bookedService) return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
-      const paymentSettings = page.paymentSettings as { mode?: string; depositPercentage?: number };
+      const paymentSettings = page.paymentSettings as {
+        mode?: string;
+        depositType?: string;
+        depositPercentage?: number;
+        depositFixedAmount?: number;
+      };
       const verifiedPaymentMode = bookedService.requiresDeposit ? 'deposit_required'
         : paymentSettings.mode === 'FULL' ? 'pay_now'
         : paymentSettings.mode === 'DEPOSIT' ? 'deposit_required'
           : paymentSettings.mode === 'CUSTOMER_CHOICE' ? data.paymentMode
             : 'pay_later';
       const baseServiceAmount = Math.max(0, bookedService.price - bookedService.discount);
-      const depositPercentage = Math.min(100, Math.max(0, Number(paymentSettings.depositPercentage || 0)));
       const expectedAmountDue = verifiedPaymentMode === 'deposit_required'
-        ? Math.ceil(baseServiceAmount * (depositPercentage > 0 ? depositPercentage : 100) / 100)
+        ? calculateDepositAmount(baseServiceAmount, paymentSettings)
         : baseServiceAmount;
       if (verifiedPaymentMode !== 'pay_later' && baseServiceAmount > 0) {
         const { StripeService } = await import('../../modules/integrations/stripe/stripe.service.js');
@@ -379,7 +384,7 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       let checkoutUrl = undefined;
       const quotedAmount = booking.quoted_amount || 0;
       const amountDue = verifiedPaymentMode === 'deposit_required'
-        ? Math.ceil(quotedAmount * (depositPercentage > 0 ? depositPercentage : 100) / 100)
+        ? calculateDepositAmount(quotedAmount, paymentSettings)
         : quotedAmount;
       
       if (amountDue > 0 && verifiedPaymentMode !== 'pay_later') {
