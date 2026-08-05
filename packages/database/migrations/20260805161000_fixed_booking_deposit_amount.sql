@@ -15,9 +15,12 @@ SET payment_settings = jsonb_set(
   ),
   '{depositFixedAmount}',
   to_jsonb(CASE
-    WHEN COALESCE(payment_settings->>'depositFixedAmount', '') ~ '^[0-9]+$'
-      AND (payment_settings->>'depositFixedAmount')::numeric BETWEEN 1 AND 100000000
-      THEN round((payment_settings->>'depositFixedAmount')::numeric)::integer
+    WHEN COALESCE(payment_settings->>'depositFixedAmount', '') ~ '^[0-9]+$' THEN
+      CASE
+        WHEN (payment_settings->>'depositFixedAmount')::numeric BETWEEN 1 AND 100000000
+          THEN round((payment_settings->>'depositFixedAmount')::numeric)::integer
+        ELSE 1000
+      END
     ELSE 1000
   END),
   true
