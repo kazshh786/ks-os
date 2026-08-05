@@ -1,9 +1,9 @@
 name: Validate consent form changes
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/fix-consent-submit-terms
+      - main
     paths:
       - apps/web/src/pages/PublicWorkspaceFormPage.tsx
       - apps/web/src/pages/NotFoundPage.tsx
