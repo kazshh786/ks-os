@@ -18,6 +18,24 @@ export type EffectiveAvailabilityWindow = AvailabilityWindow & {
   source: 'weekly' | 'override';
 };
 
+export type SlotWithinScheduleInput = {
+  startMinute: number;
+  totalDurationMinutes: number;
+  scheduleEndMinute: number;
+  allowAppointmentsPastClosingTime: boolean;
+};
+
+export function canOfferSlotWithinSchedule({
+  startMinute,
+  totalDurationMinutes,
+  scheduleEndMinute,
+  allowAppointmentsPastClosingTime,
+}: SlotWithinScheduleInput): boolean {
+  return allowAppointmentsPastClosingTime
+    ? startMinute < scheduleEndMinute
+    : startMinute + totalDurationMinutes <= scheduleEndMinute;
+}
+
 export function resolveEffectiveAvailabilityWindows(
   members: AvailabilityMember[],
   weeklyWindows: AvailabilityWindow[],
