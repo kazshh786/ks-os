@@ -1,0 +1,37 @@
+name: Validate consent form changes
+
+on:
+  push:
+    branches:
+      - agent/fix-consent-submit-terms
+    paths:
+      - apps/web/src/pages/PublicWorkspaceFormPage.tsx
+      - apps/web/src/pages/NotFoundPage.tsx
+      - apps/web/src/features/forms/FormRenderer.tsx
+      - packages/contracts/src/forms.ts
+      - .github/workflows/agent-validate-consent-form.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.13.1 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck contracts
+        run: pnpm --filter @ks-os/contracts typecheck
+      - name: Typecheck web
+        run: pnpm --filter web typecheck
+      - name: Typecheck API
+        run: pnpm --filter api typecheck
+      - name: Build web
+        run: pnpm --filter web build
