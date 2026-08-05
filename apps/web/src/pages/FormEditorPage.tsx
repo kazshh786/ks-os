@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  FileText,
   GripVertical,
   LayoutTemplate,
   Link2,
@@ -134,6 +135,7 @@ function normalise(value: unknown): FormSchemaJson {
 
 function publishIssuesFor(schema: FormSchemaJson, acknowledgement: string): PublishIssue[] {
   const issues: PublishIssue[] = [];
+  const hasTermsAcceptance = schema.fields.some(field => field.type === 'TERMS_ACCEPTANCE');
   const result = FormSchemaJsonSchema.safeParse(schema);
   if (!result.success) {
     result.error.issues.forEach((issue, issueIndex) => {
@@ -150,6 +152,9 @@ function publishIssuesFor(schema: FormSchemaJson, acknowledgement: string): Publ
       else if (issue.message === 'Field keys must be unique') message = 'Each field needs a unique internal field key.';
       issues.push({ key: `${path}:${issueIndex}`, message, fieldId: field?.id });
     });
+  }
+  if (hasTermsAcceptance && !schema.settings.termsAndConditionsText?.trim()) {
+    issues.push({ key: 'terms', message: 'Add the terms and conditions clients will read before accepting.' });
   }
   if (!acknowledgement.trim()) {
     issues.push({ key: 'acknowledgement', message: 'Add the final acknowledgement customers sign before submitting.' });
@@ -451,7 +456,16 @@ export default function FormEditorPage() {
             </div>
           </div>
         </section>
-        <section className="mt-6"><label className="block text-sm font-bold text-slate-800">Final acknowledgement<textarea value={acknowledgement} onChange={event => { setAcknowledgement(event.target.value); markDirty(); }} rows={4} className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 font-normal" /></label></section>
+        <section className="mt-7 border-t border-slate-200 pt-6">
+<div className="flex items-start gap-3"><FileText className="mt-0.5 h-5 w-5 text-indigo-600" /><div><h3 className="font-black text-slate-950">Legal content</h3><p className="mt-1 text-xs leading-5 text-slate-500">Add the full wording shown on the linked legal pages. This is separate from the short checkbox labels on the form.</p></div></div>
+<div className="mt-5 space-y-5">
+  <label className="block text-sm font-bold text-slate-800">Terms and conditions page<textarea aria-label="Terms and conditions page content" value={schema.settings.termsAndConditionsText || ''} onChange={event => change({ ...schema, settings: { ...schema.settings, termsAndConditionsText: event.target.value } })} rows={10} placeholder="Paste the full terms and conditions here…" className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 p-3 font-normal leading-6 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" /></label>
+  <p className="-mt-3 text-xs leading-5 text-slate-500">Use blank lines for paragraphs, # for headings, and - or numbered lines for lists. Website addresses become clickable automatically.</p>
+  <label className="block text-sm font-bold text-slate-800">Consent acknowledgement page<textarea aria-label="Consent acknowledgement page content" value={acknowledgement} onChange={event => { setAcknowledgement(event.target.value); markDirty(); }} rows={7} placeholder="Add the acknowledgement the client confirms and signs…" className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 p-3 font-normal leading-6 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" /></label>
+  <p className="-mt-3 text-xs leading-5 text-slate-500">This wording appears on the consent acknowledgement page and beside the final confirmation before submission.</p>
+  {isLive && <div className="grid grid-cols-2 gap-2"><a href={`${liveUrl}/terms`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:border-indigo-300 hover:text-indigo-700"><ExternalLink size={14} />View terms</a><a href={`${liveUrl}/acknowledgement`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:border-indigo-300 hover:text-indigo-700"><ExternalLink size={14} />View acknowledgement</a></div>}
+</div>
+        </section>
 
         <section className={`mt-6 rounded-2xl border p-4 ${isLive ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}><div className="flex items-center gap-2"><Link2 size={16} className={isLive ? 'text-emerald-600' : 'text-slate-500'} /><h3 className="text-sm font-black text-slate-900">{isLive ? 'Public form is live' : 'Public form link'}</h3></div><p className="mt-2 break-all text-xs leading-5 text-slate-600">{liveUrl || 'Save the form to create its public address.'}</p>{liveUrl && <div className="mt-3 flex gap-2"><button type="button" onClick={() => void navigator.clipboard.writeText(liveUrl)} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700"><Copy size={14} />Copy</button>{isLive && <a href={liveUrl} target="_blank" rel="noreferrer" className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white"><ExternalLink size={14} />Open live</a>}</div>}</section>
       </aside>

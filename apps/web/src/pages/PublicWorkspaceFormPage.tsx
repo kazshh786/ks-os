@@ -49,7 +49,9 @@ async function loadPublicForm(workspaceSlug: string, formSlug: string): Promise<
 }
 
 function termsContent(schema: FormSchemaJson): string {
-  return schema.fields.find(field => field.type === 'TERMS_ACCEPTANCE' && field.description?.trim())?.description?.trim() || '';
+  return schema.settings.termsAndConditionsText?.trim()
+    || schema.fields.find(field => field.type === 'TERMS_ACCEPTANCE' && field.description?.trim())?.description?.trim()
+    || '';
 }
 
 function friendlySubmissionError(code: string): string {
