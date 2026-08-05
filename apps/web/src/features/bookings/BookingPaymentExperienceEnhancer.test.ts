@@ -15,6 +15,7 @@ describe('booking payment experience', () => {
     expect(normaliseCommitmentPaymentMode('FULL')).toBe('FULL');
     expect(normaliseCommitmentPaymentMode('DEPOSIT')).toBe('DEPOSIT');
     expect(normaliseCommitmentPaymentMode('PAY_LATER')).toBe('DEPOSIT');
+    expect(normaliseCommitmentPaymentMode('CUSTOMER_CHOICE')).toBe('DEPOSIT');
   });
 
   it('normalises percentage and fixed deposit settings safely', () => {
@@ -22,6 +23,7 @@ describe('booking payment experience', () => {
     expect(normaliseDepositType('unknown')).toBe('PERCENTAGE');
     expect(normaliseDepositPercentage('35')).toBe(35);
     expect(normaliseDepositPercentage(0)).toBe(DEFAULT_DEPOSIT_PERCENTAGE);
+    expect(normaliseDepositPercentage(100)).toBe(DEFAULT_DEPOSIT_PERCENTAGE);
     expect(normaliseFixedDepositAmount(1_500)).toBe(1_500);
     expect(normaliseFixedDepositAmount(0)).toBe(DEFAULT_FIXED_DEPOSIT_AMOUNT);
   });
@@ -34,6 +36,10 @@ describe('booking payment experience', () => {
   it('supports a fixed £10 deposit without charging more than the service total', () => {
     expect(calculateDepositAmount(5_000, { depositType: 'FIXED', depositFixedAmount: 1_000 })).toBe(1_000);
     expect(calculateDepositAmount(750, { depositType: 'FIXED', depositFixedAmount: 1_000 })).toBe(750);
+  });
+
+  it('falls back to the safe fixed amount when a stored value is invalid', () => {
+    expect(calculateDepositAmount(5_000, { depositType: 'FIXED', depositFixedAmount: 0 })).toBe(DEFAULT_FIXED_DEPOSIT_AMOUNT);
   });
 
   it('calculates the remaining appointment balance without going negative', () => {
