@@ -6,13 +6,13 @@ import {
   getDatabase,
   reviewInvitations,
 } from '@ks-os/database';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Webhook } from 'svix';
 import { getResend } from '../../../lib/resend.js';
 import { ConversationDeliveryService } from '../../conversations/conversation-delivery.service.js';
 import { ConversationIngestService } from '../../conversations/conversation-ingest.service.js';
 import { OperationsIssueReporter } from '../../operations/operations.issue-service.js';
-import { shouldApplyResendOutboxStatus } from './resend-delivery-status.js';
+import { resendOutboxStatusesBefore } from './resend-delivery-status.js';
 
 const STATUS_BY_EVENT: Record<string, string> = {
   'email.sent': 'SENT',
@@ -174,14 +174,19 @@ export class ResendWebhookService {
         return;
       }
 
-      const shouldApplyStatus = shouldApplyResendOutboxStatus(message.status, status);
-      if (shouldApplyStatus) {
-        await tx.update(emailOutbox).set({
+      const allowedCurrentStatuses = resendOutboxStatusesBefore(status);
+      const applied = allowedCurrentStatuses.length
+        ? await tx.update(emailOutbox).set({
           status,
           deliveredAt: status === 'DELIVERED' ? new Date() : message.deliveredAt,
           failedAt: ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status) ? new Date() : message.failedAt,
           lastErrorCode: ['BOUNCED', 'COMPLAINED', 'FAILED'].includes(status) ? status : message.lastErrorCode,
-        }).where(eq(emailOutbox.id, message.id));
+        }).where(and(
+          eq(emailOutbox.id, message.id),
+          inArray(emailOutbox.status, allowedCurrentStatuses),
+        )).returning({ id: emailOutbox.id })
+        : [];
+      if (applied.length) {
         if (status === 'BOUNCED' || status === 'COMPLAINED') {
           await tx.insert(emailSuppressions).values({ recipientEmailNormalized: message.recipientEmail.toLowerCase(), reason: status })
             .onConflictDoUpdate({ target: emailSuppressions.recipientEmailNormalized, set: { reason: status } });
