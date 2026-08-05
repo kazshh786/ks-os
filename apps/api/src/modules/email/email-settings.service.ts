@@ -13,13 +13,14 @@ import {
   type AutomatedEmailTemplate,
   type AutomatedEmailTemplates,
   type CommunicationsSettingsResponse,
+  type CompleteAutomatedEmailTemplates,
   type EmailAutomationOptions,
   type EmailBranding,
   type UpdateCommunicationsSettingsRequest,
 } from '@ks-os/contracts';
 import { and, eq } from 'drizzle-orm';
 
-export const DEFAULT_AUTOMATED_EMAIL_TEMPLATES: AutomatedEmailTemplates = {
+export const DEFAULT_AUTOMATED_EMAIL_TEMPLATES: CompleteAutomatedEmailTemplates = {
   customerBookingConfirmation: {
     subject: 'Your booking with {{businessName}} is confirmed',
     heading: 'Booking confirmed',
@@ -103,11 +104,14 @@ export const DEFAULT_EMAIL_AUTOMATIONS: EmailAutomationOptions = {
 type StoredSettings = {
   branding?: Partial<EmailBranding>;
   automations?: Partial<EmailAutomationOptions>;
-  templates?: Partial<Record<keyof AutomatedEmailTemplates, Partial<AutomatedEmailTemplate>>>;
+  templates?: Partial<Record<keyof CompleteAutomatedEmailTemplates, Partial<AutomatedEmailTemplate>>>;
   mainBookingFormId?: string | null;
 };
 
-export type EmailRuntimeSettings = CommunicationsSettingsResponse;
+export type EmailRuntimeSettings = Omit<CommunicationsSettingsResponse, 'mainBookingFormId' | 'templates'> & {
+  mainBookingFormId: string | null;
+  templates: CompleteAutomatedEmailTemplates;
+};
 
 const normalizeNullable = (value: string | null | undefined) => value?.trim() || null;
 
@@ -141,7 +145,7 @@ export function emailBrandingTemplateData(branding: EmailBranding) {
   };
 }
 
-const EDITABLE_RUNTIME_TEMPLATE: Partial<Record<string, keyof AutomatedEmailTemplates>> = {
+const EDITABLE_RUNTIME_TEMPLATE: Partial<Record<string, keyof CompleteAutomatedEmailTemplates>> = {
   'booking-confirmed': 'customerBookingConfirmation',
   'booking-cancelled': 'customerBookingCancellation',
   'booking-rescheduled': 'customerBookingReschedule',
@@ -219,9 +223,9 @@ export class EmailSettingsService {
     const templates = AutomatedEmailTemplatesSchema.parse(Object.fromEntries(
       Object.entries(DEFAULT_AUTOMATED_EMAIL_TEMPLATES).map(([key, value]) => [
         key,
-        { ...value, ...(saved.templates?.[key as keyof AutomatedEmailTemplates] ?? {}) },
+        { ...value, ...(saved.templates?.[key as keyof CompleteAutomatedEmailTemplates] ?? {}) },
       ]),
-    ));
+    )) as CompleteAutomatedEmailTemplates;
 
     return {
       replyToEmail: tenant.replyToEmail,
@@ -255,7 +259,7 @@ export class EmailSettingsService {
         key,
         { ...value, ...(input.templates?.[key as keyof AutomatedEmailTemplates] ?? {}) },
       ]),
-    ));
+    )) as CompleteAutomatedEmailTemplates;
     const mainBookingFormId = input.mainBookingFormId === undefined ? current.mainBookingFormId : input.mainBookingFormId;
     if (mainBookingFormId) {
       const [publishedForm] = await query.select({ id: forms.id }).from(forms).where(and(
