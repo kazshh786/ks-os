@@ -1,0 +1,229 @@
+name: Production Deploy
+
+run-name: >-
+  Production deploy • ${{ github.event_name == 'workflow_run' && 'both' || inputs.target }} •
+  ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.ref }} •
+  ${{ inputs.request_id || 'automatic' }}
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment target
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - vps
+          - cloudflare
+      ref:
+        description: Git ref to deploy
+        required: true
+        default: main
+        type: string
+      apply_migrations:
+        description: Apply reviewed database migrations during the VPS deployment
+        required: true
+        default: false
+        type: boolean
+      request_id:
+        description: Optional caller correlation ID
+        required: false
+        default: manual
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy production
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    env:
+      DEPLOY_TARGET: ${{ github.event_name == 'workflow_run' && 'both' || inputs.target }}
+      DEPLOY_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.ref }}
+      APPLY_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.apply_migrations && '1' || '0' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+      VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+
+    steps:
+      - name: Check out the release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run release checks
+        id: checks
+        shell: bash
+        run: |
+          set +e
+          log="$RUNNER_TEMP/release-checks.log"
+          {
+            set -euo pipefail
+            pnpm build
+            pnpm lint
+            pnpm typecheck
+            pnpm test
+            pnpm db:migrations:validate
+            if [[ "$DEPLOY_TARGET" == "both" || "$DEPLOY_TARGET" == "cloudflare" ]]; then
+              pnpm exec wrangler deploy --dry-run --outdir "$RUNNER_TEMP/cloudflare-dry-run"
+            fi
+          } >"$log" 2>&1
+          status=$?
+          if [[ $status -ne 0 ]]; then
+            echo "::error title=Release checks failed::Only the failing release-check output is shown below."
+            tail -n 300 "$log"
+          else
+            echo "Release checks passed."
+          fi
+          exit $status
+
+      - name: Configure VPS SSH access
+        if: env.DEPLOY_TARGET == 'both' || env.DEPLOY_TARGET == 'vps'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_SSH_PRIVATE_KEY"
+          test -n "$VPS_KNOWN_HOSTS"
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+
+      - name: Deploy VPS release
+        id: vps
+        if: env.DEPLOY_TARGET == 'both' || env.DEPLOY_TARGET == 'vps'
+        shell: bash
+        run: |
+          set +e
+          port="${VPS_SSH_PORT:-22}"
+          log="$RUNNER_TEMP/vps-deploy.log"
+          ssh -p "$port" -o BatchMode=yes -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
+            "APPLY_MIGRATIONS='$APPLY_MIGRATIONS' bash -s" >"$log" 2>&1 <<'REMOTE'
+          set -euo pipefail
+          cd /srv/ks-os
+
+          git status --short
+          DEPLOY_BRANCH=main pnpm deploy:vps:dry-run
+          DEPLOY_BRANCH=main APPLY_MIGRATIONS="$APPLY_MIGRATIONS" bash scripts/deploy/deploy-vps.sh
+
+          sudo systemctl is-active --quiet ks-os-api
+          sudo systemctl is-active --quiet ks-os-site-worker
+          sudo systemctl is-active --quiet ks-os-sites
+          sudo systemctl status ks-os-api --no-pager >/dev/null
+          curl -fsS http://127.0.0.1:5000/health >/dev/null
+          curl -fsS http://127.0.0.1:8091/health >/dev/null
+          curl -fsS http://127.0.0.1:8091/ready >/dev/null
+          REMOTE
+          status=$?
+          if [[ $status -ne 0 ]]; then
+            echo "::error title=VPS deployment failed::Only the VPS deployment error output is shown below."
+            tail -n 300 "$log"
+          else
+            echo "VPS deployment passed."
+          fi
+          exit $status
+
+      - name: Deploy Cloudflare release
+        id: cloudflare
+        if: env.DEPLOY_TARGET == 'both' || env.DEPLOY_TARGET == 'cloudflare'
+        shell: bash
+        run: |
+          set +e
+          log="$RUNNER_TEMP/cloudflare-deploy.log"
+          deployed=0
+          {
+            set -euo pipefail
+            test -n "$CLOUDFLARE_API_TOKEN"
+            test -n "$CLOUDFLARE_ACCOUNT_ID"
+            pnpm deploy:cloudflare
+            deployed=1
+            curl --fail --silent --show-error --location \
+              --retry 10 --retry-delay 3 --retry-all-errors \
+              --header 'Cache-Control: no-cache' \
+              https://kasimshah.com/ >/dev/null
+            curl --fail --silent --show-error \
+              --retry 10 --retry-delay 3 --retry-all-errors \
+              https://api.kasimshah.com/health >/dev/null
+            pnpm exec wrangler deployments list
+          } >"$log" 2>&1
+          status=$?
+          if [[ $status -ne 0 ]]; then
+            if [[ $deployed -eq 1 ]]; then
+              pnpm exec wrangler rollback --message "Automated rollback after failed production verification" >>"$log" 2>&1 || true
+            fi
+            echo "::error title=Cloudflare deployment failed::Only the Cloudflare deployment error output is shown below."
+            tail -n 300 "$log"
+          else
+            echo "Cloudflare deployment passed."
+          fi
+          exit $status
+
+      - name: Publish failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-deploy-failure-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/release-checks.log
+            ${{ runner.temp }}/vps-deploy.log
+            ${{ runner.temp }}/cloudflare-deploy.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Write deployment summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Production deployment"
+            echo
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Deployment type | **$DEPLOY_TARGET** |"
+            echo "| Git ref | \`$DEPLOY_REF\` |"
+            echo "| Database migrations | **$([[ "$APPLY_MIGRATIONS" == "1" ]] && echo applied || echo not applied)** |"
+            echo "| VPS | **${{ steps.vps.outcome || 'not requested' }}** |"
+            echo "| Cloudflare | **${{ steps.cloudflare.outcome || 'not requested' }}** |"
+            echo
+            if [[ "${{ job.status }}" == "success" ]]; then
+              echo "Deployment completed successfully. Detailed logs remain hidden unless a stage fails."
+            else
+              echo "Deployment failed. The failed step above and the failure artifact contain the relevant error output only."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
