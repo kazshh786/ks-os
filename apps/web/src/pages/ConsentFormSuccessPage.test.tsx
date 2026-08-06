@@ -18,7 +18,7 @@ function renderAssignedSuccess() {
 describe('consent form success page', () => {
   beforeEach(() => sessionStorage.clear());
 
-  it('shows the configured message and website return action', () => {
+  it('shows a clear return-to-site action for a business website', () => {
     sessionStorage.setItem(`form-success-${token}`, JSON.stringify({
       salonName: 'Client Salon',
       message: 'Thank you. Your consent is ready for your appointment.',
@@ -31,7 +31,18 @@ describe('consent form success page', () => {
 
     expect(screen.getByRole('heading', { name: 'Form submitted' })).toBeInTheDocument();
     expect(screen.getByText('Thank you. Your consent is ready for your appointment.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Back to Client Salon/i })).toHaveAttribute('href', 'https://client.example.com/');
+    expect(screen.getByRole('link', { name: /Return to site/i })).toHaveAttribute('href', 'https://client.example.com/');
+  });
+
+  it('shows a booking action when the configured destination is a booking page', () => {
+    sessionStorage.setItem(`form-success-${token}`, JSON.stringify({
+      salonName: 'Client Salon',
+      redirectUrl: 'https://client.example.com/manage/secure-booking',
+    }));
+
+    renderAssignedSuccess();
+
+    expect(screen.getByRole('link', { name: /Take me to my booking/i })).toHaveAttribute('href', 'https://client.example.com/manage/secure-booking');
   });
 
   it('does not render an unsafe return link from stored data', () => {
@@ -42,7 +53,7 @@ describe('consent form success page', () => {
 
     renderAssignedSuccess();
 
-    expect(screen.queryByRole('link', { name: /Back to/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(screen.getByText('You may now safely close this page.')).toBeInTheDocument();
   });
 });
