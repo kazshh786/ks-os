@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { LockKeyhole } from 'lucide-react';
 import BookingWizardPage from './BookingWizardPage.js';
 import PaymentSuccess from './book/PaymentSuccess.js';
@@ -18,7 +18,8 @@ function PublicBookingSurface({ children }: { children: React.ReactNode }) {
 }
 
 export const NotFoundPage: React.FC = () => {
-  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  const location = useLocation();
+  const path = location.pathname.replace(/\/+$/, '') || '/';
   if (path === '/book' || /^\/book\/manage\/[0-9a-f-]+$/i.test(path)) {
     return <PublicBookingSurface><BookingWizardPage /></PublicBookingSurface>;
   }
