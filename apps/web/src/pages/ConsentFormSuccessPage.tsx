@@ -22,12 +22,24 @@ function safeHttpUrl(value: unknown): string {
   }
 }
 
+function completionActionLabel(redirectUrl: string): string {
+  try {
+    const path = new URL(redirectUrl).pathname.toLowerCase();
+    return /(^|\/)(book|booking|manage|appointments?)(\/|$)/.test(path)
+      ? 'Take me to my booking'
+      : 'Return to site';
+  } catch {
+    return 'Return to site';
+  }
+}
+
 function SuccessView({ details }: { details: SuccessDetails }) {
   const primary = details.primaryColor || '#059669';
   const accent = details.accentColor || '#4f46e5';
   const redirectUrl = safeHttpUrl(details.redirectUrl);
   const salonName = details.salonName?.trim();
   const message = details.message?.trim() || 'Your response was received securely.';
+  const actionLabel = redirectUrl ? completionActionLabel(redirectUrl) : '';
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-100 p-6">
@@ -44,7 +56,7 @@ function SuccessView({ details }: { details: SuccessDetails }) {
 
           {redirectUrl ? (
             <a href={redirectUrl} rel="noreferrer" className="mt-8 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-5 text-sm font-black text-white shadow-lg transition hover:brightness-95" style={{ background: `linear-gradient(90deg, ${primary}, ${accent})` }}>
-              Back to {salonName || 'the website'}<ExternalLink className="h-4 w-4" />
+              {actionLabel}<ExternalLink className="h-4 w-4" />
             </a>
           ) : (
             <p className="mt-8 rounded-2xl bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-500">You may now safely close this page.</p>
