@@ -2,8 +2,10 @@ import { z } from 'zod';
 import dotenv from 'dotenv';
 import path from 'node:path';
 
-dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
-dotenv.config({ override: true });
+if (process.env.NODE_ENV !== 'test') {
+  dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
+  dotenv.config({ override: true });
+}
 
 const EnvSchema = z.object({
   PORT: z.string().default('5000').transform((val) => parseInt(val, 10)),

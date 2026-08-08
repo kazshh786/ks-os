@@ -5,7 +5,10 @@ import sinon from 'sinon';
 process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_dummy';
 process.env.STRIPE_PAYMENTS_WEBHOOK_SECRET = 'whsec_payments_dummy';
 process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
+process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_test_dummy';
 process.env.FRONTEND_ORIGIN = 'http://localhost:3000';
+process.env.STRIPE_CONNECT_RETURN_URL = 'http://localhost:3000/app/settings/payments/return';
+process.env.STRIPE_CONNECT_REFRESH_URL = 'http://localhost:3000/app/settings/payments/refresh';
 
 import { buildApp } from '../src/app.js';
 import { supabase } from '../src/lib/supabase.js';

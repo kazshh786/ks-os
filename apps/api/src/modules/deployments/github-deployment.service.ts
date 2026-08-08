@@ -129,11 +129,11 @@ export class GithubDeploymentService {
       return this.getRun(dispatchBody.workflow_run_id, input.requestId);
     }
 
-    for (let attempt = 0; attempt < 12; attempt += 1) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
       const runs = await this.listRecentRuns();
       const match = runs.find(run => run.display_title.includes(input.requestId));
       if (match) return this.mapRun(match, input.requestId, []);
-      await delay(500);
+      await delay(1000);
     }
 
     throw new GithubDeploymentError(
@@ -219,7 +219,10 @@ export class GithubDeploymentService {
 
     if (!allowedStatuses.includes(response.status)) {
       const body = await response.text().catch(() => '');
-      const suffix = body ? ` ${body.slice(0, 500)}` : '';
+      const sanitized = body
+        .replace(/(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]+/g, '[REDACTED]')
+        .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]');
+      const suffix = sanitized ? ` ${sanitized.slice(0, 500)}` : '';
       throw new GithubDeploymentError(
         `GitHub deployment request failed with HTTP ${response.status}.${suffix}`,
         response.status === 401 || response.status === 403 ? 503 : 502,

@@ -105,6 +105,15 @@ export function DeploymentControl() {
     if (target === 'cloudflare') setApplyMigrations(false);
   }, [target]);
 
+  useEffect(() => {
+    if (!open || isRunning) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') reset();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, isRunning]);
+
   const reset = () => {
     if (isRunning) return;
     setOpen(false);
@@ -186,7 +195,7 @@ export function DeploymentControl() {
                       return (
                         <label
                           key={option.value}
-                          className={`cursor-pointer rounded-2xl border p-4 transition ${selected ? 'border-violet-400 bg-violet-500/15' : 'border-slate-700 bg-slate-950/50 hover:border-slate-600'}`}
+                          className={`cursor-pointer rounded-2xl border p-4 transition focus-within:ring-2 focus-within:ring-violet-400 ${selected ? 'border-violet-400 bg-violet-500/15' : 'border-slate-700 bg-slate-950/50 hover:border-slate-600'}`}
                         >
                           <input
                             type="radio"
