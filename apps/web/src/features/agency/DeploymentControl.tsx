@@ -158,12 +158,18 @@ export function DeploymentControl() {
       </button>
 
       {open ? (
-        <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/85 p-4 backdrop-blur-sm" role="presentation">
+        <div
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-start overflow-y-auto bg-slate-950/85 p-4 sm:p-6 backdrop-blur-sm"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isRunning) reset();
+          }}
+        >
           <section
             aria-labelledby="production-deployment-title"
             aria-modal="true"
             role="dialog"
-            className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-5 shadow-2xl sm:p-7"
+            className="my-auto max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-5 shadow-2xl sm:p-7"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
