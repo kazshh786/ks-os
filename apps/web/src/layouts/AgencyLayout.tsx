@@ -11,6 +11,7 @@ import { agencyFetch, useAgencyAuth } from '../features/agency/AgencyAuth';
 import AgencyClientWorkspaceOverviewPage from '../features/agency/AgencyClientWorkspaceOverviewPage';
 import { AgencyClientsPage, AgencyHomePage, AgencyOnboardingPage } from '../features/agency/AgencyOperatingConsole';
 import AgencyWorkspaceOnboardingPage from '../features/agency/AgencyWorkspaceOnboardingPage';
+import { DeploymentControl } from '../features/agency/DeploymentControl';
 import { ManualTenantUserDialog } from '../features/agency/ManualTenantUserDialog';
 import { SupportSessionDialog } from '../features/agency/SupportSessionDialog';
 import { agencyNavigation, managedBusinessNavigation } from '../navigation/agency-navigation';
@@ -120,6 +121,7 @@ export const AgencyLayout: React.FC = () => {
   />;
 
   const headerActions = <div className="flex items-center gap-2">
+    {session?.user.role === 'PLATFORM_OWNER' ? <DeploymentControl /> : null}
     {!tenantId && capabilities.includes('tenants.manage') ? <Link to="/agency/tenants/new" className="hidden min-h-10 items-center gap-2 rounded-xl bg-violet-600 px-3 text-xs font-black text-white shadow-lg shadow-violet-950/30 transition hover:bg-violet-500 sm:inline-flex"><Plus className="h-4 w-4" />Add client</Link> : null}
     {tenantId && canStartSupport ? <button type="button" onClick={() => setSupportOpen(true)} className="hidden min-h-10 items-center gap-2 rounded-xl bg-amber-400 px-3 text-xs font-black text-slate-950 transition hover:bg-amber-300 sm:inline-flex"><DoorOpen className="h-4 w-4" />Support access</button> : null}
     <span className="hidden items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-300 md:flex"><ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />{session?.mfa.assuranceLevel.toUpperCase()}</span>

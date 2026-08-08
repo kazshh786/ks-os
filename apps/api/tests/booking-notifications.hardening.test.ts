@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
+process.env.RESEND_API_KEY = '';
+
 import {
   calculateOutboxBackoffDelay,
   decideOutboxRetry,

@@ -63,6 +63,7 @@ import { agencySiteQualityRoutes } from './modules/sites/site-quality.routes.js'
 import { agencySitePublicationRoutes } from './modules/sites/site-publication.routes.js';
 import { agencyProductionBriefRoutes } from './modules/provisioning/production-brief.routes.js';
 import { platformErrorLogRoutes } from './modules/errors/platform-error-log.routes.js';
+import { agencyDeploymentRoutes } from './modules/deployments/deployment.routes.js';
 
 export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => void } = {}) {
   const fastify = Fastify({
@@ -154,6 +155,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(authenticationRoutes);
 
   fastify.register(agencyRoutes, { prefix: '/api/v1/agency' });
+  fastify.register(agencyDeploymentRoutes, { prefix: '/api/v1/agency' });
   fastify.register(platformErrorLogRoutes, { prefix: '/api/v1/agency/errors' });
   fastify.register(complianceRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencySiteRoutes, { prefix: '/api/v1/agency/sites' });
