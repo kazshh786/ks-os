@@ -55,8 +55,9 @@ jobs:
       DEPLOY_TARGET: ${{ github.event_name == 'workflow_run' && 'both' || inputs.target }}
       DEPLOY_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.ref }}
       APPLY_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.apply_migrations && '1' || '0' }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_DEPLOY_HOOK_URL: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK_URL }}
+      CLOUDFLARE_WORKER_DEPLOY_HOOK_URL: ${{ secrets.CLOUDFLARE_WORKER_DEPLOY_HOOK_URL }}
+      CLOUDFLARE_PAGES_DEPLOY_HOOK_URL: ${{ secrets.CLOUDFLARE_PAGES_DEPLOY_HOOK_URL }}
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
@@ -159,38 +160,69 @@ jobs:
           fi
           exit $status
 
-      - name: Deploy Cloudflare release
+      - name: Trigger & verify Cloudflare release
         id: cloudflare
         if: env.DEPLOY_TARGET == 'both' || env.DEPLOY_TARGET == 'cloudflare'
         shell: bash
         run: |
           set +e
           log="$RUNNER_TEMP/cloudflare-deploy.log"
-          deployed=0
           {
             set -euo pipefail
-            test -n "$CLOUDFLARE_API_TOKEN"
-            test -n "$CLOUDFLARE_ACCOUNT_ID"
-            pnpm deploy:cloudflare
-            deployed=1
+            echo "=== Cloudflare Production Release ==="
+
+            if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+              echo "Manual deployment requested. Checking for Cloudflare deploy hooks..."
+              triggered=0
+              for hook_var in CLOUDFLARE_DEPLOY_HOOK_URL CLOUDFLARE_WORKER_DEPLOY_HOOK_URL CLOUDFLARE_PAGES_DEPLOY_HOOK_URL; do
+                hook_url="${!hook_var:-}"
+                if [[ -n "$hook_url" ]]; then
+                  echo "Triggering Cloudflare Deploy Hook ($hook_var)..."
+                  curl --fail --silent --show-error --request POST "$hook_url" >/dev/null
+                  triggered=1
+                fi
+              done
+              if [[ $triggered -eq 0 ]]; then
+                echo "Notice: No Cloudflare Deploy Hook secrets configured. Relying on Cloudflare native build pipeline."
+              fi
+            else
+              echo "Automatic workflow_run deployment. Cloudflare Git integration automatically triggers on push to main."
+            fi
+
+            echo "Verifying Cloudflare public deployment health..."
             curl --fail --silent --show-error --location \
-              --retry 10 --retry-delay 3 --retry-all-errors \
+              --retry 15 --retry-delay 4 --retry-all-errors \
               --header 'Cache-Control: no-cache' \
-              https://kasimshah.com/ >/dev/null
+              https://kasimshah.com/ > "$RUNNER_TEMP/kasimshah_index.html"
+
+            if ! grep -q "Kasim Shah" "$RUNNER_TEMP/kasimshah_index.html" && ! grep -q "<html" "$RUNNER_TEMP/kasimshah_index.html"; then
+              echo "Error: https://kasimshah.com/ did not return expected web content."
+              exit 1
+            fi
+
             curl --fail --silent --show-error \
-              --retry 10 --retry-delay 3 --retry-all-errors \
-              https://api.kasimshah.com/health >/dev/null
-            pnpm exec wrangler deployments list
+              --retry 15 --retry-delay 4 --retry-all-errors \
+              https://api.kasimshah.com/health > "$RUNNER_TEMP/api_health.json"
+
+            if ! grep -q '"status":"OK"' "$RUNNER_TEMP/api_health.json" && ! grep -q '"status": "OK"' "$RUNNER_TEMP/api_health.json"; then
+              echo "Error: https://api.kasimshah.com/health did not return status OK."
+              exit 1
+            fi
+
+            if grep -q '"version"' "$RUNNER_TEMP/api_health.json"; then
+              echo "API Health Version Response:"
+              cat "$RUNNER_TEMP/api_health.json"
+              echo
+            fi
+
+            echo "Cloudflare public verification succeeded."
           } >"$log" 2>&1
           status=$?
           if [[ $status -ne 0 ]]; then
-            if [[ $deployed -eq 1 ]]; then
-              pnpm exec wrangler rollback --message "Automated rollback after failed production verification" >>"$log" 2>&1 || true
-            fi
-            echo "::error title=Cloudflare deployment failed::Only the Cloudflare deployment error output is shown below."
+            echo "::error title=Cloudflare deployment verification failed::Only the Cloudflare error output is shown below."
             tail -n 300 "$log"
           else
-            echo "Cloudflare deployment passed."
+            echo "Cloudflare deployment verification passed."
           fi
           exit $status
 

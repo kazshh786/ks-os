@@ -40,19 +40,19 @@ const targetOptions: Array<{
   {
     value: 'both',
     label: 'VPS + Cloudflare',
-    description: 'Deploy the API, workers and web experience as one release.',
+    description: 'Deploy VPS and trigger the existing Cloudflare production pipeline.',
     icon: Rocket,
   },
   {
     value: 'vps',
     label: 'VPS only',
-    description: 'Build, restart services and verify the VPS health checks.',
+    description: 'Deploy and verify VPS services.',
     icon: Server,
   },
   {
     value: 'cloudflare',
     label: 'Cloudflare only',
-    description: 'Build and deploy the Cloudflare Worker and static assets.',
+    description: 'Trigger and verify the existing Cloudflare production pipeline.',
     icon: Cloud,
   },
 ];

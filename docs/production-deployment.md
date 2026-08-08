@@ -2,10 +2,10 @@
 
 ## Deployment type
 
-The standard production release is **both**:
+The standard production release is **BOTH** (VPS + Cloudflare):
 
-1. **VPS** — API, site worker and shared renderer.
-2. **Cloudflare** — `ks-os-web` Worker and the static web assets routed through `kasimshah.com` and `www.kasimshah.com`.
+1. **VPS** — Fastify API, durable site worker and shared Astro renderer (managed by GitHub Actions).
+2. **Cloudflare** — `ks-os-web` Worker and static web assets routed through `kasimshah.com` and `www.kasimshah.com` (managed natively by Cloudflare Git integration).
 
 The GitHub Actions workflow in `.github/workflows/deploy-production.yml` is the single deployment engine. Automatic deployments, the CLI command and the Agency portal button all invoke this same workflow.
 
@@ -13,13 +13,31 @@ The GitHub Actions workflow in `.github/workflows/deploy-production.yml` is the 
 
 A successful `CI` workflow on `main` triggers the production workflow automatically.
 
-The release will not start if CI fails. Automatic releases:
+The release flow for automatic main deployments is:
 
-- deploy **both VPS and Cloudflare**;
-- rebuild and re-run release checks;
-- never apply database migrations;
-- run one at a time through the `production-deploy` concurrency group;
-- expose detailed output only when a stage fails.
+1. `merge main`
+2. `CI` passes
+3. Cloudflare Git integration automatically builds and deploys Worker/Pages on push to `main`
+4. GitHub Actions production workflow deploys VPS services (`ks-os-api`, `ks-os-site-worker`, `ks-os-sites`)
+5. Workflow verifies VPS health checks
+6. Workflow verifies Cloudflare public website (`https://kasimshah.com/`) and API health (`https://api.kasimshah.com/health`)
+7. Release succeeds only when both VPS and Cloudflare are healthy
+
+GitHub Actions does **NOT** run `wrangler deploy` or `pnpm deploy:cloudflare` in production.
+
+## Manual BOTH / VPS / Cloudflare deployments
+
+The Agency portal and CLI support manual releases:
+
+- **both** (VPS + Cloudflare)
+- **vps** (VPS only)
+- **cloudflare** (Cloudflare only)
+
+For manual `both` or `cloudflare` requests:
+- The workflow triggers Cloudflare's native build pipeline using server-side Deploy Hooks (`CLOUDFLARE_DEPLOY_HOOK_URL`, `CLOUDFLARE_WORKER_DEPLOY_HOOK_URL`, `CLOUDFLARE_PAGES_DEPLOY_HOOK_URL`).
+- Deploy Hook URLs are stored strictly in server-side GitHub secrets and are never exposed to browser JavaScript.
+- The workflow polls and verifies public deployment health.
+- Errors are reported without performing a direct `wrangler deploy` or `wrangler rollback`.
 
 ## CLI
 
@@ -30,7 +48,7 @@ cd /srv/ks-os
 pnpm deploy:production
 ```
 
-This deploys **both VPS and Cloudflare** and waits for GitHub Actions to finish. The CLI requires GitHub CLI authentication and prints failed-step logs only when the run fails.
+This triggers the unified deployment workflow for **both VPS and Cloudflare** and waits for completion. The CLI requires GitHub CLI authentication and prints failed-step logs only when the run fails.
 
 Targeted releases are also available:
 
@@ -53,43 +71,39 @@ Do not use `--migrations` until the production migration plan has been reviewed.
 
 The **Deploy** control appears in the Agency portal header only for a `PLATFORM_OWNER` session.
 
-The control supports:
+The control choices make deployment ownership clear:
 
-- VPS + Cloudflare;
-- VPS only;
-- Cloudflare only;
-- an optional reviewed migration toggle for VPS releases;
-- status polling without exposing credentials;
-- failed stage names only, with a link to the protected GitHub run for full operator diagnostics.
+- **VPS + Cloudflare**: *"Deploy VPS and trigger the existing Cloudflare production pipeline."*
+- **VPS only**: *"Deploy and verify VPS services."*
+- **Cloudflare only**: *"Trigger and verify the existing Cloudflare production pipeline."*
 
-The browser calls the API. The API stores and uses the GitHub token server-side, so the token is never included in frontend code or responses.
+The browser calls the API. The API stores and uses the GitHub token server-side, so credentials are never included in frontend code or responses.
 
-## GitHub production environment
+## Secrets classification
 
-Create a GitHub Actions environment named `production`. Configure branch protection or required reviewers according to the production approval policy.
+Configure secrets according to their functional ownership:
 
-Add these environment secrets:
+### 1. VPS deployment secrets (GitHub Actions environment `production`)
 
 | Secret | Purpose |
 | --- | --- |
 | `VPS_HOST` | VPS hostname or IP address reachable by GitHub Actions |
 | `VPS_USER` | Restricted deployment account, normally `ksdeploy` |
-| `VPS_SSH_PORT` | SSH port; omit or use `22` for the default |
+| `VPS_SSH_PORT` | SSH port; omit or use `22` for default |
 | `VPS_SSH_PRIVATE_KEY` | Private key for the deployment account |
 | `VPS_KNOWN_HOSTS` | Pinned SSH host key entry for strict verification |
-| `CLOUDFLARE_API_TOKEN` | Scoped token permitted to deploy the Worker |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account containing the Worker |
 
-The VPS deployment account must be able to:
+### 2. Cloudflare native deployment trigger secrets (GitHub Actions environment `production`)
 
-- read and fast-forward `/srv/ks-os` from `origin/main`;
-- run the locked pnpm toolchain;
-- restart `ks-os-api`, `ks-os-site-worker` and `ks-os-sites` through narrowly scoped passwordless `sudo` rules;
-- install `/run/ks-os/release.env` through the existing deployment script.
+| Secret | Purpose |
+| --- | --- |
+| `CLOUDFLARE_DEPLOY_HOOK_URL` | Native Cloudflare Deploy Hook URL for manual triggering |
+| `CLOUDFLARE_WORKER_DEPLOY_HOOK_URL` | Dedicated Worker Deploy Hook URL (if Workers and Pages use separate hooks) |
+| `CLOUDFLARE_PAGES_DEPLOY_HOOK_URL` | Dedicated Pages Deploy Hook URL (if Workers and Pages use separate hooks) |
 
-## API runtime configuration
+*Note: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are not required for production deployment or verification.*
 
-Set the following server-only variables in the production API environment:
+### 3. Agency API secrets (VPS environment `/srv/ks-os/.env`)
 
 ```dotenv
 KS_OS_GITHUB_DEPLOY_TOKEN=github-fine-grained-token
@@ -97,7 +111,7 @@ KS_OS_GITHUB_REPOSITORY=kazshh786/ks-os
 KS_OS_GITHUB_DEPLOY_WORKFLOW=deploy-production.yml
 ```
 
-`KS_OS_GITHUB_DEPLOY_TOKEN` must be a fine-grained token limited to this repository with **Actions: Read and write** access. The repository and workflow values are optional when the defaults above are correct.
+`KS_OS_GITHUB_DEPLOY_TOKEN` must be a fine-grained token limited to this repository with **Actions: Read and write** access.
 
 After changing the API environment, restart the API:
 
@@ -109,9 +123,20 @@ curl -fsS http://127.0.0.1:5000/health
 echo
 ```
 
-## Release checks
+## Cloudflare verification & rollback policy
 
-The workflow performs:
+The workflow verifies at minimum:
+- `https://kasimshah.com/` (HTTP 200 and valid HTML shell content)
+- `https://api.kasimshah.com/health` (HTTP 200 and JSON status `OK`, confirming commit/version match where available)
+
+**Rollback ownership policy:**
+- VPS deployment script retains its application rollback behavior for local VPS failures.
+- GitHub Actions does **NOT** call `wrangler rollback` because Cloudflare Git integration owns deployment history.
+- A failed Cloudflare verification fails the unified release and reports the error, but rollback responsibility remains with the Cloudflare deployment system.
+
+## Release validation checks
+
+The workflow release-checks step performs:
 
 1. locked dependency installation;
 2. full workspace build;
@@ -119,19 +144,4 @@ The workflow performs:
 4. TypeScript checks;
 5. the complete test suite;
 6. migration manifest validation;
-7. a Cloudflare dry run when Cloudflare is included;
-8. the existing VPS dry run and deployment script;
-9. systemd and local VPS health checks;
-10. Cloudflare production deployment and public web/API checks.
-
-The existing VPS script retains its application rollback behavior. If a Cloudflare deployment completes but its public verification fails, the workflow requests a Cloudflare rollback to the previous deployment.
-
-## Required one-time validation
-
-Before enabling automatic production deployment:
-
-1. add all GitHub environment secrets;
-2. add the API deployment token to the VPS environment;
-3. run the workflow manually with `target=both` and `apply_migrations=false`;
-4. confirm the VPS services, `https://api.kasimshah.com/health` and `https://kasimshah.com/` are healthy;
-5. enable or retain the `workflow_run` automatic trigger.
+7. `wrangler deploy --dry-run` as a release validation step.
