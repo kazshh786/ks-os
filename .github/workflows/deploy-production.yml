@@ -85,6 +85,9 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Playwright Chromium
+        run: pnpm --filter site-worker exec playwright install --with-deps chromium
+
       - name: Run release checks
         id: checks
         shell: bash
