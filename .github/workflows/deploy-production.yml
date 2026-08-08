@@ -51,7 +51,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: production
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres_ci
+          POSTGRES_PASSWORD: postgres_ci_password
+          POSTGRES_DB: ks_os_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
+      DATABASE_URL: postgresql://postgres_ci:postgres_ci_password@127.0.0.1:5432/ks_os_ci
       DEPLOY_TARGET: ${{ github.event_name == 'workflow_run' && 'both' || inputs.target }}
       DEPLOY_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.ref }}
       APPLY_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.apply_migrations && '1' || '0' }}
