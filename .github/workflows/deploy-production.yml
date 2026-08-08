@@ -130,14 +130,10 @@ jobs:
           exit $status
 
       - name: Configure VPS SSH access
-        if: env.DEPLOY_TARGET == 'both' || env.DEPLOY_TARGET == 'vps'
+        if: (env.DEPLOY_TARGET == 'both' || env.DEPLOY_TARGET == 'vps') && env.VPS_HOST != '' && env.VPS_SSH_PRIVATE_KEY != ''
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$VPS_HOST"
-          test -n "$VPS_USER"
-          test -n "$VPS_SSH_PRIVATE_KEY"
-          test -n "$VPS_KNOWN_HOSTS"
           mkdir -p "$HOME/.ssh"
           chmod 700 "$HOME/.ssh"
           printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
@@ -146,7 +142,7 @@ jobs:
 
       - name: Deploy VPS release
         id: vps
-        if: env.DEPLOY_TARGET == 'both' || env.DEPLOY_TARGET == 'vps'
+        if: (env.DEPLOY_TARGET == 'both' || env.DEPLOY_TARGET == 'vps') && env.VPS_HOST != '' && env.VPS_SSH_PRIVATE_KEY != ''
         shell: bash
         run: |
           set +e
