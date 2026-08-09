@@ -1275,6 +1275,20 @@ test('67a. enabled AI generation requires server-side provider configuration', (
   });
   assert.equal(config.generation.enabled, true);
   assert.equal(config.generation.model, 'test-model');
+
+  const vertexConfig = parseSiteWorkerConfig({
+    DATABASE_URL: 'postgresql://test.invalid/test',
+    SITE_AI_GENERATION_ENABLED: 'true',
+    SITE_AI_PROVIDER: 'vertex-gemini',
+    SITE_AI_MODEL: 'vertex-test-model',
+    GOOGLE_CLOUD_PROJECT: 'vertex-proj',
+    GOOGLE_CLOUD_LOCATION: 'us-central1',
+  });
+  assert.equal(vertexConfig.generation.enabled, true);
+  assert.equal(vertexConfig.generation.provider, 'vertex-gemini');
+  assert.equal(vertexConfig.generation.googleCloudProject, 'vertex-proj');
+  assert.equal(vertexConfig.generation.googleCloudLocation, 'us-central1');
+
   assert.match(compositionSource, /createConfiguredSiteGenerationExecutor/);
   assert.match(generationExecutorSource, /class PostgresSiteGenerationExecutor/);
   assert.match(generationExecutorSource, /executeStructuredSiteGeneration/);

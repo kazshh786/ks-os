@@ -15,7 +15,8 @@ import {
 } from '@ks-os/contracts';
 import { SiteSectionTypeSchema } from '@ks-os/site-schema';
 import {
-  GeminiSiteGenerationProvider,
+  createSiteGenerationProvider,
+  isSiteGenerationProviderReady,
   parseSiteGenerationConfig,
 } from '@ks-os/site-generation';
 import { z } from 'zod';
@@ -437,7 +438,7 @@ export class DesignLibraryService {
   config() {
     const ai = parseSiteGenerationConfig(process.env);
     return {
-      aiAvailable: Boolean(ai.enabled && ai.apiKey && ai.model),
+      aiAvailable: isSiteGenerationProviderReady(ai),
       stitchAvailable: Boolean(process.env.STITCH_API_KEY?.trim()),
       stitchHost: process.env.STITCH_HOST?.trim() || 'https://stitch.googleapis.com/mcp',
       itemKinds: DesignLibraryItemKindSchema.options,
@@ -529,7 +530,7 @@ export class DesignLibraryService {
 
     try {
       const config = parseSiteGenerationConfig(process.env);
-      if (!config.enabled || !config.apiKey || !config.model) {
+      if (!isSiteGenerationProviderReady(config)) {
         throw fail(503, 'DESIGN_AI_NOT_CONFIGURED', 'Server-side website AI generation is not configured.');
       }
 
@@ -566,10 +567,8 @@ export class DesignLibraryService {
         stitchHtml = await fetchStitchHtml(previewHtmlUrl);
       }
 
-      const provider = new GeminiSiteGenerationProvider({
-        apiKey: config.apiKey,
-        modelKey: config.model,
-        requestTimeoutMs: config.requestTimeoutMs,
+      const provider = createSiteGenerationProvider({
+        ...config,
         temperature: Math.min(config.temperature, 0.5),
       });
       const response = await provider.generateStructuredOutput({
