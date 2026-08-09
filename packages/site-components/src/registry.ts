@@ -44,6 +44,10 @@ export type SiteComponentClassification =
   | 'SUPPORTING'
   | 'CONVERSION'
   | 'LEGAL';
+export type SiteComponentImplementationOutcome =
+  | 'FULLY_IMPLEMENTED'
+  | 'INTENTIONAL_VISUAL_VARIANT'
+  | 'INVALID_REGISTRY_CAPABILITY';
 
 export interface SiteComponentDefinition {
   componentKey: string;
@@ -58,6 +62,9 @@ export interface SiteComponentDefinition {
   supportedAssetSlots: readonly SiteComponentAssetSlot[];
   requiredAssetSlots: readonly SiteComponentAssetSlot[];
   contentSlots: readonly string[];
+  rendererMarkupKey: string;
+  cssSelector: string;
+  implementationOutcome: Exclude<SiteComponentImplementationOutcome, 'INVALID_REGISTRY_CAPABILITY'>;
   layoutIntent: string;
   visualWeight: SiteComponentVisualWeight;
   recommendedPosition: SiteComponentPosition;
@@ -97,31 +104,54 @@ const SECTION_DEFAULTS: Record<SiteSectionType, {
   requiredAssets?: readonly SiteComponentAssetSlot[];
   slots: readonly string[];
 }> = {
-  HEADER: { classification: 'CHROME', position: 'SITE_CHROME', weight: 'MEDIUM', required: ['BUSINESS', 'BOOKING'], optional: [], assets: ['LOGO'], slots: ['brand', 'navigation', 'bookingAction'] },
-  ANNOUNCEMENT_BAR: { classification: 'SUPPORTING', position: 'PAGE_START', weight: 'LOW', required: ['BUSINESS'], optional: ['BOOKING'], assets: [], slots: ['message', 'optionalAction'] },
-  HERO: { classification: 'PRIMARY', position: 'PAGE_START', weight: 'HIGH', required: ['BUSINESS', 'BOOKING'], optional: ['SERVICES', 'LOCATIONS', 'STAFF'], assets: ['PRIMARY_IMAGE', 'SECONDARY_IMAGE', 'PORTRAIT', 'LOCATION_IMAGE', 'DECORATIVE_IMAGE'], slots: ['eyebrow', 'heading', 'body', 'primaryAction', 'secondaryAction', 'media'] },
-  INTRODUCTION: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['BUSINESS'], optional: ['SERVICES', 'STAFF', 'LOCATIONS'], assets: ['PRIMARY_IMAGE'], slots: ['heading', 'body', 'supportingPoints', 'media'] },
-  FEATURED_SERVICES: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['SERVICES'], optional: ['BOOKING'], assets: ['PRIMARY_IMAGE', 'GALLERY_SET'], slots: ['heading', 'serviceCards', 'serviceActions'] },
-  SERVICE_GRID: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['SERVICES'], optional: ['BOOKING'], assets: ['GALLERY_SET'], slots: ['heading', 'serviceCards', 'categories'] },
-  SERVICE_DETAILS: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['SERVICES', 'BOOKING'], optional: ['STAFF', 'LOCATIONS'], assets: ['PRIMARY_IMAGE'], slots: ['heading', 'body', 'serviceFacts', 'bookingAction', 'media'] },
-  BENEFITS: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['BUSINESS'], optional: ['SERVICES'], assets: ['PRIMARY_IMAGE', 'DECORATIVE_IMAGE'], slots: ['heading', 'benefitItems', 'optionalMedia'] },
-  PROCESS: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['BUSINESS'], optional: ['SERVICES', 'BOOKING'], assets: ['PRIMARY_IMAGE'], slots: ['heading', 'steps', 'optionalMedia'] },
-  PRICING: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['SERVICES'], optional: ['BOOKING'], assets: [], slots: ['heading', 'pricingItems', 'pricingNotes'] },
-  TEAM: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['STAFF'], optional: ['SERVICES', 'BOOKING'], assets: ['PORTRAIT', 'GALLERY_SET'], slots: ['heading', 'staffCards', 'profileLinks'] },
-  STAFF_PROFILE: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['STAFF'], optional: ['SERVICES', 'BOOKING'], assets: ['PORTRAIT'], requiredAssets: ['PORTRAIT'], slots: ['name', 'role', 'biography', 'services', 'bookingAction', 'portrait'] },
-  GALLERY: { classification: 'SUPPORTING', position: 'PAGE_BODY', weight: 'HIGH', required: ['GALLERY'], optional: [], assets: ['GALLERY_SET'], requiredAssets: ['GALLERY_SET'], slots: ['heading', 'galleryAssets'] },
-  RESULTS: { classification: 'SUPPORTING', position: 'PAGE_BODY', weight: 'HIGH', required: ['RESULTS'], optional: [], assets: ['RESULT_PAIR', 'GALLERY_SET'], requiredAssets: ['RESULT_PAIR'], slots: ['heading', 'approvedResults', 'captions'] },
-  TESTIMONIALS: { classification: 'SUPPORTING', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['TESTIMONIALS'], optional: [], assets: ['PORTRAIT'], slots: ['heading', 'verifiedQuotes', 'attributions'] },
-  TRUST_INDICATORS: { classification: 'SUPPORTING', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['BUSINESS'], optional: ['STAFF', 'SERVICES'], assets: ['LOGO', 'DECORATIVE_IMAGE'], slots: ['heading', 'verifiedTrustItems'] },
-  FAQ: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['BUSINESS'], optional: ['SERVICES', 'BOOKING'], assets: [], slots: ['heading', 'questions', 'answers'] },
-  LOCATION: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['LOCATIONS'], optional: ['CONTACT', 'BOOKING'], assets: ['LOCATION_IMAGE', 'GALLERY_SET'], slots: ['heading', 'address', 'contact', 'media'] },
-  OPENING_HOURS: { classification: 'SUPPORTING', position: 'PAGE_BODY', weight: 'LOW', required: ['LOCATIONS', 'OPENING_HOURS'], optional: ['BOOKING'], assets: ['LOCATION_IMAGE'], slots: ['heading', 'openingHours', 'optionalMedia'] },
-  CONTACT: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['CONTACT'], optional: ['LOCATIONS', 'OPENING_HOURS', 'BOOKING'], assets: ['LOCATION_IMAGE'], slots: ['heading', 'body', 'contactActions', 'location'] },
-  BOOKING_CTA: { classification: 'CONVERSION', position: 'PAGE_END', weight: 'HIGH', required: ['BOOKING'], optional: ['SERVICES', 'LOCATIONS', 'STAFF'], assets: ['PRIMARY_IMAGE', 'DECORATIVE_IMAGE'], slots: ['heading', 'body', 'bookingAction', 'optionalMedia'] },
-  FINAL_CTA: { classification: 'CONVERSION', position: 'PAGE_END', weight: 'HIGH', required: ['BOOKING'], optional: ['SERVICES', 'LOCATIONS', 'STAFF'], assets: ['PRIMARY_IMAGE', 'DECORATIVE_IMAGE'], slots: ['heading', 'body', 'bookingAction', 'optionalMedia'] },
-  FOOTER: { classification: 'CHROME', position: 'SITE_CHROME', weight: 'MEDIUM', required: ['BUSINESS', 'BOOKING'], optional: ['CONTACT', 'LOCATIONS'], assets: ['LOGO'], slots: ['brand', 'navigation', 'contact', 'legal', 'bookingAction'] },
-  RICH_TEXT: { classification: 'LEGAL', position: 'PAGE_BODY', weight: 'LOW', required: ['BUSINESS'], optional: ['POLICIES', 'BOOKING'], assets: [], slots: ['heading', 'structuredDocument'] },
+  HEADER: { classification: 'CHROME', position: 'SITE_CHROME', weight: 'MEDIUM', required: ['BUSINESS', 'BOOKING'], optional: [], assets: ['LOGO'], slots: ['primaryAction'] },
+  ANNOUNCEMENT_BAR: { classification: 'SUPPORTING', position: 'PAGE_START', weight: 'LOW', required: ['BUSINESS'], optional: ['BOOKING'], assets: [], slots: ['message'] },
+  HERO: { classification: 'PRIMARY', position: 'PAGE_START', weight: 'HIGH', required: ['BUSINESS', 'BOOKING'], optional: ['SERVICES', 'LOCATIONS', 'STAFF'], assets: ['PRIMARY_IMAGE', 'SECONDARY_IMAGE', 'PORTRAIT', 'LOCATION_IMAGE', 'DECORATIVE_IMAGE'], slots: ['eyebrow', 'heading', 'body', 'imageAssetReference', 'primaryAction', 'secondaryAction'] },
+  INTRODUCTION: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['BUSINESS'], optional: ['SERVICES', 'STAFF', 'LOCATIONS'], assets: ['PRIMARY_IMAGE'], slots: ['heading', 'body', 'supportingPoints', 'imageAssetReference'] },
+  FEATURED_SERVICES: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['SERVICES'], optional: ['BOOKING'], assets: ['PRIMARY_IMAGE', 'GALLERY_SET'], slots: ['heading', 'serviceReferences'] },
+  SERVICE_GRID: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['SERVICES'], optional: ['BOOKING'], assets: ['GALLERY_SET'], slots: ['heading', 'serviceReferences'] },
+  SERVICE_DETAILS: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['SERVICES', 'BOOKING'], optional: ['STAFF', 'LOCATIONS'], assets: ['PRIMARY_IMAGE'], slots: ['heading', 'body', 'serviceReference', 'imageAssetReference', 'primaryAction'] },
+  BENEFITS: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['BUSINESS'], optional: ['SERVICES'], assets: ['PRIMARY_IMAGE', 'DECORATIVE_IMAGE'], slots: ['heading', 'items', 'imageAssetReference'] },
+  PROCESS: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['BUSINESS'], optional: ['SERVICES', 'BOOKING'], assets: ['PRIMARY_IMAGE'], slots: ['heading', 'steps', 'imageAssetReference'] },
+  PRICING: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['SERVICES'], optional: ['BOOKING'], assets: [], slots: ['heading', 'items'] },
+  TEAM: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['STAFF'], optional: ['SERVICES', 'BOOKING'], assets: ['PORTRAIT', 'GALLERY_SET'], slots: ['heading', 'staffReferences'] },
+  STAFF_PROFILE: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['STAFF'], optional: ['SERVICES', 'BOOKING'], assets: ['PORTRAIT'], requiredAssets: ['PORTRAIT'], slots: ['staffReference', 'primaryAction'] },
+  GALLERY: { classification: 'SUPPORTING', position: 'PAGE_BODY', weight: 'HIGH', required: ['GALLERY'], optional: [], assets: ['GALLERY_SET'], requiredAssets: ['GALLERY_SET'], slots: ['heading', 'assetReferences'] },
+  RESULTS: { classification: 'SUPPORTING', position: 'PAGE_BODY', weight: 'HIGH', required: ['RESULTS'], optional: [], assets: ['RESULT_PAIR', 'GALLERY_SET'], requiredAssets: ['RESULT_PAIR'], slots: ['heading', 'items'] },
+  TESTIMONIALS: { classification: 'SUPPORTING', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['TESTIMONIALS'], optional: [], assets: ['PORTRAIT'], slots: ['heading', 'items'] },
+  TRUST_INDICATORS: { classification: 'SUPPORTING', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['BUSINESS'], optional: ['STAFF', 'SERVICES'], assets: ['LOGO', 'DECORATIVE_IMAGE'], slots: ['heading', 'items'] },
+  FAQ: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['BUSINESS'], optional: ['SERVICES', 'BOOKING'], assets: [], slots: ['heading', 'items'] },
+  LOCATION: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'HIGH', required: ['LOCATIONS'], optional: ['CONTACT', 'BOOKING'], assets: ['LOCATION_IMAGE', 'GALLERY_SET'], slots: ['heading', 'locationReference', 'imageAssetReference'] },
+  OPENING_HOURS: { classification: 'SUPPORTING', position: 'PAGE_BODY', weight: 'LOW', required: ['LOCATIONS', 'OPENING_HOURS'], optional: ['BOOKING'], assets: ['LOCATION_IMAGE'], slots: ['heading', 'locationReference', 'imageAssetReference'] },
+  CONTACT: { classification: 'SUBSTANTIVE', position: 'PAGE_BODY', weight: 'MEDIUM', required: ['CONTACT'], optional: ['LOCATIONS', 'OPENING_HOURS', 'BOOKING'], assets: ['LOCATION_IMAGE'], slots: ['heading', 'body', 'locationReference', 'secondaryActions', 'imageAssetReference'] },
+  BOOKING_CTA: { classification: 'CONVERSION', position: 'PAGE_END', weight: 'HIGH', required: ['BOOKING'], optional: ['SERVICES', 'LOCATIONS', 'STAFF'], assets: ['PRIMARY_IMAGE', 'DECORATIVE_IMAGE'], slots: ['heading', 'body', 'primaryAction', 'imageAssetReference'] },
+  FINAL_CTA: { classification: 'CONVERSION', position: 'PAGE_END', weight: 'HIGH', required: ['BOOKING'], optional: ['SERVICES', 'LOCATIONS', 'STAFF'], assets: ['PRIMARY_IMAGE', 'DECORATIVE_IMAGE'], slots: ['heading', 'body', 'primaryAction', 'imageAssetReference'] },
+  FOOTER: { classification: 'CHROME', position: 'SITE_CHROME', weight: 'MEDIUM', required: ['BUSINESS', 'BOOKING'], optional: ['CONTACT', 'LOCATIONS'], assets: ['LOGO'], slots: ['primaryAction', 'legalText'] },
+  RICH_TEXT: { classification: 'LEGAL', position: 'PAGE_BODY', weight: 'LOW', required: ['BUSINESS'], optional: ['POLICIES', 'BOOKING'], assets: [], slots: ['heading', 'document'] },
 };
+
+const SECTION_RENDERER_MARKUP: Record<SiteSectionType, string> = {
+  HEADER: 'site-header', ANNOUNCEMENT_BAR: 'announcement-bar', HERO: 'hero',
+  INTRODUCTION: 'introduction', FEATURED_SERVICES: 'featured-services', SERVICE_GRID: 'service-grid',
+  SERVICE_DETAILS: 'service-details', BENEFITS: 'benefits', PROCESS: 'process', PRICING: 'pricing',
+  TEAM: 'team-grid', STAFF_PROFILE: 'staff-profile', GALLERY: 'gallery', RESULTS: 'results-gallery',
+  TESTIMONIALS: 'testimonials', TRUST_INDICATORS: 'trust-indicators', FAQ: 'faq',
+  LOCATION: 'location-details', OPENING_HOURS: 'opening-hours', CONTACT: 'contact-details',
+  BOOKING_CTA: 'booking-call-to-action', FINAL_CTA: 'booking-call-to-action',
+  FOOTER: 'site-footer', RICH_TEXT: 'rich-text',
+};
+
+export function siteSectionImplementationContract(sectionType: SiteSectionType) {
+  return {
+    sectionType,
+    contentSlots: SECTION_DEFAULTS[sectionType].slots,
+    rendererMarkupKey: SECTION_RENDERER_MARKUP[sectionType],
+  } as const;
+}
+
+export function listSiteSectionImplementationContracts() {
+  return SECTION_TYPES.map(siteSectionImplementationContract);
+}
 
 const SECTION_PAGE_TYPES: Record<SiteSectionType, readonly SitePageType[]> = {
   HEADER: ALL_PAGE_TYPES,
@@ -195,6 +225,8 @@ function componentDefinition(
   const requiredAssetSlots = mediaLed
     ? defaults.requiredAssets ?? defaults.assets.slice(0, 1)
     : defaults.requiredAssets ?? [];
+  const canonicalName = COMPONENT_NAMES[sectionType][0];
+  const servicesLed = name.includes('services-led');
   return {
     componentKey: `${name}-v1`,
     sectionType,
@@ -203,11 +235,20 @@ function componentDefinition(
     status: 'ACTIVE',
     supportedPageTypes: SECTION_PAGE_TYPES[sectionType],
     supportedConversionRoles: ALL_CONVERSION_ROLES,
-    requiredDataBindings: defaults.required,
-    optionalDataBindings: defaults.optional,
+    requiredDataBindings: servicesLed
+      ? [...new Set([...defaults.required, 'SERVICES' as const])]
+      : defaults.required,
+    optionalDataBindings: servicesLed
+      ? defaults.optional.filter(binding => binding !== 'SERVICES')
+      : defaults.optional,
     supportedAssetSlots: defaults.assets,
     requiredAssetSlots,
     contentSlots: defaults.slots,
+    rendererMarkupKey: SECTION_RENDERER_MARKUP[sectionType],
+    cssSelector: `.component-${name}-v1`,
+    implementationOutcome: name === canonicalName
+      ? 'FULLY_IMPLEMENTED'
+      : 'INTENTIONAL_VISUAL_VARIANT',
     layoutIntent: layoutIntent(name),
     visualWeight: /minimal|compact|simple|quiet|narrow/.test(name)
       ? 'LOW'
@@ -262,6 +303,11 @@ export function validateSiteComponentDefinition(
   }
   if (definition.requiredAssetSlots.some(slot => !definition.supportedAssetSlots.includes(slot))) {
     errors.push('requiredAssetSlots must be supported by the component.');
+  }
+  if (!definition.contentSlots.length) errors.push('contentSlots must describe schema-backed fields.');
+  if (!definition.rendererMarkupKey.trim()) errors.push('rendererMarkupKey is required.');
+  if (definition.cssSelector !== `.component-${definition.componentKey}`) {
+    errors.push('cssSelector must be the deterministic componentKey selector.');
   }
   return errors;
 }
@@ -368,6 +414,9 @@ export function componentRegistrySummary() {
     componentCount: activeComponents.length,
     registeredComponentCount: REGISTRY.size,
     semanticSectionTypeCount: SECTION_TYPES.length,
+    fullyImplementedCount: activeComponents.filter(component => component.implementationOutcome === 'FULLY_IMPLEMENTED').length,
+    intentionalVisualVariantCount: activeComponents.filter(component => component.implementationOutcome === 'INTENTIONAL_VISUAL_VARIANT').length,
+    invalidRegistryCapabilityCount: 0,
     bySectionType: Object.fromEntries(SECTION_TYPES.map(sectionType => [
       sectionType,
       listSiteComponents({ sectionType }).length,

@@ -42,11 +42,34 @@ test('V2 seeds governed layouts without mutating V1 or narrowing legacy analysis
   assert.equal((v2Migration.match(/"semantic_key":/g) ?? []).length, 13);
   assert.match(v2Migration, /'CONTACT','NEWSLETTER','POLICIES'/);
   assert.match(v2Migration, /'RICH_TEXT','UNKNOWN'/);
+  assert.match(v2Migration, /"page_types":\["LOCATION_HUB","LOCATION_DETAIL"\]/);
+  assert.match(v2Migration, /KS_NATIVE_TEMPLATE_V2_VERSION_IDENTITY_CONFLICT/);
+  assert.match(v2Migration, /KS_NATIVE_TEMPLATE_V2_APPROVAL_STATE_INCONSISTENT/);
+  assert.match(v2Migration, /KS_NATIVE_TEMPLATE_V2_RENDERER_COUNT_INVALID/);
+  assert.match(v2Migration, /KS_NATIVE_TEMPLATE_V2_PAGE_TYPE_COVERAGE_INVALID/);
+  assert.match(v2Migration, /count\(DISTINCT mapping\.page_type\)[\s\S]*?<> 16/);
+  assert.match(v2Migration, /NOT EXISTS \(SELECT 1 FROM template_layout_sections section_row WHERE section_row\.layout_id = layout_row\.id\)/);
   assert.doesNotMatch(v2Migration, /UPDATE template_versions[\s\S]*?version_number\s*=\s*1/i);
   assert.ok(
     v2Migration.lastIndexOf("SET status = 'APPROVED'")
       > v2Migration.lastIndexOf('KS_NATIVE_TEMPLATE_V2_MISSING_SECTION_CAPABILITIES'),
   );
+});
+
+test('migration 69 is replay-safe and accepts only the complete owned V2 graph', () => {
+  assert.equal((v2Migration.match(/INSERT INTO template_versions/g) ?? []).length, 1);
+  assert.equal((v2Migration.match(/INSERT INTO template_analysis_runs/g) ?? []).length, 1);
+  assert.equal((v2Migration.match(/INSERT INTO template_layouts/g) ?? []).length, 1);
+  assert.equal((v2Migration.match(/INSERT INTO template_layout_page_types/g) ?? []).length, 1);
+  assert.equal((v2Migration.match(/INSERT INTO template_layout_renderers/g) ?? []).length, 1);
+  assert.equal((v2Migration.match(/INSERT INTO template_layout_sections/g) ?? []).length, 1);
+  assert.ok((v2Migration.match(/WHERE NOT EXISTS \(/g) ?? []).length >= 6);
+  assert.match(v2Migration, /status = 'APPROVED' AND analysis_status = 'APPROVED'/);
+  assert.match(v2Migration, /template_layouts WHERE template_version_id = v_version_id AND status = 'APPROVED'\) <> 13/);
+  assert.match(v2Migration, /renderer\.renderer_status = 'READY'[\s\S]*?<> 13/);
+  assert.match(v2Migration, /count\(DISTINCT mapping\.page_type\)[\s\S]*?<> 16/);
+  assert.match(v2Migration, /RETURN;[\s\S]*?INSERT INTO template_analysis_runs/);
+  assert.doesNotMatch(v2Migration, /\b(?:DELETE|TRUNCATE|DROP TABLE)\b/i);
 });
 
 const ids = Array.from({ length: 8 }, (_, index) =>

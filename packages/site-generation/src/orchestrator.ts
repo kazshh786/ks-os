@@ -29,6 +29,7 @@ import { generateWithControlledRepair } from './repair.js';
 import { assertGeneratedPageSetMatchesPlan, validateGenerationPlan } from './planning.js';
 import { detectDuplicateContent, validateGeneratedPage } from './validation.js';
 import { generationDigest } from './normalization.js';
+import { generatedPageResponseJsonSchema } from './response-schema.js';
 
 export interface SiteGenerationPersistence {
   beginRun(input: {
@@ -244,15 +245,23 @@ export async function executeStructuredSiteGeneration(
         provider: input.provider,
         maxRepairAttempts: input.maxRepairAttempts,
         buildRequest: (repairAttempt, previousFindings) => {
+          const pageCompositionPlan = pageCompositionPlans.get(page.pageReference);
+          const responseJsonSchema = pageCompositionPlan
+            ? generatedPageResponseJsonSchema({
+              pageType: page.pageType,
+              conversionRole: page.conversionRole,
+              selectedComponents: pageCompositionPlan.selectedComponents,
+            })
+            : GENERATED_PAGE_RESPONSE_JSON_SCHEMA;
           const composed = composeGenerationPrompt({
             page,
             template,
             facts: input.facts,
             knowledge,
-            outputSchemaDescription: GENERATED_PAGE_RESPONSE_JSON_SCHEMA,
+            outputSchemaDescription: responseJsonSchema,
             ...(siteStrategy ? { siteStrategy } : {}),
-            ...(pageCompositionPlans.get(page.pageReference)
-              ? { pageCompositionPlan: pageCompositionPlans.get(page.pageReference)! }
+            ...(pageCompositionPlan
+              ? { pageCompositionPlan }
               : {}),
             ...(assetCoveragePlan ? { assetCoveragePlan } : {}),
             ...(repairAttempt > 0
@@ -262,7 +271,7 @@ export async function executeStructuredSiteGeneration(
           return {
             prompt: composed.prompt,
             outputSchema: GeneratedPageSchema as z.ZodType<GeneratedPage>,
-            responseJsonSchema: GENERATED_PAGE_RESPONSE_JSON_SCHEMA,
+            responseJsonSchema,
             maxOutputCharacters: input.maxOutputCharacters,
             signal: input.signal,
           };

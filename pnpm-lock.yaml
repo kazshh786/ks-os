@@ -97,6 +97,9 @@ importers:
       '@ks-os/site-schema':
         specifier: workspace:*
         version: link:../../packages/site-schema
+      '@ks-os/site-templates':
+        specifier: workspace:*
+        version: link:../../packages/site-templates
       '@ks-os/template-intelligence':
         specifier: workspace:*
         version: link:../../packages/template-intelligence

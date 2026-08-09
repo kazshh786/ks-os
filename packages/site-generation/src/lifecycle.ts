@@ -33,6 +33,20 @@ export function isReviewableGenerationStatus(
   return parsed.success && parsed.data === 'READY_FOR_REVIEW';
 }
 
+export function assertGenerationRunTransitionForPipeline(
+  from: SiteGenerationRunStatus,
+  to: SiteGenerationRunStatus,
+  pipelineVersion: 1 | 2,
+) {
+  assertGenerationRunTransition(from, to);
+  if (pipelineVersion === 2 && from === 'VALIDATING' && to === 'READY_FOR_REVIEW') {
+    throw new Error('Website Generation V2 must stop at DESIGN_COMPLETE before quality evidence can promote it.');
+  }
+  if (pipelineVersion === 2 && to === 'READY_FOR_REVIEW' && from !== 'DESIGN_COMPLETE') {
+    throw new Error('Website Generation V2 reaches READY_FOR_REVIEW only from DESIGN_COMPLETE.');
+  }
+}
+
 export function isQualityAuditableGenerationStatus(
   status: unknown,
 ): status is Extract<SiteGenerationRunStatus, 'DESIGN_COMPLETE' | 'READY_FOR_REVIEW'> {

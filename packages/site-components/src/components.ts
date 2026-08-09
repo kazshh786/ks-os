@@ -94,7 +94,10 @@ export function Introduction(
   const image = section.imageAssetReference
     ? renderImage(findAsset(context.snapshot, section.imageAssetReference))
     : '';
-  return html`<section class="${sectionClass(section, 'introduction')}"><div><h2>${escapeHtml(section.heading)}</h2><p>${escapeHtml(section.body)}</p></div>${image}</section>`;
+  const points = section.supportingPoints?.length
+    ? `<ul class="introduction-points">${section.supportingPoints.map(point => `<li>${escapeHtml(point)}</li>`).join('')}</ul>`
+    : '';
+  return html`<section class="${sectionClass(section, 'introduction')}"><div><h2>${escapeHtml(section.heading)}</h2><p>${escapeHtml(section.body)}</p>${points}</div>${image}</section>`;
 }
 
 function serviceCards(
@@ -208,7 +211,12 @@ export function StaffProfile(
   const action = section.primaryAction
     ? renderAction(section.primaryAction, context, 'button primary')
     : '';
-  return html`<section class="${sectionClass(section, 'staff-profile')}">${image}<div><h1>${escapeHtml(staff.displayName)}</h1><p class="eyebrow">${escapeHtml(staff.role)}</p>${staff.biography ? `<p>${escapeHtml(staff.biography)}</p>` : ''}${action}</div></section>`;
+  const services = staff.serviceReferences.map((reference) => {
+    const service = context.snapshot.services.find(candidate => candidate.publicReference === reference);
+    if (!service) throw new Error('A staff profile referenced an unpublished service.');
+    return `<li>${escapeHtml(service.name)}</li>`;
+  }).join('');
+  return html`<section class="${sectionClass(section, 'staff-profile')}">${image}<div><h1>${escapeHtml(staff.displayName)}</h1><p class="eyebrow">${escapeHtml(staff.role)}</p>${staff.biography ? `<p>${escapeHtml(staff.biography)}</p>` : ''}${services ? `<ul class="profile-services" aria-label="Services">${services}</ul>` : ''}${action}</div></section>`;
 }
 
 export function Gallery(section: SectionOf<'GALLERY'>, context: ComponentRenderContext): SafeHtml {
@@ -299,7 +307,13 @@ export function ContactDetails(
   const image = section.imageAssetReference
     ? renderImage(findAsset(context.snapshot, section.imageAssetReference))
     : '';
-  return html`<section class="${sectionClass(section, 'contact-details')}"><div><h2>${escapeHtml(section.heading)}</h2>${section.body ? `<p>${escapeHtml(section.body)}</p>` : ''}<div class="action-row">${actions}</div></div>${image}</section>`;
+  const location = section.locationReference
+    ? requireLocation(context.snapshot, section.locationReference)
+    : null;
+  const locationDetails = location
+    ? `<address class="contact-location"><strong>${escapeHtml(location.name)}</strong>${[...location.addressLines, location.locality, location.region, location.postalCode].filter(Boolean).map(line => `<span>${escapeHtml(String(line))}</span>`).join('')}${location.publicTelephone ? `<a href="tel:${escapeHtml(location.publicTelephone)}">${escapeHtml(location.publicTelephone)}</a>` : ''}</address>`
+    : '';
+  return html`<section class="${sectionClass(section, 'contact-details')}"><div><h2>${escapeHtml(section.heading)}</h2>${section.body ? `<p>${escapeHtml(section.body)}</p>` : ''}<div class="action-row">${actions}</div></div>${locationDetails}${image}</section>`;
 }
 
 export function BookingCallToAction(

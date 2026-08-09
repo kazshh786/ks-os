@@ -390,6 +390,7 @@ const HeroSectionSchema = z.object({
 const IntroductionSectionSchema = z.object({
   ...HeadingBodyShape,
   type: z.literal('INTRODUCTION'),
+  supportingPoints: z.array(ShortTextSchema).min(2).max(8).optional(),
   imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const FeaturedServicesSectionSchema = z.object({

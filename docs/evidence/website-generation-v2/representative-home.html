@@ -1,3 +1,441 @@
+<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Website Generation V2 visual fixture</title><style>:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--site-background, #f7f4ee);
+  color: var(--site-text, #172025);
+}
+
+a {
+  color: inherit;
+  text-underline-offset: 0.2em;
+}
+
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--site-accent, #b86b4b);
+  outline-offset: 4px;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  top: 0.75rem;
+  left: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #fff;
+  color: #111;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.site-layout {
+  min-height: 100vh;
+}
+
+.site-header,
+.site-footer,
+.site-section {
+  width: min(100% - 2rem, 74rem);
+  margin-inline: auto;
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 5rem;
+  padding-block: 1rem;
+}
+
+.brand {
+  margin-right: auto;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.site-logo {
+  display: block;
+  width: auto;
+  max-height: 3rem;
+}
+
+.desktop-navigation ul,
+.site-footer ul,
+.mobile-navigation ul {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.desktop-navigation a,
+.site-footer a {
+  text-decoration: none;
+}
+
+.navigation-group {
+  position: relative;
+}
+
+.navigation-group summary {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+}
+
+.navigation-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.desktop-navigation .navigation-group > details > ul {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.25rem);
+  left: 50%;
+  display: none;
+  width: max-content;
+  min-width: 14rem;
+  max-width: min(24rem, 80vw);
+  transform: translateX(-50%);
+  align-items: stretch;
+  flex-direction: column;
+  gap: 0.25rem;
+  border: 1px solid var(--site-border, #d7ddd8);
+  border-radius: var(--site-radius, 0.9rem);
+  padding: 0.75rem;
+  background: var(--site-surface, #fff);
+  box-shadow: 0 18px 45px rgb(15 23 42 / 0.14);
+}
+
+.desktop-navigation .navigation-group > details[open] > ul {
+  display: flex;
+}
+
+.desktop-navigation .navigation-group li a {
+  display: block;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.mobile-navigation {
+  display: none;
+}
+
+.button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--site-primary, #213547);
+  border-radius: 999px;
+  padding: 0.65rem 1.1rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.button.primary {
+  background: var(--site-primary, #213547);
+  color: #fff;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--site-primary, #213547);
+}
+
+.announcement-bar {
+  width: 100%;
+  max-width: none;
+  padding: 0.65rem 1rem;
+  background: var(--site-secondary, #5f7464);
+  color: #fff;
+  text-align: center;
+}
+
+.site-section {
+  padding-block: clamp(3rem, 8vw, 7rem);
+}
+
+.hero,
+.service-details,
+.staff-profile {
+  display: grid;
+  align-items: center;
+  grid-template-columns: minmax(0, 1.05fr) minmax(18rem, 0.95fr);
+  gap: clamp(2rem, 6vw, 5rem);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 0.8rem;
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1.1;
+}
+
+h1 {
+  max-width: 16ch;
+  font-size: clamp(2.6rem, 7vw, 5.8rem);
+}
+
+h2 {
+  font-size: clamp(2rem, 4vw, 3.6rem);
+}
+
+h3 {
+  font-size: 1.35rem;
+}
+
+p {
+  max-width: 68ch;
+}
+
+.eyebrow {
+  margin-bottom: 1rem;
+  color: var(--site-secondary, #5f7464);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hero-image,
+.service-detail-image,
+.staff-profile > img {
+  width: 100%;
+  height: auto;
+  border-radius: 1.5rem;
+  object-fit: cover;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.card-grid,
+.feature-grid,
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 1.25rem;
+  margin-top: 2rem;
+}
+
+.service-card,
+.card-grid > article,
+.card-grid > figure,
+.feature-grid > li,
+.faq details {
+  border: 1px solid var(--site-border, #d7ddd8);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  background: var(--site-surface, #fff);
+}
+
+.service-card img,
+.image-grid img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-bottom: 1rem;
+  border-radius: 0.75rem;
+}
+
+.feature-grid,
+.process ol,
+.pricing ul,
+.trust-indicators ul {
+  padding: 0;
+  list-style: none;
+}
+
+.process ol {
+  counter-reset: steps;
+}
+
+.process li,
+.pricing li,
+.trust-indicators li {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--site-border, #d7ddd8);
+  padding-block: 1.25rem;
+}
+
+.faq details + details {
+  margin-top: 0.75rem;
+}
+
+.faq summary,
+.mobile-navigation summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+address {
+  font-style: normal;
+}
+
+table {
+  width: 100%;
+  max-width: 36rem;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--site-border, #d7ddd8);
+  padding: 0.75rem;
+  text-align: left;
+}
+
+.booking-call-to-action {
+  border-radius: 1.5rem;
+  padding-inline: clamp(1.5rem, 5vw, 4rem);
+  background: var(--site-primary, #213547);
+  color: #fff;
+}
+
+.booking-call-to-action .button {
+  border-color: #fff;
+  background: #fff;
+  color: var(--site-primary, #213547);
+}
+
+.site-footer {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 2rem;
+  align-items: start;
+  border-top: 1px solid var(--site-border, #d7ddd8);
+  padding-block: 3rem;
+}
+
+.site-footer ul {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.preview-banner {
+  position: sticky;
+  z-index: 50;
+  top: 0;
+  padding: 0.65rem 1rem;
+  background: #2d2356;
+  color: #fff;
+  text-align: center;
+}
+
+.system-state {
+  display: grid;
+  min-height: 100vh;
+  place-content: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.system-state h1,
+.system-state p {
+  margin-inline: auto;
+}
+
+@media (max-width: 52rem) {
+  .desktop-navigation,
+  .header-booking {
+    display: none;
+  }
+
+  .mobile-navigation {
+    display: block;
+  }
+
+  .mobile-navigation[open] {
+    position: absolute;
+    z-index: 20;
+    top: 4.25rem;
+    right: 1rem;
+    left: 1rem;
+    border: 1px solid var(--site-border, #d7ddd8);
+    border-radius: 1rem;
+    padding: 1rem;
+    background: var(--site-surface, #fff);
+  }
+
+  .mobile-navigation ul {
+    align-items: stretch;
+    flex-direction: column;
+    margin-top: 1rem;
+  }
+
+  .mobile-navigation .mobile-navigation-children {
+    margin: 0.5rem 0 0 1rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid var(--site-border, #d7ddd8);
+  }
+
+  .mobile-navigation .navigation-group summary {
+    width: 100%;
+    padding: 0.5rem;
+  }
+
+  .mobile-navigation a {
+    display: block;
+    padding: 0.5rem;
+  }
+
+  .hero,
+  .service-details,
+  .staff-profile,
+  .site-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-image {
+    grid-row: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 :root {
   --site-heading-font: Georgia, "Times New Roman", serif;
   --site-body-font: Inter, ui-sans-serif, system-ui, sans-serif;
@@ -971,3 +1409,4 @@ body[data-site-design-version="2"] .site-layout > .site-section:nth-child(even) 
     max-height: 32rem;
   }
 }
+</style></head><body data-site-design-version="2" style="--site-primary:#213547;--site-secondary:#5f7464;--site-accent:#b86b4b;--site-background:#f7f4ee;--site-surface:#ffffff;--site-text:#172025;--site-muted:#536168;--site-border:#d7ddd8;--site-heading-font:"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;--site-body-font:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;--site-radius:0.9rem;--site-section-space:clamp(3rem, 8vw, 7rem);--site-container:74rem;--site-image-radius:1rem;--site-motion:0ms;--site-button-fill:#213547;--site-button-text:#ffffff;--site-display-font:"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;--site-heading-font:Georgia, "Times New Roman", serif;--site-body-font:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;--site-display-size:clamp(4rem, 11vw, 9.5rem);--site-heading-size:clamp(2.4rem, 5vw, 4.8rem);--site-body-size:1.125rem;--site-heading-weight:600;--site-body-weight:400;--site-display-tracking:-0.055em;--site-heading-tracking:-0.01em;--site-heading-leading:0.96;--site-body-leading:1.7;--site-container:92rem;--site-page-gutter:clamp(1rem, 3vw, 2.5rem);--site-section-space:clamp(3.5rem, 8vw, 7rem);--site-content-gap:2rem;--site-grid-item-min:16rem;--site-grid-gap:2rem;--site-text-measure:64ch;--site-radius:0.9rem;--site-card-radius:1.5rem;--site-button-radius:999px;--site-image-radius:1.5rem;--site-background:#f5f0e9;--site-surface:#fffdf9;--site-surface-alt:#e8dfd4;--site-border:#c9b9a8;--site-muted-surface:#eee5db;--site-shadow:0 22px 55px rgb(15 23 42 / 0.13);--site-button-height:3.5rem;--site-button-padding:1.8rem;--site-button-weight:600;--site-primary-button-fill:var(--site-text);--site-primary-button-text:var(--site-background);--site-primary-button-border:var(--site-text);--site-secondary-button-fill:var(--site-muted-surface);--site-secondary-button-text:var(--site-text);--site-secondary-button-border:transparent;--site-default-aspect-ratio:4 / 3;--site-portrait-aspect-ratio:4 / 5;--site-service-aspect-ratio:3 / 2;--site-image-fit:cover;--site-image-position:center;--site-image-filter:saturate(0.88) contrast(1.06);--site-rhythm-even-surface:color-mix(in srgb, var(--site-surface-alt) 70%, var(--site-background))"><aside class="preview-banner">Review fixture · noindex · no publication</aside><div class="site-layout editorial-layout" data-renderer="home-editorial-v1"><header class="site-section site-header component-header-transparent-overlay-v1"><a class="brand" href="/" aria-label="Northlight Studio home">Northlight Studio</a><nav class="desktop-navigation" aria-label="Primary navigation"><ul><li><a href="/">Home</a></li><li class="navigation-group"><details><summary>Services</summary><ul><li><a href="/services">View Services</a></li><li><a href="/services/clarity-session">Clarity Session</a></li></ul></details></li><li><a href="/about">About</a></li><li><a href="/team">Team</a></li><li><a href="/contact">Contact</a></li></ul></nav><details class="mobile-navigation"><summary aria-label="Open site navigation">Menu</summary><nav aria-label="Mobile navigation"><ul><li><a href="/">Home</a></li><li class="navigation-group"><details><summary>Services</summary><ul class="mobile-navigation-children"><li><a href="/services">View Services</a></li><li><a href="/services/clarity-session">Clarity Session</a></li></ul></details></li><li><a href="/about">About</a></li><li><a href="/team">Team</a></li><li><a href="/contact">Contact</a></li><li><a class="button primary mobile-booking" href="/book">Book now</a></li></ul></nav></details><a class="button primary header-booking" href="/book">Book now</a></header><section class="site-section hero component-hero-layered-media-v1 variant-editorial"><div class="section-copy"><p class="eyebrow">Northlight Studio</p><h1>Studio policies</h1><p>Original placeholder policy copy for renderer testing.</p><div class="action-row"><a class="button primary hero-booking" href="/book">Book now</a></div></div><img src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221600%22%20height%3D%221200%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23283b35%22%2F%3E%3Cstop%20offset%3D%22.48%22%20stop-color%3D%22%23bd8d6d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ede1d4%22%2F%3E%3C%2FlinearGradient%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20baseFrequency%3D%22.55%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeBlend%20mode%3D%22soft-light%22%20in%3D%22SourceGraphic%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%221180%22%20cy%3D%22310%22%20r%3D%22320%22%20fill%3D%22%23fff%22%20opacity%3D%22.16%22%2F%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23n)%22%20opacity%3D%22.18%22%2F%3E%3C%2Fsvg%3E" width="1600" height="1067" alt="An original abstract arrangement of warm geometric shapes" loading="eager" decoding="async" class="hero-image"></section><section class="site-section introduction component-intro-with-points-v1"><div><h2>Our approach</h2><p>Every part of this test site is structured, validated, and safely rendered.</p><ul class="introduction-points"><li>Verified services and people</li><li>A clear native booking path</li><li>Responsive private review</li></ul></div></section><section class="site-section featured-services component-services-overlapping-media-v1"><h2>Featured services</h2><div class="card-grid"><article class="service-card"><img src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221600%22%20height%3D%221200%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23283b35%22%2F%3E%3Cstop%20offset%3D%22.48%22%20stop-color%3D%22%23bd8d6d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ede1d4%22%2F%3E%3C%2FlinearGradient%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20baseFrequency%3D%22.55%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeBlend%20mode%3D%22soft-light%22%20in%3D%22SourceGraphic%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%221180%22%20cy%3D%22310%22%20r%3D%22320%22%20fill%3D%22%23fff%22%20opacity%3D%22.16%22%2F%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23n)%22%20opacity%3D%22.18%22%2F%3E%3C%2Fsvg%3E" width="1600" height="1067" alt="An original abstract arrangement of warm geometric shapes" loading="lazy" decoding="async" class="site-image"><h3>Clarity Session</h3><p>An original fictional service used for renderer verification.</p><p class="price">From £65</p><a class="text-link" href="/book?service=10000000-0000-4000-8000-000000000201">Book Clarity Session</a></article></div></section><section class="site-section benefits component-benefits-large-statements-v1"><h2>What to expect</h2><ul class="feature-grid"><li><h3>A considered plan</h3><p>We begin by understanding your goals.</p></li><li><h3>Clear next steps</h3><p>You leave with a simple, practical direction.</p></li></ul></section><section class="site-section process component-process-alternating-v1"><h2>A calm, considered process</h2><img src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221600%22%20height%3D%221200%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23283b35%22%2F%3E%3Cstop%20offset%3D%22.48%22%20stop-color%3D%22%23bd8d6d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ede1d4%22%2F%3E%3C%2FlinearGradient%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20baseFrequency%3D%22.55%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeBlend%20mode%3D%22soft-light%22%20in%3D%22SourceGraphic%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%221180%22%20cy%3D%22310%22%20r%3D%22320%22%20fill%3D%22%23fff%22%20opacity%3D%22.16%22%2F%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23n)%22%20opacity%3D%22.18%22%2F%3E%3C%2Fsvg%3E" width="1600" height="1067" alt="An original abstract arrangement of warm geometric shapes" loading="lazy" decoding="async" class="site-image"><ol><li><span aria-hidden="true">1</span><h3>Discover</h3><p>Start with the verified information that matters to your visit.</p></li><li><span aria-hidden="true">2</span><h3>Choose</h3><p>Review the right service, specialist and location without guesswork.</p></li><li><span aria-hidden="true">3</span><h3>Book</h3><p>Continue into the native KS OS booking flow with your choices intact.</p></li></ol></section><section class="site-section team-grid component-team-featured-lead-v1"><h2>Our team</h2><div class="card-grid"><article><img src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221600%22%20height%3D%221200%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23283b35%22%2F%3E%3Cstop%20offset%3D%22.48%22%20stop-color%3D%22%23bd8d6d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ede1d4%22%2F%3E%3C%2FlinearGradient%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20baseFrequency%3D%22.55%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeBlend%20mode%3D%22soft-light%22%20in%3D%22SourceGraphic%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%221180%22%20cy%3D%22310%22%20r%3D%22320%22%20fill%3D%22%23fff%22%20opacity%3D%22.16%22%2F%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23n)%22%20opacity%3D%22.18%22%2F%3E%3C%2Fsvg%3E" width="800" height="1000" alt="Original illustrated placeholder portrait for the test team member" loading="lazy" decoding="async" class="site-image"><h3>Morgan Reed</h3><p>Studio specialist</p></article></div></section><section class="site-section gallery component-gallery-collage-v1"><h2>Inside Northlight</h2><div class="image-grid"><img src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221600%22%20height%3D%221200%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23283b35%22%2F%3E%3Cstop%20offset%3D%22.48%22%20stop-color%3D%22%23bd8d6d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ede1d4%22%2F%3E%3C%2FlinearGradient%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20baseFrequency%3D%22.55%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeBlend%20mode%3D%22soft-light%22%20in%3D%22SourceGraphic%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%221180%22%20cy%3D%22310%22%20r%3D%22320%22%20fill%3D%22%23fff%22%20opacity%3D%22.16%22%2F%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23n)%22%20opacity%3D%22.18%22%2F%3E%3C%2Fsvg%3E" width="1600" height="1067" alt="An original abstract arrangement of warm geometric shapes" loading="lazy" decoding="async" class="site-image"><img src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221600%22%20height%3D%221200%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23283b35%22%2F%3E%3Cstop%20offset%3D%22.48%22%20stop-color%3D%22%23bd8d6d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ede1d4%22%2F%3E%3C%2FlinearGradient%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20baseFrequency%3D%22.55%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeBlend%20mode%3D%22soft-light%22%20in%3D%22SourceGraphic%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%221180%22%20cy%3D%22310%22%20r%3D%22320%22%20fill%3D%22%23fff%22%20opacity%3D%22.16%22%2F%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23n)%22%20opacity%3D%22.18%22%2F%3E%3C%2Fsvg%3E" width="800" height="1000" alt="Original illustrated placeholder portrait for the test team member" loading="lazy" decoding="async" class="site-image"><img src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221600%22%20height%3D%221200%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23283b35%22%2F%3E%3Cstop%20offset%3D%22.48%22%20stop-color%3D%22%23bd8d6d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ede1d4%22%2F%3E%3C%2FlinearGradient%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20baseFrequency%3D%22.55%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeBlend%20mode%3D%22soft-light%22%20in%3D%22SourceGraphic%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%221180%22%20cy%3D%22310%22%20r%3D%22320%22%20fill%3D%22%23fff%22%20opacity%3D%22.16%22%2F%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23n)%22%20opacity%3D%22.18%22%2F%3E%3C%2Fsvg%3E" width="1200" height="900" alt="" loading="lazy" decoding="async" class="site-image"></div></section><section class="site-section testimonials component-testimonials-quote-led-v1"><h2>Fixture feedback</h2><div class="card-grid"><figure><blockquote>The booking path was clear and keyboard friendly.</blockquote><figcaption>Original test fixture</figcaption></figure></div></section><section class="site-section trust-indicators component-trust-statements-v1"><h2>Renderer principles</h2><ul><li><strong>Structured content</strong><span>No arbitrary scripts or module paths.</span></li><li><strong>Native booking</strong><span>Primary actions always enter KS OS booking.</span></li></ul></section><section class="site-section faq component-faq-split-v1"><h2>Common questions</h2><details><summary>How do I book?</summary><p>Use any Book now action to enter the native KS OS booking journey.</p></details><details><summary>Is this a real studio?</summary><p>No. Northlight Studio is original placeholder content for automated tests.</p></details></section><section class="site-section location-details component-location-media-split-v1"><div><h2>Visit us</h2><h3>Northlight Studio</h3><address>10 Example Lane<br>Blackburn<br>Lancashire<br>BB1 1AA</address></div><img src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221600%22%20height%3D%221200%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23283b35%22%2F%3E%3Cstop%20offset%3D%22.48%22%20stop-color%3D%22%23bd8d6d%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ede1d4%22%2F%3E%3C%2FlinearGradient%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20baseFrequency%3D%22.55%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeBlend%20mode%3D%22soft-light%22%20in%3D%22SourceGraphic%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22url(%23g)%22%2F%3E%3Ccircle%20cx%3D%221180%22%20cy%3D%22310%22%20r%3D%22320%22%20fill%3D%22%23fff%22%20opacity%3D%22.16%22%2F%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23n)%22%20opacity%3D%22.18%22%2F%3E%3C%2Fsvg%3E" width="1600" height="1067" alt="An original abstract arrangement of warm geometric shapes" loading="lazy" decoding="async" class="site-image"></section><section class="site-section booking-call-to-action component-cta-high-impact-v1"><div><h2>Ready when you are</h2><p>Move from a complete, verified page into native booking.</p><a class="button primary final-booking" href="/book">Plan your visit</a></div></section><footer class="site-section site-footer component-footer-large-brand-v1"><div><strong>Northlight Studio</strong><p>Original demonstration content for renderer verification.</p></div><nav aria-label="Footer navigation"><ul><li><a href="/faq">FAQ</a></li><li><a href="/results">Results</a></li><li><a href="/new-client-guide">New client guide</a></li><li><a href="/policies">Policies</a></li><li><a href="/book">Book</a></li></ul></nav><a class="button primary footer-booking" href="/book">Book now</a></footer></div></body></html>

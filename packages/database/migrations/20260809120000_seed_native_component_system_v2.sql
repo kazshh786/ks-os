@@ -76,6 +76,7 @@ DECLARE
   v_actor_id uuid;
   v_source_id uuid;
   v_version_id uuid;
+  v_version_reference uuid;
   v_analysis_run_id uuid;
   v_layout_id uuid;
   item record;
@@ -138,17 +139,63 @@ BEGIN
     WHERE template_source_id = v_source_id AND version_number = 2
   );
 
-  SELECT id INTO v_version_id
+  SELECT id, public_reference INTO v_version_id, v_version_reference
   FROM template_versions
   WHERE template_source_id = v_source_id AND version_number = 2
   LIMIT 1;
 
-  -- A completed seed is immutable and is intentionally left untouched.
+  IF v_version_reference <> 'e054818e-c185-44fd-b453-010000000003'::uuid THEN
+    RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_VERSION_IDENTITY_CONFLICT';
+  END IF;
+
+  -- A completed seed is immutable, but an idempotent replay first proves that
+  -- the complete approved graph is the one this migration owns.
   IF EXISTS (
     SELECT 1 FROM template_versions
     WHERE id = v_version_id
       AND (status = 'APPROVED' OR analysis_status = 'APPROVED')
   ) THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM template_versions
+      WHERE id = v_version_id AND status = 'APPROVED' AND analysis_status = 'APPROVED'
+    ) THEN
+      RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_APPROVAL_STATE_INCONSISTENT';
+    END IF;
+    IF (SELECT count(*) FROM template_layouts WHERE template_version_id = v_version_id AND status = 'APPROVED') <> 13 THEN
+      RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_LAYOUT_COUNT_INVALID';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM template_layouts
+      WHERE template_version_id = v_version_id
+        AND CASE
+          WHEN jsonb_typeof(section_manifest_json) = 'array' THEN jsonb_array_length(section_manifest_json) = 0
+          ELSE true
+        END
+    ) THEN
+      RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_EMPTY_LAYOUT_MANIFEST';
+    END IF;
+    IF (SELECT count(*)
+        FROM template_layout_renderers renderer
+        INNER JOIN template_layouts layout_row ON layout_row.id = renderer.template_layout_id
+        WHERE layout_row.template_version_id = v_version_id
+          AND renderer.renderer_status = 'READY'
+          AND renderer.renderer_key IS NOT NULL
+          AND renderer.renderer_version IS NOT NULL) <> 13 THEN
+      RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_RENDERER_COUNT_INVALID';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM template_layouts layout_row
+      WHERE layout_row.template_version_id = v_version_id
+        AND NOT EXISTS (SELECT 1 FROM template_layout_sections section_row WHERE section_row.layout_id = layout_row.id)
+    ) THEN
+      RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_MISSING_SECTION_CAPABILITIES';
+    END IF;
+    IF (SELECT count(DISTINCT mapping.page_type)
+        FROM template_layout_page_types mapping
+        INNER JOIN template_layouts layout_row ON layout_row.id = mapping.template_layout_id
+        WHERE layout_row.template_version_id = v_version_id) <> 16 THEN
+      RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_PAGE_TYPE_COVERAGE_INVALID';
+    END IF;
     RETURN;
   END IF;
 
@@ -204,7 +251,7 @@ BEGIN
         {"name":"Native about V2","semantic_key":"native-about","page_types":["ABOUT"],"recommended":"ABOUT","role":"TRUST_BUILDING","renderer":"about-editorial-v1","required":["HEADER","HERO","INTRODUCTION","TEAM","FINAL_CTA","FOOTER"],"supported":["HEADER","HERO","INTRODUCTION","BENEFITS","PROCESS","TEAM","GALLERY","TESTIMONIALS","TRUST_INDICATORS","RICH_TEXT","FINAL_CTA","FOOTER"]},
         {"name":"Native team hub V2","semantic_key":"native-team-hub","page_types":["TEAM_HUB"],"recommended":"TEAM_HUB","role":"TRUST_BUILDING","renderer":"team-grid-v1","required":["HEADER","HERO","TEAM","FINAL_CTA","FOOTER"],"supported":["HEADER","HERO","INTRODUCTION","TEAM","BENEFITS","GALLERY","TRUST_INDICATORS","RICH_TEXT","FINAL_CTA","FOOTER"]},
         {"name":"Native team detail V2","semantic_key":"native-team-detail","page_types":["TEAM_DETAIL"],"recommended":"TEAM_DETAIL","role":"TRUST_BUILDING","renderer":"team-detail-v1","required":["HEADER","HERO","STAFF_PROFILE","BOOKING_CTA","FOOTER"],"supported":["HEADER","HERO","STAFF_PROFILE","INTRODUCTION","FEATURED_SERVICES","SERVICE_GRID","BENEFITS","TRUST_INDICATORS","RICH_TEXT","BOOKING_CTA","FOOTER"]},
-        {"name":"Native location detail V2","semantic_key":"native-location-detail","page_types":["LOCATION_DETAIL"],"recommended":"LOCATION_DETAIL","role":"LOCAL_DISCOVERY","renderer":"location-detail-v1","required":["HEADER","HERO","LOCATION","OPENING_HOURS","CONTACT","BOOKING_CTA","FOOTER"],"supported":["HEADER","HERO","INTRODUCTION","LOCATION","OPENING_HOURS","CONTACT","GALLERY","FEATURED_SERVICES","TEAM","FAQ","BOOKING_CTA","FINAL_CTA","FOOTER"]},
+        {"name":"Native location detail V2","semantic_key":"native-location-detail","page_types":["LOCATION_HUB","LOCATION_DETAIL"],"recommended":"LOCATION_DETAIL","role":"LOCAL_DISCOVERY","renderer":"location-detail-v1","required":["HEADER","HERO","LOCATION","OPENING_HOURS","CONTACT","BOOKING_CTA","FOOTER"],"supported":["HEADER","HERO","INTRODUCTION","LOCATION","OPENING_HOURS","CONTACT","GALLERY","FEATURED_SERVICES","TEAM","FAQ","BOOKING_CTA","FINAL_CTA","FOOTER"]},
         {"name":"Native contact V2","semantic_key":"native-contact","page_types":["CONTACT"],"recommended":"CONTACT","role":"LOCAL_DISCOVERY","renderer":"contact-v1","required":["HEADER","HERO","CONTACT","LOCATION","OPENING_HOURS","BOOKING_CTA","FOOTER"],"supported":["HEADER","HERO","INTRODUCTION","CONTACT","LOCATION","OPENING_HOURS","FAQ","RICH_TEXT","BOOKING_CTA","FINAL_CTA","FOOTER"]},
         {"name":"Native FAQ V2","semantic_key":"native-faq","page_types":["FAQ"],"recommended":"FAQ","role":"OBJECTION_HANDLING","renderer":"faq-v1","required":["HEADER","HERO","FAQ","FINAL_CTA","FOOTER"],"supported":["HEADER","HERO","INTRODUCTION","FAQ","CONTACT","RICH_TEXT","FINAL_CTA","FOOTER"]},
         {"name":"Native results V2","semantic_key":"native-results","page_types":["RESULTS"],"recommended":"RESULTS","role":"TRUST_BUILDING","renderer":"results-grid-v1","required":["HEADER","HERO","RESULTS","FINAL_CTA","FOOTER"],"supported":["HEADER","HERO","INTRODUCTION","RESULTS","GALLERY","TESTIMONIALS","TRUST_INDICATORS","FAQ","RICH_TEXT","FINAL_CTA","FOOTER"]},
@@ -356,13 +403,36 @@ BEGIN
     RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_EMPTY_LAYOUT_MANIFEST';
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1
-    FROM template_layout_sections section_row
-    INNER JOIN template_layouts layout_row ON layout_row.id = section_row.layout_id
+  IF EXISTS (
+    SELECT 1 FROM template_layouts layout_row
     WHERE layout_row.template_version_id = v_version_id
+      AND NOT EXISTS (SELECT 1 FROM template_layout_sections section_row WHERE section_row.layout_id = layout_row.id)
   ) THEN
     RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_MISSING_SECTION_CAPABILITIES';
+  END IF;
+
+  IF (SELECT count(*)
+      FROM template_layout_renderers renderer
+      INNER JOIN template_layouts layout_row ON layout_row.id = renderer.template_layout_id
+      WHERE layout_row.template_version_id = v_version_id
+        AND renderer.renderer_status = 'READY'
+        AND renderer.renderer_key IS NOT NULL
+        AND renderer.renderer_version IS NOT NULL) <> 13 THEN
+    RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_RENDERER_COUNT_INVALID';
+  END IF;
+
+  IF (SELECT count(DISTINCT mapping.page_type)
+      FROM template_layout_page_types mapping
+      INNER JOIN template_layouts layout_row ON layout_row.id = mapping.template_layout_id
+      WHERE layout_row.template_version_id = v_version_id) <> 16 THEN
+    RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_PAGE_TYPE_COVERAGE_INVALID';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM template_analysis_runs
+    WHERE id = v_analysis_run_id AND status = 'APPROVED'
+  ) THEN
+    RAISE EXCEPTION 'KS_NATIVE_TEMPLATE_V2_ANALYSIS_NOT_APPROVED';
   END IF;
 
   -- Approval is the final write. All V2 template records are immutable after it.

@@ -7,9 +7,17 @@ const appsRoot = path.resolve(repositoryRoot, 'apps');
 const packagesRoot = path.resolve(repositoryRoot, 'packages');
 const offset = Number.parseInt(process.env.COPY_AUDIT_OFFSET || '0', 10);
 const limit = Number.parseInt(process.env.COPY_AUDIT_LIMIT || '1000', 10);
+const ignoredDirectories = new Set([
+  '.next',
+  '.turbo',
+  'coverage',
+  'dist',
+  'node_modules',
+]);
 
 function sourceFiles(directory) {
   return readdirSync(directory).flatMap(entry => {
+    if (ignoredDirectories.has(entry)) return [];
     const target = path.join(directory, entry);
     return statSync(target).isDirectory()
       ? sourceFiles(target)

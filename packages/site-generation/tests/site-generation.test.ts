@@ -11,6 +11,7 @@ import {
   SiteGenerationProviderError,
   assertGeneratedPageSetMatchesPlan,
   assertGenerationRunTransition,
+  assertGenerationRunTransitionForPipeline,
   availableBusinessDataKeys,
   buildVerifiedBusinessFacts,
   composeGenerationPrompt,
@@ -425,6 +426,16 @@ test('only the canonical READY_FOR_REVIEW generation state is quality-reviewable
       `${String(status)} must not be quality-reviewable`,
     );
   }
+});
+
+test('V2 cannot bypass DESIGN_COMPLETE while V1 retains direct review readiness', () => {
+  assert.doesNotThrow(() => assertGenerationRunTransitionForPipeline('VALIDATING', 'READY_FOR_REVIEW', 1));
+  assert.throws(
+    () => assertGenerationRunTransitionForPipeline('VALIDATING', 'READY_FOR_REVIEW', 2),
+    /must stop at DESIGN_COMPLETE/,
+  );
+  assert.doesNotThrow(() => assertGenerationRunTransitionForPipeline('VALIDATING', 'DESIGN_COMPLETE', 2));
+  assert.doesNotThrow(() => assertGenerationRunTransitionForPipeline('DESIGN_COMPLETE', 'READY_FOR_REVIEW', 2));
 });
 
 test('design-complete V2 output is quality-auditable but not yet human-reviewable', () => {

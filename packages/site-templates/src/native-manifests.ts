@@ -51,7 +51,7 @@ const LAYOUTS: Readonly<Record<string, {
     supported: ['HEADER', 'HERO', 'INTRODUCTION', 'FAQ', 'CONTACT', 'RICH_TEXT', 'FINAL_CTA', 'FOOTER'],
   },
   'native-location-detail': {
-    pageTypes: ['LOCATION_DETAIL'], required: ['HEADER', 'HERO', 'LOCATION', 'OPENING_HOURS', 'CONTACT', 'BOOKING_CTA', 'FOOTER'],
+    pageTypes: ['LOCATION_HUB', 'LOCATION_DETAIL'], required: ['HEADER', 'HERO', 'LOCATION', 'OPENING_HOURS', 'CONTACT', 'BOOKING_CTA', 'FOOTER'],
     supported: ['HEADER', 'HERO', 'INTRODUCTION', 'LOCATION', 'OPENING_HOURS', 'CONTACT', 'GALLERY', 'FEATURED_SERVICES', 'TEAM', 'FAQ', 'BOOKING_CTA', 'FINAL_CTA', 'FOOTER'],
   },
   'native-team-hub': {

@@ -65,6 +65,7 @@ import type {
   SiteQualityJobType,
 } from './handlers.js';
 import { finalizeProvisionedWorkspace } from './provisioning-finalization.js';
+import { evaluateV2BrowserPromotionEvidence } from './quality-promotion.js';
 
 type Database = ReturnType<typeof getDatabase>;
 type QualityConfig = SiteWorkerConfig['quality'];
@@ -372,7 +373,7 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
       status: 'EVALUATING',
       updatedAt: new Date(),
     }).where(eq(siteQualityRuns.id, run.id));
-    const summary = await this.finaliseRun(run);
+    const summary = await this.finaliseRun(run, pageTargets);
     await context.updateProgress({
       current: Math.max(3, pageTargets.length + 3),
       total: Math.max(3, pageTargets.length + 3),
@@ -620,7 +621,7 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
     ));
     const ids = new Map(pages.map(page => [page.reference, page.id]));
     return snapshot.pages
-      .filter(page => page.active && page.pageType !== 'BOOKING')
+      .filter(page => page.active)
       .map(page => {
         const id = ids.get(page.publicReference);
         if (!id) {
@@ -1197,8 +1198,8 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
     }).where(eq(siteQualityAuditSessions.qualityRunId, run.id));
   }
 
-  private async finaliseRun(run: QualityRunContext) {
-    const [findings, checks, browserEvidence] = await Promise.all([
+  private async finaliseRun(run: QualityRunContext, pageTargets: readonly PageTarget[]) {
+    const [findings, checks, browserEvidence, pageRuns] = await Promise.all([
       this.database.select({
         publicationEffect: siteQualityFindings.publicationEffect,
         status: siteQualityFindings.status,
@@ -1218,7 +1219,15 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
       }).from(siteQualityEvidence).where(and(
         eq(siteQualityEvidence.qualityRunId, run.id),
         eq(siteQualityEvidence.evidenceType, 'BROWSER_SUMMARY'),
+        eq(siteQualityEvidence.contentDigestSha256, run.currentVersionDigest!),
       )),
+      this.database.select({
+        pageId: siteQualityPageRuns.pageId,
+        status: siteQualityPageRuns.status,
+        blockingCount: siteQualityPageRuns.blockingCount,
+        failureCode: siteQualityPageRuns.failureCode,
+        viewportResults: siteQualityPageRuns.viewportResultsJson,
+      }).from(siteQualityPageRuns).where(eq(siteQualityPageRuns.qualityRunId, run.id)),
     ]);
     const current = findings.filter(finding =>
       currentFindingStatuses.includes(
@@ -1258,10 +1267,15 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
       completedAt,
       updatedAt: completedAt,
     }).where(eq(siteQualityRuns.id, run.id));
+    const browserPromotion = evaluateV2BrowserPromotionEvidence({
+      expectedPageIds: pageTargets.map(page => page.id),
+      evidence: browserEvidence,
+      pageRuns,
+      preReviewBlockingCount,
+    });
     const promotionEligible = run.auditType === 'FULL_SITE_QUALITY'
       && Boolean(run.generationRunId)
-      && browserEvidence.length > 0
-      && preReviewBlockingCount === 0;
+      && browserPromotion.complete;
     let promotedToReview = false;
     if (promotionEligible) {
       promotedToReview = await this.database.transaction(async transaction => {

@@ -38,6 +38,7 @@
     "@ks-os/site-publishing": "workspace:*",
     "@ks-os/site-review": "workspace:*",
     "@ks-os/site-schema": "workspace:*",
+    "@ks-os/site-templates": "workspace:*",
     "@ks-os/template-intelligence": "workspace:*",
     "@ks-os/workspace-provisioning": "workspace:*",
     "@supabase/supabase-js": "^2.110.7",

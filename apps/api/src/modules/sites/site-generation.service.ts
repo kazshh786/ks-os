@@ -30,6 +30,7 @@ import {
   siteVersions,
   templateLayoutPageTypes,
   templateLayoutRenderers,
+  templateLayoutSections,
   templateLayouts,
   templateLicenses,
   templateSources,
@@ -52,6 +53,7 @@ import {
   GenerateStructuredDataPayloadSchema,
   RegenerateSectionPayloadSchema,
 } from '@ks-os/site-jobs';
+import { getSiteLayoutRenderer, listNativeLayoutManifests } from '@ks-os/site-templates';
 import type { z } from 'zod';
 import {
   AgencyAuditService,
@@ -59,6 +61,7 @@ import {
 } from '../agency/agency.service.js';
 import { AgencySiteJobService } from './site-job.service.js';
 import { SiteJobEnqueueService } from './site-job-enqueue.service.js';
+import { auditV2TemplateReadiness, isV2TemplateManifest } from './v2-template-readiness.js';
 
 type Database = ReturnType<typeof getDatabase>;
 type GenerationRunRequest = z.infer<typeof GenerationRunRequestSchema>;
@@ -116,6 +119,8 @@ export class AgencySiteGenerationService {
         templateVersionId: templateVersions.id,
         templateVersionReference: templateVersions.publicReference,
         templateVersionStatus: templateVersions.status,
+        templateVersionAnalysisStatus: templateVersions.analysisStatus,
+        templateManifest: templateVersions.manifestJson,
         templateSourceId: templateSources.id,
         templateSourceType: templateSources.sourceType,
       })
@@ -145,6 +150,7 @@ export class AgencySiteGenerationService {
     if (context.templateVersionStatus !== 'APPROVED') {
       throw fail(409, 'GENERATION_TEMPLATE_NOT_APPROVED', 'The pinned template version must be approved.');
     }
+    await this.assertV2TemplateReady(context);
     const knowledge = await this.resolveKnowledgePack(input.knowledgePackReference);
     const blueprintPages = await this.resolveCompatiblePages(context);
     await this.assertTemplateLicence(context);
@@ -614,6 +620,59 @@ export class AgencySiteGenerationService {
       throw fail(409, 'ACTIVE_KNOWLEDGE_PACK_REQUIRED', 'Exactly one active PUBLIC_SITE knowledge pack is required.');
     }
     return packs[0]!;
+  }
+
+  private async assertV2TemplateReady(context: {
+    templateVersionId: string;
+    templateVersionAnalysisStatus: string;
+    templateManifest: unknown;
+  }) {
+    if (!isV2TemplateManifest(context.templateManifest)) return;
+    const layouts = await this.database.select({
+      id: templateLayouts.id,
+      semanticKey: templateLayouts.semanticKey,
+      status: templateLayouts.status,
+      sectionManifest: templateLayouts.sectionManifestJson,
+      rendererStatus: templateLayoutRenderers.rendererStatus,
+      rendererKey: templateLayoutRenderers.rendererKey,
+      rendererVersion: templateLayoutRenderers.rendererVersion,
+    }).from(templateLayouts)
+      .leftJoin(templateLayoutRenderers, eq(templateLayouts.id, templateLayoutRenderers.templateLayoutId))
+      .where(eq(templateLayouts.templateVersionId, context.templateVersionId));
+    const layoutIds = layouts.map(layout => layout.id);
+    const [pageTypes, sections] = layoutIds.length ? await Promise.all([
+      this.database.select({ layoutId: templateLayoutPageTypes.templateLayoutId, pageType: templateLayoutPageTypes.pageType })
+        .from(templateLayoutPageTypes).where(inArray(templateLayoutPageTypes.templateLayoutId, layoutIds)),
+      this.database.select({ layoutId: templateLayoutSections.layoutId })
+        .from(templateLayoutSections).where(inArray(templateLayoutSections.layoutId, layoutIds)),
+    ]) : [[], []];
+    const pageTypesByLayoutId = new Map<string, Set<string>>();
+    for (const item of pageTypes) {
+      const values = pageTypesByLayoutId.get(item.layoutId) ?? new Set<string>();
+      values.add(item.pageType);
+      pageTypesByLayoutId.set(item.layoutId, values);
+    }
+    const readiness = auditV2TemplateReadiness({
+      manifest: context.templateManifest,
+      analysisStatus: context.templateVersionAnalysisStatus,
+      expectedLayouts: listNativeLayoutManifests().map(manifest => ({
+        semanticKey: manifest.semanticKey,
+        pageTypes: manifest.pageTypes,
+      })),
+      layouts: layouts.map(layout => {
+        const compiledRenderer = layout.rendererKey ? getSiteLayoutRenderer(layout.rendererKey) : null;
+        return {
+          ...layout,
+          compiledRendererVersion: compiledRenderer?.version ?? null,
+          compiledRendererPageTypes: compiledRenderer?.pageTypes ?? [],
+        };
+      }),
+      pageTypesByLayoutId,
+      sectionLayoutIds: new Set(sections.map(section => section.layoutId)),
+    });
+    if (!readiness.ready) {
+      throw fail(409, 'GENERATION_V2_TEMPLATE_NOT_READY', 'The V2 template is incomplete; all 13 layouts, renderers, normalized sections and 16 page-type mappings must be ready before generation.');
+    }
   }
 
   private async resolveCompatiblePages(context: {

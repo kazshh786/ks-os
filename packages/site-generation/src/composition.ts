@@ -185,7 +185,16 @@ export function validatePageCompositionPlan(input: {
     if (component.requiredDataBindings.some(binding => !selection.dataBindings.includes(binding))) {
       findings.push(finding('COMPONENT_REQUIRED_BINDING_MISSING', `${selection.componentKey} is missing a required data binding.`, input.page.pageReference));
     }
+    const assignedSlots = new Set(selection.assetAssignments.map(assignment => assignment.slot));
+    for (const requiredSlot of component.requiredAssetSlots) {
+      if (!assignedSlots.has(requiredSlot)) {
+        findings.push(finding('COMPONENT_REQUIRED_ASSET_INTENT_MISSING', `${selection.componentKey} is missing required asset intent for ${requiredSlot}.`, input.page.pageReference));
+      }
+    }
     for (const assignment of selection.assetAssignments) {
+      if (!component.supportedAssetSlots.includes(assignment.slot)) {
+        findings.push(finding('COMPONENT_ASSET_SLOT_UNSUPPORTED', `${selection.componentKey} does not support asset slot ${assignment.slot}.`, input.page.pageReference));
+      }
       if (assignment.assetReference && !approvedAssets.has(assignment.assetReference)) {
         findings.push(finding('CROSS_TENANT_ASSET_REJECTED', `${selection.componentKey} selected an asset outside the approved tenant inventory.`, input.page.pageReference));
       }
@@ -198,12 +207,30 @@ export function validatePageCompositionPlan(input: {
     }
   }
   if (!recipe.bookingDepthExempt) {
-    const meaningful = input.output.selectedComponents.filter(selection => {
-      const classification = getSiteComponent(selection.componentKey)?.classification;
-      return classification !== 'CHROME' && classification !== 'CONVERSION';
-    }).length;
+    const classifications = input.output.selectedComponents.map(selection =>
+      getSiteComponent(selection.componentKey)?.classification);
+    const meaningful = classifications.filter(classification =>
+      classification !== 'CHROME' && classification !== 'CONVERSION').length;
+    const substantive = classifications.filter(classification =>
+      classification === 'PRIMARY' || classification === 'SUBSTANTIVE' || classification === 'LEGAL').length;
+    const supporting = classifications.filter(classification => classification === 'SUPPORTING').length;
     if (meaningful < recipe.minMeaningfulSections && !input.output.designExemption) {
       findings.push(finding('PAGE_TOO_SHALLOW', `The page plan has ${meaningful} meaningful sections; ${recipe.minMeaningfulSections} are required.`, input.page.pageReference));
+    }
+    if (substantive < recipe.minSubstantiveSections && !input.output.designExemption) {
+      findings.push(finding('PAGE_SUBSTANTIVE_DEPTH_MISSING', `The page plan has ${substantive} substantive sections; ${recipe.minSubstantiveSections} are required.`, input.page.pageReference));
+    }
+    if (supporting < recipe.minSupportingSections && !input.output.designExemption) {
+      findings.push(finding('PAGE_SUPPORTING_EVIDENCE_MISSING', `The page plan has ${supporting} supporting sections; ${recipe.minSupportingSections} are required.`, input.page.pageReference));
+    }
+    if (input.approvedPageReferences.length > 1 && input.output.internalLinkIntent.length === 0) {
+      findings.push(finding('INTERNAL_LINKING_INCOMPLETE', 'The page plan requires at least one purposeful link to another approved page.', input.page.pageReference));
+    }
+    if (!selectedTypes.some(type => type === 'BOOKING_CTA' || type === 'FINAL_CTA')) {
+      findings.push(finding('CONVERSION_INTENT_MISSING', 'The page plan requires a governed end-of-page booking conversion component.', input.page.pageReference));
+    }
+    if (input.output.selectedComponents.length > recipe.maxRecommendedSections && !input.output.designExemption) {
+      findings.push(finding('PAGE_COMPOSITION_OVERFULL', `The page plan exceeds the recommended ${recipe.maxRecommendedSections} section limit.`, input.page.pageReference));
     }
   }
   return findings;
