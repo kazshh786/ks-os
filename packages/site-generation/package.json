@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@ks-os/contracts": "workspace:*",
+    "@ks-os/site-components": "workspace:*",
     "@ks-os/site-knowledge": "workspace:*",
     "@ks-os/site-schema": "workspace:*",
     "google-auth-library": "10.9.1",

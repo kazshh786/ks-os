@@ -434,7 +434,7 @@ export class AgencySiteGenerationService {
           eq(siteGenerationRuns.publicReference, runReference),
         )).limit(1).for('update');
       if (!run) throw fail(404, 'SITE_GENERATION_RUN_NOT_FOUND', 'Generation run not found.');
-      if (['FAILED', 'CANCELLED', 'READY_FOR_REVIEW'].includes(run.status)) {
+      if (['FAILED', 'CANCELLED', 'DESIGN_COMPLETE', 'READY_FOR_REVIEW'].includes(run.status)) {
         return { reference: runReference, status: run.status, idempotentReplay: true as const };
       }
       if (!['FAILED', 'DEAD_LETTER'].includes(run.jobStatus)) {
@@ -713,7 +713,13 @@ export class AgencySiteGenerationService {
         biography: users.bio,
         bookingEnabled: users.bookingEnabled,
       }).from(users).where(and(eq(users.tenantId, tenantId), eq(users.accountStatus, 'ACTIVE'))),
-      this.database.select({ reference: siteAssets.publicReference })
+      this.database.select({
+        reference: siteAssets.publicReference,
+        kind: siteAssets.kind,
+        alt: siteAssets.altText,
+        width: siteAssets.width,
+        height: siteAssets.height,
+      })
         .from(siteAssets).where(and(
           eq(siteAssets.tenantId, tenantId),
           eq(siteAssets.siteId, siteId),
@@ -727,6 +733,7 @@ export class AgencySiteGenerationService {
       locations: locationRows,
       staff: staffRows,
       assetReferences: assetRows.map(asset => asset.reference),
+      assets: assetRows,
     });
   }
 

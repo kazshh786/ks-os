@@ -30,6 +30,7 @@
     "@ks-os/fact-finding": "workspace:*",
     "@ks-os/notifications": "workspace:*",
     "@ks-os/site-blueprints": "workspace:*",
+    "@ks-os/site-components": "workspace:*",
     "@ks-os/site-generation": "workspace:*",
     "@ks-os/site-jobs": "workspace:*",
     "@ks-os/site-knowledge": "workspace:*",

@@ -87,6 +87,70 @@ export const SiteRendererStatusSchema = z.enum([
 ]);
 export type SiteRendererStatus = z.infer<typeof SiteRendererStatusSchema>;
 
+export const SiteDesignTokensV2Schema = z.object({
+  designVersion: z.literal(2),
+  typography: z.object({
+    displayFont: z.enum(['SYSTEM_SANS', 'SYSTEM_SERIF', 'EDITORIAL_SERIF']),
+    headingFont: z.enum(['SYSTEM_SANS', 'SYSTEM_SERIF', 'EDITORIAL_SERIF']),
+    bodyFont: z.enum(['SYSTEM_SANS', 'SYSTEM_SERIF']),
+    displayScale: z.enum(['RESTRAINED', 'BALANCED', 'DRAMATIC']),
+    headingScale: z.enum(['COMPACT', 'BALANCED', 'EXPRESSIVE']),
+    bodyScale: z.enum(['COMPACT', 'STANDARD', 'GENEROUS']),
+    headingWeight: z.enum(['REGULAR', 'MEDIUM', 'SEMIBOLD', 'BOLD']),
+    bodyWeight: z.enum(['REGULAR', 'MEDIUM']),
+    displayTracking: z.enum(['TIGHT', 'NORMAL', 'WIDE']),
+    headingTracking: z.enum(['TIGHT', 'NORMAL', 'WIDE']),
+    headingLineHeight: z.enum(['TIGHT', 'STANDARD', 'RELAXED']),
+    bodyLineHeight: z.enum(['STANDARD', 'RELAXED', 'SPACIOUS']),
+  }).strict(),
+  layout: z.object({
+    containerWidths: z.enum(['COMPACT_RANGE', 'BALANCED_RANGE', 'EXPANSIVE_RANGE']),
+    pageGutter: z.enum(['COMPACT', 'STANDARD', 'GENEROUS']),
+    sectionSpacing: z.enum(['COMPACT', 'STANDARD', 'EXPANSIVE']),
+    contentSpacing: z.enum(['TIGHT', 'STANDARD', 'RELAXED']),
+    gridColumns: z.enum(['TEN', 'TWELVE', 'SIXTEEN']),
+    gridGap: z.enum(['TIGHT', 'STANDARD', 'GENEROUS']),
+    textMeasure: z.enum(['NARROW', 'READABLE', 'WIDE']),
+  }).strict(),
+  shape: z.object({
+    radiusScale: z.enum(['NONE', 'SUBTLE', 'SOFT', 'ROUNDED']),
+    cardRadius: z.enum(['NONE', 'SMALL', 'MEDIUM', 'LARGE']),
+    buttonRadius: z.enum(['SQUARE', 'SOFT', 'PILL']),
+    imageRadius: z.enum(['NONE', 'SMALL', 'MEDIUM', 'LARGE']),
+  }).strict(),
+  surface: z.object({
+    background: HexColourSchema,
+    surface: HexColourSchema,
+    surfaceAlt: HexColourSchema,
+    border: HexColourSchema,
+    mutedSurface: HexColourSchema,
+  }).strict(),
+  elevation: z.enum(['NONE', 'SUBTLE', 'MEDIUM', 'STRONG']),
+  buttons: z.object({
+    height: z.enum(['COMPACT', 'STANDARD', 'LARGE']),
+    padding: z.enum(['COMPACT', 'STANDARD', 'GENEROUS']),
+    weight: z.enum(['MEDIUM', 'SEMIBOLD', 'BOLD']),
+    primaryStyle: z.enum(['SOLID', 'OUTLINE', 'SOFT', 'HIGH_CONTRAST']),
+    secondaryStyle: z.enum(['TEXT', 'OUTLINE', 'SOFT']),
+  }).strict(),
+  imagery: z.object({
+    defaultAspectRatio: z.enum(['SQUARE', 'FOUR_THREE', 'THREE_TWO', 'SIXTEEN_NINE']),
+    portraitAspectRatio: z.enum(['THREE_FOUR', 'FOUR_FIVE', 'TWO_THREE']),
+    serviceAspectRatio: z.enum(['SQUARE', 'FOUR_THREE', 'THREE_TWO', 'SIXTEEN_NINE']),
+    cropMode: z.enum(['COVER', 'CONTAIN']),
+    focalBehaviour: z.enum(['ASSET_FOCAL_POINT', 'CENTRE', 'TOP']),
+    imageTreatment: z.enum(['NATURAL', 'EDITORIAL', 'SOFTENED', 'HIGH_CONTRAST', 'MONOCHROME']),
+  }).strict(),
+  sectionRhythm: z.enum([
+    'CONTINUOUS',
+    'ALTERNATING_SURFACES',
+    'EDITORIAL',
+    'HIGH_CONTRAST',
+    'SOFT_LUXURY',
+  ]),
+}).strict();
+export type SiteDesignTokensV2 = z.infer<typeof SiteDesignTokensV2Schema>;
+
 export const SiteThemeSchema = z.object({
   primaryColour: HexColourSchema,
   secondaryColour: HexColourSchema,
@@ -104,6 +168,7 @@ export const SiteThemeSchema = z.object({
   buttonStyle: z.enum(['SOLID', 'OUTLINE', 'SOFT']),
   imageStyle: z.enum(['SQUARE', 'ROUNDED', 'EDITORIAL']),
   motionPreference: z.enum(['NONE', 'REDUCED', 'STANDARD']),
+  designTokens: SiteDesignTokensV2Schema.optional(),
 }).strict();
 export type SiteTheme = z.infer<typeof SiteThemeSchema>;
 
@@ -218,6 +283,8 @@ export type SiteNavigationItem = z.infer<typeof SiteNavigationItemSchema>;
 export const SiteNavigationSchema = z.object({
   primary: z.array(SiteNavigationItemSchema).max(12),
   footer: z.array(SiteNavigationItemSchema).max(20),
+  utility: z.array(SiteNavigationItemSchema).max(8).default([]),
+  legal: z.array(SiteNavigationItemSchema).max(8).default([]),
 }).strict();
 export type SiteNavigation = z.infer<typeof SiteNavigationSchema>;
 
@@ -283,6 +350,9 @@ export type SiteAction = z.infer<typeof SiteActionSchema>;
 
 const SectionBaseShape = {
   reference: PublicReferenceSchema,
+  componentKey: z.string().trim().min(1).max(120)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$/)
+    .optional(),
   variant: z.enum([
     'editorial',
     'grid',
@@ -320,6 +390,7 @@ const HeroSectionSchema = z.object({
 const IntroductionSectionSchema = z.object({
   ...HeadingBodyShape,
   type: z.literal('INTRODUCTION'),
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const FeaturedServicesSectionSchema = z.object({
   ...SectionBaseShape,
@@ -345,12 +416,14 @@ const BenefitsSectionSchema = z.object({
   type: z.literal('BENEFITS'),
   heading: ShortTextSchema,
   items: z.array(z.object({ heading: ShortTextSchema, body: BodyTextSchema }).strict()).min(1).max(20),
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const ProcessSectionSchema = z.object({
   ...SectionBaseShape,
   type: z.literal('PROCESS'),
   heading: ShortTextSchema,
   steps: z.array(z.object({ heading: ShortTextSchema, body: BodyTextSchema }).strict()).min(1).max(20),
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const PricingSectionSchema = z.object({
   ...SectionBaseShape,
@@ -422,12 +495,14 @@ const LocationSectionSchema = z.object({
   type: z.literal('LOCATION'),
   heading: ShortTextSchema,
   locationReference: PublicReferenceSchema,
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const OpeningHoursSectionSchema = z.object({
   ...SectionBaseShape,
   type: z.literal('OPENING_HOURS'),
   heading: ShortTextSchema,
   locationReference: PublicReferenceSchema,
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const ContactSectionSchema = z.object({
   ...SectionBaseShape,
@@ -436,16 +511,19 @@ const ContactSectionSchema = z.object({
   body: BodyTextSchema.optional(),
   locationReference: PublicReferenceSchema.optional(),
   secondaryActions: z.array(z.union([PhoneActionSchema, EmailActionSchema])).max(4).default([]),
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const BookingCtaSectionSchema = z.object({
   ...HeadingBodyShape,
   type: z.literal('BOOKING_CTA'),
   primaryAction: KsOsBookingActionSchema,
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const FinalCtaSectionSchema = z.object({
   ...HeadingBodyShape,
   type: z.literal('FINAL_CTA'),
   primaryAction: KsOsBookingActionSchema,
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const FooterSectionSchema = z.object({
   ...SectionBaseShape,
@@ -651,7 +729,7 @@ export const PublishedSiteSnapshotSchema = z.object({
   if (!snapshot.pages.some((page) => page.pageType === 'HOME' && page.path === '/')) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['pages'], message: 'A HOME page at / is required.' });
   }
-  for (const group of ['primary', 'footer'] as const) {
+  for (const group of ['primary', 'footer', 'utility', 'legal'] as const) {
     for (const [index, item] of snapshot.navigation[group].entries()) {
       if (!pageReferences.has(item.pageReference)) {
         ctx.addIssue({
@@ -753,6 +831,14 @@ export const PublishedSiteSnapshotSchema = z.object({
     );
     for (const [sectionIndex, section] of page.sections.entries()) {
       const path = ['pages', pageIndex, 'sections', sectionIndex];
+      if ('imageAssetReference' in section) {
+        assertReference(
+          section.imageAssetReference,
+          assetReferences,
+          [...path, 'imageAssetReference'],
+          'Section asset',
+        );
+      }
       switch (section.type) {
         case 'HEADER':
         case 'BOOKING_CTA':
@@ -761,7 +847,6 @@ export const PublishedSiteSnapshotSchema = z.object({
           validateAction(section.primaryAction, [...path, 'primaryAction']);
           break;
         case 'HERO':
-          assertReference(section.imageAssetReference, assetReferences, [...path, 'imageAssetReference'], 'Hero asset');
           validateAction(section.primaryAction, [...path, 'primaryAction']);
           validateAction(section.secondaryAction, [...path, 'secondaryAction']);
           break;
@@ -773,7 +858,6 @@ export const PublishedSiteSnapshotSchema = z.object({
           break;
         case 'SERVICE_DETAILS':
           assertReference(section.serviceReference, serviceReferences, [...path, 'serviceReference'], 'Service');
-          assertReference(section.imageAssetReference, assetReferences, [...path, 'imageAssetReference'], 'Service asset');
           validateAction(section.primaryAction, [...path, 'primaryAction']);
           break;
         case 'TEAM':

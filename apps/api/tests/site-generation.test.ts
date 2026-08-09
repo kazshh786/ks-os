@@ -21,16 +21,33 @@ const runtimeMigrationPath = new URL(
   '../../../packages/database/migrations/20260725180000_phase_15_6c_generation_runtime.sql',
   import.meta.url,
 );
+const v2MigrationPath = new URL(
+  '../../../packages/database/migrations/20260809120000_seed_native_component_system_v2.sql',
+  import.meta.url,
+);
 const routesPath = new URL(
   '../src/modules/sites/site-generation.routes.ts',
   import.meta.url,
 );
-const [migration, runtimeMigration, serviceSource, routeSource] = await Promise.all([
+const [migration, runtimeMigration, v2Migration, serviceSource, routeSource] = await Promise.all([
   readFile(migrationPath, 'utf8'),
   readFile(runtimeMigrationPath, 'utf8'),
+  readFile(v2MigrationPath, 'utf8'),
   readFile(servicePath, 'utf8'),
   readFile(routesPath, 'utf8'),
 ]);
+
+test('V2 seeds governed layouts without mutating V1 or narrowing legacy analysis data', () => {
+  assert.match(v2Migration, /version_number,\s*status,[\s\S]*?v_source_id,\s*2,\s*'DRAFT'/);
+  assert.equal((v2Migration.match(/"semantic_key":/g) ?? []).length, 13);
+  assert.match(v2Migration, /'CONTACT','NEWSLETTER','POLICIES'/);
+  assert.match(v2Migration, /'RICH_TEXT','UNKNOWN'/);
+  assert.doesNotMatch(v2Migration, /UPDATE template_versions[\s\S]*?version_number\s*=\s*1/i);
+  assert.ok(
+    v2Migration.lastIndexOf("SET status = 'APPROVED'")
+      > v2Migration.lastIndexOf('KS_NATIVE_TEMPLATE_V2_MISSING_SECTION_CAPABILITIES'),
+  );
+});
 
 const ids = Array.from({ length: 8 }, (_, index) =>
   `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`);

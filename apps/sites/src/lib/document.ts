@@ -49,6 +49,40 @@ const imageRadius = {
 
 function themeStyle(snapshot: PublishedSiteSnapshot): string {
   const theme = snapshot.theme;
+  const v2 = theme.designTokens;
+  const v2Variables = v2 ? [
+    `--site-display-font:${headingFonts[v2.typography.displayFont]}`,
+    `--site-heading-font:${headingFonts[v2.typography.headingFont]}`,
+    `--site-body-font:${bodyFonts[v2.typography.bodyFont]}`,
+    `--site-display-size:${({ RESTRAINED: 'clamp(2.8rem, 7vw, 5.5rem)', BALANCED: 'clamp(3.2rem, 8vw, 7rem)', DRAMATIC: 'clamp(4rem, 11vw, 9.5rem)' } as const)[v2.typography.displayScale]}`,
+    `--site-heading-size:${({ COMPACT: 'clamp(1.8rem, 3vw, 2.75rem)', BALANCED: 'clamp(2rem, 4vw, 3.6rem)', EXPRESSIVE: 'clamp(2.4rem, 5vw, 4.8rem)' } as const)[v2.typography.headingScale]}`,
+    `--site-body-size:${({ COMPACT: '0.95rem', STANDARD: '1rem', GENEROUS: '1.125rem' } as const)[v2.typography.bodyScale]}`,
+    `--site-heading-weight:${({ REGULAR: '400', MEDIUM: '500', SEMIBOLD: '600', BOLD: '700' } as const)[v2.typography.headingWeight]}`,
+    `--site-body-weight:${v2.typography.bodyWeight === 'MEDIUM' ? '500' : '400'}`,
+    `--site-display-tracking:${({ TIGHT: '-0.055em', NORMAL: '-0.02em', WIDE: '0.04em' } as const)[v2.typography.displayTracking]}`,
+    `--site-heading-tracking:${({ TIGHT: '-0.035em', NORMAL: '-0.01em', WIDE: '0.035em' } as const)[v2.typography.headingTracking]}`,
+    `--site-heading-leading:${({ TIGHT: '0.96', STANDARD: '1.08', RELAXED: '1.2' } as const)[v2.typography.headingLineHeight]}`,
+    `--site-body-leading:${({ STANDARD: '1.55', RELAXED: '1.7', SPACIOUS: '1.85' } as const)[v2.typography.bodyLineHeight]}`,
+    `--site-container:${({ COMPACT_RANGE: '68rem', BALANCED_RANGE: '78rem', EXPANSIVE_RANGE: '92rem' } as const)[v2.layout.containerWidths]}`,
+    `--site-page-gutter:${({ COMPACT: '1rem', STANDARD: 'clamp(1rem, 3vw, 2.5rem)', GENEROUS: 'clamp(1.25rem, 5vw, 4.5rem)' } as const)[v2.layout.pageGutter]}`,
+    `--site-section-space:${({ COMPACT: 'clamp(2.5rem, 5vw, 4.5rem)', STANDARD: 'clamp(3.5rem, 8vw, 7rem)', EXPANSIVE: 'clamp(5rem, 11vw, 10rem)' } as const)[v2.layout.sectionSpacing]}`,
+    `--site-content-gap:${({ TIGHT: '0.75rem', STANDARD: '1.25rem', RELAXED: '2rem' } as const)[v2.layout.contentSpacing]}`,
+    `--site-grid-columns:${({ TEN: '10', TWELVE: '12', SIXTEEN: '16' } as const)[v2.layout.gridColumns]}`,
+    `--site-grid-gap:${({ TIGHT: '0.75rem', STANDARD: '1.25rem', GENEROUS: '2rem' } as const)[v2.layout.gridGap]}`,
+    `--site-text-measure:${({ NARROW: '48ch', READABLE: '64ch', WIDE: '76ch' } as const)[v2.layout.textMeasure]}`,
+    `--site-card-radius:${radius[v2.shape.cardRadius === 'NONE' ? 'NONE' : v2.shape.cardRadius]}`,
+    `--site-button-radius:${({ SQUARE: '0', SOFT: '0.65rem', PILL: '999px' } as const)[v2.shape.buttonRadius]}`,
+    `--site-image-radius:${radius[v2.shape.imageRadius === 'NONE' ? 'NONE' : v2.shape.imageRadius]}`,
+    `--site-surface-alt:${v2.surface.surfaceAlt}`,
+    `--site-muted-surface:${v2.surface.mutedSurface}`,
+    `--site-shadow:${({ NONE: 'none', SUBTLE: '0 12px 35px rgb(15 23 42 / 0.08)', MEDIUM: '0 22px 55px rgb(15 23 42 / 0.13)', STRONG: '0 30px 80px rgb(15 23 42 / 0.2)' } as const)[v2.elevation]}`,
+    `--site-button-height:${({ COMPACT: '2.75rem', STANDARD: '3rem', LARGE: '3.5rem' } as const)[v2.buttons.height]}`,
+    `--site-button-padding:${({ COMPACT: '1rem', STANDARD: '1.35rem', GENEROUS: '1.8rem' } as const)[v2.buttons.padding]}`,
+    `--site-button-weight:${({ MEDIUM: '500', SEMIBOLD: '600', BOLD: '700' } as const)[v2.buttons.weight]}`,
+    `--site-image-fit:${v2.imagery.cropMode.toLowerCase()}`,
+    `--site-image-position:${({ ASSET_FOCAL_POINT: 'var(--asset-focal-point, center)', CENTRE: 'center', TOP: 'top' } as const)[v2.imagery.focalBehaviour]}`,
+    `--site-section-rhythm:${v2.sectionRhythm.toLowerCase().replaceAll('_', '-')}`,
+  ] : [];
   return [
     `--site-primary:${theme.primaryColour}`,
     `--site-secondary:${theme.secondaryColour}`,
@@ -67,6 +101,7 @@ function themeStyle(snapshot: PublishedSiteSnapshot): string {
     `--site-motion:${theme.motionPreference === 'STANDARD' ? '220ms' : '0ms'}`,
     `--site-button-fill:${theme.buttonStyle === 'SOLID' ? theme.primaryColour : theme.buttonStyle === 'SOFT' ? theme.surfaceColour : 'transparent'}`,
     `--site-button-text:${theme.buttonStyle === 'SOLID' ? '#ffffff' : theme.primaryColour}`,
+    ...v2Variables,
   ].join(';');
 }
 

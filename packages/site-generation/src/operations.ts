@@ -68,6 +68,7 @@ export async function executeStructuredPageGeneration(input:
     facts: VerifiedBusinessFacts;
     knowledge: SiteGenerationKnowledgeContext;
     approvedPageReferences: readonly string[];
+    currentPage?: GeneratedPage;
   }) {
   const result = await generateWithControlledRepair<GeneratedPage>({
     provider: input.provider,
@@ -79,6 +80,12 @@ export async function executeStructuredPageGeneration(input:
         facts: input.facts,
         knowledge: input.knowledge,
         outputSchemaDescription: GENERATED_PAGE_RESPONSE_JSON_SCHEMA,
+        ...(input.currentPage ? {
+          lockedComponentSequence: input.currentPage.sections.map(section => ({
+            sectionType: section.type,
+            ...(section.componentKey ? { componentKey: section.componentKey } : {}),
+          })),
+        } : {}),
         ...(repairAttempt > 0
           ? { repair: { attempt: repairAttempt, findings: previousFindings } }
           : {}),
@@ -91,19 +98,33 @@ export async function executeStructuredPageGeneration(input:
         signal: input.signal,
       };
     },
-    validate: value => validateGeneratedPage({
-      output: value,
-      expected: {
-        pageReference: input.page.pageReference,
-        pageType: input.page.pageType,
-        conversionRole: input.page.conversionRole,
-        slug: input.page.slug,
-        layoutReference: input.page.layoutReference,
-      },
-      template: input.template,
-      facts: input.facts,
-      approvedPageReferences: input.approvedPageReferences,
-    }),
+    validate: value => {
+      const validation = validateGeneratedPage({
+        output: value,
+        expected: {
+          pageReference: input.page.pageReference,
+          pageType: input.page.pageType,
+          conversionRole: input.page.conversionRole,
+          slug: input.page.slug,
+          layoutReference: input.page.layoutReference,
+        },
+        template: input.template,
+        facts: input.facts,
+        approvedPageReferences: input.approvedPageReferences,
+      });
+      if (input.currentPage) {
+        const preserved = value.sections.length === input.currentPage.sections.length
+          && value.sections.every((section, index) =>
+            section.type === input.currentPage!.sections[index]?.type
+            && section.componentKey === input.currentPage!.sections[index]?.componentKey);
+        if (!preserved) validation.findings.push({
+          severity: 'ERROR', category: 'DESIGN', code: 'REGENERATION_COMPONENT_SEQUENCE_CHANGED',
+          message: 'Page regeneration must preserve the governed component sequence.',
+          targetReference: value.pageReference,
+        });
+      }
+      return { ...validation, valid: !validation.findings.some(item => item.severity === 'ERROR') };
+    },
   });
   const validation = validateGeneratedPage({
     output: result.response.value,
@@ -220,6 +241,13 @@ export async function executeStructuredSectionRegeneration(input:
         findings.push({
           severity: 'ERROR', category: 'TEMPLATE', code: 'SECTION_TYPE_CHANGED',
           message: 'Section regeneration changed the approved section type.',
+          targetReference: input.sectionReference,
+        });
+      }
+      if (value.section.componentKey !== currentSection.componentKey) {
+        findings.push({
+          severity: 'ERROR', category: 'DESIGN', code: 'SECTION_COMPONENT_CHANGED',
+          message: 'Content regeneration cannot change the governed componentKey.',
           targetReference: input.sectionReference,
         });
       }

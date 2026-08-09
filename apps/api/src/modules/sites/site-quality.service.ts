@@ -17,6 +17,7 @@ import {
   knowledgeRules,
   knowledgeSectionPlaybooks,
   siteFactVerifications,
+  siteGenerationRuns,
   siteJobs,
   sitePages,
   siteQualityChecks,
@@ -37,7 +38,7 @@ import {
   tenants,
 } from '@ks-os/database';
 import type { SiteJobPayload, SiteJobType } from '@ks-os/site-jobs';
-import { isReviewableGenerationStatus } from '@ks-os/site-generation';
+import { isQualityAuditableGenerationStatus } from '@ks-os/site-generation';
 import {
   CreateSiteQualityRunSchema,
   DEFAULT_PUBLICATION_POLICY_VERSION,
@@ -219,7 +220,8 @@ export class SiteQualityService {
     if (
       !context.contentDigest
       || context.contentDigest.length !== 64
-      || !isReviewableGenerationStatus(context.generationStatus)
+      || !isQualityAuditableGenerationStatus(context.generationStatus)
+      || context.generationJobStatus !== 'COMPLETED'
     ) {
       throw fail(
         409,
@@ -1119,7 +1121,7 @@ export class SiteQualityService {
       currentSiteVersionDigestSha256: context.contentDigest ?? '0'.repeat(64),
       siteVersionComplete: Boolean(
         context.contentDigest
-        && isReviewableGenerationStatus(context.generationStatus),
+        && isQualityAuditableGenerationStatus(context.generationStatus),
       ),
       siteVersionSuperseded: context.versionStatus === 'SUPERSEDED',
       runStale: Boolean(
@@ -1297,6 +1299,7 @@ export class SiteQualityService {
       generationStatus: siteVersions.generationStatus,
       contentDigest: siteVersions.generationContentDigestSha256,
       generationRunId: siteVersions.generationRunId,
+      generationJobStatus: siteJobs.status,
       reviewCycleId: siteReviewCycles.id,
     }).from(sites)
       .innerJoin(tenants, eq(sites.tenantId, tenants.id))
@@ -1304,6 +1307,8 @@ export class SiteQualityService {
         eq(siteVersions.siteId, sites.id),
         eq(siteVersions.tenantId, sites.tenantId),
       ))
+      .innerJoin(siteGenerationRuns, eq(siteVersions.generationRunId, siteGenerationRuns.id))
+      .innerJoin(siteJobs, eq(siteGenerationRuns.siteJobId, siteJobs.id))
       .leftJoin(siteReviewCycles, and(
         eq(siteReviewCycles.siteVersionId, siteVersions.id),
         eq(siteReviewCycles.tenantId, sites.tenantId),

@@ -23,8 +23,10 @@ import {
   executeStructuredDataGeneration,
   generateWithControlledRepair,
   generationDigest,
+  generationCompletionStatus,
   generationIdempotencyKey,
   isSiteGenerationProviderReady,
+  isQualityAuditableGenerationStatus,
   isReviewableGenerationStatus,
   parseSiteGenerationConfig,
   selectGenerationSafeFacts,
@@ -392,7 +394,10 @@ test('safe regeneration instructions reject external booking and fabrication ove
 
 test('lifecycle permits repair and review but never publication', () => {
   assert.doesNotThrow(() => assertGenerationRunTransition('VALIDATING', 'REPAIRING'));
+  assert.doesNotThrow(() => assertGenerationRunTransition('VALIDATING', 'DESIGN_COMPLETE'));
+  assert.doesNotThrow(() => assertGenerationRunTransition('DESIGN_COMPLETE', 'READY_FOR_REVIEW'));
   assert.doesNotThrow(() => assertGenerationRunTransition('VALIDATING', 'READY_FOR_REVIEW'));
+  assert.doesNotThrow(() => assertGenerationRunTransition('READY_FOR_REVIEW', 'DESIGN_COMPLETE'));
   assert.throws(() => assertGenerationRunTransition('READY_FOR_REVIEW', 'GENERATING'));
   assert.throws(() => assertGenerationRunTransition('READY_FOR_REVIEW', 'PENDING'));
 });
@@ -405,6 +410,7 @@ test('only the canonical READY_FOR_REVIEW generation state is quality-reviewable
     'GENERATING',
     'VALIDATING',
     'REPAIRING',
+    'DESIGN_COMPLETE',
     'FAILED',
     'CANCEL_REQUESTED',
     'CANCELLED',
@@ -419,6 +425,15 @@ test('only the canonical READY_FOR_REVIEW generation state is quality-reviewable
       `${String(status)} must not be quality-reviewable`,
     );
   }
+});
+
+test('design-complete V2 output is quality-auditable but not yet human-reviewable', () => {
+  assert.equal(generationCompletionStatus(1), 'READY_FOR_REVIEW');
+  assert.equal(generationCompletionStatus(2), 'DESIGN_COMPLETE');
+  assert.equal(isQualityAuditableGenerationStatus('DESIGN_COMPLETE'), true);
+  assert.equal(isQualityAuditableGenerationStatus('READY_FOR_REVIEW'), true);
+  assert.equal(isQualityAuditableGenerationStatus('VALIDATING'), false);
+  assert.equal(isReviewableGenerationStatus('DESIGN_COMPLETE'), false);
 });
 
 test('idempotency changes with source, blueprint and pack revisions', () => {

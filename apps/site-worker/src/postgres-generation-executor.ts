@@ -75,9 +75,13 @@ import {
   type GenerationPlan,
   type SiteGenerationPersistence,
   type SiteGenerationProvider,
+  type SiteCompositionStrategy,
+  type PageCompositionPlan,
+  type AssetCoveragePlan,
   type TemplateGenerationConstraint,
   type VerifiedBusinessFacts,
 } from '@ks-os/site-generation';
+import { getNativeLayoutManifest } from '@ks-os/site-templates';
 import {
   SiteSlugSchema,
 } from '@ks-os/contracts';
@@ -144,6 +148,7 @@ interface RunContext {
   templateVersionId: string;
   templateVersionReference: string;
   templateVersionStatus: string;
+  templateManifest: unknown;
   templateSourceId: string;
   templateSourceType: string;
   knowledgePackId: string;
@@ -161,10 +166,23 @@ interface RunContext {
 
 interface PreparedRuntime {
   run: RunContext;
+  pipelineVersion: 1 | 2;
   plan: GenerationPlan;
   constraints: TemplateGenerationConstraint[];
   facts: VerifiedBusinessFacts;
   knowledgeContexts: Map<string, SiteGenerationKnowledgeContext>;
+}
+
+function generationPipelineVersion(run: Pick<RunContext, 'templateManifest'>): 1 | 2 {
+  const manifest = run.templateManifest
+    && typeof run.templateManifest === 'object'
+    && !Array.isArray(run.templateManifest)
+    ? run.templateManifest as Record<string, unknown>
+    : {};
+  return manifest.componentRegistryVersion === 2
+    && manifest.generationPipelineVersion === 2
+    ? 2
+    : 1;
 }
 
 async function failGenerationRun(
@@ -176,7 +194,7 @@ async function failGenerationRun(
     const [current] = await transaction.select({ status: siteGenerationRuns.status })
       .from(siteGenerationRuns).where(eq(siteGenerationRuns.id, run.id)).limit(1)
       .for('update');
-    if (!current || ['READY_FOR_REVIEW', 'FAILED', 'CANCELLED'].includes(current.status)) {
+    if (!current || ['DESIGN_COMPLETE', 'READY_FOR_REVIEW', 'FAILED', 'CANCELLED'].includes(current.status)) {
       return false;
     }
     const cancelled = current.status === 'CANCEL_REQUESTED'
@@ -270,6 +288,7 @@ async function persistValidatedPreviewSnapshot(
   transaction: DatabaseTransaction,
   run: RunContext,
   sourceContentDigestSha256: string,
+  designTokens?: SiteCompositionStrategy['recommendedDesignTokens'],
 ) {
   const [existing] = await transaction.select({ id: siteRenderSnapshots.id })
     .from(siteRenderSnapshots)
@@ -493,13 +512,36 @@ async function persistValidatedPreviewSnapshot(
     pageType: page.pageType,
     children: [] as Array<{ label: string; pageReference: string }>,
   }));
-  const primaryNavigation = navigationCandidates
-    .filter((page) => page.pageType !== 'BOOKING')
-    .slice(0, 12);
-  const primaryReferences = new Set(primaryNavigation.map((item) => item.pageReference));
+  const pageByType = (pageType: string) => navigationCandidates.find(page => page.pageType === pageType);
+  const groupedItem = (parentType: string, childType: string) => {
+    const parent = pageByType(parentType);
+    if (!parent) return null;
+    return {
+      ...parent,
+      children: navigationCandidates
+        .filter(page => page.pageType === childType)
+        .map(({ label, pageReference }) => ({ label, pageReference }))
+        .slice(0, 20),
+    };
+  };
+  const primaryNavigation = [
+    pageByType('HOME'),
+    groupedItem('SERVICE_HUB', 'SERVICE_DETAIL'),
+    pageByType('ABOUT'),
+    groupedItem('TEAM_HUB', 'TEAM_DETAIL'),
+    pageByType('RESULTS'),
+    pageByType('LOCATION_DETAIL'),
+    pageByType('CONTACT'),
+  ].filter((page): page is NonNullable<typeof page> => Boolean(page)).slice(0, 12);
   const footerNavigation = navigationCandidates
-    .filter((page) => !primaryReferences.has(page.pageReference))
+    .filter(page => !['BOOKING', 'POLICIES'].includes(page.pageType))
     .slice(0, 20);
+  const utilityNavigation = navigationCandidates
+    .filter(page => ['BOOKING', 'CONTACT', 'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE'].includes(page.pageType))
+    .slice(0, 8);
+  const legalNavigation = navigationCandidates
+    .filter(page => page.pageType === 'POLICIES')
+    .slice(0, 8);
 
   const allowedAssetMimeTypes = new Set([
     'image/avif',
@@ -570,10 +612,13 @@ async function persistValidatedPreviewSnapshot(
       buttonStyle: 'SOLID',
       imageStyle: 'ROUNDED',
       motionPreference: 'REDUCED',
+      ...(designTokens ? { designTokens } : {}),
     },
     navigation: {
       primary: primaryNavigation.map(({ pageType: _pageType, ...item }) => item),
       footer: footerNavigation.map(({ pageType: _pageType, ...item }) => item),
+      utility: utilityNavigation.map(({ pageType: _pageType, ...item }) => item),
+      legal: legalNavigation.map(({ pageType: _pageType, ...item }) => item),
     },
     business: {
       name: context.tenantName,
@@ -784,10 +829,13 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       maxOutputCharacters: this.config.maxOutputCharacters,
       signal: lease.signal,
       updateProgress: lease.updateProgress,
+      pipelineVersion: runtime.pipelineVersion,
     });
     await finalizeProvisionedWorkspace(this.database, run.id);
     return {
-      summary: 'The structured draft site is ready for agency review.',
+      summary: result.status === 'DESIGN_COMPLETE'
+        ? 'The structured draft and governed design are complete and await full-site quality validation.'
+        : 'The structured draft site is ready for agency review.',
       outputReferences: [run.reference, run.versionReference, ...result.pageReferences].slice(0, 50),
       metrics: {
         pages: result.pageReferences.length,
@@ -808,12 +856,14 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
     if (!page) throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The approved blueprint page was not found.');
     const constraint = runtime.constraints.find(item => item.layoutReference === page.layoutReference)!;
     const knowledge = runtime.knowledgeContexts.get(page.pageReference)!;
+    const currentPage = await this.loadGeneratedPage(run, page.pageReference);
     const generated = await executeStructuredPageGeneration({
       page,
       template: constraint,
       facts: runtime.facts,
       knowledge,
       approvedPageReferences: runtime.plan.pages.map(item => item.pageReference),
+      currentPage,
       provider: this.provider,
       maxRepairAttempts: this.config.maxRepairAttempts,
       maxOutputCharacters: this.config.maxOutputCharacters,
@@ -1019,6 +1069,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       templateVersionId: siteGenerationRuns.templateVersionId,
       templateVersionReference: templateVersions.publicReference,
       templateVersionStatus: templateVersions.status,
+      templateManifest: templateVersions.manifestJson,
       templateSourceId: templateSources.id,
       templateSourceType: templateSources.sourceType,
       knowledgePackId: siteGenerationRuns.knowledgePackId,
@@ -1090,6 +1141,8 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       slug: siteBlueprintPages.proposedSlug,
       layoutId: templateLayouts.id,
       layoutReference: templateLayouts.publicReference,
+      layoutSemanticKey: templateLayouts.semanticKey,
+      sectionManifest: templateLayouts.sectionManifestJson,
       layoutStatus: templateLayouts.status,
       templateVersionId: templateLayouts.templateVersionId,
       rendererKey: templateLayoutRenderers.rendererKey,
@@ -1141,6 +1194,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
     )).orderBy(asc(templateLayoutSections.domOrder));
     const available = new Set([...availableBusinessDataKeys(facts), 'tenant_id', 'native_crm_enabled']);
     const knowledgeContexts = new Map<string, SiteGenerationKnowledgeContext>();
+    const pipelineVersion = generationPipelineVersion(run);
     const planPages = pages.map(page => {
       const pagePlaybook = pack.bundle.pagePlaybooks.find(item =>
         item.pageType === page.pageType && item.conversionRole === page.conversionRole);
@@ -1149,12 +1203,18 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       }
       const plannedSections = pagePlaybook.sections
         .map(section => SiteSectionTypeSchema.parse(section.sectionType));
+      const nativeManifest = pipelineVersion === 2
+        ? getNativeLayoutManifest(page.layoutSemanticKey)
+        : null;
+      const knowledgeSections = nativeManifest?.componentRegistryVersion === 2
+        ? nativeManifest.sections.map(section => section.sectionType)
+        : plannedSections;
       const pageReference = pageRunReferences.get(page.id)!;
       const context = prepareDatabaseGenerationContext({
         pack,
         pageType: page.pageType as Parameters<typeof prepareDatabaseGenerationContext>[0]['pageType'],
         conversionRole: page.conversionRole as Parameters<typeof prepareDatabaseGenerationContext>[0]['conversionRole'],
-        plannedSections,
+        plannedSections: knowledgeSections,
         availableBusinessData: available,
         maximumContextCharacters: 100_000,
       });
@@ -1180,12 +1240,23 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       pages: planPages,
     });
     const constraints = pages.map(page => {
-      const supportedSections = sectionRows
+      const registeredSections = sectionRows
         .filter(item => item.layoutId === page.layoutId)
         .flatMap(item => {
           const parsed = SiteSectionTypeSchema.safeParse(item.sectionType);
           return parsed.success ? [{ ...item, sectionType: parsed.data }] : [];
         });
+      const nativeManifest = pipelineVersion === 2
+        ? getNativeLayoutManifest(page.layoutSemanticKey)
+        : null;
+      const supportedSections = registeredSections.length
+        ? registeredSections
+        : nativeManifest?.sections.map((section, order) => ({
+            layoutId: page.layoutId,
+            sectionType: section.sectionType,
+            required: section.required,
+            order,
+          })) ?? [];
       return TemplateGenerationConstraintSchema.parse({
         templateVersionReference: run.templateVersionReference,
         templateSourceType: run.templateSourceType,
@@ -1202,9 +1273,11 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         requiredSectionTypes: supportedSections.filter(item => item.required).map(item => item.sectionType),
         prohibitedSectionTypes: [],
         sectionOrder: supportedSections.map(item => item.sectionType),
+        componentRegistryVersion: nativeManifest?.componentRegistryVersion ?? 1,
+        availableComponentKeys: nativeManifest?.sections.flatMap(section => section.componentKeys) ?? [],
       });
     });
-    return { run, plan, constraints, facts, knowledgeContexts };
+    return { run, pipelineVersion, plan, constraints, facts, knowledgeContexts };
   }
 
   private async assertLicence(run: RunContext) {
@@ -1254,7 +1327,13 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         biography: users.bio,
         bookingEnabled: users.bookingEnabled,
       }).from(users).where(and(eq(users.tenantId, run.tenantId), eq(users.accountStatus, 'ACTIVE'))),
-      this.database.select({ reference: siteAssets.publicReference })
+      this.database.select({
+        reference: siteAssets.publicReference,
+        kind: siteAssets.kind,
+        alt: siteAssets.altText,
+        width: siteAssets.width,
+        height: siteAssets.height,
+      })
         .from(siteAssets).where(and(eq(siteAssets.tenantId, run.tenantId), eq(siteAssets.siteId, run.siteId), eq(siteAssets.status, 'READY'))),
     ]);
     const row = business[0];
@@ -1265,6 +1344,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       locations: locationRows,
       staff: staffRows,
       assetReferences: assetRows.map(asset => asset.reference),
+      assets: assetRows,
     });
   }
 
@@ -1803,6 +1883,8 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
 }
 
 class PostgresGenerationPersistence implements SiteGenerationPersistence {
+  private siteStrategy: SiteCompositionStrategy | undefined;
+
   constructor(
     private readonly database: Database,
     private readonly run: RunContext,
@@ -1810,13 +1892,40 @@ class PostgresGenerationPersistence implements SiteGenerationPersistence {
     private readonly constraints: readonly TemplateGenerationConstraint[],
   ) {}
 
+  async persistCompositionArtifacts(input: {
+    strategy: SiteCompositionStrategy;
+    pagePlans: readonly PageCompositionPlan[];
+    assetCoveragePlan: AssetCoveragePlan;
+  }) {
+    this.siteStrategy = input.strategy;
+    await this.database.transaction(transaction => this.audit(
+      transaction,
+      'SITE_COMPOSITION_PLANNED',
+      'SUCCESS',
+      {
+        pagePlanCount: input.pagePlans.length,
+        assetAssignmentCount: input.assetCoveragePlan.assignments.length,
+        missingAssetCount: input.assetCoveragePlan.uncoveredRequirements.length,
+        strategyDigestSha256: generationDigest(input.strategy),
+        pagePlansDigestSha256: generationDigest(input.pagePlans),
+      },
+    ));
+  }
+
+  async updatePlannedSectionCount(sectionCountPlanned: number) {
+    await this.database.update(siteGenerationRuns).set({
+      sectionCountPlanned,
+      updatedAt: new Date(),
+    }).where(eq(siteGenerationRuns.id, this.run.id));
+  }
+
   async beginRun(input: { pageCountPlanned: number; sectionCountPlanned: number }) {
     let cancelledBeforeStart = false;
     await this.database.transaction(async transaction => {
       const [current] = await transaction.select({ status: siteGenerationRuns.status })
         .from(siteGenerationRuns).where(eq(siteGenerationRuns.id, this.run.id)).limit(1);
       if (!current) throw new Error('Generation run disappeared before execution.');
-      if (current.status === 'READY_FOR_REVIEW' || current.status === 'SUPERSEDED') {
+      if (current.status === 'DESIGN_COMPLETE' || current.status === 'READY_FOR_REVIEW' || current.status === 'SUPERSEDED') {
         throw new SiteJobExecutionError(
           'TERMINAL_VALIDATION_FAILURE',
           'A completed or superseded generation run cannot be executed again.',
@@ -2087,6 +2196,7 @@ class PostgresGenerationPersistence implements SiteGenerationPersistence {
     outputContentDigestSha256: string;
     pageCountCompleted: number;
     sectionCountCompleted: number;
+    readinessStatus: 'DESIGN_COMPLETE' | 'READY_FOR_REVIEW';
   }) {
     await this.database.transaction(async transaction => {
       await transaction.update(siteGenerationRuns).set({ status: 'VALIDATING' })
@@ -2134,7 +2244,7 @@ class PostgresGenerationPersistence implements SiteGenerationPersistence {
         generatedAt: new Date().toISOString(),
       };
       await transaction.update(siteGenerationRuns).set({
-        status: 'READY_FOR_REVIEW',
+        status: input.readinessStatus,
         generationContextDigestSha256: contextDigest,
         outputContentDigestSha256: input.outputContentDigestSha256,
         pageCountCompleted: input.pageCountCompleted,
@@ -2142,7 +2252,7 @@ class PostgresGenerationPersistence implements SiteGenerationPersistence {
         completedAt: new Date(),
       }).where(eq(siteGenerationRuns.id, this.run.id));
       await transaction.update(siteVersions).set({
-        generationStatus: 'READY_FOR_REVIEW',
+        generationStatus: input.readinessStatus,
         generationProvenanceJson: provenance,
         generationContentDigestSha256: input.outputContentDigestSha256,
         generationCompletedAt: new Date(),
@@ -2155,11 +2265,13 @@ class PostgresGenerationPersistence implements SiteGenerationPersistence {
         transaction,
         this.run,
         input.outputContentDigestSha256,
+        this.siteStrategy?.recommendedDesignTokens,
       );
       await this.audit(transaction, 'SITE_GENERATION_COMPLETED', 'SUCCESS', {
         pageCount: input.pageCountCompleted,
         sectionCount: completedSections.length,
         outputDigestSha256: input.outputContentDigestSha256,
+        readinessStatus: input.readinessStatus,
       });
     });
   }

@@ -5,14 +5,15 @@ import {
   SiteSlugSchema,
 } from '@ks-os/contracts';
 import {
+  SiteDesignTokensV2Schema,
   SiteSectionSchema,
   SiteSectionTypeSchema,
   SiteSeoMetadataSchema,
 } from '@ks-os/site-schema';
 import { z } from 'zod';
 
-export const SITE_GENERATOR_VERSION = '1.0.0' as const;
-export const SITE_GENERATION_PROMPT_TEMPLATE_VERSION = '1.0.0' as const;
+export const SITE_GENERATOR_VERSION = '2.0.0' as const;
+export const SITE_GENERATION_PROMPT_TEMPLATE_VERSION = '2.0.0' as const;
 
 export const SiteGenerationRunStatusSchema = z.enum([
   'PENDING',
@@ -20,6 +21,7 @@ export const SiteGenerationRunStatusSchema = z.enum([
   'GENERATING',
   'VALIDATING',
   'REPAIRING',
+  'DESIGN_COMPLETE',
   'READY_FOR_REVIEW',
   'FAILED',
   'CANCEL_REQUESTED',
@@ -54,6 +56,22 @@ const PublicEntityFactSchema = z.object({
   facts: z.array(PublicFactSchema).max(100),
 }).strict();
 
+export const SiteAssetClassSchema = z.enum([
+  'LOGO', 'BRAND', 'SERVICE', 'STAFF', 'LOCATION', 'GALLERY', 'RESULT', 'DECORATIVE',
+]);
+export type SiteAssetClass = z.infer<typeof SiteAssetClassSchema>;
+
+export const ApprovedGenerationAssetSchema = z.object({
+  publicReference: PublicReferenceSchema,
+  assetClass: SiteAssetClassSchema,
+  entityReference: PublicReferenceSchema.optional(),
+  width: z.number().int().positive().max(20_000).optional(),
+  height: z.number().int().positive().max(20_000).optional(),
+  alt: z.string().trim().min(1).max(500).optional(),
+  approved: z.literal(true),
+}).strict();
+export type ApprovedGenerationAsset = z.infer<typeof ApprovedGenerationAssetSchema>;
+
 export const VerifiedBusinessFactsSchema = z.object({
   businessReference: PublicReferenceSchema,
   business: z.array(PublicFactSchema).max(100),
@@ -63,6 +81,7 @@ export const VerifiedBusinessFactsSchema = z.object({
   policies: z.array(PublicFactSchema).max(100),
   brand: z.array(PublicFactSchema).max(100),
   assetReferences: z.array(PublicReferenceSchema).max(500),
+  approvedAssets: z.array(ApprovedGenerationAssetSchema).max(2_000).default([]),
 }).strict();
 export type VerifiedBusinessFacts = z.infer<typeof VerifiedBusinessFactsSchema>;
 
@@ -106,6 +125,7 @@ export const GenerationFindingSchema = z.object({
   category: z.enum([
     'FACT', 'CLAIM', 'KNOWLEDGE', 'TEMPLATE', 'BOOKING', 'LINK',
     'DUPLICATE', 'METADATA', 'STRUCTURED_DATA', 'PROVIDER', 'SCHEMA',
+    'COMPLETENESS', 'DESIGN', 'ASSET', 'BROWSER', 'ACCESSIBILITY',
   ]),
   code: z.string().regex(/^[A-Z][A-Z0-9_]{2,99}$/),
   message: z.string().trim().min(1).max(1_000),
@@ -118,6 +138,110 @@ export const AssetRequirementSchema = z.object({
   description: z.string().trim().min(1).max(500),
   required: z.boolean(),
 }).strict();
+
+export const AssetCoverageAssignmentSchema = z.object({
+  pageReference: PublicReferenceSchema,
+  sectionType: SiteSectionTypeSchema,
+  componentKey: z.string().trim().min(1).max(120),
+  slot: z.enum([
+    'LOGO', 'PRIMARY_IMAGE', 'SECONDARY_IMAGE', 'PORTRAIT', 'LOCATION_IMAGE',
+    'GALLERY_SET', 'RESULT_PAIR', 'DECORATIVE_IMAGE',
+  ]),
+  assetReference: PublicReferenceSchema.optional(),
+  placeholderCode: z.enum([
+    'SERVICE_IMAGE_REQUIRED', 'STAFF_PORTRAIT_REQUIRED', 'LOCATION_IMAGE_REQUIRED',
+    'GALLERY_ASSET_REQUIRED', 'RESULT_ASSET_REQUIRED', 'BRAND_IMAGE_REQUIRED',
+  ]).optional(),
+}).strict().superRefine((assignment, context) => {
+  if ((assignment.assetReference ? 1 : 0) + (assignment.placeholderCode ? 1 : 0) !== 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'An asset assignment requires exactly one approved asset or preview placeholder.',
+    });
+  }
+});
+
+export const AssetCoveragePlanSchema = z.object({
+  inventory: z.array(ApprovedGenerationAssetSchema).max(2_000),
+  assignments: z.array(AssetCoverageAssignmentSchema).max(2_000),
+  uncoveredRequirements: z.array(z.object({
+    pageReference: PublicReferenceSchema,
+    componentKey: z.string().trim().min(1).max(120),
+    slot: z.string().trim().min(1).max(80),
+    placeholderCode: z.string().trim().min(1).max(100),
+  }).strict()).max(2_000),
+}).strict();
+export type AssetCoveragePlan = z.infer<typeof AssetCoveragePlanSchema>;
+
+export const SiteCompositionStrategySchema = z.object({
+  brandMood: z.string().trim().min(10).max(500),
+  visualDirection: z.string().trim().min(10).max(500),
+  typographicIntent: z.string().trim().min(10).max(500),
+  spacingIntent: z.string().trim().min(10).max(500),
+  imageStrategy: z.string().trim().min(10).max(500),
+  surfaceStrategy: z.string().trim().min(10).max(500),
+  heroStrategy: z.string().trim().min(10).max(500),
+  cardStrategy: z.string().trim().min(10).max(500),
+  conversionStrategy: z.string().trim().min(10).max(500),
+  trustStrategy: z.string().trim().min(10).max(500),
+  pageRhythm: z.string().trim().min(10).max(500),
+  sectionDiversityStrategy: z.string().trim().min(10).max(500),
+  mobileStrategy: z.string().trim().min(10).max(500),
+  recommendedDesignTokens: SiteDesignTokensV2Schema,
+}).strict();
+export type SiteCompositionStrategy = z.infer<typeof SiteCompositionStrategySchema>;
+
+export const PageComponentSelectionSchema = z.object({
+  sectionType: SiteSectionTypeSchema,
+  componentKey: z.string().trim().min(1).max(120)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$/),
+  purpose: z.string().trim().min(5).max(500),
+  dataBindings: z.array(z.enum([
+    'BUSINESS', 'SERVICES', 'LOCATIONS', 'STAFF', 'BOOKING', 'TESTIMONIALS',
+    'GALLERY', 'RESULTS', 'OPENING_HOURS', 'CONTACT', 'POLICIES',
+  ])).max(12),
+  assetAssignments: z.array(z.object({
+    slot: z.enum([
+      'LOGO', 'PRIMARY_IMAGE', 'SECONDARY_IMAGE', 'PORTRAIT', 'LOCATION_IMAGE',
+      'GALLERY_SET', 'RESULT_PAIR', 'DECORATIVE_IMAGE',
+    ]),
+    assetReference: PublicReferenceSchema.optional(),
+    placeholderCode: z.enum([
+      'SERVICE_IMAGE_REQUIRED', 'STAFF_PORTRAIT_REQUIRED', 'LOCATION_IMAGE_REQUIRED',
+      'GALLERY_ASSET_REQUIRED', 'RESULT_ASSET_REQUIRED', 'BRAND_IMAGE_REQUIRED',
+    ]).optional(),
+  }).strict().superRefine((assignment, context) => {
+    if ((assignment.assetReference ? 1 : 0) + (assignment.placeholderCode ? 1 : 0) !== 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A planned asset slot requires exactly one approved asset or controlled placeholder.',
+      });
+    }
+  })).max(12),
+}).strict();
+
+export const PageCompositionPlanSchema = z.object({
+  pageReference: PublicReferenceSchema,
+  pagePurpose: z.string().trim().min(10).max(800),
+  conversionGoal: z.string().trim().min(10).max(500),
+  contentNarrative: z.string().trim().min(10).max(1_000),
+  selectedComponents: z.array(PageComponentSelectionSchema).min(1).max(100),
+  internalLinkIntent: z.array(z.object({
+    targetPageReference: PublicReferenceSchema,
+    intent: z.string().trim().min(5).max(300),
+  }).strict()).max(100),
+  ctaIntent: z.string().trim().min(10).max(500),
+  designExemption: z.object({
+    code: z.string().trim().min(3).max(100),
+    rationale: z.string().trim().min(20).max(500),
+  }).strict().optional(),
+}).strict();
+export type PageCompositionPlan = z.infer<typeof PageCompositionPlanSchema>;
+
+export const PageCompletenessStateSchema = z.enum([
+  'SCHEMA_VALID', 'GENERATION_COMPLETE', 'DESIGN_COMPLETE', 'READY_FOR_REVIEW', 'PUBLICATION_READY',
+]);
+export type PageCompletenessState = z.infer<typeof PageCompletenessStateSchema>;
 
 export const InternalLinkSuggestionSchema = z.object({
   targetPageReference: PublicReferenceSchema,
@@ -223,6 +347,8 @@ export const TemplateGenerationConstraintSchema = z.object({
   requiredSectionTypes: z.array(SiteSectionTypeSchema).max(100).default([]),
   prohibitedSectionTypes: z.array(SiteSectionTypeSchema).max(100).default([]),
   sectionOrder: z.array(SiteSectionTypeSchema).max(100).default([]),
+  componentRegistryVersion: z.number().int().positive().default(1),
+  availableComponentKeys: z.array(z.string().trim().min(1).max(120)).max(500).default([]),
 }).strict();
 export type TemplateGenerationConstraint = z.infer<typeof TemplateGenerationConstraintSchema>;
 

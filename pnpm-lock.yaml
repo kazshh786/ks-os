@@ -73,6 +73,9 @@ importers:
       '@ks-os/site-blueprints':
         specifier: workspace:*
         version: link:../../packages/site-blueprints
+      '@ks-os/site-components':
+        specifier: workspace:*
+        version: link:../../packages/site-components
       '@ks-os/site-generation':
         specifier: workspace:*
         version: link:../../packages/site-generation
@@ -173,6 +176,9 @@ importers:
       '@ks-os/site-blueprints':
         specifier: workspace:*
         version: link:../../packages/site-blueprints
+      '@ks-os/site-components':
+        specifier: workspace:*
+        version: link:../../packages/site-components
       '@ks-os/site-generation':
         specifier: workspace:*
         version: link:../../packages/site-generation
@@ -194,6 +200,9 @@ importers:
       '@ks-os/site-schema':
         specifier: workspace:*
         version: link:../../packages/site-schema
+      '@ks-os/site-templates':
+        specifier: workspace:*
+        version: link:../../packages/site-templates
       '@ks-os/workspace-provisioning':
         specifier: workspace:*
         version: link:../../packages/workspace-provisioning
@@ -524,6 +533,9 @@ importers:
       '@ks-os/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@ks-os/site-components':
+        specifier: workspace:*
+        version: link:../site-components
       '@ks-os/site-knowledge':
         specifier: workspace:*
         version: link:../site-knowledge

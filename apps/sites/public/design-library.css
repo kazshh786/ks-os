@@ -245,3 +245,539 @@ nav a {
     transition: none !important;
   }
 }
+
+/* Website Composition V2 ---------------------------------------------------
+   componentKey selects deterministic layout behaviour. These rules never
+   accept generated selectors or styles; every selector maps to registry data. */
+
+body {
+  font-size: var(--site-body-size, 1rem);
+  font-weight: var(--site-body-weight, 400);
+  line-height: var(--site-body-leading, 1.65);
+}
+
+.site-section {
+  gap: var(--site-content-gap, 1.25rem);
+}
+
+.site-section > p,
+.site-section .section-copy > p,
+.rich-text > p {
+  max-width: var(--site-text-measure, 64ch);
+}
+
+.site-section h1 {
+  font-family: var(--site-display-font, var(--site-heading-font));
+  font-size: var(--site-display-size, clamp(3rem, 8vw, 7rem));
+  letter-spacing: var(--site-display-tracking, -0.04em);
+  line-height: var(--site-heading-leading, 1.02);
+}
+
+.site-section h2 {
+  font-size: var(--site-heading-size, clamp(2rem, 4vw, 3.5rem));
+  font-weight: var(--site-heading-weight, 600);
+  letter-spacing: var(--site-heading-tracking, -0.02em);
+  line-height: var(--site-heading-leading, 1.1);
+}
+
+.preview-asset-placeholder {
+  display: grid;
+  width: min(100% - 2rem, var(--site-container));
+  min-height: clamp(14rem, 32vw, 28rem);
+  margin: calc(var(--site-section-space) * -0.65) auto var(--site-section-space);
+  place-content: center;
+  gap: 0.5rem;
+  border: 2px dashed color-mix(in srgb, var(--site-accent) 65%, var(--site-border));
+  border-radius: var(--site-image-radius);
+  color: var(--site-muted);
+  text-align: center;
+  background: repeating-linear-gradient(-45deg, var(--site-muted-surface, var(--site-surface)), var(--site-muted-surface, var(--site-surface)) 12px, var(--site-background) 12px, var(--site-background) 24px);
+}
+
+.preview-asset-placeholder strong {
+  color: var(--site-text);
+  font-family: var(--site-heading-font);
+  font-size: 1.25rem;
+}
+
+.button {
+  min-height: var(--site-button-height, 3rem);
+  padding-inline: var(--site-button-padding, 1.35rem);
+  border-radius: var(--site-button-radius, var(--site-radius));
+  font-weight: var(--site-button-weight, 700);
+}
+
+.card-grid > *,
+.feature-grid > *,
+.process li,
+.pricing li,
+.testimonials figure,
+.faq details {
+  border-radius: var(--site-card-radius, var(--site-radius));
+  box-shadow: var(--site-shadow, none);
+}
+
+.site-layout:has(.component-hero-full-bleed-v1) {
+  overflow: clip;
+}
+
+.component-header-centered-v1,
+.component-header-editorial-v1 {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  text-align: center;
+}
+
+.component-header-centered-v1 .desktop-navigation ul,
+.component-header-editorial-v1 .desktop-navigation ul {
+  justify-content: center;
+}
+
+.component-header-compact-v1 {
+  padding-block: 0.65rem;
+}
+
+.component-header-booking-led-v1 .header-booking {
+  min-width: 9.5rem;
+  box-shadow: var(--site-shadow);
+}
+
+.component-header-transparent-overlay-v1 {
+  color: #fff;
+  border-color: rgb(255 255 255 / 0.28);
+  background: color-mix(in srgb, var(--site-primary) 88%, transparent);
+}
+
+.component-announcement-action-v1,
+.component-announcement-centered-v1 {
+  text-align: center;
+  letter-spacing: 0.08em;
+}
+
+.component-announcement-soft-v1 {
+  color: var(--site-text);
+  background: var(--site-muted-surface, var(--site-surface));
+}
+
+.component-hero-split-image-v1,
+.component-hero-service-v1,
+.component-hero-profile-v1,
+.component-hero-location-v1,
+.component-hero-layered-media-v1,
+.component-service-detail-split-v1,
+.component-profile-split-v1,
+.component-location-media-split-v1,
+.component-contact-split-v1,
+.component-cta-split-v1 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(18rem, 0.95fr);
+  align-items: center;
+  min-height: min(78vh, 52rem);
+}
+
+.component-hero-split-image-v1 > img,
+.component-hero-service-v1 > img,
+.component-hero-profile-v1 > img,
+.component-hero-location-v1 > img,
+.component-hero-layered-media-v1 > img,
+.component-service-detail-split-v1 > img,
+.component-profile-split-v1 > img,
+.component-location-media-split-v1 > img {
+  width: 100%;
+  min-height: 28rem;
+  max-height: 46rem;
+  object-fit: var(--site-image-fit, cover);
+  object-position: var(--site-image-position, center);
+}
+
+.component-hero-full-bleed-v1,
+.component-cta-image-backed-v1 {
+  width: 100%;
+  max-width: none;
+  min-height: min(88vh, 58rem);
+  padding-inline: max(var(--site-page-gutter, 1rem), calc((100vw - var(--site-container)) / 2));
+  color: #fff;
+  background: var(--site-primary);
+  isolation: isolate;
+}
+
+.component-hero-full-bleed-v1 > img,
+.component-cta-image-backed-v1 > img {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
+}
+
+.component-hero-full-bleed-v1::after,
+.component-cta-image-backed-v1::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  background: linear-gradient(90deg, color-mix(in srgb, var(--site-primary) 92%, transparent), color-mix(in srgb, var(--site-primary) 30%, transparent));
+}
+
+.component-hero-centered-v1,
+.component-hero-minimal-luxury-v1,
+.component-intro-centered-v1,
+.component-intro-large-statement-v1,
+.component-cta-high-impact-v1,
+.component-cta-minimal-v1 {
+  justify-items: center;
+  text-align: center;
+}
+
+.component-hero-centered-v1 .section-copy,
+.component-hero-minimal-luxury-v1 .section-copy,
+.component-intro-large-statement-v1,
+.component-cta-high-impact-v1 {
+  max-width: 72rem;
+  margin-inline: auto;
+}
+
+.component-hero-editorial-v1,
+.component-intro-editorial-v1,
+.component-benefits-editorial-v1,
+.component-process-editorial-v1,
+.component-pricing-editorial-v1,
+.component-team-editorial-v1,
+.component-testimonials-editorial-v1,
+.component-trust-editorial-v1,
+.component-faq-editorial-v1,
+.component-location-editorial-v1,
+.component-contact-editorial-v1,
+.component-cta-editorial-v1,
+.component-richtext-editorial-v1 {
+  border-inline-start: clamp(0.25rem, 1vw, 0.65rem) solid var(--site-accent);
+  padding-inline-start: clamp(1.25rem, 4vw, 4rem);
+}
+
+.component-hero-image-collage-v1,
+.component-gallery-collage-v1,
+.component-services-overlapping-media-v1 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: center;
+}
+
+.component-hero-image-collage-v1 .section-copy,
+.component-services-overlapping-media-v1 > h2 {
+  z-index: 1;
+  grid-column: 1 / 8;
+  grid-row: 1;
+}
+
+.component-hero-image-collage-v1 > img,
+.component-services-overlapping-media-v1 .card-grid {
+  grid-column: 6 / -1;
+  grid-row: 1;
+  box-shadow: var(--site-shadow);
+}
+
+.component-intro-split-v1,
+.component-intro-with-image-v1,
+.component-intro-with-points-v1,
+.component-benefits-split-v1,
+.component-faq-split-v1,
+.component-hours-split-v1 {
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+  align-items: start;
+}
+
+.component-services-featured-primary-v1 .service-card:first-child,
+.component-service-grid-featured-v1 .service-card:first-child,
+.component-team-featured-lead-v1 article:first-child,
+.component-gallery-featured-v1 img:first-child,
+.component-results-featured-v1 figure:first-child,
+.component-testimonials-featured-v1 figure:first-child,
+.component-pricing-featured-v1 li:first-child {
+  grid-column: span 2;
+  color: #fff;
+  background: var(--site-primary);
+}
+
+.component-services-horizontal-v1 .card-grid,
+.component-process-horizontal-v1 ol,
+.component-trust-strip-v1 ul {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(17rem, 1fr);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline proximity;
+  scrollbar-width: thin;
+}
+
+.component-services-horizontal-v1 .card-grid > *,
+.component-process-horizontal-v1 li,
+.component-trust-strip-v1 li {
+  scroll-snap-align: start;
+}
+
+.component-services-minimal-list-v1 .card-grid,
+.component-service-grid-compact-v1 .card-grid,
+.component-team-compact-v1 .card-grid {
+  grid-template-columns: 1fr;
+}
+
+.component-services-minimal-list-v1 .service-card,
+.component-service-grid-compact-v1 .service-card,
+.component-team-compact-v1 article {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.3fr) minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.component-service-detail-summary-card-v1,
+.component-profile-card-v1,
+.component-location-details-card-v1,
+.component-hours-card-v1,
+.component-contact-cards-v1,
+.component-cta-card-v1 {
+  padding: clamp(2rem, 6vw, 5rem);
+  border: 1px solid var(--site-border);
+  border-radius: var(--site-card-radius, var(--site-radius));
+  background: var(--site-surface);
+  box-shadow: var(--site-shadow);
+}
+
+.component-service-detail-luxury-v1,
+.component-hero-minimal-luxury-v1 {
+  background: linear-gradient(135deg, var(--site-background), var(--site-muted-surface, var(--site-surface)));
+}
+
+.component-service-detail-information-rich-v1,
+.component-richtext-guide-v1,
+.component-richtext-policy-v1 {
+  max-width: 70rem;
+  margin-inline: auto;
+}
+
+.component-benefits-numbered-v1 .feature-grid,
+.component-process-numbered-cards-v1 ol {
+  counter-reset: composition-item;
+}
+
+.component-benefits-numbered-v1 li,
+.component-process-numbered-cards-v1 li {
+  counter-increment: composition-item;
+}
+
+.component-benefits-numbered-v1 li::before,
+.component-process-numbered-cards-v1 li::before {
+  display: block;
+  margin-block-end: 1rem;
+  color: var(--site-accent);
+  font: 600 2rem/1 var(--site-heading-font);
+  content: counter(composition-item, decimal-leading-zero);
+}
+
+.component-benefits-large-statements-v1 .feature-grid {
+  grid-template-columns: 1fr;
+}
+
+.component-benefits-large-statements-v1 h3,
+.component-trust-statements-v1 strong {
+  font: var(--site-heading-weight, 600) clamp(1.5rem, 4vw, 3.25rem)/1.1 var(--site-heading-font);
+}
+
+.component-process-timeline-v1 ol,
+.component-process-alternating-v1 ol {
+  position: relative;
+  display: grid;
+  gap: 2rem;
+}
+
+.component-process-timeline-v1 li {
+  margin-inline-start: 2rem;
+  border-inline-start: 2px solid var(--site-accent);
+}
+
+.component-process-alternating-v1 li:nth-child(even) {
+  margin-inline-start: clamp(0rem, 12vw, 10rem);
+}
+
+.component-pricing-service-menu-v1 li,
+.component-pricing-list-v1 li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-block-end: 1px solid var(--site-border);
+  background: transparent;
+  box-shadow: none;
+}
+
+.component-team-image-led-v1 img,
+.component-profile-image-led-v1 img,
+.component-service-detail-image-led-v1 img {
+  width: 100%;
+  min-height: 34rem;
+  object-fit: cover;
+}
+
+.component-gallery-masonry-v1 .image-grid,
+.component-gallery-collage-v1 .image-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-flow: dense;
+}
+
+.component-gallery-masonry-v1 img,
+.component-gallery-collage-v1 img {
+  grid-column: span 4;
+}
+
+.component-gallery-masonry-v1 img:nth-child(4n + 1),
+.component-gallery-collage-v1 img:nth-child(3n + 1) {
+  grid-column: span 7;
+  grid-row: span 2;
+}
+
+.component-results-before-after-v1 .result-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.component-testimonials-quote-led-v1 blockquote,
+.component-testimonials-featured-v1 blockquote {
+  font: 400 clamp(1.5rem, 3vw, 2.5rem)/1.25 var(--site-heading-font);
+}
+
+.component-faq-grouped-v1 details,
+.component-faq-accordion-v1 details {
+  border-block-end: 1px solid var(--site-border);
+}
+
+.component-location-map-led-v1::after {
+  display: grid;
+  min-height: 18rem;
+  place-items: center;
+  border: 1px dashed var(--site-border);
+  border-radius: var(--site-card-radius, var(--site-radius));
+  color: var(--site-muted);
+  background: var(--site-muted-surface, var(--site-surface));
+  content: "Map is opened through the verified location action";
+}
+
+.component-contact-minimal-v1,
+.component-hours-simple-v1,
+.component-richtext-narrow-v1 {
+  max-width: 52rem;
+  margin-inline: auto;
+}
+
+.component-cta-banner-v1,
+.component-cta-high-impact-v1,
+.component-footer-booking-led-v1 {
+  color: #fff;
+  background: var(--site-primary);
+}
+
+.component-cta-high-impact-v1 {
+  min-height: 30rem;
+}
+
+.component-footer-multi-column-v1,
+.component-footer-large-brand-v1 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(10rem, 0.75fr));
+  align-items: start;
+}
+
+.component-footer-large-brand-v1 > div > strong {
+  font: 500 clamp(2.5rem, 7vw, 6rem)/1 var(--site-display-font, var(--site-heading-font));
+  letter-spacing: var(--site-display-tracking, -0.04em);
+}
+
+.component-footer-compact-v1 {
+  padding-block: 2rem;
+}
+
+@media (min-width: 769px) {
+  .site-layout:has(.component-hero-full-bleed-v1) .component-header-transparent-overlay-v1 {
+    margin-block-end: -6rem;
+    position: relative;
+    z-index: 2;
+  }
+
+  .site-layout:has(.site-section:nth-child(even)).editorial-layout .site-section:nth-child(even),
+  .site-layout:has(.site-section:nth-child(even)).grid-layout .site-section:nth-child(even) {
+    background: color-mix(in srgb, var(--site-surface-alt, var(--site-surface)) 65%, transparent);
+  }
+}
+
+@media (max-width: 768px) {
+  .component-hero-split-image-v1,
+  .component-hero-service-v1,
+  .component-hero-profile-v1,
+  .component-hero-location-v1,
+  .component-hero-layered-media-v1,
+  .component-service-detail-split-v1,
+  .component-profile-split-v1,
+  .component-location-media-split-v1,
+  .component-contact-split-v1,
+  .component-cta-split-v1,
+  .component-intro-split-v1,
+  .component-intro-with-image-v1,
+  .component-intro-with-points-v1,
+  .component-benefits-split-v1,
+  .component-faq-split-v1,
+  .component-hours-split-v1,
+  .component-footer-multi-column-v1,
+  .component-footer-large-brand-v1 {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
+  }
+
+  .component-hero-image-collage-v1,
+  .component-gallery-collage-v1,
+  .component-services-overlapping-media-v1 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .component-hero-image-collage-v1 .section-copy,
+  .component-hero-image-collage-v1 > img,
+  .component-services-overlapping-media-v1 > h2,
+  .component-services-overlapping-media-v1 .card-grid {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .component-services-featured-primary-v1 .service-card:first-child,
+  .component-service-grid-featured-v1 .service-card:first-child,
+  .component-team-featured-lead-v1 article:first-child,
+  .component-gallery-featured-v1 img:first-child,
+  .component-results-featured-v1 figure:first-child,
+  .component-testimonials-featured-v1 figure:first-child,
+  .component-pricing-featured-v1 li:first-child {
+    grid-column: auto;
+  }
+
+  .component-services-minimal-list-v1 .service-card,
+  .component-service-grid-compact-v1 .service-card,
+  .component-team-compact-v1 article {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .component-gallery-masonry-v1 img,
+  .component-gallery-collage-v1 img,
+  .component-gallery-masonry-v1 img:nth-child(4n + 1),
+  .component-gallery-collage-v1 img:nth-child(3n + 1) {
+    grid-column: span 12;
+    grid-row: auto;
+  }
+
+  .component-hero-split-image-v1 > img,
+  .component-hero-service-v1 > img,
+  .component-hero-profile-v1 > img,
+  .component-hero-location-v1 > img,
+  .component-service-detail-split-v1 > img,
+  .component-profile-split-v1 > img,
+  .component-location-media-split-v1 > img {
+    min-height: 20rem;
+    max-height: 32rem;
+  }
+}

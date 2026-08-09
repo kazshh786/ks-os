@@ -20,6 +20,7 @@ import {
   siteQualityFindings,
   siteQualityPageRuns,
   siteQualityRuns,
+  siteGenerationRuns,
   siteRenderSnapshots,
   siteReviewCycles,
   sites,
@@ -36,7 +37,7 @@ import {
   type SiteJobLeaseContext,
   type SiteJobResult,
 } from '@ks-os/site-jobs';
-import { isReviewableGenerationStatus } from '@ks-os/site-generation';
+import { isQualityAuditableGenerationStatus } from '@ks-os/site-generation';
 import {
   SITE_QUALITY_ENGINE_VERSION,
   SITE_QUALITY_VIEWPORTS,
@@ -63,6 +64,7 @@ import type {
   SiteQualityJobExecutor,
   SiteQualityJobType,
 } from './handlers.js';
+import { finalizeProvisionedWorkspace } from './provisioning-finalization.js';
 
 type Database = ReturnType<typeof getDatabase>;
 type QualityConfig = SiteWorkerConfig['quality'];
@@ -382,6 +384,7 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
       blockingCount: summary.blockingCount,
       warningCount: summary.warningCount,
       pageCount: pageTargets.length,
+      promotedGenerationToReview: summary.promotedToReview,
       publicationPerformed: false,
     });
     return {
@@ -460,7 +463,7 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
 
   private async assertPreconditions(run: QualityRunContext) {
     if (
-      !isReviewableGenerationStatus(run.versionGenerationStatus)
+      !isQualityAuditableGenerationStatus(run.versionGenerationStatus)
       || !run.currentVersionDigest
       || run.currentVersionDigest.length !== 64
       || run.versionStatus === 'SUPERSEDED'
@@ -1195,7 +1198,7 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
   }
 
   private async finaliseRun(run: QualityRunContext) {
-    const [findings, checks] = await Promise.all([
+    const [findings, checks, browserEvidence] = await Promise.all([
       this.database.select({
         publicationEffect: siteQualityFindings.publicationEffect,
         status: siteQualityFindings.status,
@@ -1209,6 +1212,13 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
       }).from(siteQualityChecks).where(
         eq(siteQualityChecks.qualityRunId, run.id),
       ),
+      this.database.select({
+        pageId: siteQualityEvidence.pageId,
+        viewport: siteQualityEvidence.viewport,
+      }).from(siteQualityEvidence).where(and(
+        eq(siteQualityEvidence.qualityRunId, run.id),
+        eq(siteQualityEvidence.evidenceType, 'BROWSER_SUMMARY'),
+      )),
     ]);
     const current = findings.filter(finding =>
       currentFindingStatuses.includes(
@@ -1225,6 +1235,10 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
     ).length;
     const nonWaivableCount = current.filter(
       finding => !finding.waivable || isNonWaivableFinding(finding.code),
+    ).length;
+    const preReviewBlockingCount = current.filter(
+      finding => finding.publicationEffect === 'BLOCK'
+        && finding.code !== 'HUMAN_REVIEW_REQUIRED',
     ).length;
     const gateStatus = blockingCount > 0
       ? 'BLOCKED'
@@ -1244,7 +1258,38 @@ export class PostgresSiteQualityExecutor implements SiteQualityJobExecutor {
       completedAt,
       updatedAt: completedAt,
     }).where(eq(siteQualityRuns.id, run.id));
-    return { gateStatus, blockingCount, warningCount };
+    const promotionEligible = run.auditType === 'FULL_SITE_QUALITY'
+      && Boolean(run.generationRunId)
+      && browserEvidence.length > 0
+      && preReviewBlockingCount === 0;
+    let promotedToReview = false;
+    if (promotionEligible) {
+      promotedToReview = await this.database.transaction(async transaction => {
+        const promotedRuns = await transaction.update(siteGenerationRuns).set({
+          status: 'READY_FOR_REVIEW',
+          updatedAt: completedAt,
+        }).where(and(
+          eq(siteGenerationRuns.id, run.generationRunId!),
+          eq(siteGenerationRuns.status, 'DESIGN_COMPLETE'),
+        )).returning({ id: siteGenerationRuns.id });
+        if (!promotedRuns.length) return false;
+        const promotedVersions = await transaction.update(siteVersions).set({
+          generationStatus: 'READY_FOR_REVIEW',
+          updatedAt: completedAt,
+        }).where(and(
+          eq(siteVersions.id, run.siteVersionId),
+          eq(siteVersions.generationStatus, 'DESIGN_COMPLETE'),
+        )).returning({ id: siteVersions.id });
+        if (!promotedVersions.length) {
+          throw new Error('The generation run and site version lifecycle states diverged during quality promotion.');
+        }
+        return true;
+      });
+      if (promotedToReview) {
+        await finalizeProvisionedWorkspace(this.database, run.generationRunId!);
+      }
+    }
+    return { gateStatus, blockingCount, warningCount, promotedToReview };
   }
 
   private async failRun(run: QualityRunContext, error: unknown) {
