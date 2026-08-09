@@ -1,4 +1,9 @@
+import { GoogleAuth } from 'google-auth-library';
 import type { z } from 'zod';
+import {
+  isSiteGenerationProviderReady,
+  type SiteGenerationConfig,
+} from './config.js';
 
 export type ProviderFailureKind =
   | 'RETRYABLE_RATE_LIMIT'
@@ -250,6 +255,297 @@ export class GeminiSiteGenerationProvider implements SiteGenerationProvider {
       outputCharacterCount: text.length,
     };
   }
+}
+
+export interface VertexGeminiProviderOptions {
+  project: string;
+  location: string;
+  modelKey: string;
+  requestTimeoutMs: number;
+  temperature?: number;
+  endpoint?: string;
+  googleAuthFactory?: (options: VertexGoogleAuthOptions) => VertexGoogleAuthClient;
+  fetchImplementation?: typeof fetch;
+}
+
+export interface VertexGoogleAuthOptions {
+  projectId: string;
+  scopes: string[];
+}
+
+export interface VertexGoogleAuthClient {
+  getRequestHeaders(url?: string): Promise<
+    | { get(name: string): string | null }
+    | Record<string, string | undefined>
+  >;
+}
+
+interface VertexGeminiResponse {
+  responseId?: string;
+  name?: string;
+  modelVersion?: string;
+  promptFeedback?: { blockReason?: string };
+  candidates?: Array<{
+    finishReason?: string;
+    content?: { parts?: Array<{ text?: string }> };
+  }>;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
+}
+
+function withoutTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
+}
+
+/** Server-only Vertex Gemini adapter using Application Default Credentials. */
+export class VertexGeminiSiteGenerationProvider implements SiteGenerationProvider {
+  readonly providerKey = 'vertex-gemini';
+  readonly modelKey: string;
+  private readonly fetchImplementation: typeof fetch;
+  private readonly googleAuth: VertexGoogleAuthClient;
+
+  constructor(private readonly options: VertexGeminiProviderOptions) {
+    if (!options.project.trim()) throw new Error('Vertex project is required.');
+    if (!options.location.trim()) throw new Error('Vertex location is required.');
+    if (!/^[A-Za-z0-9._-]{2,160}$/.test(options.modelKey)) {
+      throw new Error('Vertex Gemini model key is invalid.');
+    }
+    this.modelKey = options.modelKey;
+    this.fetchImplementation = options.fetchImplementation ?? fetch;
+    const authOptions = {
+      projectId: options.project,
+      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+    };
+    this.googleAuth = options.googleAuthFactory?.(authOptions) ?? new GoogleAuth(authOptions);
+  }
+
+  private async getAuthorizationHeader(url: string): Promise<string> {
+    try {
+      const headers = await this.googleAuth.getRequestHeaders(url);
+      const getHeader = (headers as { get?: (name: string) => string | null }).get;
+      const headerRecord = headers as Record<string, string | undefined>;
+      const authorization = typeof getHeader === 'function'
+        ? getHeader.call(headers, 'authorization')
+        : headerRecord.authorization ?? headerRecord.Authorization;
+
+      if (typeof authorization === 'string' && authorization.trim()) {
+        return authorization.trim();
+      }
+    } catch {
+      // The stable error below avoids leaking credential paths or provider details.
+    }
+
+    throw new SiteGenerationProviderError(
+      'TERMINAL_PROVIDER_FAILURE',
+      'Application Default Credentials could not authorize the Vertex AI request.',
+    );
+  }
+
+  async generateStructuredOutput<T>(
+    request: StructuredGenerationRequest<T>,
+  ): Promise<StructuredGenerationResponse<T>> {
+    const timeout = AbortSignal.timeout(this.options.requestTimeoutMs);
+    const signal = request.signal
+      ? AbortSignal.any([request.signal, timeout])
+      : timeout;
+
+    if (signal.aborted) {
+      const cancelled = request.signal?.aborted;
+      throw new SiteGenerationProviderError(
+        cancelled ? 'CANCELLED' : 'TIMEOUT',
+        cancelled ? 'Generation was cancelled.' : 'The provider request timed out.',
+      );
+    }
+
+    const endpointPath = `/v1/projects/${encodeURIComponent(this.options.project)}/locations/${encodeURIComponent(this.options.location)}/publishers/google/models/${encodeURIComponent(this.modelKey)}:generateContent`;
+    let url: string;
+    if (this.options.endpoint) {
+      const trimmedEndpoint = withoutTrailingSlashes(this.options.endpoint);
+      if (trimmedEndpoint.includes('/projects/') || trimmedEndpoint.endsWith(':generateContent')) {
+        url = trimmedEndpoint;
+      } else {
+        url = `${trimmedEndpoint}${endpointPath}`;
+      }
+    } else {
+      const host = this.options.location === 'global'
+        ? 'aiplatform.googleapis.com'
+        : `${encodeURIComponent(this.options.location)}-aiplatform.googleapis.com`;
+      url = `https://${host}${endpointPath}`;
+    }
+
+    let authorization: string;
+    try {
+      authorization = await this.getAuthorizationHeader(url);
+    } catch (error) {
+      if (signal.aborted) {
+        const cancelled = request.signal?.aborted;
+        throw new SiteGenerationProviderError(
+          cancelled ? 'CANCELLED' : 'TIMEOUT',
+          cancelled ? 'Generation was cancelled.' : 'The provider request timed out.',
+        );
+      }
+      if (error instanceof SiteGenerationProviderError) throw error;
+      throw new SiteGenerationProviderError(
+        'TERMINAL_PROVIDER_FAILURE',
+        'Application Default Credentials could not authorize the Vertex AI request.',
+      );
+    }
+
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization,
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: request.prompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseJsonSchema: request.responseJsonSchema,
+            candidateCount: 1,
+            ...(this.options.temperature === undefined
+              ? {}
+              : { temperature: this.options.temperature }),
+          },
+        }),
+        signal,
+      });
+    } catch (error) {
+      if (signal.aborted) {
+        const cancelled = request.signal?.aborted;
+        throw new SiteGenerationProviderError(
+          cancelled ? 'CANCELLED' : 'TIMEOUT',
+          cancelled ? 'Generation was cancelled.' : 'The provider request timed out.',
+        );
+      }
+      throw new SiteGenerationProviderError(
+        'RETRYABLE_EXTERNAL_FAILURE',
+        'The generation provider could not be reached.',
+      );
+    }
+
+    if (!response.ok) {
+      const retryable = response.status === 429 || response.status >= 500;
+      const retryAfterHeader = response.headers.get('retry-after');
+      const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : undefined;
+      const kind: ProviderFailureKind = response.status === 429
+        ? 'RETRYABLE_RATE_LIMIT'
+        : retryable
+          ? 'RETRYABLE_EXTERNAL_FAILURE'
+          : 'TERMINAL_PROVIDER_FAILURE';
+      throw new SiteGenerationProviderError(
+        kind,
+        `The generation provider rejected the request (${response.status}).`,
+        Number.isFinite(retryAfter) ? (retryAfter as number) * 1_000 : undefined,
+      );
+    }
+
+    const envelope = await response.json() as VertexGeminiResponse;
+    const text = envelope.candidates?.[0]?.content?.parts
+      ?.map(part => part.text ?? '')
+      .join('')
+      .trim();
+
+    if (!text || envelope.promptFeedback?.blockReason) {
+      throw new SiteGenerationProviderError(
+        'TERMINAL_PROVIDER_FAILURE',
+        'The generation provider returned no usable structured output.',
+      );
+    }
+
+    if (text.length > request.maxOutputCharacters) {
+      throw new SiteGenerationProviderError(
+        'TERMINAL_INVALID_OUTPUT',
+        'The provider output exceeded the configured safe size.',
+      );
+    }
+
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(text);
+    } catch {
+      throw new SiteGenerationProviderError(
+        'TERMINAL_INVALID_OUTPUT',
+        'The provider output was not valid JSON.',
+      );
+    }
+
+    const parsed = request.outputSchema.safeParse(decoded);
+    if (!parsed.success) {
+      throw new SiteGenerationProviderError(
+        'TERMINAL_INVALID_OUTPUT',
+        'The provider output did not match the controlled schema.',
+      );
+    }
+
+    return {
+      value: parsed.data,
+      providerKey: this.providerKey,
+      modelKey: this.modelKey,
+      responseReference: envelope.responseId ?? envelope.name,
+      modelVersion: envelope.modelVersion,
+      usage: {
+        inputTokens: envelope.usageMetadata?.promptTokenCount,
+        outputTokens: envelope.usageMetadata?.candidatesTokenCount,
+        totalTokens: envelope.usageMetadata?.totalTokenCount,
+      },
+      outputCharacterCount: text.length,
+    };
+  }
+}
+
+export function createSiteGenerationProvider(
+  config: SiteGenerationConfig,
+  options?: {
+    googleAuthFactory?: (options: VertexGoogleAuthOptions) => VertexGoogleAuthClient;
+    fetchImplementation?: typeof fetch;
+  },
+): SiteGenerationProvider {
+  if (!isSiteGenerationProviderReady(config) || !config.model) {
+    throw new Error('A complete enabled generation configuration is required.');
+  }
+
+  let baseProvider: SiteGenerationProvider;
+
+  if (config.provider === 'vertex-gemini') {
+    if (!config.googleCloudProject || !config.googleCloudLocation) {
+      throw new Error('GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION are required for vertex-gemini.');
+    }
+    baseProvider = new VertexGeminiSiteGenerationProvider({
+      project: config.googleCloudProject,
+      location: config.googleCloudLocation,
+      modelKey: config.model,
+      requestTimeoutMs: config.requestTimeoutMs,
+      temperature: config.temperature,
+      googleAuthFactory: options?.googleAuthFactory,
+      fetchImplementation: options?.fetchImplementation,
+    });
+  } else if (config.provider === 'gemini') {
+    if (!config.apiKey) {
+      throw new Error('SITE_AI_API_KEY is required for gemini.');
+    }
+    baseProvider = new GeminiSiteGenerationProvider({
+      apiKey: config.apiKey,
+      modelKey: config.model,
+      requestTimeoutMs: config.requestTimeoutMs,
+      temperature: config.temperature,
+      fetchImplementation: options?.fetchImplementation,
+    });
+  } else {
+    throw new Error(`Unsupported SITE_AI_PROVIDER: ${(config as { provider: string }).provider}`);
+  }
+
+  return new ConcurrencyLimitedSiteGenerationProvider(
+    baseProvider,
+    config.maxConcurrentRequests,
+  );
 }
 
 export type FakeProviderFixture =

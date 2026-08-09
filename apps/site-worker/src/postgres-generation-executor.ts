@@ -56,10 +56,9 @@ import {
   users,
 } from '@ks-os/database';
 import {
-  ConcurrencyLimitedSiteGenerationProvider,
+  createSiteGenerationProvider,
   GeneratedPageSchema,
   GenerationPlanSchema,
-  GeminiSiteGenerationProvider,
   SiteGenerationProviderError,
   TemplateGenerationConstraintSchema,
   availableBusinessDataKeys,
@@ -699,18 +698,7 @@ export function createConfiguredSiteGenerationExecutor(
   database: Database,
   config: SiteWorkerConfig['generation'],
 ): SiteGenerationJobExecutor {
-  if (!config.enabled || !config.apiKey || !config.model) {
-    throw new Error('A complete enabled generation configuration is required.');
-  }
-  const provider = new ConcurrencyLimitedSiteGenerationProvider(
-    new GeminiSiteGenerationProvider({
-      apiKey: config.apiKey,
-      modelKey: config.model,
-      requestTimeoutMs: config.requestTimeoutMs,
-      temperature: config.temperature,
-    }),
-    config.maxConcurrentRequests,
-  );
+  const provider = createSiteGenerationProvider(config);
   return new PostgresSiteGenerationExecutor(database, provider, config);
 }
 
