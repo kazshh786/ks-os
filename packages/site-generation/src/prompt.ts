@@ -1,12 +1,17 @@
 import type { SiteGenerationKnowledgeContext } from '@ks-os/site-knowledge';
 import type {
+  AssetCoveragePlan,
   BlueprintGenerationPageSchema,
+  PageCompositionPlan,
+  SiteCompositionStrategy,
   TemplateGenerationConstraint,
   VerifiedBusinessFacts,
 } from './contracts.js';
 import type { z } from 'zod';
 import { selectGenerationSafeFacts } from './facts.js';
 import { generationDigest, stableGenerationStringify } from './normalization.js';
+import { componentPromptMetadata } from './composition.js';
+import { getSiteComponent } from '@ks-os/site-components';
 
 type BlueprintPage = z.infer<typeof BlueprintGenerationPageSchema>;
 
@@ -16,6 +21,10 @@ export interface ComposeGenerationContextInput {
   facts: VerifiedBusinessFacts;
   knowledge: SiteGenerationKnowledgeContext;
   outputSchemaDescription: Record<string, unknown>;
+  siteStrategy?: SiteCompositionStrategy;
+  pageCompositionPlan?: PageCompositionPlan;
+  assetCoveragePlan?: AssetCoveragePlan;
+  lockedComponentSequence?: readonly { sectionType: string; componentKey?: string }[];
   repair?: {
     attempt: number;
     findings: readonly { code: string; message: string }[];
@@ -32,6 +41,10 @@ const SYSTEM_CONTRACT = [
 ].join(' ');
 
 export function composeGenerationPrompt(input: ComposeGenerationContextInput) {
+  const selectedComponentContracts = input.pageCompositionPlan?.selectedComponents
+    .map(selection => getSiteComponent(selection.componentKey))
+    .filter(component => component !== null)
+    .map(componentPromptMetadata) ?? [];
   const context = {
     systemGenerationContract: SYSTEM_CONTRACT,
     platformRules: {
@@ -43,6 +56,12 @@ export function composeGenerationPrompt(input: ComposeGenerationContextInput) {
     pageSchema: input.outputSchemaDescription,
     templateLayoutConstraints: input.template,
     approvedBlueprintPage: input.page,
+    siteCompositionStrategy: input.siteStrategy,
+    pageCompositionPlan: input.pageCompositionPlan,
+    selectedComponentContracts,
+    pageAssetAssignments: input.assetCoveragePlan?.assignments
+      .filter(assignment => assignment.pageReference === input.page.pageReference),
+    lockedComponentSequence: input.lockedComponentSequence,
     verifiedBusinessFacts: selectGenerationSafeFacts(input.facts),
     pageAndSectionPlaybooks: input.knowledge.pagePlaybook,
     applicableExpertRuleIds: input.knowledge.applicableRuleIds,
@@ -54,6 +73,7 @@ export function composeGenerationPrompt(input: ComposeGenerationContextInput) {
     requiredOutputContract: input.outputSchemaDescription,
     prohibitedClaimsAndBehaviours: input.knowledge.prohibitedBehaviours,
     missingBusinessDataRequirements: input.knowledge.missingBusinessDataRequirements,
+    componentOutputRule: 'Every generated section must preserve its planned semantic type and exact allow-listed componentKey. Preview placeholders remain findings and never become asset references.',
     repair: input.repair,
   };
   const prompt = stableGenerationStringify(context);

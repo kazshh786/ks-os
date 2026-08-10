@@ -90,7 +90,7 @@ const renderers = {
   'location-detail-v1': {
     key: 'location-detail-v1',
     version: 1,
-    pageTypes: ['LOCATION_DETAIL', 'CONTACT'],
+    pageTypes: ['LOCATION_HUB', 'LOCATION_DETAIL', 'CONTACT'],
     render: renderEditorial,
   },
   'contact-v1': {

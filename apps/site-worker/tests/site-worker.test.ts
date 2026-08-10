@@ -1368,6 +1368,14 @@ test('67c. completed generation persists a validated digest-bound preview withou
   );
 });
 
+test('67d. template manifest pins V1 versus V2 generation behavior', () => {
+  assert.match(generationExecutorSource, /templateManifest: templateVersions\.manifestJson/);
+  assert.match(generationExecutorSource, /function generationPipelineVersion/);
+  assert.match(generationExecutorSource, /manifest\.componentRegistryVersion === 2/);
+  assert.match(generationExecutorSource, /pipelineVersion: runtime\.pipelineVersion/);
+  assert.match(generationExecutorSource, /pipelineVersion === 2[\s\S]*getNativeLayoutManifest/);
+});
+
 test('68. handler registry rejects duplicate registration', () => {
   const registry = new SiteJobHandlerRegistry();
   const handler: SiteJobHandler = {

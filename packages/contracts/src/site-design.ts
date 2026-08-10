@@ -6,6 +6,64 @@ export const SiteDesignPresetKeySchema = z.enum([
 ]);
 export type SiteDesignPresetKey = z.infer<typeof SiteDesignPresetKeySchema>;
 
+export const SiteDesignTokensV2EditorSchema = z.object({
+  designVersion: z.literal(2),
+  typography: z.object({
+    displayFont: z.enum(['SYSTEM_SANS', 'SYSTEM_SERIF', 'EDITORIAL_SERIF']),
+    headingFont: z.enum(['SYSTEM_SANS', 'SYSTEM_SERIF', 'EDITORIAL_SERIF']),
+    bodyFont: z.enum(['SYSTEM_SANS', 'SYSTEM_SERIF']),
+    displayScale: z.enum(['RESTRAINED', 'BALANCED', 'DRAMATIC']),
+    headingScale: z.enum(['COMPACT', 'BALANCED', 'EXPRESSIVE']),
+    bodyScale: z.enum(['COMPACT', 'STANDARD', 'GENEROUS']),
+    headingWeight: z.enum(['REGULAR', 'MEDIUM', 'SEMIBOLD', 'BOLD']),
+    bodyWeight: z.enum(['REGULAR', 'MEDIUM']),
+    displayTracking: z.enum(['TIGHT', 'NORMAL', 'WIDE']),
+    headingTracking: z.enum(['TIGHT', 'NORMAL', 'WIDE']),
+    headingLineHeight: z.enum(['TIGHT', 'STANDARD', 'RELAXED']),
+    bodyLineHeight: z.enum(['STANDARD', 'RELAXED', 'SPACIOUS']),
+  }).strict(),
+  layout: z.object({
+    containerWidths: z.enum(['COMPACT_RANGE', 'BALANCED_RANGE', 'EXPANSIVE_RANGE']),
+    pageGutter: z.enum(['COMPACT', 'STANDARD', 'GENEROUS']),
+    sectionSpacing: z.enum(['COMPACT', 'STANDARD', 'EXPANSIVE']),
+    contentSpacing: z.enum(['TIGHT', 'STANDARD', 'RELAXED']),
+    gridColumns: z.enum(['TEN', 'TWELVE', 'SIXTEEN']),
+    gridGap: z.enum(['TIGHT', 'STANDARD', 'GENEROUS']),
+    textMeasure: z.enum(['NARROW', 'READABLE', 'WIDE']),
+  }).strict(),
+  shape: z.object({
+    radiusScale: z.enum(['NONE', 'SUBTLE', 'SOFT', 'ROUNDED']),
+    cardRadius: z.enum(['NONE', 'SMALL', 'MEDIUM', 'LARGE']),
+    buttonRadius: z.enum(['SQUARE', 'SOFT', 'PILL']),
+    imageRadius: z.enum(['NONE', 'SMALL', 'MEDIUM', 'LARGE']),
+  }).strict(),
+  surface: z.object({
+    background: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    surface: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    surfaceAlt: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    border: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    mutedSurface: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  }).strict(),
+  elevation: z.enum(['NONE', 'SUBTLE', 'MEDIUM', 'STRONG']),
+  buttons: z.object({
+    height: z.enum(['COMPACT', 'STANDARD', 'LARGE']),
+    padding: z.enum(['COMPACT', 'STANDARD', 'GENEROUS']),
+    weight: z.enum(['MEDIUM', 'SEMIBOLD', 'BOLD']),
+    primaryStyle: z.enum(['SOLID', 'OUTLINE', 'SOFT', 'HIGH_CONTRAST']),
+    secondaryStyle: z.enum(['TEXT', 'OUTLINE', 'SOFT']),
+  }).strict(),
+  imagery: z.object({
+    defaultAspectRatio: z.enum(['SQUARE', 'FOUR_THREE', 'THREE_TWO', 'SIXTEEN_NINE']),
+    portraitAspectRatio: z.enum(['THREE_FOUR', 'FOUR_FIVE', 'TWO_THREE']),
+    serviceAspectRatio: z.enum(['SQUARE', 'FOUR_THREE', 'THREE_TWO', 'SIXTEEN_NINE']),
+    cropMode: z.enum(['COVER', 'CONTAIN']),
+    focalBehaviour: z.enum(['ASSET_FOCAL_POINT', 'CENTRE', 'TOP']),
+    imageTreatment: z.enum(['NATURAL', 'EDITORIAL', 'SOFTENED', 'HIGH_CONTRAST', 'MONOCHROME']),
+  }).strict(),
+  sectionRhythm: z.enum(['CONTINUOUS', 'ALTERNATING_SURFACES', 'EDITORIAL', 'HIGH_CONTRAST', 'SOFT_LUXURY']),
+}).strict();
+export type SiteDesignTokensV2Editor = z.infer<typeof SiteDesignTokensV2EditorSchema>;
+
 export const SiteThemeEditorSchema = z.object({
   primaryColour: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   secondaryColour: z.string().regex(/^#[0-9a-fA-F]{6}$/),
@@ -23,6 +81,7 @@ export const SiteThemeEditorSchema = z.object({
   buttonStyle: z.enum(['SOLID', 'OUTLINE', 'SOFT']),
   imageStyle: z.enum(['SQUARE', 'ROUNDED', 'EDITORIAL']),
   motionPreference: z.enum(['NONE', 'REDUCED', 'STANDARD']),
+  designTokens: SiteDesignTokensV2EditorSchema.optional(),
 }).strict();
 export type SiteThemeEditor = z.infer<typeof SiteThemeEditorSchema>;
 
@@ -39,6 +98,44 @@ export type SiteStudioSectionVariant = z.infer<typeof SiteStudioSectionVariantSc
 export const UpdateSiteStudioSectionVariantSchema = z.object({
   variant: SiteStudioSectionVariantSchema,
 }).strict();
+
+export const SiteComponentKeySchema = z.string().trim().min(1).max(120)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$/);
+export const UpdateSiteStudioSectionComponentSchema = z.object({
+  componentKey: SiteComponentKeySchema,
+}).strict();
+
+export const UpdateSiteStudioSectionContentSchema = z.object({
+  patch: z.object({
+    heading: z.string().trim().min(1).max(160).optional(),
+    body: z.string().trim().min(1).max(4_000).optional(),
+    eyebrow: z.string().trim().min(1).max(160).optional(),
+    message: z.string().trim().min(1).max(160).optional(),
+    legalText: z.string().trim().min(1).max(500).optional(),
+    imageAssetReference: z.string().uuid().optional(),
+  }).strict().refine(patch => Object.keys(patch).length > 0, {
+    message: 'At least one controlled section content field is required.',
+  }),
+}).strict().superRefine((input, context) => {
+  const strings: string[] = [];
+  const visit = (value: unknown) => {
+    if (typeof value === 'string') strings.push(value);
+    else if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === 'object') Object.values(value).forEach(visit);
+  };
+  visit(input.patch);
+  if (strings.some(value => /(?:<\/?(?:script|style|iframe|object|embed)\b|javascript:|data:text\/html|\bon\w+\s*=|```|@import\b)/i.test(value))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Section content cannot contain executable markup or code.' });
+  }
+});
+
+export const ReorderSiteStudioSectionsSchema = z.object({
+  sectionReferences: z.array(z.string().uuid()).min(1).max(100),
+}).strict().superRefine((input, context) => {
+  if (new Set(input.sectionReferences).size !== input.sectionReferences.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Section order cannot contain duplicates.' });
+  }
+});
 
 export interface SiteDesignPreset {
   key: SiteDesignPresetKey;

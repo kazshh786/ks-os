@@ -16,6 +16,8 @@
     "build:site-worker": "pnpm --filter site-worker build",
     "typecheck": "pnpm --filter \"*\" typecheck && pnpm run playground:website:bootstrap:typecheck && pnpm run cloudflare:types:check",
     "lint": "pnpm --filter \"*\" lint",
+    "audit:site-generation-v2": "pnpm --filter @ks-os/site-generation build && node scripts/quality/site-generation-v2-audit.mjs",
+    "fixtures:site-generation-v2": "pnpm --filter site-worker exec tsx ../../scripts/quality/render-v2-visual-fixture.ts",
     "test": "pnpm --filter \"*\" test",
     "verify": "pnpm --filter \"*\" verify",
     "db:migrations:status": "node --env-file-if-exists=.env scripts/database/migrate.mjs --status",

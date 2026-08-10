@@ -14,6 +14,7 @@ import {
   siteThemeAccessibilityIssues,
 } from '@ks-os/contracts';
 import { SiteSectionTypeSchema } from '@ks-os/site-schema';
+import { getSiteComponent, listSiteComponents, SITE_COMPONENT_REGISTRY_VERSION } from '@ks-os/site-components';
 import {
   createSiteGenerationProvider,
   isSiteGenerationProviderReady,
@@ -64,11 +65,18 @@ const GeneratedDesignSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(40)).min(1).max(12),
   theme: SiteThemeEditorSchema,
   definition: z.object({
+    registryVersion: z.literal(2),
+    componentKey: z.string().trim().min(1).max(120)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$/)
+      .optional(),
     defaultSectionVariant: SiteStudioSectionVariantSchema,
     variantRules: z.record(SiteStudioSectionVariantSchema),
     conversionGoal: z.string().trim().min(10).max(500),
     sectionRecipe: z.object({
       sectionType: SiteSectionTypeSchema,
+      componentKey: z.string().trim().min(1).max(120)
+        .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$/)
+        .optional(),
       variant: SiteStudioSectionVariantSchema,
       layoutIntent: z.string().trim().min(5).max(300),
       contentSlots: z.array(z.string().trim().min(1).max(80)).min(1).max(20),
@@ -83,6 +91,7 @@ const GeneratedDesignSchema = z.object({
     pageType: SitePageTypeSchema,
     required: z.boolean(),
     sections: z.array(SiteSectionTypeSchema).min(1).max(30),
+    componentKeys: z.array(z.string().trim().min(1).max(120)).max(100),
   }).strict()).max(20),
   preview: z.object({
     layout: z.enum(['split', 'editorial', 'structured', 'bento', 'editorial-collage', 'cards']),
@@ -142,8 +151,10 @@ const GENERATED_DESIGN_JSON_SCHEMA: Record<string, unknown> = {
     definition: {
       type: 'object',
       additionalProperties: false,
-      required: ['defaultSectionVariant', 'variantRules', 'conversionGoal', 'sectionRecipe'],
+      required: ['registryVersion', 'defaultSectionVariant', 'variantRules', 'conversionGoal', 'sectionRecipe'],
       properties: {
+        registryVersion: { type: 'integer', enum: [2] },
+        componentKey: { type: 'string' },
         defaultSectionVariant: { type: 'string', enum: ['editorial', 'grid', 'split', 'compact', 'standard', 'featured', 'quiet'] },
         variantRules: { type: 'object', additionalProperties: { type: 'string', enum: ['editorial', 'grid', 'split', 'compact', 'standard', 'featured', 'quiet'] } },
         conversionGoal: { type: 'string' },
@@ -153,6 +164,7 @@ const GENERATED_DESIGN_JSON_SCHEMA: Record<string, unknown> = {
           required: ['sectionType', 'variant', 'layoutIntent', 'contentSlots', 'dataBindings', 'accessibilityNotes'],
           properties: {
             sectionType: { type: 'string', enum: SiteSectionTypeSchema.options },
+            componentKey: { type: 'string' },
             variant: { type: 'string', enum: SiteStudioSectionVariantSchema.options },
             layoutIntent: { type: 'string' },
             contentSlots: { type: 'array', items: { type: 'string' } },
@@ -168,11 +180,12 @@ const GENERATED_DESIGN_JSON_SCHEMA: Record<string, unknown> = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['pageType', 'required', 'sections'],
+        required: ['pageType', 'required', 'sections', 'componentKeys'],
         properties: {
           pageType: { type: 'string', enum: SitePageTypeSchema.options },
           required: { type: 'boolean' },
           sections: { type: 'array', minItems: 1, items: { type: 'string', enum: SiteSectionTypeSchema.options } },
+          componentKeys: { type: 'array', items: { type: 'string' } },
         },
       },
     },
@@ -346,6 +359,18 @@ async function fetchStitchHtml(urlValue: string | null) {
 }
 
 function generationPrompt(input: GenerateInput, stitchReference?: { html: string; projectId: string | null; screenId: string | null }) {
+  const componentCatalog = listSiteComponents({
+    ...(input.sectionType ? { sectionType: input.sectionType } : {}),
+  }).map(component => ({
+    componentKey: component.componentKey,
+    sectionType: component.sectionType,
+    compatibleSectionTypes: component.compatibleSectionTypes,
+    layoutIntent: component.layoutIntent,
+    contentSlots: component.contentSlots,
+    requiredDataBindings: component.requiredDataBindings,
+    supportedAssetSlots: component.supportedAssetSlots,
+    accessibilityContract: component.accessibilityContract,
+  }));
   const targetGuidance = input.itemKind === 'COMPONENT'
     ? 'Create one reusable UI component recipe. Keep pageManifest empty and make sectionRecipe the primary output.'
     : input.itemKind === 'PAGE_SECTION'
@@ -374,6 +399,8 @@ function generationPrompt(input: GenerateInput, stitchReference?: { html: string
     requestedName: input.name || null,
     category: input.category,
     preferredSectionType: input.sectionType || null,
+    componentRegistryVersion: SITE_COMPONENT_REGISTRY_VERSION,
+    controlledComponentCatalog: componentCatalog,
     industryTags: input.industryTags,
     userPrompt: input.prompt,
     targetGuidance,
@@ -391,9 +418,29 @@ function ensureGeneratedShape(itemKind: GenerateInput['itemKind'], generated: Ge
     const pageTypes = new Set(generated.pageManifest.map(page => page.pageType));
     const missing = REQUIRED_SITE_THEME_PAGES.filter(page => !pageTypes.has(page as z.infer<typeof SitePageTypeSchema>));
     if (missing.length) throw fail(422, 'SITE_THEME_MANIFEST_INCOMPLETE', `The generated site theme is missing required pages: ${missing.join(', ')}.`);
+    if (generated.pageManifest.some(page => !page.componentKeys.length
+      || page.componentKeys.some((key) => {
+        const component = getSiteComponent(key);
+        return !component || component.status !== 'ACTIVE'
+          || !component.supportedPageTypes.includes(page.pageType);
+      }))) {
+      throw fail(422, 'DESIGN_COMPONENT_NOT_REGISTERED', 'Generated V2 theme pages must select active page-compatible deterministic component keys.');
+    }
   }
   if (itemKind !== 'SITE_THEME' && generated.pageManifest.length) {
     generated.pageManifest = [];
+  }
+  if (itemKind !== 'SITE_THEME') {
+    const componentKey = generated.definition.componentKey
+      ?? generated.definition.sectionRecipe.componentKey;
+    const component = componentKey ? getSiteComponent(componentKey) : null;
+    if (!component
+      || component.status !== 'ACTIVE'
+      || !component.compatibleSectionTypes.includes(generated.definition.sectionRecipe.sectionType)) {
+      throw fail(422, 'DESIGN_COMPONENT_NOT_REGISTERED', 'Generated reusable sections must select a controlled registered componentKey.');
+    }
+    generated.definition.componentKey = componentKey;
+    generated.definition.sectionRecipe.componentKey = componentKey;
   }
   return generated;
 }
@@ -571,7 +618,7 @@ export class DesignLibraryService {
         ...config,
         temperature: Math.min(config.temperature, 0.5),
       });
-      const response = await provider.generateStructuredOutput({
+      const response = await provider.generateStructuredOutput<GeneratedDesign>({
         prompt: generationPrompt(input, input.sourceType === 'GOOGLE_STITCH' ? { html: stitchHtml, projectId: stitchProjectId, screenId: stitchScreenId } : undefined),
         outputSchema: GeneratedDesignSchema,
         responseJsonSchema: GENERATED_DESIGN_JSON_SCHEMA,
@@ -653,9 +700,41 @@ export class DesignLibraryService {
     if (issues.length) throw fail(409, 'DESIGN_ACCESSIBILITY_BLOCKED', 'Resolve every automated accessibility issue before approval.', { issues });
     if (item.itemKind === 'SITE_THEME') {
       SiteThemeEditorSchema.parse(item.themeJson);
-      const pageTypes = new Set((Array.isArray(item.pageManifestJson) ? item.pageManifestJson : []).map(page => record(page).pageType));
+      const manifest = Array.isArray(item.pageManifestJson) ? item.pageManifestJson : [];
+      const pageTypes = new Set(manifest.map(page => record(page).pageType));
       const missing = REQUIRED_SITE_THEME_PAGES.filter(page => !pageTypes.has(page));
       if (missing.length) throw fail(409, 'SITE_THEME_MANIFEST_INCOMPLETE', `The theme is missing required pages: ${missing.join(', ')}.`);
+      if (record(item.definitionJson).registryVersion === SITE_COMPONENT_REGISTRY_VERSION) {
+        for (const rawPage of manifest) {
+          const page = record(rawPage);
+          const pageType = SitePageTypeSchema.safeParse(page.pageType);
+          const componentKeys = Array.isArray(page.componentKeys)
+            ? page.componentKeys.filter((key): key is string => typeof key === 'string')
+            : [];
+          if (!pageType.success || !componentKeys.length || componentKeys.some((key) => {
+            const component = getSiteComponent(key);
+            return !component || component.status !== 'ACTIVE'
+              || !component.supportedPageTypes.includes(pageType.data);
+          })) {
+            throw fail(409, 'DESIGN_COMPONENT_NOT_REGISTERED', 'V2 theme pages must use active page-compatible deterministic component keys.');
+          }
+        }
+      }
+    } else {
+      const definition = record(item.definitionJson);
+      const recipe = record(definition.sectionRecipe);
+      const componentKey = typeof definition.componentKey === 'string'
+        ? definition.componentKey
+        : typeof recipe.componentKey === 'string' ? recipe.componentKey : '';
+      const component = componentKey ? getSiteComponent(componentKey) : null;
+      const sectionType = SiteSectionTypeSchema.safeParse(recipe.sectionType);
+      if (definition.registryVersion === SITE_COMPONENT_REGISTRY_VERSION
+        && (!component
+          || component.status !== 'ACTIVE'
+          || !sectionType.success
+          || !component.compatibleSectionTypes.includes(sectionType.data))) {
+        throw fail(409, 'DESIGN_COMPONENT_NOT_REGISTERED', 'Reusable components must reference an active deterministic componentKey before approval.');
+      }
     }
     await this.db.update(designLibraryItems).set({
       status: 'APPROVED',

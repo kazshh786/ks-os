@@ -82,11 +82,11 @@ export function mergeProvisionedThemeColours(baseTheme: unknown, rawOverrides: u
 function sameDesign(left: PublishedSiteSnapshot, right: PublishedSiteSnapshot) {
   const leftDesign = {
     theme: left.theme,
-    sections: left.pages.flatMap(page => page.sections.map(section => [section.reference, section.variant ?? null])),
+    sections: left.pages.flatMap(page => page.sections.map(section => [section.reference, section.componentKey ?? null, section.variant ?? null])),
   };
   const rightDesign = {
     theme: right.theme,
-    sections: right.pages.flatMap(page => page.sections.map(section => [section.reference, section.variant ?? null])),
+    sections: right.pages.flatMap(page => page.sections.map(section => [section.reference, section.componentKey ?? null, section.variant ?? null])),
   };
   return JSON.stringify(leftDesign) === JSON.stringify(rightDesign);
 }
@@ -215,7 +215,10 @@ export async function applyProvisionedNativeDesign(
 
   const current = validatePublishedSnapshot(latest.content);
   const next = JSON.parse(JSON.stringify(current)) as PublishedSiteSnapshot;
-  next.theme = { ...applied.theme };
+  next.theme = {
+    ...applied.theme,
+    ...(current.theme.designTokens ? { designTokens: current.theme.designTokens } : {}),
+  };
   for (const page of next.pages) {
     for (const section of page.sections) {
       section.variant = selected.variantFor(section.type);

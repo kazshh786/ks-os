@@ -40,6 +40,25 @@ export interface CanonicalGenerationFactInput {
     bookingEnabled?: boolean | null;
   }[];
   assetReferences?: readonly string[];
+  assets?: readonly {
+    reference: string;
+    kind: string;
+    alt?: string | null;
+    width?: number | null;
+    height?: number | null;
+  }[];
+}
+
+function classifyAssetKind(kind: string) {
+  const value = kind.toUpperCase();
+  if (value.includes('LOGO')) return 'LOGO' as const;
+  if (value.includes('STAFF') || value.includes('PORTRAIT')) return 'STAFF' as const;
+  if (value.includes('LOCATION')) return 'LOCATION' as const;
+  if (value.includes('RESULT') || value.includes('BEFORE') || value.includes('AFTER')) return 'RESULT' as const;
+  if (value.includes('SERVICE')) return 'SERVICE' as const;
+  if (value.includes('GALLERY')) return 'GALLERY' as const;
+  if (value.includes('DECORATIVE')) return 'DECORATIVE' as const;
+  return 'BRAND' as const;
 }
 
 const publicFact = (
@@ -105,6 +124,16 @@ export function buildVerifiedBusinessFacts(input: CanonicalGenerationFactInput) 
       publicFact('brand_accent_colour', input.business.accentColour),
     ]),
     assetReferences: [...(input.assetReferences ?? [])].sort(),
+    approvedAssets: [...(input.assets ?? [])]
+      .sort((left, right) => left.reference.localeCompare(right.reference))
+      .map(asset => ({
+        publicReference: asset.reference,
+        assetClass: classifyAssetKind(asset.kind),
+        ...(asset.alt ? { alt: asset.alt } : {}),
+        ...(asset.width ? { width: asset.width } : {}),
+        ...(asset.height ? { height: asset.height } : {}),
+        approved: true as const,
+      })),
   });
 }
 
@@ -129,6 +158,15 @@ export function selectGenerationSafeFacts(input: VerifiedBusinessFacts) {
     policies: select(input.policies),
     brand: select(input.brand),
     assetReferences: [...input.assetReferences].sort(),
+    approvedAssets: (input.approvedAssets ?? []).map(asset => ({
+      publicReference: asset.publicReference,
+      assetClass: asset.assetClass,
+      ...(asset.entityReference ? { entityReference: asset.entityReference } : {}),
+      ...(asset.width ? { width: asset.width } : {}),
+      ...(asset.height ? { height: asset.height } : {}),
+      ...(asset.alt ? { alt: asset.alt } : {}),
+      approved: true as const,
+    })),
   };
 }
 

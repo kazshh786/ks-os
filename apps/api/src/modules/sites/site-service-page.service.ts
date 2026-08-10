@@ -424,6 +424,8 @@ export class SiteServicePageService {
         navigation: {
           primary: rewrittenSnapshot.navigation.primary,
           footer: rewrittenSnapshot.navigation.footer,
+          utility: rewrittenSnapshot.navigation.utility,
+          legal: rewrittenSnapshot.navigation.legal,
         },
         services: rewrittenSnapshot.services.some(item => item.publicReference === serviceReference)
           ? rewrittenSnapshot.services.map(item => item.publicReference === serviceReference ? serviceProfile : item)

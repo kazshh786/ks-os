@@ -1,6 +1,10 @@
 export * from './config.js';
+export * from './assets.js';
+export * from './completeness.js';
+export * from './composition.js';
 export * from './contracts.js';
 export * from './facts.js';
+export * from './implementation-audit.js';
 export * from './lifecycle.js';
 export * from './normalization.js';
 export * from './operations.js';
@@ -9,4 +13,6 @@ export * from './planning.js';
 export * from './prompt.js';
 export * from './provider.js';
 export * from './repair.js';
+export * from './response-schema.js';
+export * from './recipes.js';
 export * from './validation.js';
