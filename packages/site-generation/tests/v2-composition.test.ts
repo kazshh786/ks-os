@@ -79,7 +79,7 @@ function richHome() {
 
 test('defines a page-purpose completeness recipe for every supported page type', () => {
   const recipes = listPageCompletenessRecipes();
-  assert.equal(recipes.length, 16);
+  assert.equal(recipes.length, 26);
   assert.deepEqual(new Set(recipes.map(recipe => recipe.pageType)), new Set(Object.keys(PAGE_COMPLETENESS_RECIPES)));
   for (const recipe of recipes) {
     assert.ok(recipe.pagePurpose.length > 20);

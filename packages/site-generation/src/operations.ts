@@ -18,6 +18,11 @@ import type { SiteGenerationProvider } from './provider.js';
 import { generateWithControlledRepair } from './repair.js';
 import { validateGeneratedPage } from './validation.js';
 import { GENERATED_PAGE_RESPONSE_JSON_SCHEMA } from './orchestrator.js';
+import {
+  validateGeneratedPageAgainstSeoBrief,
+  type PageSeoBrief,
+  type SearchIntelligenceStrategyV2,
+} from './search-intelligence.js';
 
 const GENERATED_SECTION_RESPONSE_JSON_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -69,6 +74,8 @@ export async function executeStructuredPageGeneration(input:
     knowledge: SiteGenerationKnowledgeContext;
     approvedPageReferences: readonly string[];
     currentPage?: GeneratedPage;
+    approvedSearchStrategy?: SearchIntelligenceStrategyV2;
+    pageSeoBrief?: PageSeoBrief;
   }) {
   const result = await generateWithControlledRepair<GeneratedPage>({
     provider: input.provider,
@@ -80,6 +87,8 @@ export async function executeStructuredPageGeneration(input:
         facts: input.facts,
         knowledge: input.knowledge,
         outputSchemaDescription: GENERATED_PAGE_RESPONSE_JSON_SCHEMA,
+        approvedSearchStrategy: input.approvedSearchStrategy,
+        pageSeoBrief: input.pageSeoBrief,
         ...(input.currentPage ? {
           lockedComponentSequence: input.currentPage.sections.map(section => ({
             sectionType: section.type,
@@ -122,6 +131,16 @@ export async function executeStructuredPageGeneration(input:
           message: 'Page regeneration must preserve the governed component sequence.',
           targetReference: value.pageReference,
         });
+      }
+      if (input.pageSeoBrief) {
+        validation.findings.push(...validateGeneratedPageAgainstSeoBrief({ brief: input.pageSeoBrief, page: value, facts: input.facts })
+          .map(item => ({
+            severity: 'ERROR' as const,
+            category: 'METADATA' as const,
+            code: item.code,
+            message: item.message,
+            ...(item.pageReference ? { targetReference: item.pageReference } : {}),
+          })));
       }
       return { ...validation, valid: !validation.findings.some(item => item.severity === 'ERROR') };
     },
@@ -193,6 +212,7 @@ export async function executeStructuredSectionRegeneration(input:
     facts: VerifiedBusinessFacts;
     knowledge: SiteGenerationKnowledgeContext;
     approvedPageReferences: readonly string[];
+    pageSeoBrief?: PageSeoBrief;
   }) {
   const instruction = RegenerationInstructionSchema.parse(input.instruction);
   const sectionIndex = input.currentPage.sections.findIndex(
@@ -213,6 +233,7 @@ export async function executeStructuredSectionRegeneration(input:
           sectionType: currentSection.type,
         },
         currentStructuredSection: currentSection,
+        immutablePageSeoBrief: input.pageSeoBrief,
         safeVerifiedFacts: selectGenerationSafeFacts(input.facts),
         applicableRuleIds: input.knowledge.applicableRuleIds,
         requiredInstructions: input.knowledge.requiredInstructions,
@@ -267,6 +288,16 @@ export async function executeStructuredSectionRegeneration(input:
         facts: input.facts,
         approvedPageReferences: input.approvedPageReferences,
       })).findings);
+      if (input.pageSeoBrief) {
+        findings.push(...validateGeneratedPageAgainstSeoBrief({ brief: input.pageSeoBrief, page: candidate, facts: input.facts })
+          .map(item => ({
+            severity: 'ERROR' as const,
+            category: 'METADATA' as const,
+            code: item.code,
+            message: item.message,
+            ...(item.pageReference ? { targetReference: item.pageReference } : {}),
+          })));
+      }
       return { valid: !findings.some(finding => finding.severity === 'ERROR'), findings };
     },
   });
@@ -282,6 +313,7 @@ export async function executeStructuredMetadataGeneration(input:
     page: GeneratedPage;
     facts: VerifiedBusinessFacts;
     knowledge: SiteGenerationKnowledgeContext;
+    pageSeoBrief?: PageSeoBrief;
   }) {
   const result = await generateWithControlledRepair({
     provider: input.provider,
@@ -295,6 +327,7 @@ export async function executeStructuredMetadataGeneration(input:
           title: input.page.title,
           slug: input.page.slug,
         },
+        immutablePageSeoBrief: input.pageSeoBrief,
         safeVerifiedFacts: selectGenerationSafeFacts(input.facts),
         applicableRuleIds: input.knowledge.applicableRuleIds,
         outputSchema: GENERATED_METADATA_RESPONSE_JSON_SCHEMA,
@@ -310,9 +343,18 @@ export async function executeStructuredMetadataGeneration(input:
       if (value.pageReference !== input.page.pageReference) {
         findings.push({ code: 'PAGE_IDENTITY_MISMATCH', message: 'Metadata changed the page reference.' });
       }
-      const expectedPath = `/${input.page.slug}`;
+      const expectedPath = input.pageSeoBrief?.canonicalPath ?? `/${input.page.slug}`;
       if (value.seo.canonicalPath !== expectedPath) {
         findings.push({ code: 'CANONICAL_PATH_MISMATCH', message: 'Metadata changed the canonical page path.' });
+      }
+      if (input.pageSeoBrief && value.seo.title !== input.pageSeoBrief.recommendedTitle) {
+        findings.push({ code: 'SEO_TITLE_MISMATCH', message: 'Metadata changed the exact approved SEO title.' });
+      }
+      if (input.pageSeoBrief && value.seo.description !== input.pageSeoBrief.recommendedMetaDescription) {
+        findings.push({ code: 'META_DESCRIPTION_MISMATCH', message: 'Metadata changed the exact approved meta description.' });
+      }
+      if (input.pageSeoBrief && value.seo.index !== (input.pageSeoBrief.indexation === 'INDEX')) {
+        findings.push({ code: 'INDEXATION_MISMATCH', message: 'Metadata changed the approved indexation decision.' });
       }
       if ([
         value.seo.title,
@@ -337,6 +379,7 @@ export async function executeStructuredDataGeneration(input:
     page: GeneratedPage;
     facts: VerifiedBusinessFacts;
     knowledge: SiteGenerationKnowledgeContext;
+    pageSeoBrief?: PageSeoBrief;
   }) {
   const result = await generateWithControlledRepair({
     provider: input.provider,
@@ -349,6 +392,7 @@ export async function executeStructuredDataGeneration(input:
           pageType: input.page.pageType,
           title: input.page.title,
         },
+        immutablePageSeoBrief: input.pageSeoBrief,
         safeVerifiedFacts: selectGenerationSafeFacts(input.facts),
         applicableRuleIds: input.knowledge.applicableRuleIds,
         prohibitedBehaviours: input.knowledge.prohibitedBehaviours,
@@ -382,6 +426,19 @@ export async function executeStructuredDataGeneration(input:
         if (item.type === 'BREADCRUMB'
           && item.pageReferences.some(reference => !approvedPages.has(reference))) {
           findings.push({ code: 'UNKNOWN_INTERNAL_PAGE_REFERENCE', message: 'Structured data references an unapproved page.' });
+        }
+      }
+      const eligibilityByInputType = {
+        LOCAL_BUSINESS: 'LOCAL_BUSINESS',
+        SERVICE: 'SERVICE',
+        FAQ: 'FAQ_PAGE',
+        BREADCRUMB: 'BREADCRUMB_LIST',
+      } as const;
+      if (input.pageSeoBrief) {
+        for (const item of value.inputs) {
+          if (!input.pageSeoBrief.schemaTypes.includes(eligibilityByInputType[item.type])) {
+            findings.push({ code: 'SCHEMA_TYPE_INELIGIBLE', message: `${item.type} structured data is not eligible under the approved page brief.` });
+          }
         }
       }
       return { valid: findings.length === 0, findings };

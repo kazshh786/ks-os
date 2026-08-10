@@ -30,6 +30,17 @@ import { assertGeneratedPageSetMatchesPlan, validateGenerationPlan } from './pla
 import { detectDuplicateContent, validateGeneratedPage } from './validation.js';
 import { generationDigest } from './normalization.js';
 import { generatedPageResponseJsonSchema } from './response-schema.js';
+import {
+  assertSearchIntelligenceReady,
+  validateGeneratedPageAgainstSeoBrief,
+  type PageSeoBrief,
+  type SearchIntelligenceStrategyV2,
+} from './search-intelligence.js';
+
+export interface ApprovedSearchIntelligenceInput {
+  strategy: SearchIntelligenceStrategyV2;
+  briefs: readonly PageSeoBrief[];
+}
 
 export interface SiteGenerationPersistence {
   beginRun(input: {
@@ -78,6 +89,7 @@ export interface ExecuteSiteGenerationInput {
   signal?: AbortSignal;
   updateProgress?: (input: { current: number; total: number; message: string }) => Promise<void>;
   pipelineVersion?: 1 | 2;
+  searchIntelligence?: ApprovedSearchIntelligenceInput;
 }
 
 export const GENERATED_PAGE_RESPONSE_JSON_SCHEMA: Record<string, unknown> = {
@@ -116,6 +128,18 @@ export function generationCompletionStatus(pipelineVersion: 1 | 2 = 1) {
 export async function executeStructuredSiteGeneration(
   input: ExecuteSiteGenerationInput,
 ) {
+  if ((input.pipelineVersion ?? 1) === 2) {
+    if (!input.searchIntelligence) throw new Error('SEARCH_INTELLIGENCE_NOT_READY:SEARCH_STRATEGY_MISSING');
+    assertSearchIntelligenceReady({
+      strategy: input.searchIntelligence.strategy,
+      briefs: input.searchIntelligence.briefs,
+      plannedPages: input.plan.pages.map(page => ({
+        blueprintPageReference: page.blueprintPageReference,
+        pageReference: page.pageReference,
+        pageType: page.pageType,
+      })),
+    });
+  }
   const planValidation = validateGenerationPlan(input.plan, input.constraints);
   if (!planValidation.valid) {
     await input.persistence.failRun({
@@ -146,7 +170,11 @@ export async function executeStructuredSiteGeneration(
     if ((input.pipelineVersion ?? 1) === 2) {
       await input.updateProgress?.({ current: 0, total: input.plan.pages.length + 2, message: 'Creating the governed site-wide composition strategy.' });
       const strategyResponse = await input.provider.generateStructuredOutput({
-        prompt: composeSiteStrategyPrompt({ plan: input.plan, facts: input.facts }),
+        prompt: composeSiteStrategyPrompt({
+          plan: input.plan,
+          facts: input.facts,
+          approvedSearchStrategy: input.searchIntelligence?.strategy,
+        }),
         outputSchema: SiteCompositionStrategySchema,
         responseJsonSchema: SITE_STRATEGY_RESPONSE_JSON_SCHEMA,
         maxOutputCharacters: input.maxOutputCharacters,
@@ -164,6 +192,8 @@ export async function executeStructuredSiteGeneration(
           facts: input.facts,
           knowledge,
           approvedPageReferences: input.plan.pages.map(item => item.pageReference),
+          approvedSearchStrategy: input.searchIntelligence?.strategy,
+          pageSeoBrief: input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference),
         });
         const planned = await generateWithControlledRepair<PageCompositionPlan>({
           provider: input.provider,
@@ -259,6 +289,8 @@ export async function executeStructuredSiteGeneration(
             facts: input.facts,
             knowledge,
             outputSchemaDescription: responseJsonSchema,
+            approvedSearchStrategy: input.searchIntelligence?.strategy,
+            pageSeoBrief: input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference),
             ...(siteStrategy ? { siteStrategy } : {}),
             ...(pageCompositionPlan
               ? { pageCompositionPlan }
@@ -306,6 +338,17 @@ export async function executeStructuredSiteGeneration(
                 targetReference: page.pageReference,
               });
             }
+          }
+          const seoBrief = input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference);
+          if (validation.page && seoBrief) {
+            validation.findings.push(...validateGeneratedPageAgainstSeoBrief({ brief: seoBrief, page: validation.page })
+              .map(item => ({
+                severity: 'ERROR' as const,
+                category: 'METADATA' as const,
+                code: item.code,
+                message: item.message,
+                targetReference: item.pageReference,
+              })));
           }
           return { ...validation, valid: !validation.findings.some(item => item.severity === 'ERROR') };
         },

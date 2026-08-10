@@ -216,7 +216,14 @@ export function StaffProfile(
     if (!service) throw new Error('A staff profile referenced an unpublished service.');
     return `<li>${escapeHtml(service.name)}</li>`;
   }).join('');
-  return html`<section class="${sectionClass(section, 'staff-profile')}">${image}<div><h1>${escapeHtml(staff.displayName)}</h1><p class="eyebrow">${escapeHtml(staff.role)}</p>${staff.biography ? `<p>${escapeHtml(staff.biography)}</p>` : ''}${services ? `<ul class="profile-services" aria-label="Services">${services}</ul>` : ''}${action}</div></section>`;
+  const sectionIndex = context.page.sections.findIndex(candidate => candidate.reference === section.reference);
+  const primaryHeadingAlreadyRendered = context.page.sections
+    .slice(0, Math.max(0, sectionIndex))
+    .some(candidate => candidate.type === 'HERO' || candidate.type === 'SERVICE_DETAILS');
+  const heading = primaryHeadingAlreadyRendered
+    ? `<h2>${escapeHtml(staff.displayName)}</h2>`
+    : `<h1>${escapeHtml(staff.displayName)}</h1>`;
+  return html`<section class="${sectionClass(section, 'staff-profile')}">${image}<div>${heading}<p class="eyebrow">${escapeHtml(staff.role)}</p>${staff.biography ? `<p>${escapeHtml(staff.biography)}</p>` : ''}${services ? `<ul class="profile-services" aria-label="Services">${services}</ul>` : ''}${action}</div></section>`;
 }
 
 export function Gallery(section: SectionOf<'GALLERY'>, context: ComponentRenderContext): SafeHtml {

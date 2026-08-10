@@ -12,6 +12,7 @@ import { selectGenerationSafeFacts } from './facts.js';
 import { generationDigest, stableGenerationStringify } from './normalization.js';
 import { componentPromptMetadata } from './composition.js';
 import { getSiteComponent } from '@ks-os/site-components';
+import type { PageSeoBrief, SearchIntelligenceStrategyV2 } from './search-intelligence.js';
 
 type BlueprintPage = z.infer<typeof BlueprintGenerationPageSchema>;
 
@@ -25,6 +26,8 @@ export interface ComposeGenerationContextInput {
   pageCompositionPlan?: PageCompositionPlan;
   assetCoveragePlan?: AssetCoveragePlan;
   lockedComponentSequence?: readonly { sectionType: string; componentKey?: string }[];
+  approvedSearchStrategy?: SearchIntelligenceStrategyV2;
+  pageSeoBrief?: PageSeoBrief;
   repair?: {
     attempt: number;
     findings: readonly { code: string; message: string }[];
@@ -56,6 +59,8 @@ export function composeGenerationPrompt(input: ComposeGenerationContextInput) {
     pageSchema: input.outputSchemaDescription,
     templateLayoutConstraints: input.template,
     approvedBlueprintPage: input.page,
+    approvedSearchStrategy: input.approvedSearchStrategy,
+    immutablePageSeoBrief: input.pageSeoBrief,
     siteCompositionStrategy: input.siteStrategy,
     pageCompositionPlan: input.pageCompositionPlan,
     selectedComponentContracts,

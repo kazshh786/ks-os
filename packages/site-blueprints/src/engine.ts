@@ -43,6 +43,16 @@ const PAGE_DEFAULTS: Record<SitePageType, {
   NEW_CLIENT_GUIDE: { conversionRole: 'OBJECTION_HANDLING', navigationGroup: 'SECONDARY', entitlementKind: 'MARKETING', title: 'New client guide', priority: 13 },
   AFTERCARE_GUIDE: { conversionRole: 'OBJECTION_HANDLING', navigationGroup: 'CONTEXTUAL', entitlementKind: 'MARKETING', title: 'Aftercare guide', priority: 14 },
   CONSULTATION_GUIDE: { conversionRole: 'OBJECTION_HANDLING', navigationGroup: 'CONTEXTUAL', entitlementKind: 'MARKETING', title: 'Consultation guide', priority: 15 },
+  GUIDE: { conversionRole: 'OBJECTION_HANDLING', navigationGroup: 'SECONDARY', entitlementKind: 'MARKETING', title: 'Guide', priority: 16 },
+  HOW_TO: { conversionRole: 'OBJECTION_HANDLING', navigationGroup: 'CONTEXTUAL', entitlementKind: 'MARKETING', title: 'How to', priority: 17 },
+  ARTICLE: { conversionRole: 'TRUST_BUILDING', navigationGroup: 'CONTEXTUAL', entitlementKind: 'MARKETING', title: 'Article', priority: 18 },
+  BLOG_POST: { conversionRole: 'TRUST_BUILDING', navigationGroup: 'CONTEXTUAL', entitlementKind: 'MARKETING', title: 'Blog post', priority: 19 },
+  FAQ_RESOURCE: { conversionRole: 'OBJECTION_HANDLING', navigationGroup: 'CONTEXTUAL', entitlementKind: 'MARKETING', title: 'FAQ resource', priority: 20 },
+  TUTORIAL: { conversionRole: 'OBJECTION_HANDLING', navigationGroup: 'CONTEXTUAL', entitlementKind: 'MARKETING', title: 'Tutorial', priority: 21 },
+  DEFINITION: { conversionRole: 'OBJECTION_HANDLING', navigationGroup: 'CONTEXTUAL', entitlementKind: 'MARKETING', title: 'Definition', priority: 22 },
+  TROUBLESHOOTING: { conversionRole: 'OBJECTION_HANDLING', navigationGroup: 'CONTEXTUAL', entitlementKind: 'MARKETING', title: 'Troubleshooting', priority: 23 },
+  COMPARISON: { conversionRole: 'TRUST_BUILDING', navigationGroup: 'CONTEXTUAL', entitlementKind: 'MARKETING', title: 'Comparison', priority: 24 },
+  CASE_STUDY: { conversionRole: 'TRUST_BUILDING', navigationGroup: 'CONTEXTUAL', entitlementKind: 'MARKETING', title: 'Case study', priority: 25 },
   BOOKING: { conversionRole: 'BOOKING', navigationGroup: 'FUNCTIONAL', entitlementKind: 'FUNCTIONAL', title: 'Book now', priority: 0 },
 };
 

@@ -21,6 +21,7 @@ import {
 import { agencyFetch, useAgencyAuth } from './AgencyAuth';
 import { SiteQualityPanel } from './SiteQualityPanel';
 import { SitePublishingPanel } from './SitePublishingPanel';
+import { SearchIntelligencePanel } from './SearchIntelligencePanel';
 
 const pill = (value: string) => <span className="rounded-full border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] font-black">{String(value || 'NOT STARTED').replaceAll('_', ' ')}</span>;
 
@@ -130,7 +131,8 @@ export function SiteStudioPage() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState('');
 
-  const canDesign = Boolean(session?.capabilities.includes('sites.manage') && design?.editable);
+  const canManage = Boolean(session?.capabilities.includes('sites.manage'));
+  const canDesign = Boolean(canManage && design?.editable);
 
   const load = useCallback(async () => {
     if (!siteReference) return;
@@ -165,6 +167,9 @@ export function SiteStudioPage() {
       && component.supportedPageTypes.includes(page.pageType)
       && component.supportedConversionRoles.includes(page.conversionRole));
   }, [design?.componentCatalog, page, section]);
+  const pageTitlesByReference = useMemo(() => Object.fromEntries(
+    (studio?.pages ?? []).map((item: any) => [item.reference, item.title]),
+  ), [studio?.pages]);
 
   useEffect(() => {
     if (page?.sections?.length && !page.sections.some((item: any) => item.reference === selectedSection)) {
@@ -343,6 +348,7 @@ export function SiteStudioPage() {
 
     <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><h2 className="text-xs font-black uppercase tracking-widest text-slate-400">Unified readiness</h2><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">{['workspace', 'booking', 'website', 'review', 'payments', 'publication'].map(key => <div key={key} className="rounded-xl bg-slate-950 p-3"><small className="block uppercase text-slate-500">{key}</small><div className="mt-2">{pill(readiness?.[key] || studio.publication?.status)}</div></div>)}</div>{readiness?.blockingIssues?.map((issue: any) => <p key={issue.code} className="mt-3 rounded-lg border border-rose-900 p-3 text-xs text-rose-200"><strong>{issue.area}: {issue.code}</strong> — {issue.message}</p>)}{readiness?.warnings?.map((issue: any) => <p key={issue.code} className="mt-3 rounded-lg border border-amber-800 p-3 text-xs text-amber-200"><strong>Post-provision action: {issue.code}</strong> — {issue.message}</p>)}</section>
 
+    <SearchIntelligencePanel siteReference={siteReference!} siteName={studio.site.tenantName || studio.site.displayName} canManage={canManage} pageTitlesByReference={pageTitlesByReference} />
     <SiteQualityPanel siteReference={siteReference!} siteVersionReference={studio.version.reference} onOpenPage={setSelectedPage} />
     <SitePublishingPanel siteReference={siteReference!} publication={studio.publication} onChanged={load} />
 

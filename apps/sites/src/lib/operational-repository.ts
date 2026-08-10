@@ -112,6 +112,12 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
       : Promise.resolve(false);
   }
 
+  resolvePathRedirect(input: { siteReference: string; sourcePath: string }) {
+    return this.base.resolvePathRedirect
+      ? this.base.resolvePathRedirect(input)
+      : Promise.resolve(null);
+  }
+
   private supportsRawQueries() {
     return typeof (this.database as unknown as { execute?: unknown }).execute === 'function';
   }

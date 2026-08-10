@@ -5,6 +5,7 @@ import {
   KsOsBookingActionSchema,
   PhoneActionSchema,
   PublicReferenceSchema,
+  SiteStructuredDataEligibilitySchema,
   SiteConversionRoleSchema,
   SitePageTypeSchema,
   SiteStatusSchema,
@@ -199,6 +200,10 @@ const SiteAssetBaseShape = {
     width: z.number().int().positive().max(20_000),
     mimeType: z.enum(['image/avif', 'image/webp', 'image/jpeg', 'image/png']),
   }).strict()).max(10).default([]),
+  caption: z.string().trim().min(1).max(500).optional(),
+  creditText: z.string().trim().min(1).max(240).optional(),
+  licenseUrl: ApprovedAssetUrlSchema.optional(),
+  contentContext: z.string().trim().min(1).max(500).optional(),
 } as const;
 
 export const SiteAssetReferenceSchema = z.discriminatedUnion('purpose', [
@@ -598,6 +603,50 @@ export const PublishedPageSnapshotSchema = z.object({
   compatiblePageTypes: z.array(SitePageTypeSchema).min(1).max(30),
   seo: SiteSeoMetadataSchema,
   sections: z.array(SiteSectionSchema).min(1).max(100),
+  publishedAt: z.string().datetime().optional(),
+  lastModifiedAt: z.string().datetime().optional(),
+  reviewedAt: z.string().datetime().optional(),
+  languageCode: z.string().regex(/^[a-z]{2,8}(?:-[A-Z0-9]{2,8})?$/).optional(),
+  languageAlternates: z.array(z.object({
+    languageCode: z.string().regex(/^[a-z]{2,8}(?:-[A-Z0-9]{2,8})?$/),
+    path: SafePathSchema,
+  }).strict()).max(50).optional(),
+  /**
+   * Exact approved Search Intelligence allowlist. Undefined is accepted only
+   * for pre-V2 immutable snapshots; every V2 snapshot compiler sets it.
+   */
+  structuredDataEligibility: z.array(SiteStructuredDataEligibilitySchema).max(20)
+    .refine(items => new Set(items).size === items.length, 'Structured-data eligibility must be unique.')
+    .optional(),
+  authorship: z.object({
+    author: z.object({
+      staffReference: PublicReferenceSchema.optional(),
+      name: ShortTextSchema,
+      role: ShortTextSchema.optional(),
+      bio: z.string().trim().min(1).max(2_000).optional(),
+      credentials: z.array(ShortTextSchema).max(50).default([]),
+      profilePath: SafePathSchema.optional(),
+      imageAssetReference: PublicReferenceSchema.optional(),
+    }).strict(),
+    reviewer: z.object({
+      staffReference: PublicReferenceSchema.optional(),
+      name: ShortTextSchema,
+      role: ShortTextSchema.optional(),
+      bio: z.string().trim().min(1).max(2_000).optional(),
+      credentials: z.array(ShortTextSchema).max(50).default([]),
+      profilePath: SafePathSchema.optional(),
+      imageAssetReference: PublicReferenceSchema.optional(),
+    }).strict().optional(),
+  }).strict().optional(),
+  video: z.object({
+    name: ShortTextSchema,
+    description: z.string().trim().min(1).max(2_000),
+    thumbnailAssetReference: PublicReferenceSchema,
+    uploadDate: z.string().datetime(),
+    contentUrl: ApprovedAssetUrlSchema.optional(),
+    embedUrl: ApprovedAssetUrlSchema.optional(),
+    transcript: z.string().trim().min(1).max(20_000).optional(),
+  }).strict().optional(),
 }).strict().superRefine((page, ctx) => {
   if (page.path === '/book' && page.pageType !== 'BOOKING') {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['path'], message: '/book is reserved.' });
@@ -658,6 +707,16 @@ export const PublishedPageSnapshotSchema = z.object({
         message: 'Service details require a matching service-aware booking action.',
       });
     }
+  }
+  if (page.reviewedAt && !page.authorship?.reviewer) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['reviewedAt'], message: 'A review date requires a governed reviewer profile.' });
+  }
+  const alternateLanguages = new Set<string>();
+  for (const [index, alternate] of (page.languageAlternates ?? []).entries()) {
+    if (alternateLanguages.has(alternate.languageCode)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['languageAlternates', index], message: 'Language alternates must be unique per language.' });
+    }
+    alternateLanguages.add(alternate.languageCode);
   }
 });
 export type PublishedPageSnapshot = z.infer<typeof PublishedPageSnapshotSchema>;
@@ -726,6 +785,27 @@ export const PublishedSiteSnapshotSchema = z.object({
       });
     }
     seoTitles.add(normalizedSeoTitle);
+    const pageLanguage = page.languageCode ?? snapshot.language;
+    for (const [alternateIndex, alternate] of (page.languageAlternates ?? []).entries()) {
+      const target = snapshot.pages.find(candidate => candidate.path === alternate.path && candidate.active && candidate.canonical);
+      if (!target || (target.languageCode ?? snapshot.language) !== alternate.languageCode) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['pages', index, 'languageAlternates', alternateIndex],
+          message: 'A language alternate must resolve to an active canonical page with the declared language.',
+        });
+        continue;
+      }
+      const reciprocal = target.languageAlternates?.some(candidate =>
+        candidate.path === page.path && candidate.languageCode === pageLanguage);
+      if (!reciprocal) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['pages', index, 'languageAlternates', alternateIndex],
+          message: 'Language alternates must be reciprocal.',
+        });
+      }
+    }
   }
   if (!snapshot.pages.some((page) => page.pageType === 'HOME' && page.path === '/')) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['pages'], message: 'A HOME page at / is required.' });
@@ -830,6 +910,12 @@ export const PublishedSiteSnapshotSchema = z.object({
       ['pages', pageIndex, 'seo', 'openGraphImageAssetReference'],
       'Open Graph asset',
     );
+    assertReference(
+      page.video?.thumbnailAssetReference,
+      assetReferences,
+      ['pages', pageIndex, 'video', 'thumbnailAssetReference'],
+      'Video thumbnail asset',
+    );
     for (const [sectionIndex, section] of page.sections.entries()) {
       const path = ['pages', pageIndex, 'sections', sectionIndex];
       if ('imageAssetReference' in section) {
@@ -925,11 +1011,70 @@ export const SiteStructuredDataSchema = z.array(z.union([
   }).strict(),
   z.object({
     '@context': z.literal('https://schema.org'),
+    '@type': z.literal('Person'),
+    name: ShortTextSchema,
+    url: z.string().url().optional(),
+    jobTitle: ShortTextSchema.optional(),
+    description: z.string().trim().min(1).max(2_000).optional(),
+    image: z.string().url().optional(),
+    worksFor: z.object({
+      '@type': z.literal('Organization'),
+      name: ShortTextSchema,
+      url: z.string().url(),
+    }).strict().optional(),
+    hasCredential: z.array(z.object({
+      '@type': z.literal('EducationalOccupationalCredential'),
+      credentialCategory: ShortTextSchema,
+    }).strict()).max(50).optional(),
+  }).strict(),
+  z.object({
+    '@context': z.literal('https://schema.org'),
     '@type': z.literal('Organization'),
     name: ShortTextSchema,
     url: z.string().url(),
     telephone: z.string().optional(),
     email: z.string().email().optional(),
+  }).strict(),
+  z.object({
+    '@context': z.literal('https://schema.org'),
+    '@type': z.union([z.literal('Article'), z.literal('BlogPosting')]),
+    headline: z.string().trim().min(1).max(160),
+    description: z.string().trim().min(1).max(500),
+    url: z.string().url(),
+    datePublished: z.string().datetime().optional(),
+    dateModified: z.string().datetime(),
+    lastReviewed: z.string().datetime().optional(),
+    author: z.object({
+      '@type': z.literal('Person'),
+      name: ShortTextSchema,
+      url: z.string().url().optional(),
+    }).strict(),
+    reviewedBy: z.object({
+      '@type': z.literal('Person'),
+      name: ShortTextSchema,
+      url: z.string().url().optional(),
+    }).strict().optional(),
+  }).strict(),
+  z.object({
+    '@context': z.literal('https://schema.org'),
+    '@type': z.literal('VideoObject'),
+    name: ShortTextSchema,
+    description: z.string().trim().min(1).max(2_000),
+    thumbnailUrl: z.string().url(),
+    uploadDate: z.string().datetime(),
+    contentUrl: z.string().url().optional(),
+    embedUrl: z.string().url().optional(),
+    transcript: z.string().trim().min(1).max(20_000).optional(),
+  }).strict(),
+  z.object({
+    '@context': z.literal('https://schema.org'),
+    '@type': z.literal('ImageObject'),
+    contentUrl: z.string().url(),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    caption: z.string().trim().min(1).max(500).optional(),
+    creditText: z.string().trim().min(1).max(240).optional(),
+    license: z.string().url().optional(),
   }).strict(),
   z.object({
     '@context': z.literal('https://schema.org'),
@@ -982,7 +1127,7 @@ export const SiteStructuredDataSchema = z.array(z.union([
       }).strict(),
     }).strict()).min(1),
   }).strict(),
-])).max(20);
+])).max(500);
 export type SiteStructuredData = z.infer<typeof SiteStructuredDataSchema>;
 
 export const SiteRenderContextSchema = z.object({

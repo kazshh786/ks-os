@@ -66,6 +66,7 @@ const page = {
   publicReference: pageReference,
   pageType: 'HOME',
   conversionRole: 'PRIMARY_LANDING',
+  sections: [sectionFor('HERO')],
 } as PublishedPageSnapshot;
 
 const snapshot = {

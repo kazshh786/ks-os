@@ -31,6 +31,7 @@ export function generationIdempotencyKey(input: {
   verifiedBusinessDataDigestSha256: string;
   generatorVersion: string;
   generationReason: string;
+  searchStrategyDigestSha256?: string;
 }) {
   return generationDigest(input);
 }

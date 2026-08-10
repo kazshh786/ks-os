@@ -44,9 +44,49 @@ export const SitePageTypeSchema = z.enum([
   'NEW_CLIENT_GUIDE',
   'AFTERCARE_GUIDE',
   'CONSULTATION_GUIDE',
+  'GUIDE',
+  'HOW_TO',
+  'ARTICLE',
+  'BLOG_POST',
+  'FAQ_RESOURCE',
+  'TUTORIAL',
+  'DEFINITION',
+  'TROUBLESHOOTING',
+  'COMPARISON',
+  'CASE_STUDY',
   'BOOKING',
 ]);
 export type SitePageType = z.infer<typeof SitePageTypeSchema>;
+
+export const SiteSeoContentFormatSchema = z.enum([
+  'LANDING_PAGE',
+  'GUIDE',
+  'HOW_TO',
+  'ARTICLE',
+  'FAQ',
+  'TUTORIAL',
+  'DEFINITION',
+  'TROUBLESHOOTING',
+  'COMPARISON',
+  'CASE_STUDY',
+]);
+export type SiteSeoContentFormat = z.infer<typeof SiteSeoContentFormatSchema>;
+
+export const SiteStructuredDataEligibilitySchema = z.enum([
+  'WEB_SITE',
+  'ORGANIZATION',
+  'PERSON',
+  'LOCAL_BUSINESS',
+  'SERVICE',
+  'WEB_PAGE',
+  'ARTICLE',
+  'BLOG_POSTING',
+  'FAQ_PAGE',
+  'BREADCRUMB_LIST',
+  'VIDEO_OBJECT',
+  'IMAGE_OBJECT',
+]);
+export type SiteStructuredDataEligibility = z.infer<typeof SiteStructuredDataEligibilitySchema>;
 
 export const SiteConversionRoleSchema = z.enum([
   'PRIMARY_LANDING',
