@@ -133,7 +133,7 @@ export async function executeStructuredPageGeneration(input:
         });
       }
       if (input.pageSeoBrief) {
-        validation.findings.push(...validateGeneratedPageAgainstSeoBrief({ brief: input.pageSeoBrief, page: value })
+        validation.findings.push(...validateGeneratedPageAgainstSeoBrief({ brief: input.pageSeoBrief, page: value, facts: input.facts })
           .map(item => ({
             severity: 'ERROR' as const,
             category: 'METADATA' as const,
@@ -289,7 +289,7 @@ export async function executeStructuredSectionRegeneration(input:
         approvedPageReferences: input.approvedPageReferences,
       })).findings);
       if (input.pageSeoBrief) {
-        findings.push(...validateGeneratedPageAgainstSeoBrief({ brief: input.pageSeoBrief, page: candidate })
+        findings.push(...validateGeneratedPageAgainstSeoBrief({ brief: input.pageSeoBrief, page: candidate, facts: input.facts })
           .map(item => ({
             severity: 'ERROR' as const,
             category: 'METADATA' as const,
@@ -346,6 +346,15 @@ export async function executeStructuredMetadataGeneration(input:
       const expectedPath = input.pageSeoBrief?.canonicalPath ?? `/${input.page.slug}`;
       if (value.seo.canonicalPath !== expectedPath) {
         findings.push({ code: 'CANONICAL_PATH_MISMATCH', message: 'Metadata changed the canonical page path.' });
+      }
+      if (input.pageSeoBrief && value.seo.title !== input.pageSeoBrief.recommendedTitle) {
+        findings.push({ code: 'SEO_TITLE_MISMATCH', message: 'Metadata changed the exact approved SEO title.' });
+      }
+      if (input.pageSeoBrief && value.seo.description !== input.pageSeoBrief.recommendedMetaDescription) {
+        findings.push({ code: 'META_DESCRIPTION_MISMATCH', message: 'Metadata changed the exact approved meta description.' });
+      }
+      if (input.pageSeoBrief && value.seo.index !== (input.pageSeoBrief.indexation === 'INDEX')) {
+        findings.push({ code: 'INDEXATION_MISMATCH', message: 'Metadata changed the approved indexation decision.' });
       }
       if ([
         value.seo.title,
@@ -419,9 +428,18 @@ export async function executeStructuredDataGeneration(input:
           findings.push({ code: 'UNKNOWN_INTERNAL_PAGE_REFERENCE', message: 'Structured data references an unapproved page.' });
         }
       }
-      if (value.inputs.some(item => item.type === 'FAQ')
-        && !input.pageSeoBrief?.schemaTypes.includes('FAQ_PAGE')) {
-        findings.push({ code: 'FAQ_SCHEMA_INELIGIBLE', message: 'FAQ structured data is not eligible under the approved page brief.' });
+      const eligibilityByInputType = {
+        LOCAL_BUSINESS: 'LOCAL_BUSINESS',
+        SERVICE: 'SERVICE',
+        FAQ: 'FAQ_PAGE',
+        BREADCRUMB: 'BREADCRUMB_LIST',
+      } as const;
+      if (input.pageSeoBrief) {
+        for (const item of value.inputs) {
+          if (!input.pageSeoBrief.schemaTypes.includes(eligibilityByInputType[item.type])) {
+            findings.push({ code: 'SCHEMA_TYPE_INELIGIBLE', message: `${item.type} structured data is not eligible under the approved page brief.` });
+          }
+        }
       }
       return { valid: findings.length === 0, findings };
     },

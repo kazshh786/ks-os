@@ -5,6 +5,7 @@ import {
   KsOsBookingActionSchema,
   PhoneActionSchema,
   PublicReferenceSchema,
+  SiteStructuredDataEligibilitySchema,
   SiteConversionRoleSchema,
   SitePageTypeSchema,
   SiteStatusSchema,
@@ -610,20 +611,31 @@ export const PublishedPageSnapshotSchema = z.object({
     languageCode: z.string().regex(/^[a-z]{2,8}(?:-[A-Z0-9]{2,8})?$/),
     path: SafePathSchema,
   }).strict()).max(50).optional(),
+  /**
+   * Exact approved Search Intelligence allowlist. Undefined is accepted only
+   * for pre-V2 immutable snapshots; every V2 snapshot compiler sets it.
+   */
+  structuredDataEligibility: z.array(SiteStructuredDataEligibilitySchema).max(20)
+    .refine(items => new Set(items).size === items.length, 'Structured-data eligibility must be unique.')
+    .optional(),
   authorship: z.object({
     author: z.object({
+      staffReference: PublicReferenceSchema.optional(),
       name: ShortTextSchema,
       role: ShortTextSchema.optional(),
       bio: z.string().trim().min(1).max(2_000).optional(),
       credentials: z.array(ShortTextSchema).max(50).default([]),
       profilePath: SafePathSchema.optional(),
+      imageAssetReference: PublicReferenceSchema.optional(),
     }).strict(),
     reviewer: z.object({
+      staffReference: PublicReferenceSchema.optional(),
       name: ShortTextSchema,
       role: ShortTextSchema.optional(),
       bio: z.string().trim().min(1).max(2_000).optional(),
       credentials: z.array(ShortTextSchema).max(50).default([]),
       profilePath: SafePathSchema.optional(),
+      imageAssetReference: PublicReferenceSchema.optional(),
     }).strict().optional(),
   }).strict().optional(),
   video: z.object({
@@ -1004,6 +1016,12 @@ export const SiteStructuredDataSchema = z.array(z.union([
     url: z.string().url().optional(),
     jobTitle: ShortTextSchema.optional(),
     description: z.string().trim().min(1).max(2_000).optional(),
+    image: z.string().url().optional(),
+    worksFor: z.object({
+      '@type': z.literal('Organization'),
+      name: ShortTextSchema,
+      url: z.string().url(),
+    }).strict().optional(),
     hasCredential: z.array(z.object({
       '@type': z.literal('EducationalOccupationalCredential'),
       credentialCategory: ShortTextSchema,

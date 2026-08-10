@@ -9,6 +9,7 @@ export * from './lifecycle.js';
 export * from './normalization.js';
 export * from './operations.js';
 export * from './orchestrator.js';
+export * from './page-seo-brief-coverage.js';
 export * from './planning.js';
 export * from './prompt.js';
 export * from './provider.js';

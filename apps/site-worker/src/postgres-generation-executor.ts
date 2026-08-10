@@ -362,6 +362,7 @@ async function persistValidatedPreviewSnapshot(
         rendererKey: templateLayoutRenderers.rendererKey,
         rendererStatus: templateLayoutRenderers.rendererStatus,
         rendererVersion: templateLayoutRenderers.rendererVersion,
+        updatedAt: sitePages.updatedAt,
       }).from(sitePages)
         .innerJoin(templateLayouts, eq(sitePages.templateLayoutId, templateLayouts.id))
         .innerJoin(
@@ -446,6 +447,68 @@ async function persistValidatedPreviewSnapshot(
       )),
     ]);
 
+  const [approvedStrategyRow] = run.searchStrategyId
+    ? await transaction.select({
+      value: siteSearchStrategies.strategyJson,
+      status: siteSearchStrategies.status,
+    }).from(siteSearchStrategies).where(and(
+      eq(siteSearchStrategies.id, run.searchStrategyId),
+      eq(siteSearchStrategies.tenantId, run.tenantId),
+      eq(siteSearchStrategies.siteId, run.siteId),
+    )).limit(1)
+    : [];
+  if (run.searchStrategyId && approvedStrategyRow?.status !== 'APPROVED') {
+    throw new SiteJobExecutionError(
+      'TERMINAL_VALIDATION_FAILURE',
+      'A V2 preview snapshot requires its pinned approved Search Intelligence strategy.',
+    );
+  }
+  const approvedStrategy = approvedStrategyRow
+    ? SearchIntelligenceStrategyV2Schema.parse(approvedStrategyRow.value)
+    : undefined;
+  const briefRows = run.searchStrategyId
+    ? await transaction.select({ value: sitePageSeoBriefs.briefJson })
+      .from(sitePageSeoBriefs)
+      .where(and(
+        eq(sitePageSeoBriefs.strategyId, run.searchStrategyId),
+        eq(sitePageSeoBriefs.tenantId, run.tenantId),
+        eq(sitePageSeoBriefs.siteId, run.siteId),
+        eq(sitePageSeoBriefs.status, 'APPROVED'),
+      ))
+    : [];
+  const briefByPageReference = new Map(
+    briefRows.map(row => {
+      const brief = PageSeoBriefSchema.parse(row.value);
+      return [brief.pageReference, brief] as const;
+    }),
+  );
+  if (briefByPageReference.size !== briefRows.length) {
+    throw new SiteJobExecutionError(
+      'TERMINAL_VALIDATION_FAILURE',
+      'A V2 preview snapshot requires exactly one approved SEO brief per page.',
+    );
+  }
+  const staffByReference = new Map(staffRows.map(staff => [staff.reference, staff]));
+  const parsedSectionsByPageId = new Map(pageRows.map(page => [
+    page.id,
+    sectionRows
+      .filter(section => section.pageId === page.id)
+      .map(section => SiteSectionSchema.parse({
+        ...(section.content && typeof section.content === 'object'
+          ? section.content as Record<string, unknown>
+          : {}),
+        reference: section.reference,
+      })),
+  ]));
+  const staffProfilePath = (staffReference: string) => {
+    const profilePage = pageRows.find(candidate =>
+      candidate.pageType === 'TEAM_DETAIL'
+      && parsedSectionsByPageId.get(candidate.id)?.some(section =>
+        section.type === 'STAFF_PROFILE' && section.staffReference === staffReference));
+    if (!profilePage) return undefined;
+    return profilePage.slug === 'home' ? '/' : `/${profilePage.slug}`;
+  };
+
   const pageSnapshots = pageRows.map((page) => {
     if (
       !page.rendererKey
@@ -464,6 +527,36 @@ async function persistValidatedPreviewSnapshot(
     const seo = page.seo && typeof page.seo === 'object'
       ? page.seo as Record<string, unknown>
       : {};
+    const brief = briefByPageReference.get(page.reference);
+    if (run.searchStrategyId && !brief) {
+      throw new SiteJobExecutionError(
+        'TERMINAL_VALIDATION_FAILURE',
+        'Every V2 preview page requires its pinned approved SEO brief.',
+      );
+    }
+    const canonicalStaffProfile = (
+      staffReference: string,
+    ) => {
+      const staff = staffByReference.get(staffReference);
+      if (!staff) {
+        throw new SiteJobExecutionError(
+          'TERMINAL_VALIDATION_FAILURE',
+          'Approved page authorship must resolve to canonical verified staff.',
+        );
+      }
+      const profilePath = staffProfilePath(staffReference);
+      return {
+        staffReference,
+        name: staff.name,
+        ...(staff.jobTitle?.trim() ? { role: staff.jobTitle.trim() } : {}),
+        ...(staff.biography?.trim() ? { bio: staff.biography.trim().slice(0, 2_000) } : {}),
+        // Brief credentials are requirements, not proof that a person holds
+        // them. The current canonical staff record has no verified credential
+        // field, so JSON-LD must not manufacture hasCredential values.
+        credentials: [],
+        ...(profilePath ? { profilePath } : {}),
+      };
+    };
     return {
       publicReference: page.reference,
       pageType: page.pageType,
@@ -479,6 +572,7 @@ async function persistValidatedPreviewSnapshot(
       layoutReference: page.layoutReference,
       layoutStatus: 'APPROVED' as const,
       templateVersionStatus: 'APPROVED' as const,
+      lastModifiedAt: page.updatedAt.toISOString(),
       compatiblePageTypes: compatibilityRows
         .filter((item) => item.layoutId === page.layoutId)
         .map((item) => item.pageType),
@@ -501,14 +595,25 @@ async function persistValidatedPreviewSnapshot(
           : {}),
         twitterCard: seo.twitterCard === 'summary' ? 'summary' : 'summary_large_image',
       },
-      sections: sectionRows
-        .filter((section) => section.pageId === page.id)
-        .map((section) => SiteSectionSchema.parse({
-          ...(section.content && typeof section.content === 'object'
-            ? section.content as Record<string, unknown>
-            : {}),
-          reference: section.reference,
-        })),
+      sections: parsedSectionsByPageId.get(page.id) ?? [],
+      ...(brief ? {
+        structuredDataEligibility: [...new Set([
+          ...(approvedStrategy?.structuredDataStrategy.globalTypes ?? []),
+          ...brief.schemaTypes,
+        ])],
+      } : {}),
+      ...(brief?.authorship.staffReference ? {
+        authorship: {
+          author: canonicalStaffProfile(
+            brief.authorship.staffReference,
+          ),
+          ...(brief.reviewer.staffReference ? {
+            reviewer: canonicalStaffProfile(
+              brief.reviewer.staffReference,
+            ),
+          } : {}),
+        },
+      } : {}),
     };
   });
   if (pageSnapshots.length === 0) {

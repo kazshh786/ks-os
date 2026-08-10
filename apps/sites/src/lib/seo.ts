@@ -1,6 +1,10 @@
 import {
   RESERVED_PUBLIC_SITE_PATHS,
   SiteStructuredDataSchema,
+  assertStructuredDataContentAgreement,
+  validateEmittedStructuredDataEligibility,
+  visiblePageAssetReferences,
+  visiblePageLocationReferences,
   type PublishedPageSnapshot,
   type PublishedSiteSnapshot,
   type SiteStructuredData,
@@ -23,14 +27,17 @@ export function generateSiteStructuredData(
 ): SiteStructuredData {
   const url = canonicalPageUrl(snapshot, page);
   const origin = canonicalOrigin(snapshot);
-  const entries: SiteStructuredData = [
-    {
+  assertStructuredDataContentAgreement(snapshot, page);
+  const eligible = (type: NonNullable<PublishedPageSnapshot['structuredDataEligibility']>[number]) =>
+    !page.structuredDataEligibility || page.structuredDataEligibility.includes(type);
+  const entries: SiteStructuredData = [];
+  if (eligible('WEB_SITE')) entries.push({
       '@context': 'https://schema.org',
       '@type': 'WebSite',
       name: snapshot.business.name,
       url: `${origin}/`,
-    },
-    {
+  });
+  if (eligible('ORGANIZATION')) entries.push({
       '@context': 'https://schema.org',
       '@type': 'Organization',
       name: snapshot.business.name,
@@ -39,17 +46,19 @@ export function generateSiteStructuredData(
         ? { telephone: snapshot.business.publicTelephone }
         : {}),
       ...(snapshot.business.publicEmail ? { email: snapshot.business.publicEmail } : {}),
-    },
-    {
+  });
+  if (eligible('WEB_PAGE')) entries.push({
       '@context': 'https://schema.org',
       '@type': 'WebPage',
       name: page.title,
       description: page.seo.description,
       url,
-    },
-  ];
+  });
 
-  for (const location of snapshot.locations) {
+  const visibleLocationReferences = visiblePageLocationReferences(page);
+  if (eligible('LOCAL_BUSINESS')) for (const location of snapshot.locations) {
+    if (page.structuredDataEligibility
+      && !visibleLocationReferences.has(location.publicReference)) continue;
     const locationPage = snapshot.pages.find(candidate => candidate.sections.some(section =>
       (section.type === 'LOCATION' || section.type === 'OPENING_HOURS')
       && section.locationReference === location.publicReference));
@@ -70,7 +79,7 @@ export function generateSiteStructuredData(
     });
   }
 
-  if (page.authorship) {
+  if (eligible('PERSON') && page.authorship) {
     const authorUrl = page.authorship.author.profilePath
       ? new URL(page.authorship.author.profilePath, origin).toString()
       : undefined;
@@ -81,7 +90,7 @@ export function generateSiteStructuredData(
       ...(authorUrl ? { url: authorUrl } : {}),
       ...(page.authorship.author.role ? { jobTitle: page.authorship.author.role } : {}),
       ...(page.authorship.author.bio ? { description: page.authorship.author.bio } : {}),
-      ...(page.authorship.author.credentials.length ? {
+      ...(!page.structuredDataEligibility && page.authorship.author.credentials.length ? {
         hasCredential: page.authorship.author.credentials.map(credentialCategory => ({
           '@type': 'EducationalOccupationalCredential' as const,
           credentialCategory,
@@ -99,7 +108,7 @@ export function generateSiteStructuredData(
         ...(reviewerUrl ? { url: reviewerUrl } : {}),
         ...(page.authorship.reviewer.role ? { jobTitle: page.authorship.reviewer.role } : {}),
         ...(page.authorship.reviewer.bio ? { description: page.authorship.reviewer.bio } : {}),
-        ...(page.authorship.reviewer.credentials.length ? {
+        ...(!page.structuredDataEligibility && page.authorship.reviewer.credentials.length ? {
           hasCredential: page.authorship.reviewer.credentials.map(credentialCategory => ({
             '@type': 'EducationalOccupationalCredential' as const,
             credentialCategory,
@@ -107,12 +116,45 @@ export function generateSiteStructuredData(
         } : {}),
       });
     }
-    const articleType = page.pageType === 'BLOG_POST'
+  }
+
+  const staffSection = page.pageType === 'TEAM_DETAIL'
+    ? page.sections.find(section => section.type === 'STAFF_PROFILE')
+    : undefined;
+  if (eligible('PERSON') && staffSection?.type === 'STAFF_PROFILE') {
+    const staff = snapshot.staff.find(candidate => candidate.publicReference === staffSection.staffReference);
+    if (staff) {
+      const image = staff.imageAssetReference
+        ? snapshot.assets.find(asset => asset.publicReference === staff.imageAssetReference)?.url
+        : undefined;
+      entries.push({
+        '@context': 'https://schema.org',
+        '@type': 'Person',
+        name: staff.displayName,
+        url,
+        jobTitle: staff.role,
+        ...(staff.biography ? { description: staff.biography } : {}),
+        ...(image ? { image } : {}),
+        worksFor: {
+          '@type': 'Organization',
+          name: snapshot.business.name,
+          url: `${origin}/`,
+        },
+      });
+    }
+  }
+
+  if (page.authorship) {
+    const articleType = page.pageType === 'BLOG_POST' && eligible('BLOG_POSTING')
       ? 'BlogPosting' as const
-      : ['ARTICLE', 'GUIDE', 'HOW_TO', 'FAQ_RESOURCE', 'TUTORIAL', 'DEFINITION', 'TROUBLESHOOTING', 'COMPARISON', 'CASE_STUDY'].includes(page.pageType)
-        ? 'Article' as const
-        : null;
+      : eligible('ARTICLE')
+        && ['ARTICLE', 'GUIDE', 'HOW_TO', 'FAQ_RESOURCE', 'TUTORIAL', 'DEFINITION', 'TROUBLESHOOTING', 'COMPARISON', 'CASE_STUDY'].includes(page.pageType)
+          ? 'Article' as const
+          : null;
     if (articleType && page.lastModifiedAt) {
+      const authorUrl = page.authorship.author.profilePath
+        ? new URL(page.authorship.author.profilePath, origin).toString()
+        : undefined;
       entries.push({
         '@context': 'https://schema.org',
         '@type': articleType,
@@ -140,7 +182,7 @@ export function generateSiteStructuredData(
     }
   }
 
-  if (page.video) {
+  if (eligible('VIDEO_OBJECT') && page.video) {
     const thumbnail = snapshot.assets.find(asset => asset.publicReference === page.video!.thumbnailAssetReference);
     if (thumbnail) {
       entries.push({
@@ -157,18 +199,8 @@ export function generateSiteStructuredData(
     }
   }
 
-  const usedAssetReferences = new Set<string>();
-  if (page.seo.openGraphImageAssetReference) usedAssetReferences.add(page.seo.openGraphImageAssetReference);
-  if (page.video?.thumbnailAssetReference) usedAssetReferences.add(page.video.thumbnailAssetReference);
-  for (const section of page.sections) {
-    if ('imageAssetReference' in section && section.imageAssetReference) usedAssetReferences.add(section.imageAssetReference);
-    if (section.type === 'GALLERY') section.assetReferences.forEach(reference => usedAssetReferences.add(reference));
-    if (section.type === 'RESULTS') section.items.forEach(item => {
-      if (item.beforeAssetReference) usedAssetReferences.add(item.beforeAssetReference);
-      usedAssetReferences.add(item.afterAssetReference);
-    });
-  }
-  for (const asset of snapshot.assets) {
+  const usedAssetReferences = visiblePageAssetReferences(snapshot, page);
+  if (eligible('IMAGE_OBJECT')) for (const asset of snapshot.assets) {
     if (!usedAssetReferences.has(asset.publicReference) || asset.purpose !== 'INFORMATIVE') continue;
     entries.push({
       '@context': 'https://schema.org',
@@ -183,7 +215,7 @@ export function generateSiteStructuredData(
   }
 
   const serviceDetails = page.sections.find((section) => section.type === 'SERVICE_DETAILS');
-  if (serviceDetails?.type === 'SERVICE_DETAILS') {
+  if (eligible('SERVICE') && serviceDetails?.type === 'SERVICE_DETAILS') {
     const service = snapshot.services.find(
       (candidate) => candidate.publicReference === serviceDetails.serviceReference,
     );
@@ -199,7 +231,7 @@ export function generateSiteStructuredData(
   }
 
   const faq = page.sections.find((section) => section.type === 'FAQ');
-  if (faq?.type === 'FAQ') {
+  if (eligible('FAQ_PAGE') && faq?.type === 'FAQ') {
     entries.push({
       '@context': 'https://schema.org',
       '@type': 'FAQPage',
@@ -215,7 +247,7 @@ export function generateSiteStructuredData(
   }
 
   const pathParts = page.path.split('/').filter(Boolean);
-  entries.push({
+  if (eligible('BREADCRUMB_LIST')) entries.push({
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
@@ -236,7 +268,12 @@ export function generateSiteStructuredData(
     ],
   });
 
-  return SiteStructuredDataSchema.parse(entries);
+  const parsed = SiteStructuredDataSchema.parse(entries);
+  const eligibilityFindings = validateEmittedStructuredDataEligibility(snapshot, page, parsed);
+  if (eligibilityFindings.length) {
+    throw new Error(eligibilityFindings.map(finding => `${finding.code}:${finding.schemaType}`).join(','));
+  }
+  return parsed;
 }
 
 export function serializeStructuredData(data: SiteStructuredData): string {
@@ -264,10 +301,8 @@ function isReserved(path: string) {
 }
 
 export function generateTenantSitemap(snapshot: PublishedSiteSnapshot): string {
-  const hasLanguageAlternates = snapshot.pages.some(page => (page.languageAlternates?.length ?? 0) > 0);
-  const urls = snapshot.visibility === 'PUBLISHED'
-    ? snapshot.pages
-    .filter((page) =>
+  const sitemapPages = snapshot.visibility === 'PUBLISHED'
+    ? snapshot.pages.filter((page) =>
       page.active
       && page.indexable
       && page.seo.index
@@ -275,16 +310,22 @@ export function generateTenantSitemap(snapshot: PublishedSiteSnapshot): string {
       && page.pageType !== 'BOOKING'
       && !isReserved(page.path),
     )
-    .map((page) => {
-      const alternates = [
+    : [];
+  // x-default remains intentionally unsupported until it is represented by a
+  // real governed alternate rather than inferred by the renderer.
+  const hasLanguageAlternates = sitemapPages.some(page =>
+    (page.languageAlternates?.length ?? 0) > 0);
+  const urls = sitemapPages.map((page) => {
+    const alternates = page.languageAlternates?.length
+      ? [
         { languageCode: page.languageCode ?? snapshot.language, path: page.path },
-        ...(page.languageAlternates ?? []),
-      ].map(alternate => `<xhtml:link rel="alternate" hreflang="${xmlEscape(alternate.languageCode)}" href="${xmlEscape(new URL(alternate.path, canonicalOrigin(snapshot)).toString())}"/>`).join('');
-      const lastModified = page.lastModifiedAt ?? snapshot.publishedAt ?? snapshot.createdAt;
-      return `<url><loc>${xmlEscape(canonicalPageUrl(snapshot, page))}</loc><lastmod>${xmlEscape(lastModified)}</lastmod>${alternates}</url>`;
-    })
-    .join('')
-    : '';
+        ...page.languageAlternates,
+      ].map(alternate => `<xhtml:link rel="alternate" hreflang="${xmlEscape(alternate.languageCode)}" href="${xmlEscape(new URL(alternate.path, canonicalOrigin(snapshot)).toString())}"/>`).join('')
+      : '';
+    const lastModified = page.lastModifiedAt ?? snapshot.publishedAt ?? snapshot.createdAt;
+    return `<url><loc>${xmlEscape(canonicalPageUrl(snapshot, page))}</loc><lastmod>${xmlEscape(lastModified)}</lastmod>${alternates}</url>`;
+  })
+    .join('');
   const xhtml = hasLanguageAlternates ? ' xmlns:xhtml="http://www.w3.org/1999/xhtml"' : '';
   return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${xhtml}>${urls}</urlset>`;
 }

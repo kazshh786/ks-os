@@ -476,6 +476,56 @@ CREATE TABLE site_path_redirects (
 CREATE INDEX site_path_redirects_active_idx
   ON site_path_redirects(tenant_id, site_id, active);
 
+CREATE OR REPLACE FUNCTION ks_validate_path_redirect_graph()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  creates_cycle boolean;
+BEGIN
+  IF NOT NEW.active THEN RETURN NEW; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.site_id::text, 0));
+  IF NEW.source_path = NEW.target_path THEN
+    RAISE EXCEPTION 'PATH_REDIRECT_SELF_REFERENCE';
+  END IF;
+
+  WITH RECURSIVE walk(source_path, target_path, visited) AS (
+    SELECT redirect.source_path, redirect.target_path, ARRAY[redirect.source_path]
+    FROM site_path_redirects redirect
+    WHERE redirect.site_id = NEW.site_id
+      AND redirect.active
+      AND redirect.id <> NEW.id
+      AND redirect.source_path = NEW.target_path
+    UNION ALL
+    SELECT redirect.source_path, redirect.target_path, walk.visited || redirect.source_path
+    FROM walk
+    JOIN site_path_redirects redirect
+      ON redirect.site_id = NEW.site_id
+      AND redirect.active
+      AND redirect.id <> NEW.id
+      AND redirect.source_path = walk.target_path
+    WHERE NOT redirect.source_path = ANY(walk.visited)
+  )
+  SELECT EXISTS (SELECT 1 FROM walk WHERE target_path = NEW.source_path)
+  INTO creates_cycle;
+  IF creates_cycle THEN RAISE EXCEPTION 'PATH_REDIRECT_CYCLE'; END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM site_path_redirects redirect
+    WHERE redirect.site_id = NEW.site_id
+      AND redirect.active
+      AND redirect.id <> NEW.id
+      AND (
+        redirect.source_path = NEW.target_path
+        OR redirect.target_path = NEW.source_path
+      )
+  ) THEN RAISE EXCEPTION 'PATH_REDIRECT_CHAIN'; END IF;
+  RETURN NEW;
+END;
+$$;
+
 CREATE TABLE site_page_language_alternates (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
@@ -653,6 +703,9 @@ CREATE TRIGGER site_search_internal_links_scope
 CREATE TRIGGER site_path_redirects_scope
   BEFORE INSERT OR UPDATE ON site_path_redirects
   FOR EACH ROW EXECUTE FUNCTION ks_validate_search_intelligence_scope();
+CREATE TRIGGER site_path_redirects_graph
+  BEFORE INSERT OR UPDATE ON site_path_redirects
+  FOR EACH ROW EXECUTE FUNCTION ks_validate_path_redirect_graph();
 CREATE TRIGGER site_page_language_alternates_scope
   BEFORE INSERT OR UPDATE ON site_page_language_alternates
   FOR EACH ROW EXECUTE FUNCTION ks_validate_search_intelligence_scope();
@@ -701,6 +754,7 @@ REVOKE EXECUTE ON FUNCTION ks_govern_search_intelligence_artifact() FROM PUBLIC,
 REVOKE EXECUTE ON FUNCTION ks_validate_search_strategy_approval() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION ks_prevent_approved_search_child_mutation() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION ks_search_evidence_append_only() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION ks_validate_path_redirect_graph() FROM PUBLIC, anon, authenticated;
 
 COMMENT ON TABLE site_search_strategies IS
   'Versioned Search Intelligence V2 planning. Approval pins an immutable strategy; no live SERP scraping occurs in database code.';

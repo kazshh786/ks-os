@@ -25,14 +25,19 @@ const v2MigrationPath = new URL(
   '../../../packages/database/migrations/20260809120000_seed_native_component_system_v2.sql',
   import.meta.url,
 );
+const searchIntelligenceMigrationPath = new URL(
+  '../../../packages/database/migrations/20260810210000_search_intelligence_v2.sql',
+  import.meta.url,
+);
 const routesPath = new URL(
   '../src/modules/sites/site-generation.routes.ts',
   import.meta.url,
 );
-const [migration, runtimeMigration, v2Migration, serviceSource, routeSource] = await Promise.all([
+const [migration, runtimeMigration, v2Migration, searchIntelligenceMigration, serviceSource, routeSource] = await Promise.all([
   readFile(migrationPath, 'utf8'),
   readFile(runtimeMigrationPath, 'utf8'),
   readFile(v2MigrationPath, 'utf8'),
+  readFile(searchIntelligenceMigrationPath, 'utf8'),
   readFile(servicePath, 'utf8'),
   readFile(routesPath, 'utf8'),
 ]);
@@ -70,6 +75,17 @@ test('migration 69 is replay-safe and accepts only the complete owned V2 graph',
   assert.match(v2Migration, /count\(DISTINCT mapping\.page_type\)[\s\S]*?<> 16/);
   assert.match(v2Migration, /RETURN;[\s\S]*?INSERT INTO template_analysis_runs/);
   assert.doesNotMatch(v2Migration, /\b(?:DELETE|TRUNCATE|DROP TABLE)\b/i);
+});
+
+test('migration 70 prevents active redirect self references, chains and cycles under a site lock', () => {
+  assert.match(searchIntelligenceMigration, /CHECK \(source_path <> target_path\)/);
+  assert.match(searchIntelligenceMigration, /CREATE OR REPLACE FUNCTION ks_validate_path_redirect_graph\(\)/);
+  assert.match(searchIntelligenceMigration, /pg_advisory_xact_lock\(hashtextextended\(NEW\.site_id::text, 0\)\)/);
+  assert.match(searchIntelligenceMigration, /PATH_REDIRECT_SELF_REFERENCE/);
+  assert.match(searchIntelligenceMigration, /PATH_REDIRECT_CHAIN/);
+  assert.match(searchIntelligenceMigration, /PATH_REDIRECT_CYCLE/);
+  assert.match(searchIntelligenceMigration, /CREATE TRIGGER site_path_redirects_graph/);
+  assert.match(searchIntelligenceMigration, /REVOKE EXECUTE ON FUNCTION ks_validate_path_redirect_graph\(\) FROM PUBLIC, anon, authenticated/);
 });
 
 const ids = Array.from({ length: 8 }, (_, index) =>

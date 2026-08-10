@@ -7,6 +7,9 @@ import {
   SiteAssetReferenceSchema,
   PublishedPageSnapshotSchema,
   PublishedSiteSnapshotSchema,
+  validatePathRedirectGraph,
+  validateEmittedStructuredDataEligibility,
+  validateStructuredDataContentAgreement,
   validatePublishedSnapshot,
   type PublishedSiteSnapshot,
 } from '@ks-os/site-schema';
@@ -932,6 +935,14 @@ test('eligible editorial content emits governed Person, Article, VideoObject and
   const snapshot = mutateSnapshot(baseSnapshot, (draft) => {
     const page = structuredClone(draft.pages[0]!);
     const asset = draft.assets[0]!;
+    const author = draft.staff[0]!;
+    const reviewer = {
+      ...structuredClone(author),
+      publicReference: '00000998-0000-4000-8000-000000000998',
+      displayName: 'Noor Reviewer',
+      role: 'Clinical reviewer',
+    };
+    draft.staff.push(reviewer);
     page.publicReference = '00000999-0000-4000-8000-000000000999';
     page.pageType = 'ARTICLE';
     page.compatiblePageTypes = ['ARTICLE'];
@@ -943,9 +954,10 @@ test('eligible editorial content emits governed Person, Article, VideoObject and
     page.publishedAt = '2026-08-01T09:00:00.000Z';
     page.lastModifiedAt = '2026-08-10T09:00:00.000Z';
     page.reviewedAt = '2026-08-10T10:00:00.000Z';
+    page.structuredDataEligibility = ['PERSON', 'ARTICLE', 'VIDEO_OBJECT', 'IMAGE_OBJECT'];
     page.authorship = {
-      author: { name: 'Amina Expert', role: 'Practitioner', bio: 'A verified practitioner biography.', credentials: ['Registered practitioner'], profilePath: '/team/amina' },
-      reviewer: { name: 'Noor Reviewer', role: 'Clinical reviewer', credentials: ['Clinical reviewer'], profilePath: '/team/noor' },
+      author: { staffReference: author.publicReference, name: author.displayName, role: author.role, bio: author.biography, credentials: ['Registered practitioner'] },
+      reviewer: { staffReference: reviewer.publicReference, name: reviewer.displayName, role: reviewer.role, bio: reviewer.biography, credentials: ['Clinical reviewer'] },
     };
     asset.purpose = 'INFORMATIVE';
     asset.caption = 'A verified first-hand treatment image.';
@@ -974,6 +986,104 @@ test('eligible editorial content emits governed Person, Article, VideoObject and
 test('LocalBusiness structured data is emitted once per canonical location', () => {
   const entries = generateSiteStructuredData(baseSnapshot, baseSnapshot.pages[0]!);
   assert.equal(entries.filter(entry => entry['@type'] === 'LocalBusiness').length, baseSnapshot.locations.length);
+});
+
+test('conditional schema requires both immutable eligibility and matching visible content', () => {
+  const faqEligible = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = draft.pages.find(candidate => candidate.sections.some(section => section.type === 'FAQ'))!;
+    page.structuredDataEligibility = ['FAQ_PAGE'];
+  });
+  const eligibleFaqPage = faqEligible.pages.find(candidate => candidate.sections.some(section => section.type === 'FAQ'))!;
+  assert.ok(generateSiteStructuredData(faqEligible, eligibleFaqPage)
+    .some(entry => entry['@type'] === 'FAQPage'));
+
+  const faqWithoutEligibility = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = draft.pages.find(candidate => candidate.sections.some(section => section.type === 'FAQ'))!;
+    page.structuredDataEligibility = ['WEB_PAGE'];
+  });
+  const faqPage = faqWithoutEligibility.pages.find(candidate => candidate.sections.some(section => section.type === 'FAQ'))!;
+  assert.equal(generateSiteStructuredData(faqWithoutEligibility, faqPage)
+    .some(entry => entry['@type'] === 'FAQPage'), false);
+
+  const invalid: PublishedSiteSnapshot = structuredClone(baseSnapshot);
+  invalid.pages[0]!.structuredDataEligibility = ['FAQ_PAGE'];
+  assert.equal(PublishedSiteSnapshotSchema.safeParse(invalid).success, true);
+  assert.deepEqual(
+    validateStructuredDataContentAgreement(invalid, invalid.pages[0]!).map(finding => finding.code),
+    ['STRUCTURED_DATA_CONTENT_MISMATCH'],
+  );
+  assert.throws(() => generateSiteStructuredData(invalid, invalid.pages[0]!), /STRUCTURED_DATA_CONTENT_MISMATCH:FAQ_PAGE/);
+
+  const mediaNotEligible = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = draft.pages[0]!;
+    const asset = draft.assets[0]!;
+    page.structuredDataEligibility = ['WEB_PAGE'];
+    page.video = {
+      name: 'Visible explainer',
+      description: 'A visible governed explainer video.',
+      thumbnailAssetReference: asset.publicReference,
+      uploadDate: '2026-08-01T09:00:00.000Z',
+    };
+  });
+  const mediaTypes = generateSiteStructuredData(mediaNotEligible, mediaNotEligible.pages[0]!)
+    .map(entry => entry['@type']);
+  assert.equal(mediaTypes.includes('VideoObject'), false);
+  assert.equal(mediaTypes.includes('ImageObject'), false);
+});
+
+test('emitted service and location entities must match visible canonical records', () => {
+  const serviceSnapshot = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = draft.pages.find(candidate => candidate.sections.some(section => section.type === 'SERVICE_DETAILS'))!;
+    page.structuredDataEligibility = ['SERVICE'];
+  });
+  const servicePage = serviceSnapshot.pages.find(candidate => candidate.sections.some(section => section.type === 'SERVICE_DETAILS'))!;
+  const serviceData = generateSiteStructuredData(serviceSnapshot, servicePage);
+  const alteredServiceData = structuredClone(serviceData);
+  const service = alteredServiceData.find(entry => entry['@type'] === 'Service');
+  if (service?.['@type'] === 'Service') service.name = 'A different service';
+  assert.ok(validateEmittedStructuredDataEligibility(serviceSnapshot, servicePage, alteredServiceData)
+    .some(finding => finding.code === 'STRUCTURED_DATA_CONTENT_MISMATCH'));
+
+  const locationSnapshot = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = draft.pages.find(candidate => candidate.sections.some(section =>
+      section.type === 'LOCATION' || section.type === 'OPENING_HOURS'))!;
+    page.structuredDataEligibility = ['LOCAL_BUSINESS'];
+  });
+  const locationPage = locationSnapshot.pages.find(candidate => candidate.sections.some(section =>
+    section.type === 'LOCATION' || section.type === 'OPENING_HOURS'))!;
+  const locationData = generateSiteStructuredData(locationSnapshot, locationPage);
+  const alteredLocationData = structuredClone(locationData);
+  const localBusiness = alteredLocationData.find(entry => entry['@type'] === 'LocalBusiness');
+  if (localBusiness?.['@type'] === 'LocalBusiness') localBusiness.address.postalCode = 'WRONG';
+  assert.ok(validateEmittedStructuredDataEligibility(locationSnapshot, locationPage, alteredLocationData)
+    .some(finding => finding.code === 'STRUCTURED_DATA_CONTENT_MISMATCH'));
+});
+
+test('TEAM_DETAIL staff profiles emit canonical Person data with image and worksFor', () => {
+  const snapshot = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = structuredClone(draft.pages[0]!);
+    const staff = draft.staff[0]!;
+    page.publicReference = '00000997-0000-4000-8000-000000000997';
+    page.pageType = 'TEAM_DETAIL';
+    page.compatiblePageTypes = ['TEAM_DETAIL'];
+    page.path = '/team/morgan-reed';
+    page.title = staff.displayName;
+    page.seo.canonicalPath = page.path;
+    page.seo.title = `${staff.displayName} | Northlight Studio`;
+    page.structuredDataEligibility = ['PERSON'];
+    page.sections = [
+      page.sections.find(section => section.type === 'HEADER')!,
+      { reference: '00000996-0000-4000-8000-000000000996', type: 'STAFF_PROFILE', staffReference: staff.publicReference },
+      page.sections.find(section => section.type === 'FINAL_CTA' || section.type === 'BOOKING_CTA')!,
+      page.sections.find(section => section.type === 'FOOTER')!,
+    ];
+    draft.pages.push(page);
+  });
+  const page = snapshot.pages.find(candidate => candidate.pageType === 'TEAM_DETAIL')!;
+  const person = generateSiteStructuredData(snapshot, page).find(entry => entry['@type'] === 'Person');
+  assert.ok(person && 'worksFor' in person);
+  assert.equal(person && 'name' in person ? person.name : null, snapshot.staff[0]!.displayName);
+  assert.equal(person && 'image' in person ? person.image : null, snapshot.assets[1]!.url);
 });
 
 // 61
@@ -1024,6 +1134,32 @@ test('sitemap and documents emit lastmod plus reciprocal self-referencing hrefla
   const html = await (await publicPage(repoFor(snapshot))).text();
   assert.match(html, /rel="alternate" hreflang="en-GB"/);
   assert.match(html, /rel="alternate" hreflang="fr-FR"/);
+  const secondHtml = await (await publicPage(repoFor(snapshot), fallbackHostname, snapshot.pages[1]!.path)).text();
+  assert.match(secondHtml, /rel="alternate" hreflang="en-GB"/);
+  assert.match(secondHtml, /rel="alternate" hreflang="fr-FR"/);
+});
+
+test('snapshot validation rejects non-reciprocal, inactive and language-mismatched alternates', () => {
+  const nonReciprocal = structuredClone(baseSnapshot);
+  nonReciprocal.pages[0]!.languageCode = 'en-GB';
+  nonReciprocal.pages[1]!.languageCode = 'fr-FR';
+  nonReciprocal.pages[0]!.languageAlternates = [{ languageCode: 'fr-FR', path: nonReciprocal.pages[1]!.path }];
+  assert.equal(PublishedSiteSnapshotSchema.safeParse(nonReciprocal).success, false);
+
+  const inactive = structuredClone(nonReciprocal);
+  inactive.pages[1]!.languageAlternates = [{ languageCode: 'en-GB', path: inactive.pages[0]!.path }];
+  inactive.pages[1]!.active = false;
+  assert.equal(PublishedSiteSnapshotSchema.safeParse(inactive).success, false);
+
+  const mismatched = structuredClone(nonReciprocal);
+  mismatched.pages[1]!.languageAlternates = [{ languageCode: 'en-GB', path: mismatched.pages[0]!.path }];
+  mismatched.pages[0]!.languageAlternates = [{ languageCode: 'de-DE', path: mismatched.pages[1]!.path }];
+  assert.equal(PublishedSiteSnapshotSchema.safeParse(mismatched).success, false);
+});
+
+test('pages without alternates emit no hreflang markup or sitemap namespace', async () => {
+  assert.doesNotMatch(generateTenantSitemap(baseSnapshot), /hreflang|xmlns:xhtml/);
+  assert.doesNotMatch(await (await publicPage()).text(), /hreflang=/);
 });
 
 test('governed path redirects return 308 only when no active page owns the source path', async () => {
@@ -1033,9 +1169,30 @@ test('governed path redirects return 308 only when no active page owns the sourc
   const old = await publicPage(repository, fallbackHostname, '/old-guide');
   assert.equal(old.status, 308);
   assert.equal(old.headers.get('location'), '/services');
+  assert.equal(old.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(old.headers.get('x-frame-options'), 'DENY');
+  assert.match(old.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/);
   const active = await publicPage(repository, fallbackHostname, '/');
   assert.equal(active.status, 200);
   assert.equal(active.headers.get('location'), null);
+});
+
+test('redirect graph validation rejects self references, chains and cycles', () => {
+  assert.deepEqual(validatePathRedirectGraph([
+    { sourcePath: '/old', targetPath: '/old', active: true },
+  ]).map(finding => finding.code), ['REDIRECT_SELF_REFERENCE']);
+  assert.ok(validatePathRedirectGraph([
+    { sourcePath: '/one', targetPath: '/two', active: true },
+    { sourcePath: '/two', targetPath: '/three', active: true },
+  ]).some(finding => finding.code === 'REDIRECT_CHAIN'));
+  assert.ok(validatePathRedirectGraph([
+    { sourcePath: '/one', targetPath: '/two', active: true },
+    { sourcePath: '/two', targetPath: '/one', active: true },
+  ]).every(finding => finding.code === 'REDIRECT_CYCLE'));
+  assert.deepEqual(validatePathRedirectGraph([
+    { sourcePath: '/old', targetPath: '/new', active: true },
+    { sourcePath: '/new', targetPath: '/final', active: false },
+  ]), []);
 });
 
 // 65

@@ -226,8 +226,11 @@ export async function handlePublicPageRequest(input: {
         return new Response(null, {
           status: pathRedirect.statusCode,
           headers: {
+            ...securityHeaders(
+              'public, max-age=300, s-maxage=3600',
+              'text/plain; charset=utf-8',
+            ),
             location: pathRedirect.targetPath,
-            'cache-control': 'public, max-age=300, s-maxage=3600',
           },
         });
       }

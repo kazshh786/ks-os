@@ -1,5 +1,15 @@
-import { PublicReferenceSchema, SiteCanonicalPathSchema, SitePageTypeSchema } from '@ks-os/contracts';
+import {
+  PublicReferenceSchema,
+  SiteCanonicalPathSchema,
+  SitePageTypeSchema,
+  SiteSeoContentFormatSchema,
+  SiteStructuredDataEligibilitySchema,
+  type SitePageType,
+  type SiteSeoContentFormat,
+  type SiteStructuredDataEligibility,
+} from '@ks-os/contracts';
 import { z } from 'zod';
+import type { GeneratedPage, VerifiedBusinessFacts } from './contracts.js';
 import { generationDigest } from './normalization.js';
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -52,10 +62,7 @@ export const PageSeoBriefStatusSchema = z.enum(['DRAFT', 'APPROVED', 'SUPERSEDED
 export const PageIndexationSchema = z.enum(['INDEX', 'NOINDEX']);
 export const SearchFunnelStageSchema = z.enum(['AWARENESS', 'CONSIDERATION', 'DECISION', 'RETENTION']);
 export const YmylRiskSchema = z.enum(['NONE', 'LOW', 'MODERATE', 'HIGH']);
-export const StructuredDataTypeV2Schema = z.enum([
-  'WEB_SITE', 'ORGANIZATION', 'PERSON', 'LOCAL_BUSINESS', 'SERVICE', 'WEB_PAGE',
-  'ARTICLE', 'BLOG_POSTING', 'FAQ_PAGE', 'BREADCRUMB_LIST', 'VIDEO_OBJECT', 'IMAGE_OBJECT',
-]);
+export const StructuredDataTypeV2Schema = SiteStructuredDataEligibilitySchema;
 
 export const ClassifiedStatementSchema = z.object({
   statement: NoteSchema,
@@ -340,10 +347,12 @@ export const SearchIntelligenceStrategyV2Schema = z.object({
     maximumClicksFromHome: z.number().int().min(1).max(10),
   }).strict(),
   structuredDataStrategy: z.object({
-    globalTypes: z.array(StructuredDataTypeV2Schema).max(20),
+    globalTypes: z.array(StructuredDataTypeV2Schema).max(20)
+      .refine(types => new Set(types).size === types.length, 'Global schema types must be unique.'),
     pageRules: z.array(z.object({
       pageReference: PublicReferenceSchema,
-      types: z.array(StructuredDataTypeV2Schema).max(20),
+      types: z.array(StructuredDataTypeV2Schema).max(20)
+        .refine(types => new Set(types).size === types.length, 'Page schema types must be unique.'),
       eligibilityNotes: z.array(ClassifiedStatementSchema).max(50).default([]),
     }).strict()).max(1_000),
     prohibitSelfServingReviews: z.literal(true),
@@ -387,6 +396,16 @@ export const SearchIntelligenceStrategyV2Schema = z.object({
       path: ['approvedAt'],
     });
   }
+  const deterministicGlobalTypes = new Set(['WEB_SITE', 'ORGANIZATION']);
+  for (const [index, schemaType] of value.structuredDataStrategy.globalTypes.entries()) {
+    if (!deterministicGlobalTypes.has(schemaType)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Only WebSite and Organization may be global; every conditional type requires an explicit page rule.',
+        path: ['structuredDataStrategy', 'globalTypes', index],
+      });
+    }
+  }
 });
 export type SearchIntelligenceStrategyV2 = z.infer<typeof SearchIntelligenceStrategyV2Schema>;
 
@@ -426,14 +445,16 @@ export const PageSeoBriefSchema = z.object({
   urlRecommendation: SiteCanonicalPathSchema,
   indexationPolicy: NoteSchema,
   canonicalPolicy: NoteSchema,
-  contentFormat: z.enum(['LANDING_PAGE', 'GUIDE', 'HOW_TO', 'ARTICLE', 'FAQ', 'TUTORIAL', 'DEFINITION', 'TROUBLESHOOTING', 'COMPARISON', 'CASE_STUDY']),
+  contentFormat: SiteSeoContentFormatSchema,
   minimumContentDepthWords: z.number().int().nonnegative().max(25_000),
   contentDepthGuidance: NoteSchema,
   recommendedHeadings: z.array(ShortTextSchema).min(1).max(100),
   faqOpportunities: z.array(ShortTextSchema).max(100).default([]),
   competitorGapNotes: z.array(ClassifiedStatementSchema).max(100).default([]),
   snippetTarget: z.enum(['NONE', 'PARAGRAPH', 'LIST', 'STEPS', 'TABLE', 'DEFINITION']),
-  richResultEligibility: z.array(StructuredDataTypeV2Schema).max(20).default([]),
+  richResultEligibility: z.array(StructuredDataTypeV2Schema).max(20)
+    .refine(types => new Set(types).size === types.length, 'Rich-result eligibility must be unique.')
+    .default([]),
   internalLinks: z.array(z.object({
     targetPageReference: PublicReferenceSchema,
     anchorText: z.string().trim().min(1).max(120),
@@ -449,7 +470,8 @@ export const PageSeoBriefSchema = z.object({
     anchorText: z.string().trim().min(1).max(120),
     purpose: z.string().trim().min(5).max(500),
   }).strict()).max(200),
-  schemaTypes: z.array(StructuredDataTypeV2Schema).max(20),
+  schemaTypes: z.array(StructuredDataTypeV2Schema).max(20)
+    .refine(types => new Set(types).size === types.length, 'Page schema types must be unique.'),
   imageRequirements: z.array(z.object({
     purpose: ShortTextSchema,
     descriptiveAltTextGuidance: ShortTextSchema,
@@ -468,8 +490,16 @@ export const PageSeoBriefSchema = z.object({
     question: ShortTextSchema.optional(),
     answerFormat: z.enum(['PARAGRAPH', 'LIST', 'STEPS', 'TABLE', 'DEFINITION']).optional(),
   }).strict(),
-  authorship: z.object({ required: z.boolean(), credentials: z.array(ShortTextSchema).max(50) }).strict(),
-  reviewer: z.object({ required: z.boolean(), credentials: z.array(ShortTextSchema).max(50) }).strict(),
+  authorship: z.object({
+    required: z.boolean(),
+    staffReference: PublicReferenceSchema.optional(),
+    credentials: z.array(ShortTextSchema).max(50),
+  }).strict(),
+  reviewer: z.object({
+    required: z.boolean(),
+    staffReference: PublicReferenceSchema.optional(),
+    credentials: z.array(ShortTextSchema).max(50),
+  }).strict(),
   evidenceRequirements: z.array(ShortTextSchema).max(100).default([]),
   requiredEvidence: z.array(ShortTextSchema).max(100).default([]),
   originalEvidenceRequirements: z.array(ShortTextSchema).max(100).default([]),
@@ -493,6 +523,34 @@ export const PageSeoBriefSchema = z.object({
         path: ['contentRisk'],
       });
     }
+  }
+  if (value.authorship.required !== Boolean(value.authorship.staffReference)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Required authorship must bind one verified staff reference; optional authorship must not preselect one.',
+      path: ['authorship', 'staffReference'],
+    });
+  }
+  if (value.reviewer.required !== Boolean(value.reviewer.staffReference)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Required review must bind one verified staff reference; optional review must not preselect one.',
+      path: ['reviewer', 'staffReference'],
+    });
+  }
+  if (value.reviewer.required && !value.authorship.required) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'A governed reviewer requires a governed author on the same page.',
+      path: ['reviewer', 'required'],
+    });
+  }
+  if (value.authorship.staffReference && value.authorship.staffReference === value.reviewer.staffReference) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'The governed author and reviewer must be distinct people.',
+      path: ['reviewer', 'staffReference'],
+    });
   }
   if (value.schemaTypes.includes('FAQ_PAGE') && value.faqOpportunities.length === 0) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'FAQ schema requires planned FAQ content.', path: ['schemaTypes'] });
@@ -547,6 +605,17 @@ export function validateSearchIntelligencePlan(input: {
   const pageByReference = new Map(input.plannedPages.map(page => [page.pageReference, page]));
   const planned = new Set(pageByReference.keys());
   const briefByPage = new Map<string, PageSeoBrief>();
+  const schemaRuleByPage = new Map<string, SearchIntelligenceStrategyV2['structuredDataStrategy']['pageRules'][number]>();
+
+  for (const rule of input.strategy.structuredDataStrategy.pageRules) {
+    if (schemaRuleByPage.has(rule.pageReference)) {
+      findings.push({ code: 'DUPLICATE_STRUCTURED_DATA_PAGE_RULE', blocking: true, message: 'A page has more than one approved structured-data rule.', pageReference: rule.pageReference });
+    }
+    if (!planned.has(rule.pageReference)) {
+      findings.push({ code: 'STRUCTURED_DATA_PAGE_NOT_PLANNED', blocking: true, message: 'A structured-data rule targets a page outside the approved plan.', pageReference: rule.pageReference });
+    }
+    schemaRuleByPage.set(rule.pageReference, rule);
+  }
 
   if (input.strategy.status !== 'APPROVED') {
     findings.push({ code: 'SEARCH_STRATEGY_NOT_APPROVED', blocking: true, message: 'V2 generation requires an approved search strategy.' });
@@ -570,6 +639,21 @@ export function validateSearchIntelligencePlan(input: {
     }
     if (brief.status !== 'APPROVED') {
       findings.push({ code: 'PAGE_SEO_BRIEF_NOT_APPROVED', blocking: true, message: 'Every planned V2 page requires an approved SEO brief.', pageReference: brief.pageReference });
+    }
+    const schemaRule = schemaRuleByPage.get(brief.pageReference);
+    if (!schemaRule) {
+      findings.push({ code: 'STRUCTURED_DATA_PAGE_RULE_MISSING', blocking: true, message: 'Every page brief requires one explicit structured-data strategy rule.', pageReference: brief.pageReference });
+    } else {
+      const briefTypes = [...new Set(brief.schemaTypes)].sort();
+      const ruleTypes = [...new Set(schemaRule.types)].sort();
+      if (JSON.stringify(briefTypes) !== JSON.stringify(ruleTypes)) {
+        findings.push({ code: 'STRUCTURED_DATA_PLAN_MISMATCH', blocking: true, message: 'Page brief schema eligibility must exactly match its approved strategy page rule.', pageReference: brief.pageReference });
+      }
+    }
+    for (const richResultType of brief.richResultEligibility) {
+      if (!brief.schemaTypes.includes(richResultType)) {
+        findings.push({ code: 'RICH_RESULT_SCHEMA_MISSING', blocking: true, message: 'Every rich-result eligibility decision must be included in the approved page schema plan.', pageReference: brief.pageReference });
+      }
     }
   }
   for (const page of input.plannedPages) {
@@ -628,8 +712,27 @@ export function validateSearchIntelligencePlan(input: {
         findings.push({ code: 'CANNIBALISING_ANCHOR_TARGET', blocking: true, message: 'The same governed anchor text points to competing page targets.', pageReference: brief.pageReference });
       } else anchorTargets.set(anchor, link.targetPageReference);
     }
-    if (brief.richResultEligibility.includes('FAQ_PAGE') && !brief.schemaTypes.includes('FAQ_PAGE')) {
-      findings.push({ code: 'RICH_RESULT_SCHEMA_MISSING', blocking: true, message: 'An eligible rich result must be represented in the page schema plan.', pageReference: brief.pageReference });
+  }
+
+  for (const targetBrief of input.briefs) {
+    const expectedIncoming = input.briefs.flatMap(sourceBrief =>
+      sourceBrief.internalLinks
+        .filter(link => link.targetPageReference === targetBrief.pageReference)
+        .map(link => ({
+          sourcePageReference: sourceBrief.pageReference,
+          anchorText: link.anchorText,
+          purpose: link.purpose,
+        })))
+      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+    const declaredIncoming = [...targetBrief.internalLinksIn]
+      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+    if (JSON.stringify(expectedIncoming) !== JSON.stringify(declaredIncoming)) {
+      findings.push({
+        code: 'INCOMING_INTERNAL_LINK_PLAN_MISMATCH',
+        blocking: true,
+        message: 'Incoming page links must exactly mirror the approved outbound site graph.',
+        pageReference: targetBrief.pageReference,
+      });
     }
   }
 
@@ -693,17 +796,68 @@ export function assertSearchIntelligenceReady(input: Parameters<typeof validateS
   }
 }
 
+const CONTENT_FORMAT_PAGE_TYPES: Readonly<Record<SiteSeoContentFormat, readonly SitePageType[]>> = {
+  LANDING_PAGE: ['HOME', 'SERVICE_HUB', 'SERVICE_DETAIL', 'LOCATION_HUB', 'LOCATION_DETAIL', 'ABOUT', 'TEAM_HUB', 'TEAM_DETAIL', 'CONTACT', 'POLICIES', 'RESULTS', 'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE', 'BOOKING'],
+  GUIDE: ['GUIDE', 'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE'],
+  HOW_TO: ['HOW_TO'],
+  ARTICLE: ['ARTICLE', 'BLOG_POST'],
+  FAQ: ['FAQ', 'FAQ_RESOURCE'],
+  TUTORIAL: ['TUTORIAL'],
+  DEFINITION: ['DEFINITION'],
+  TROUBLESHOOTING: ['TROUBLESHOOTING'],
+  COMPARISON: ['COMPARISON'],
+  CASE_STUDY: ['CASE_STUDY', 'RESULTS'],
+};
+
+const GENERATED_INPUT_ELIGIBILITY: Readonly<Record<GeneratedPage['structuredDataInputs'][number]['type'], SiteStructuredDataEligibility>> = {
+  LOCAL_BUSINESS: 'LOCAL_BUSINESS',
+  SERVICE: 'SERVICE',
+  FAQ: 'FAQ_PAGE',
+  BREADCRUMB: 'BREADCRUMB_LIST',
+};
+
+function generatedContentWordCount(value: unknown, parentKey = ''): number {
+  if (typeof value === 'string') {
+    if (/reference|componentKey|type|variant|url/i.test(parentKey)) return 0;
+    return value.trim().split(/\s+/).filter(Boolean).length;
+  }
+  if (Array.isArray(value)) {
+    return value.reduce((total, item) => total + generatedContentWordCount(item, parentKey), 0);
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .reduce((total, [key, item]) => total + generatedContentWordCount(item, key), 0);
+  }
+  return 0;
+}
+
+function generatedPrimaryHeading(
+  page: GeneratedPage,
+  facts?: VerifiedBusinessFacts,
+): string | null {
+  for (const section of page.sections) {
+    if (section.type === 'HERO' || section.type === 'SERVICE_DETAILS') return section.heading;
+    if (section.type === 'STAFF_PROFILE') {
+      const staffName = facts?.staff
+        .find(staff => staff.publicReference === section.staffReference)
+        ?.facts.find(fact => fact.key === 'staff.name')?.value;
+      return typeof staffName === 'string' ? staffName : page.title;
+    }
+  }
+  return null;
+}
+
+function requiredFormatSectionTypes(format: SiteSeoContentFormat): readonly string[] {
+  if (format === 'FAQ') return ['FAQ'];
+  if (format === 'HOW_TO' || format === 'TUTORIAL') return ['PROCESS', 'RICH_TEXT'];
+  if (['GUIDE', 'ARTICLE', 'DEFINITION', 'TROUBLESHOOTING', 'COMPARISON', 'CASE_STUDY'].includes(format)) return ['RICH_TEXT'];
+  return [];
+}
+
 export function validateGeneratedPageAgainstSeoBrief(input: {
   brief: PageSeoBrief;
-  page: {
-    pageReference: string;
-    pageType: string;
-    title: string;
-    seo: { title: string; canonicalPath: string; index: boolean };
-    internalLinks: ReadonlyArray<{ targetPageReference: string }>;
-    sections: ReadonlyArray<{ type: string }>;
-    structuredDataInputs: ReadonlyArray<{ type: string }>;
-  };
+  page: GeneratedPage;
+  facts?: VerifiedBusinessFacts;
 }): SearchIntelligenceFinding[] {
   const findings: SearchIntelligenceFinding[] = [];
   const { brief, page } = input;
@@ -719,18 +873,65 @@ export function validateGeneratedPageAgainstSeoBrief(input: {
   if (page.seo.index !== (brief.indexation === 'INDEX')) {
     add('GENERATED_INDEXATION_CHANGED', 'Generated metadata changed the approved indexation decision.');
   }
-  const target = brief.primaryKeyword.toLocaleLowerCase();
-  if (!`${page.title} ${page.seo.title}`.toLocaleLowerCase().includes(target)) {
-    add('PRIMARY_TOPIC_TARGET_MISSING', 'The generated title and SEO title omit the approved primary topic target.');
+  if (page.seo.title !== brief.recommendedTitle) {
+    add('GENERATED_SEO_TITLE_CHANGED', 'Generated metadata changed the exact approved SEO title.');
   }
-  const allowedTargets = new Set(brief.internalLinks.map(link => link.targetPageReference));
-  if (page.internalLinks.some(link => !allowedTargets.has(link.targetPageReference))) {
-    add('GENERATED_INTERNAL_LINK_PLAN_CHANGED', 'Generated content links outside the approved page-level internal-link plan.');
+  if (page.seo.description !== brief.recommendedMetaDescription) {
+    add('GENERATED_META_DESCRIPTION_CHANGED', 'Generated metadata changed the exact approved meta description.');
+  }
+  const primaryHeading = generatedPrimaryHeading(page, input.facts);
+  if (primaryHeading !== brief.recommendedH1) {
+    add('GENERATED_PRIMARY_HEADING_CHANGED', 'Generated content changed the approved primary heading.');
+  }
+  const approvedLinks = brief.internalLinks
+    .map(link => `${link.targetPageReference}:${link.anchorText}`)
+    .sort();
+  const generatedLinks = page.internalLinks
+    .map(link => `${link.targetPageReference}:${link.anchorText}`)
+    .sort();
+  if (JSON.stringify(generatedLinks) !== JSON.stringify(approvedLinks)) {
+    add('GENERATED_INTERNAL_LINK_PLAN_CHANGED', 'Generated content must preserve every approved internal-link target and anchor without additions or omissions.');
+  }
+  if (!CONTENT_FORMAT_PAGE_TYPES[brief.contentFormat].includes(page.pageType)) {
+    add('GENERATED_CONTENT_FORMAT_CHANGED', 'The generated page type is incompatible with the approved content format.');
+  }
+  const requiredSections = requiredFormatSectionTypes(brief.contentFormat);
+  if (requiredSections.length && !requiredSections.some(type => page.sections.some(section => section.type === type))) {
+    add('GENERATED_CONTENT_FORMAT_INCOMPLETE', `The approved ${brief.contentFormat} format requires visible ${requiredSections.join(' or ')} content.`);
+  }
+  const wordCount = generatedContentWordCount(page.sections);
+  if (wordCount < brief.minimumContentDepthWords) {
+    add('GENERATED_CONTENT_DEPTH_INSUFFICIENT', `The generated page contains ${wordCount} governed content words; the approved minimum is ${brief.minimumContentDepthWords}.`);
   }
   const hasFaqContent = page.sections.some(section => section.type === 'FAQ');
   const hasFaqSchema = page.structuredDataInputs.some(item => item.type === 'FAQ');
-  if (hasFaqSchema && (!hasFaqContent || !brief.schemaTypes.includes('FAQ_PAGE'))) {
+  const faqPlanned = brief.schemaTypes.includes('FAQ_PAGE') || brief.richResultEligibility.includes('FAQ_PAGE');
+  if (faqPlanned && !hasFaqContent) {
+    add('REQUIRED_FAQ_CONTENT_MISSING', 'The approved FAQ schema plan requires visible FAQ content.');
+  }
+  if (hasFaqSchema && (!hasFaqContent || !faqPlanned)) {
     add('FAQ_SCHEMA_INELIGIBLE', 'FAQ structured data requires visible FAQ content and explicit brief eligibility.');
+  }
+  for (const item of page.structuredDataInputs) {
+    const eligibility = GENERATED_INPUT_ELIGIBILITY[item.type];
+    if (!brief.schemaTypes.includes(eligibility)) {
+      add('GENERATED_SCHEMA_TYPE_INELIGIBLE', `Generated structured-data input ${item.type} is absent from the approved page schema plan.`);
+    }
+  }
+  const knownStaff = new Set(input.facts?.staff.map(staff => staff.publicReference) ?? []);
+  if (brief.authorship.required && (!brief.authorship.staffReference || !knownStaff.has(brief.authorship.staffReference))) {
+    add('YMYL_AUTHOR_REQUIRED', 'The approved authorship requirement must resolve to a verified canonical staff record.');
+  }
+  if (brief.reviewer.required && (!brief.reviewer.staffReference || !knownStaff.has(brief.reviewer.staffReference))) {
+    add('YMYL_REVIEWER_REQUIRED', 'The approved reviewer requirement must resolve to a verified canonical staff record.');
+  }
+  const requiresEvidence = brief.evidenceRequirements.length > 0 || brief.requiredEvidence.length > 0;
+  const groundedEvidenceClaims = page.claims.filter(claim =>
+    claim.status === 'GROUNDED' && claim.factKeys.length > 0);
+  if (requiresEvidence && (groundedEvidenceClaims.length === 0
+    || page.claims.some(claim => claim.status !== 'NOT_APPLICABLE'
+      && (claim.status !== 'GROUNDED' || claim.factKeys.length === 0)))) {
+    add('SOURCE_EVIDENCE_REQUIRED', 'Every generated claim on this evidence-governed page must be grounded to canonical fact keys.');
   }
   return findings;
 }

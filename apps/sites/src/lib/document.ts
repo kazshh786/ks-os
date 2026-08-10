@@ -12,6 +12,25 @@ import type {
 import { canonicalPageUrl, serializeStructuredData } from './seo.js';
 import { renderSiteThemePresentation } from './design-tokens.js';
 
+function renderGovernedEditorialEvidence(
+  snapshot: PublishedSiteSnapshot,
+  page: PublishedPageSnapshot,
+): string {
+  const authorship = page.authorship
+    ? `<aside class="editorial-evidence" aria-label="Editorial provenance"><p>Written by ${escapeHtml(page.authorship.author.name)}${page.authorship.author.role ? `, ${escapeHtml(page.authorship.author.role)}` : ''}</p>${page.authorship.reviewer ? `<p>Reviewed by ${escapeHtml(page.authorship.reviewer.name)}${page.authorship.reviewer.role ? `, ${escapeHtml(page.authorship.reviewer.role)}` : ''}${page.reviewedAt ? ` on <time datetime="${escapeHtml(page.reviewedAt)}">${escapeHtml(page.reviewedAt.slice(0, 10))}</time>` : ''}</p>` : ''}</aside>`
+    : '';
+  if (!page.video) return authorship;
+  const thumbnail = snapshot.assets.find(asset => asset.publicReference === page.video?.thumbnailAssetReference);
+  const media = page.video.contentUrl
+    ? `<video controls preload="metadata"${thumbnail ? ` poster="${escapeHtml(thumbnail.url)}"` : ''}><source src="${escapeHtml(page.video.contentUrl)}"></video>`
+    : page.video.embedUrl
+      ? `<p><a href="${escapeHtml(page.video.embedUrl)}">Watch ${escapeHtml(page.video.name)}</a></p>`
+      : thumbnail
+        ? `<img src="${escapeHtml(thumbnail.url)}" alt="${escapeHtml(thumbnail.alt)}" width="${thumbnail.width}" height="${thumbnail.height}">`
+        : '';
+  return `${authorship}<section class="governed-video" aria-label="Video"><h2>${escapeHtml(page.video.name)}</h2><p>${escapeHtml(page.video.description)}</p>${media}${page.video.transcript ? `<details><summary>Transcript</summary><p>${escapeHtml(page.video.transcript)}</p></details>` : ''}</section>`;
+}
+
 function documentShell(input: {
   title: string;
   description: string;
@@ -70,11 +89,12 @@ export function renderPublishedPageDocument(input: {
   const previewBanner = input.preview
     ? `<aside class="preview-banner" role="status">Preview · Site ${escapeHtml(input.snapshot.siteReference)} · Version ${escapeHtml(input.snapshot.versionReference)}</aside>`
     : '';
+  const editorialEvidence = renderGovernedEditorialEvidence(input.snapshot, input.page);
   return documentShell({
     title: input.page.seo.title,
     description: input.page.seo.description,
     language: input.page.languageCode ?? input.snapshot.language,
-    body: `${previewBanner}${input.content}` as SafeHtml,
+    body: `${previewBanner}${input.content}${editorialEvidence}` as SafeHtml,
     canonicalUrl,
     robots: input.preview
       ? 'noindex, nofollow'

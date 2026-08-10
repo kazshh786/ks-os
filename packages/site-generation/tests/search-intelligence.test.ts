@@ -4,14 +4,19 @@ import {
   DisabledSearchResearchProvider,
   FakeSearchResearchProvider,
   KeywordMetricsSchema,
+  PAGE_SEO_BRIEF_FIELD_COVERAGE,
+  PAGE_SEO_BRIEF_GOVERNED_FIELD_REPORT,
   PageSeoBriefSchema,
   SearchIntelligenceStrategyV2Schema,
   SearchIntentSchema,
   SearchKeywordClassSchema,
   assertApprovedPageSeoBriefUnchanged,
   pageSeoBriefDigest,
+  pageSeoBriefCoverageSummary,
   searchStrategyDigest,
   validateSearchIntelligencePlan,
+  validateGeneratedPageAgainstSeoBrief,
+  type GeneratedPage,
   type PageSeoBrief,
   type SearchIntelligenceStrategyV2,
   type SearchResearchEvidence,
@@ -81,7 +86,14 @@ function strategy(overrides: Partial<SearchIntelligenceStrategyV2> = {}) {
     ],
     siteTopicGraph: { nodes: [{ key: 'home', pageReference: ids[4]! }, { key: 'service', pageReference: ids[5]! }], edges: [{ from: 'home', to: 'service', relationship: 'commercial path' }] },
     internalLinkStrategy: { links: [{ sourcePageReference: ids[4]!, targetPageReference: ids[5]!, anchorText: 'Example service', purpose: 'Move visitors to detailed service information.' }], maximumClicksFromHome: 3 },
-    structuredDataStrategy: { globalTypes: ['WEB_SITE', 'ORGANIZATION'], pageRules: [], prohibitSelfServingReviews: true },
+    structuredDataStrategy: {
+      globalTypes: ['WEB_SITE', 'ORGANIZATION'],
+      pageRules: [
+        { pageReference: ids[4]!, types: ['WEB_PAGE', 'BREADCRUMB_LIST'] },
+        { pageReference: ids[5]!, types: ['WEB_PAGE', 'BREADCRUMB_LIST'] },
+      ],
+      prohibitSelfServingReviews: true,
+    },
     technicalSeoStrategy: { canonicalPolicy: 'Use one self-referencing canonical per indexable page.', indexationPolicy: 'Index only approved canonical pages.', redirectPolicy: 'Use permanent redirects for superseded paths.', hreflangEnabled: false, sitemapLastModifiedRequired: true },
     mediaSeoStrategy: { descriptiveAltTextRequired: true, decorativeAltMustBeEmpty: true, imageContextRequired: true, videoTranscriptsRequired: true },
     performanceSeoStrategy: { lcpMillisecondsMaximum: 2500, inpMillisecondsMaximum: 200, clsMaximum: 0.1, measurementModes: ['LAB', 'FIELD'], lcpAssetMustNotLazyLoad: true },
@@ -110,7 +122,11 @@ function brief(input: { reference: string; blueprintPageReference: string; pageR
     contentDepthGuidance: 'Answer the visitor’s decision questions with specific, evidence-backed detail.',
     recommendedHeadings: [`${input.primaryKeyword} heading`], faqOpportunities: [], competitorGapNotes: [], snippetTarget: 'PARAGRAPH', richResultEligibility: [],
     internalLinks: [{ targetPageReference: input.targetPageReference, anchorText: governedAnchorText, purpose: 'Continue the planned visitor and topic journey.' }],
-    internalLinksIn: [], internalLinksOut: [{ targetPageReference: input.targetPageReference, anchorText: governedAnchorText, purpose: 'Continue the planned visitor and topic journey.' }],
+    internalLinksIn: [{
+      sourcePageReference: input.targetPageReference,
+      anchorText: input.pageType === 'HOME' ? 'Return to Example Limited' : 'Explore the example service',
+      purpose: 'Continue the planned visitor and topic journey.',
+    }], internalLinksOut: [{ targetPageReference: input.targetPageReference, anchorText: governedAnchorText, purpose: 'Continue the planned visitor and topic journey.' }],
     schemaTypes: ['WEB_PAGE', 'BREADCRUMB_LIST'], imageRequirements: [], mediaRequirements: [],
     featuredSnippetOpportunity: 'PARAGRAPH', aiAnswerOpportunity: { enabled: true, question: 'What does this service include?', answerFormat: 'PARAGRAPH' },
     authorship: { required: false, credentials: [] }, reviewer: { required: false, credentials: [] },
@@ -156,6 +172,67 @@ test('validates an exact, approved page/brief plan', () => {
   assert.deepEqual(validateSearchIntelligencePlan(validPlan()), []);
 });
 
+test('reports exhaustive machine-readable coverage for every PageSeoBrief field', () => {
+  const summary = pageSeoBriefCoverageSummary();
+  assert.equal(summary.total, Object.keys(PAGE_SEO_BRIEF_FIELD_COVERAGE).length);
+  assert.equal(summary.total, PAGE_SEO_BRIEF_GOVERNED_FIELD_REPORT.length);
+  assert.equal(summary.ignored, 0);
+  assert.ok(summary.enforced > 0);
+  assert.ok(PAGE_SEO_BRIEF_GOVERNED_FIELD_REPORT.every(item =>
+    item.consumer.length > 0 && item.validation.length > 0 && item.rendererImpact.length > 0));
+});
+
+test('enforces approved title, description and H1 without exact-match keyword stuffing', () => {
+  const governedBrief = PageSeoBriefSchema.parse({
+    ...validPlan().briefs[0]!,
+    primaryKeyword: 'best evidence led aesthetic consultation central london',
+    recommendedTitle: 'A thoughtful first consultation | Example',
+    recommendedMetaDescription: 'See how a careful, evidence-led first appointment works and what to prepare before booking.',
+    recommendedH1: 'Start with a consultation built around you',
+    minimumContentDepthWords: 0,
+  });
+  const page: GeneratedPage = {
+    pageReference: governedBrief.pageReference,
+    title: governedBrief.recommendedH1,
+    navigationLabel: 'Home',
+    slug: 'home',
+    pageType: 'HOME',
+    conversionRole: 'PRIMARY_LANDING',
+    layoutReference: ids[20]!,
+    seo: {
+      title: governedBrief.recommendedTitle,
+      description: governedBrief.recommendedMetaDescription,
+      canonicalPath: governedBrief.canonicalPath,
+      index: true,
+      follow: true,
+      openGraphTitle: governedBrief.recommendedTitle,
+      openGraphDescription: governedBrief.recommendedMetaDescription,
+      twitterCard: 'summary_large_image',
+    },
+    sections: [{
+      reference: ids[21]!,
+      type: 'HERO',
+      heading: governedBrief.recommendedH1,
+      body: 'A clear explanation written naturally for a prospective client.',
+      primaryAction: { type: 'KS_OS_BOOKING', label: 'Book now' },
+    }],
+    internalLinks: governedBrief.internalLinks.map(link => ({
+      targetPageReference: link.targetPageReference,
+      anchorText: link.anchorText,
+    })),
+    structuredDataInputs: [],
+    assetRequirements: [],
+    missingDataFindings: [],
+    claims: [],
+  };
+  assert.equal(governedBrief.recommendedTitle.includes(governedBrief.primaryKeyword), false);
+  assert.deepEqual(validateGeneratedPageAgainstSeoBrief({ brief: governedBrief, page }), []);
+  const changed = structuredClone(page);
+  changed.seo.title = 'AI changed this title';
+  assert.ok(validateGeneratedPageAgainstSeoBrief({ brief: governedBrief, page: changed })
+    .some(finding => finding.code === 'GENERATED_SEO_TITLE_CHANGED'));
+});
+
 test('blocks missing briefs, cannibalization, invalid links and orphan pages', () => {
   const plan = validPlan();
   const duplicate = PageSeoBriefSchema.parse({
@@ -174,6 +251,7 @@ test('blocks missing briefs, cannibalization, invalid links and orphan pages', (
   assert.ok(codes.includes('KEYWORD_CANNIBALISATION'));
   assert.ok(codes.includes('INTERNAL_LINK_TARGET_NOT_PLANNED'));
   assert.ok(codes.includes('ORPHAN_PAGE'));
+  assert.ok(codes.includes('INCOMING_INTERNAL_LINK_PLAN_MISMATCH'));
   assert.ok(validateSearchIntelligencePlan({ ...plan, briefs: plan.briefs.slice(0, 1) }).some(finding => finding.code === 'PAGE_SEO_BRIEF_MISSING'));
 });
 
@@ -194,6 +272,18 @@ test('high-risk YMYL and FAQ schema require governance inputs', () => {
   const base = validPlan().briefs[0]!;
   assert.equal(PageSeoBriefSchema.safeParse({ ...base, contentRisk: { ymyl: 'HIGH', notes: [] } }).success, false);
   assert.equal(PageSeoBriefSchema.safeParse({ ...base, schemaTypes: [...base.schemaTypes, 'FAQ_PAGE'], faqOpportunities: [] }).success, false);
+  assert.equal(PageSeoBriefSchema.safeParse({
+    ...base,
+    contentRisk: { ymyl: 'HIGH', notes: [] },
+    authorship: { required: true, staffReference: ids[22]!, credentials: ['Practitioner'] },
+    reviewer: { required: true, staffReference: ids[23]!, credentials: ['Clinical reviewer'] },
+    evidenceRequirements: ['Canonical treatment evidence'],
+  }).success, true);
+  assert.equal(PageSeoBriefSchema.safeParse({
+    ...base,
+    authorship: { required: true, staffReference: ids[22]!, credentials: [] },
+    reviewer: { required: true, staffReference: ids[22]!, credentials: [] },
+  }).success, false);
 });
 
 test('disabled and fake providers cannot accidentally perform live research', async () => {
