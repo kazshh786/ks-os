@@ -22,6 +22,8 @@ import {
   siteGenerationFindings,
   siteGenerationPageRuns,
   siteGenerationRuns,
+  sitePageSeoBriefs,
+  siteSearchStrategies,
   siteJobEvents,
   siteJobs,
   sitePages,
@@ -43,6 +45,10 @@ import {
   buildVerifiedBusinessFacts,
   generationDigest,
   generationIdempotencyKey,
+  searchStrategyDigest,
+  validateSearchIntelligencePlan,
+  PageSeoBriefSchema,
+  SearchIntelligenceStrategyV2Schema,
   parseSiteGenerationConfig,
   type GenerationRunRequestSchema,
 } from '@ks-os/site-generation';
@@ -118,6 +124,7 @@ export class AgencySiteGenerationService {
         sourceDataDigest: siteBlueprints.sourceDataDigest,
         templateVersionId: templateVersions.id,
         templateVersionReference: templateVersions.publicReference,
+        templateVersionNumber: templateVersions.versionNumber,
         templateVersionStatus: templateVersions.status,
         templateVersionAnalysisStatus: templateVersions.analysisStatus,
         templateManifest: templateVersions.manifestJson,
@@ -153,6 +160,9 @@ export class AgencySiteGenerationService {
     await this.assertV2TemplateReady(context);
     const knowledge = await this.resolveKnowledgePack(input.knowledgePackReference);
     const blueprintPages = await this.resolveCompatiblePages(context);
+    const searchIntelligence = isV2TemplateManifest(context.templateManifest)
+      ? await this.resolveApprovedSearchIntelligence(context, blueprintPages)
+      : null;
     await this.assertTemplateLicence(context);
     const facts = await this.verifiedFactSnapshot(context.tenantId, context.siteId);
     const sourceDataDigestSha256 = generationDigest(facts);
@@ -167,6 +177,9 @@ export class AgencySiteGenerationService {
       verifiedBusinessDataDigestSha256: sourceDataDigestSha256,
       generatorVersion: provider.generatorVersion,
       generationReason: input.generationReason,
+      ...(searchIntelligence
+        ? { searchStrategyDigestSha256: searchIntelligence.digestSha256 }
+        : {}),
     });
     const [agencyUser] = await this.database
       .select({ reference: agencyUsers.publicReference })
@@ -213,6 +226,9 @@ export class AgencySiteGenerationService {
         templateVersionId: context.templateVersionId,
         knowledgePackId: knowledge.id,
         knowledgePackSemanticVersion: knowledge.semanticVersion,
+        searchStrategyId: searchIntelligence?.id,
+        searchStrategyVersion: searchIntelligence?.version,
+        searchStrategyDigestSha256: searchIntelligence?.digestSha256,
         generationReason: input.generationReason,
         generatorVersion: provider.generatorVersion,
         providerKey: provider.provider,
@@ -273,6 +289,9 @@ export class AgencySiteGenerationService {
           knowledgePackReference: knowledge.reference,
           providerKey: provider.provider,
           modelKey,
+          searchStrategyReference: searchIntelligence?.reference ?? null,
+          searchStrategyVersion: searchIntelligence?.version ?? null,
+          searchStrategyDigestSha256: searchIntelligence?.digestSha256 ?? null,
           pageCount: blueprintPages.length,
         },
         tx: transaction,
@@ -297,6 +316,9 @@ export class AgencySiteGenerationService {
       generatorVersion: siteGenerationRuns.generatorVersion,
       providerKey: siteGenerationRuns.providerKey,
       modelKey: siteGenerationRuns.modelKey,
+      searchStrategyReference: siteSearchStrategies.publicReference,
+      searchStrategyVersion: siteGenerationRuns.searchStrategyVersion,
+      searchStrategyDigestSha256: siteGenerationRuns.searchStrategyDigestSha256,
       status: siteGenerationRuns.status,
       pageCountPlanned: siteGenerationRuns.pageCountPlanned,
       pageCountCompleted: siteGenerationRuns.pageCountCompleted,
@@ -311,6 +333,7 @@ export class AgencySiteGenerationService {
       .leftJoin(siteVersions, eq(siteGenerationRuns.siteVersionId, siteVersions.id))
       .innerJoin(siteBlueprints, eq(siteGenerationRuns.blueprintId, siteBlueprints.id))
       .innerJoin(knowledgePacks, eq(siteGenerationRuns.knowledgePackId, knowledgePacks.id))
+      .leftJoin(siteSearchStrategies, eq(siteGenerationRuns.searchStrategyId, siteSearchStrategies.id))
       .where(eq(sites.publicReference, siteReference))
       .orderBy(desc(siteGenerationRuns.createdAt));
   }
@@ -624,6 +647,7 @@ export class AgencySiteGenerationService {
 
   private async assertV2TemplateReady(context: {
     templateVersionId: string;
+    templateVersionNumber: number;
     templateVersionAnalysisStatus: string;
     templateManifest: unknown;
   }) {
@@ -655,7 +679,7 @@ export class AgencySiteGenerationService {
     const readiness = auditV2TemplateReadiness({
       manifest: context.templateManifest,
       analysisStatus: context.templateVersionAnalysisStatus,
-      expectedLayouts: listNativeLayoutManifests().map(manifest => ({
+      expectedLayouts: listNativeLayoutManifests({ templateVersionNumber: context.templateVersionNumber }).map(manifest => ({
         semanticKey: manifest.semanticKey,
         pageTypes: manifest.pageTypes,
       })),
@@ -671,7 +695,7 @@ export class AgencySiteGenerationService {
       sectionLayoutIds: new Set(sections.map(section => section.layoutId)),
     });
     if (!readiness.ready) {
-      throw fail(409, 'GENERATION_V2_TEMPLATE_NOT_READY', 'The V2 template is incomplete; all 13 layouts, renderers, normalized sections and 16 page-type mappings must be ready before generation.');
+      throw fail(409, 'GENERATION_V2_TEMPLATE_NOT_READY', 'The pinned V2+ template is incomplete for its immutable versioned layout, renderer, section, and page-type capability set.');
     }
   }
 
@@ -683,6 +707,7 @@ export class AgencySiteGenerationService {
   }) {
     const rows = await this.database.select({
       id: siteBlueprintPages.id,
+      publicReference: siteBlueprintPages.publicReference,
       pageType: siteBlueprintPages.pageType,
       layoutId: templateLayouts.id,
       layoutStatus: templateLayouts.status,
@@ -714,6 +739,59 @@ export class AgencySiteGenerationService {
       if (!compatible) throw fail(409, 'GENERATION_LAYOUT_INCOMPATIBLE', 'A blueprint layout is incompatible with its page type.');
     }
     return rows;
+  }
+
+  private async resolveApprovedSearchIntelligence(
+    context: {
+      tenantId: string;
+      siteId: string;
+      blueprintId: string;
+      blueprintRevision: number;
+    },
+    blueprintPages: ReadonlyArray<{ id: string; publicReference: string; pageType: string }>,
+  ) {
+    const strategies = await this.database.select({
+      id: siteSearchStrategies.id,
+      reference: siteSearchStrategies.publicReference,
+      version: siteSearchStrategies.strategyVersion,
+      digestSha256: siteSearchStrategies.outputDigestSha256,
+      value: siteSearchStrategies.strategyJson,
+    }).from(siteSearchStrategies).where(and(
+      eq(siteSearchStrategies.tenantId, context.tenantId),
+      eq(siteSearchStrategies.siteId, context.siteId),
+      eq(siteSearchStrategies.blueprintId, context.blueprintId),
+      eq(siteSearchStrategies.blueprintRevision, context.blueprintRevision),
+      eq(siteSearchStrategies.status, 'APPROVED'),
+    )).limit(2);
+    if (strategies.length !== 1) {
+      throw fail(409, 'APPROVED_SEARCH_INTELLIGENCE_REQUIRED', 'V2 generation requires exactly one approved Search Intelligence strategy for the pinned blueprint revision.');
+    }
+    const pinned = strategies[0]!;
+    const strategy = SearchIntelligenceStrategyV2Schema.parse(pinned.value);
+    if (searchStrategyDigest(strategy) !== pinned.digestSha256) {
+      throw fail(409, 'SEARCH_INTELLIGENCE_DIGEST_MISMATCH', 'The approved search strategy digest does not match its governed content.');
+    }
+    const briefRows = await this.database.select({ value: sitePageSeoBriefs.briefJson })
+      .from(sitePageSeoBriefs)
+      .where(and(
+        eq(sitePageSeoBriefs.strategyId, pinned.id),
+        eq(sitePageSeoBriefs.status, 'APPROVED'),
+      ));
+    const briefs = briefRows.map(row => PageSeoBriefSchema.parse(row.value));
+    const byBlueprintPage = new Map(briefs.map(brief => [brief.blueprintPageReference, brief]));
+    const findings = validateSearchIntelligencePlan({
+      strategy,
+      briefs,
+      plannedPages: blueprintPages.map(page => ({
+        blueprintPageReference: page.publicReference,
+        pageReference: byBlueprintPage.get(page.publicReference)?.pageReference ?? '',
+        pageType: page.pageType,
+      })),
+    }).filter(finding => finding.blocking);
+    if (findings.length) {
+      throw fail(409, 'SEARCH_INTELLIGENCE_NOT_READY', `V2 generation is blocked by: ${findings.map(item => item.code).join(', ')}.`);
+    }
+    return { ...pinned, strategy, briefs };
   }
 
   private async assertTemplateLicence(context: {

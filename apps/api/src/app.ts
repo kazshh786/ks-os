@@ -53,6 +53,7 @@ import { agencySiteBlueprintRoutes } from './modules/sites/site-blueprint.routes
 import { agencySiteJobRoutes } from './modules/sites/site-job.routes.js';
 import { agencyKnowledgePackRoutes } from './modules/sites/knowledge-pack.routes.js';
 import { agencySiteGenerationRoutes } from './modules/sites/site-generation.routes.js';
+import { agencySearchIntelligenceRoutes } from './modules/sites/search-intelligence.routes.js';
 import { agencySiteReviewRoutes } from './modules/sites/site-review.routes.js';
 import { publicSiteReviewRoutes } from './routes/public/site-review.js';
 import { publicFactFindingRoutes } from './routes/public/fact-finding.js';
@@ -163,6 +164,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(agencySiteJobRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencyKnowledgePackRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencySiteGenerationRoutes, { prefix: '/api/v1/agency/sites' });
+  fastify.register(agencySearchIntelligenceRoutes, { prefix: '/api/v1/agency/sites' });
   fastify.register(agencySiteReviewRoutes, { prefix: '/api/v1/agency/sites' });
   fastify.register(agencyTemplateIntelligenceRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencyDesignLibraryRoutes, { prefix: '/api/v1/agency' });

@@ -217,7 +217,22 @@ export async function handlePublicPageRequest(input: {
         && candidate.active
         && candidate.pageType !== 'BOOKING',
     );
-    if (!page) return notFound(resolved.snapshot.business.name);
+    if (!page) {
+      const pathRedirect = await input.repository.resolvePathRedirect?.({
+        siteReference: resolved.snapshot.siteReference,
+        sourcePath: path,
+      });
+      if (pathRedirect) {
+        return new Response(null, {
+          status: pathRedirect.statusCode,
+          headers: {
+            location: pathRedirect.targetPath,
+            'cache-control': 'public, max-age=300, s-maxage=3600',
+          },
+        });
+      }
+      return notFound(resolved.snapshot.business.name);
+    }
     const context = renderContext(resolved.snapshot, page);
     const content = renderRegisteredSitePage(page, context);
     const structuredData = generateSiteStructuredData(resolved.snapshot, page);

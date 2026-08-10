@@ -74,4 +74,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260805144500_allow_appointments_past_closing_time.sql', order: 67, description: 'Allow tenant-controlled appointment starts before closing when service duration or buffer extends beyond the schedule end' },
   { filename: '20260805161000_fixed_booking_deposit_amount.sql', order: 68, description: 'Allow booking deposits to use either a percentage or a tenant-currency fixed amount capped at the service total' },
   { filename: '20260809120000_seed_native_component_system_v2.sql', order: 69, description: 'Seed the immutable KS Native Component System V2 with analysed layout capabilities and registry-governed section manifests' },
+  { filename: '20260810210000_search_intelligence_v2.sql', order: 70, description: 'Governed Search Intelligence V2, editorial page constraints, immutable native template V3, research provenance, redirects, language alternates, and pinned generation provenance' },
 ];

@@ -15,6 +15,28 @@ export interface PageCompletenessRecipe {
 
 const chrome = ['HEADER', 'FINAL_CTA', 'FOOTER'] as const;
 
+function editorialRecipe(
+  pageType: SitePageType,
+  pagePurpose: string,
+  minimumWords = 650,
+): PageCompletenessRecipe {
+  return {
+    pageType,
+    pagePurpose,
+    minMeaningfulSections: 5,
+    maxRecommendedSections: 11,
+    minSubstantiveSections: 3,
+    minSupportingSections: 0,
+    minSubstantiveWords: minimumWords,
+    bookingDepthExempt: false,
+    requiredAnyOf: [['HERO', 'INTRODUCTION'], ['RICH_TEXT'], ['FAQ', 'PROCESS', 'BENEFITS']],
+    recommendedSectionTypes: [
+      'HEADER', 'HERO', 'INTRODUCTION', 'RICH_TEXT', 'PROCESS', 'BENEFITS',
+      'FAQ', 'TRUST_INDICATORS', 'FINAL_CTA', 'FOOTER',
+    ],
+  };
+}
+
 export const PAGE_COMPLETENESS_RECIPES: Readonly<Record<SitePageType, PageCompletenessRecipe>> = {
   HOME: {
     pageType: 'HOME', pagePurpose: 'Establish the business, guide discovery, build trust and convert to booking.',
@@ -121,6 +143,16 @@ export const PAGE_COMPLETENESS_RECIPES: Readonly<Record<SitePageType, PageComple
     requiredAnyOf: [['HERO', 'INTRODUCTION'], ['PROCESS'], ['RICH_TEXT', 'FAQ']],
     recommendedSectionTypes: ['HEADER', 'HERO', 'INTRODUCTION', 'PROCESS', 'RICH_TEXT', 'FAQ', 'BOOKING_CTA', 'FOOTER'],
   },
+  GUIDE: editorialRecipe('GUIDE', 'Provide an authoritative, evidence-aware guide that fully resolves a defined audience job.', 800),
+  HOW_TO: editorialRecipe('HOW_TO', 'Teach a verified task through ordered, practical and safe instructions.', 700),
+  ARTICLE: editorialRecipe('ARTICLE', 'Explain a governed topic with appropriate authorship, entities, evidence and next steps.', 800),
+  BLOG_POST: editorialRecipe('BLOG_POST', 'Publish a timely, governed editorial treatment connected to the owned topic graph.', 650),
+  FAQ_RESOURCE: editorialRecipe('FAQ_RESOURCE', 'Answer a coherent cluster of genuine audience questions with eligible FAQ semantics.', 650),
+  TUTORIAL: editorialRecipe('TUTORIAL', 'Guide the audience through a complete learning sequence with prerequisites and outcomes.', 850),
+  DEFINITION: editorialRecipe('DEFINITION', 'Define and disambiguate an entity or concept with concise supporting context.', 450),
+  TROUBLESHOOTING: editorialRecipe('TROUBLESHOOTING', 'Diagnose a bounded problem safely and route unresolved or high-risk cases appropriately.', 700),
+  COMPARISON: editorialRecipe('COMPARISON', 'Support commercial investigation with balanced, sourced and non-fabricated comparison criteria.', 900),
+  CASE_STUDY: editorialRecipe('CASE_STUDY', 'Present approved evidence, context, method and outcomes without unsupported claims.', 750),
   BOOKING: {
     pageType: 'BOOKING', pagePurpose: 'Provide a branded, accessible and functional native booking experience.',
     minMeaningfulSections: 1, maxRecommendedSections: 5, minSubstantiveSections: 0,

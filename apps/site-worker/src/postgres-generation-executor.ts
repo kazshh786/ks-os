@@ -35,6 +35,8 @@ import {
   siteGenerationSectionRuns,
   siteJobs,
   sitePages,
+  sitePageSeoBriefs,
+  siteSearchStrategies,
   siteRenderSnapshots,
   siteReviewActivity,
   siteReviewComments,
@@ -69,6 +71,10 @@ import {
   executeStructuredSectionRegeneration,
   executeStructuredSiteGeneration,
   generationDigest,
+  searchStrategyDigest,
+  assertSearchIntelligenceReady,
+  PageSeoBriefSchema,
+  SearchIntelligenceStrategyV2Schema,
   type GeneratedPage,
   type GeneratedSection,
   type GenerationFinding,
@@ -80,6 +86,7 @@ import {
   type AssetCoveragePlan,
   type TemplateGenerationConstraint,
   type VerifiedBusinessFacts,
+  type ApprovedSearchIntelligenceInput,
 } from '@ks-os/site-generation';
 import { getNativeLayoutManifest } from '@ks-os/site-templates';
 import {
@@ -162,6 +169,9 @@ interface RunContext {
   sourceDataDigestSha256: string;
   promptTemplateVersion: string;
   provisioningRunId: string | null;
+  searchStrategyId: string | null;
+  searchStrategyVersion: number | null;
+  searchStrategyDigestSha256: string | null;
 }
 
 interface PreparedRuntime {
@@ -171,6 +181,7 @@ interface PreparedRuntime {
   constraints: TemplateGenerationConstraint[];
   facts: VerifiedBusinessFacts;
   knowledgeContexts: Map<string, SiteGenerationKnowledgeContext>;
+  searchIntelligence?: ApprovedSearchIntelligenceInput;
 }
 
 function generationPipelineVersion(run: Pick<RunContext, 'templateManifest'>): 1 | 2 {
@@ -830,6 +841,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       signal: lease.signal,
       updateProgress: lease.updateProgress,
       pipelineVersion: runtime.pipelineVersion,
+      searchIntelligence: runtime.searchIntelligence,
     });
     await finalizeProvisionedWorkspace(this.database, run.id);
     return {
@@ -864,6 +876,8 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       knowledge,
       approvedPageReferences: runtime.plan.pages.map(item => item.pageReference),
       currentPage,
+      approvedSearchStrategy: runtime.searchIntelligence?.strategy,
+      pageSeoBrief: runtime.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference),
       provider: this.provider,
       maxRepairAttempts: this.config.maxRepairAttempts,
       maxOutputCharacters: this.config.maxOutputCharacters,
@@ -914,6 +928,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       facts: runtime.facts,
       knowledge,
       approvedPageReferences: runtime.plan.pages.map(item => item.pageReference),
+      pageSeoBrief: runtime.searchIntelligence?.briefs.find(brief => brief.pageReference === planPage.pageReference),
       provider: this.provider,
       maxRepairAttempts: this.config.maxRepairAttempts,
       maxOutputCharacters: this.config.maxOutputCharacters,
@@ -951,6 +966,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         page,
         facts: runtime.facts,
         knowledge,
+        pageSeoBrief: runtime.searchIntelligence?.briefs.find(brief => brief.pageReference === reference),
         provider: this.provider,
         maxRepairAttempts: this.config.maxRepairAttempts,
         maxOutputCharacters: this.config.maxOutputCharacters,
@@ -1001,6 +1017,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         page,
         facts: runtime.facts,
         knowledge,
+        pageSeoBrief: runtime.searchIntelligence?.briefs.find(brief => brief.pageReference === reference),
         provider: this.provider,
         maxRepairAttempts: this.config.maxRepairAttempts,
         maxOutputCharacters: this.config.maxOutputCharacters,
@@ -1083,6 +1100,9 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       sourceDataDigestSha256: siteGenerationRuns.sourceDataDigestSha256,
       promptTemplateVersion: siteGenerationRuns.promptTemplateVersion,
       provisioningRunId: siteGenerationRuns.provisioningRunId,
+      searchStrategyId: siteGenerationRuns.searchStrategyId,
+      searchStrategyVersion: siteGenerationRuns.searchStrategyVersion,
+      searchStrategyDigestSha256: siteGenerationRuns.searchStrategyDigestSha256,
     }).from(siteGenerationRuns)
       .innerJoin(siteJobs, eq(siteGenerationRuns.siteJobId, siteJobs.id))
       .innerJoin(tenants, eq(siteGenerationRuns.tenantId, tenants.id))
@@ -1157,6 +1177,13 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         eq(siteBlueprintPages.tenantId, run.tenantId),
       )).orderBy(asc(siteBlueprintPages.sortOrder));
     if (!pages.length) throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The approved blueprint has no pages.');
+    const pipelineVersion = generationPipelineVersion(run);
+    const searchIntelligence = pipelineVersion === 2
+      ? await this.loadPinnedSearchIntelligence(run, pages)
+      : undefined;
+    const briefByBlueprintPage = new Map(
+      searchIntelligence?.briefs.map(brief => [brief.blueprintPageReference, brief]) ?? [],
+    );
     await this.assertLicence(run);
     await this.database.transaction(async transaction => {
       for (const page of pages) {
@@ -1168,6 +1195,9 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
           blueprintPageId: page.id,
           templateLayoutId: page.layoutId,
           rendererKey: page.rendererKey!,
+          ...(pipelineVersion === 2
+            ? { plannedPageReference: briefByBlueprintPage.get(page.reference)!.pageReference }
+            : {}),
         }).onConflictDoNothing();
       }
     });
@@ -1176,6 +1206,10 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       plannedPageReference: siteGenerationPageRuns.plannedPageReference,
     }).from(siteGenerationPageRuns).where(eq(siteGenerationPageRuns.generationRunId, run.id));
     const pageRunReferences = new Map(pageRuns.map(item => [item.blueprintPageId, item.plannedPageReference]));
+    if (pipelineVersion === 2 && pages.some(page =>
+      pageRunReferences.get(page.id) !== briefByBlueprintPage.get(page.reference)?.pageReference)) {
+      throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'A persisted page-run identity does not match its approved SEO brief.');
+    }
     const compatibleRows = await this.database.select({
       layoutId: templateLayoutPageTypes.templateLayoutId,
       pageType: templateLayoutPageTypes.pageType,
@@ -1194,7 +1228,6 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
     )).orderBy(asc(templateLayoutSections.domOrder));
     const available = new Set([...availableBusinessDataKeys(facts), 'tenant_id', 'native_crm_enabled']);
     const knowledgeContexts = new Map<string, SiteGenerationKnowledgeContext>();
-    const pipelineVersion = generationPipelineVersion(run);
     const planPages = pages.map(page => {
       const pagePlaybook = pack.bundle.pagePlaybooks.find(item =>
         item.pageType === page.pageType && item.conversionRole === page.conversionRole);
@@ -1277,7 +1310,57 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         availableComponentKeys: nativeManifest?.sections.flatMap(section => section.componentKeys) ?? [],
       });
     });
-    return { run, pipelineVersion, plan, constraints, facts, knowledgeContexts };
+    return { run, pipelineVersion, plan, constraints, facts, knowledgeContexts, searchIntelligence };
+  }
+
+  private async loadPinnedSearchIntelligence(
+    run: RunContext,
+    pages: ReadonlyArray<{ reference: string; pageType: string }>,
+  ): Promise<ApprovedSearchIntelligenceInput> {
+    if (!run.searchStrategyId || !run.searchStrategyVersion || !run.searchStrategyDigestSha256) {
+      throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'V2 generation has no pinned approved Search Intelligence strategy.');
+    }
+    const [row] = await this.database.select({
+      value: siteSearchStrategies.strategyJson,
+      status: siteSearchStrategies.status,
+      version: siteSearchStrategies.strategyVersion,
+      digestSha256: siteSearchStrategies.outputDigestSha256,
+    }).from(siteSearchStrategies).where(and(
+      eq(siteSearchStrategies.id, run.searchStrategyId),
+      eq(siteSearchStrategies.tenantId, run.tenantId),
+      eq(siteSearchStrategies.siteId, run.siteId),
+      eq(siteSearchStrategies.blueprintId, run.blueprintId),
+    )).limit(1);
+    if (!row || row.status !== 'APPROVED'
+      || row.version !== run.searchStrategyVersion
+      || row.digestSha256 !== run.searchStrategyDigestSha256) {
+      throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The pinned Search Intelligence approval or provenance changed.');
+    }
+    const strategy = SearchIntelligenceStrategyV2Schema.parse(row.value);
+    if (searchStrategyDigest(strategy) !== row.digestSha256) {
+      throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The pinned Search Intelligence digest is invalid.');
+    }
+    const briefRows = await this.database.select({ value: sitePageSeoBriefs.briefJson })
+      .from(sitePageSeoBriefs).where(and(
+        eq(sitePageSeoBriefs.strategyId, run.searchStrategyId),
+        eq(sitePageSeoBriefs.status, 'APPROVED'),
+      ));
+    const briefs = briefRows.map(item => PageSeoBriefSchema.parse(item.value));
+    const byBlueprintPage = new Map(briefs.map(brief => [brief.blueprintPageReference, brief]));
+    try {
+      assertSearchIntelligenceReady({
+        strategy,
+        briefs,
+        plannedPages: pages.map(page => ({
+          blueprintPageReference: page.reference,
+          pageReference: byBlueprintPage.get(page.reference)?.pageReference ?? '',
+          pageType: page.pageType,
+        })),
+      });
+    } catch {
+      throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The pinned Search Intelligence page/brief plan is incomplete or stale.');
+    }
+    return { strategy, briefs };
   }
 
   private async assertLicence(run: RunContext) {

@@ -44,6 +44,16 @@ export const SitePageTypeSchema = z.enum([
   'NEW_CLIENT_GUIDE',
   'AFTERCARE_GUIDE',
   'CONSULTATION_GUIDE',
+  'GUIDE',
+  'HOW_TO',
+  'ARTICLE',
+  'BLOG_POST',
+  'FAQ_RESOURCE',
+  'TUTORIAL',
+  'DEFINITION',
+  'TROUBLESHOOTING',
+  'COMPARISON',
+  'CASE_STUDY',
   'BOOKING',
 ]);
 export type SitePageType = z.infer<typeof SitePageTypeSchema>;

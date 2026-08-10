@@ -22,12 +22,21 @@ function readyFixture() {
   };
 }
 
-test('V2 generation readiness requires all 13 layouts and all 16 page-type mappings', () => {
+test('latest V2 generation readiness requires all 13 layouts and all 26 page-type mappings', () => {
   const fixture = readyFixture();
   const result = auditV2TemplateReadiness(fixture);
   assert.equal(fixture.expectedLayouts.length, 13);
-  assert.equal(new Set(fixture.expectedLayouts.flatMap(layout => layout.pageTypes)).size, 16);
+  assert.equal(new Set(fixture.expectedLayouts.flatMap(layout => layout.pageTypes)).size, 26);
   assert.deepEqual(result, { ready: true, failures: [] });
+});
+
+test('immutable native template V2 retains its original 16 page-type capability set', () => {
+  const manifests = listNativeLayoutManifests({ templateVersionNumber: 2 });
+  assert.equal(new Set(manifests.flatMap(layout => layout.pageTypes)).size, 16);
+  assert.deepEqual(
+    manifests.find(layout => layout.semanticKey === 'native-guide')?.pageTypes,
+    ['NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE'],
+  );
 });
 
 test('V2 readiness fails closed for a missing layout, renderer, sections or compatibility', () => {

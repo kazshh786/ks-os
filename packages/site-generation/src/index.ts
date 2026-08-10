@@ -15,4 +15,6 @@ export * from './provider.js';
 export * from './repair.js';
 export * from './response-schema.js';
 export * from './recipes.js';
+export * from './search-intelligence.js';
+export * from './search-provider.js';
 export * from './validation.js';

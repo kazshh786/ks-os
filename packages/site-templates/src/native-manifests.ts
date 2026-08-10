@@ -67,7 +67,11 @@ const LAYOUTS: Readonly<Record<string, {
     supported: ['HEADER', 'INTRODUCTION', 'RICH_TEXT', 'CONTACT', 'FAQ', 'FINAL_CTA', 'FOOTER'],
   },
   'native-guide': {
-    pageTypes: ['NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE'], required: ['HEADER', 'HERO', 'RICH_TEXT', 'FINAL_CTA', 'FOOTER'],
+    pageTypes: [
+      'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE', 'GUIDE',
+      'HOW_TO', 'ARTICLE', 'BLOG_POST', 'FAQ_RESOURCE', 'TUTORIAL', 'DEFINITION',
+      'TROUBLESHOOTING', 'COMPARISON', 'CASE_STUDY',
+    ], required: ['HEADER', 'HERO', 'RICH_TEXT', 'FINAL_CTA', 'FOOTER'],
     supported: ['HEADER', 'HERO', 'INTRODUCTION', 'PROCESS', 'BENEFITS', 'RICH_TEXT', 'FAQ', 'LOCATION', 'OPENING_HOURS', 'CONTACT', 'BOOKING_CTA', 'FINAL_CTA', 'FOOTER'],
   },
   'native-booking': {
@@ -103,6 +107,15 @@ export function getNativeLayoutManifest(semanticKey: string): NativeLayoutCapabi
   };
 }
 
-export function listNativeLayoutManifests(): readonly NativeLayoutCapabilityManifest[] {
-  return Object.keys(LAYOUTS).map(key => getNativeLayoutManifest(key)!);
+export function listNativeLayoutManifests(input: { templateVersionNumber?: number } = {}): readonly NativeLayoutCapabilityManifest[] {
+  const manifests = Object.keys(LAYOUTS).map(key => getNativeLayoutManifest(key)!);
+  if (input.templateVersionNumber !== undefined && input.templateVersionNumber <= 2) {
+    const legacyGuideTypes = new Set<SitePageType>([
+      'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE',
+    ]);
+    return manifests.map(manifest => manifest.semanticKey === 'native-guide'
+      ? { ...manifest, pageTypes: manifest.pageTypes.filter(pageType => legacyGuideTypes.has(pageType)) }
+      : manifest);
+  }
+  return manifests;
 }

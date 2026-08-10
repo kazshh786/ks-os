@@ -27,6 +27,7 @@ function documentShell(input: {
     image?: string;
   };
   structuredData?: SiteStructuredData;
+  languageAlternates?: ReadonlyArray<{ languageCode: string; url: string }>;
   bodyStyle?: string;
   bodyAttributes?: string;
 }): string {
@@ -48,7 +49,9 @@ function documentShell(input: {
   const jsonLd = input.structuredData
     ? `<script type="application/ld+json">${serializeStructuredData(input.structuredData)}</script>`
     : '';
-  return `<!doctype html><html lang="${escapeHtml(input.language ?? 'en-GB')}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(input.title)}</title><meta name="description" content="${escapeHtml(input.description)}"><meta name="robots" content="${escapeHtml(input.robots)}">${input.themeColour ? `<meta name="theme-color" content="${escapeHtml(input.themeColour)}">` : ''}${canonical}${openGraph}<link rel="stylesheet" href="/site.css"><link rel="stylesheet" href="/design-library.css">${jsonLd}</head><body${input.bodyAttributes ?? ''}${input.bodyStyle ? ` style="${escapeHtml(input.bodyStyle)}"` : ''}><a class="skip-link" href="#main-content">Skip to content</a><div id="main-content">${input.body}</div></body></html>`;
+  const alternates = input.languageAlternates?.map(alternate =>
+    `<link rel="alternate" hreflang="${escapeHtml(alternate.languageCode)}" href="${escapeHtml(alternate.url)}">`).join('') ?? '';
+  return `<!doctype html><html lang="${escapeHtml(input.language ?? 'en-GB')}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(input.title)}</title><meta name="description" content="${escapeHtml(input.description)}"><meta name="robots" content="${escapeHtml(input.robots)}">${input.themeColour ? `<meta name="theme-color" content="${escapeHtml(input.themeColour)}">` : ''}${canonical}${alternates}${openGraph}<link rel="stylesheet" href="/site.css"><link rel="stylesheet" href="/design-library.css">${jsonLd}</head><body${input.bodyAttributes ?? ''}${input.bodyStyle ? ` style="${escapeHtml(input.bodyStyle)}"` : ''}><a class="skip-link" href="#main-content">Skip to content</a><div id="main-content">${input.body}</div></body></html>`;
 }
 
 export function renderPublishedPageDocument(input: {
@@ -70,7 +73,7 @@ export function renderPublishedPageDocument(input: {
   return documentShell({
     title: input.page.seo.title,
     description: input.page.seo.description,
-    language: input.snapshot.language,
+    language: input.page.languageCode ?? input.snapshot.language,
     body: `${previewBanner}${input.content}` as SafeHtml,
     canonicalUrl,
     robots: input.preview
@@ -84,6 +87,13 @@ export function renderPublishedPageDocument(input: {
       ...(image ? { image } : {}),
     },
     structuredData: input.structuredData,
+    languageAlternates: input.page.languageAlternates?.length ? [{
+      languageCode: input.page.languageCode ?? input.snapshot.language,
+      url: canonicalUrl,
+    }, ...input.page.languageAlternates.map(alternate => ({
+      languageCode: alternate.languageCode,
+      url: new URL(alternate.path, `https://${input.snapshot.canonicalHostname}`).toString(),
+    }))] : [],
     bodyStyle: themePresentation.style,
     bodyAttributes: themePresentation.bodyAttributes,
   });

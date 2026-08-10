@@ -49,13 +49,15 @@ export function generateSiteStructuredData(
     },
   ];
 
-  const location = snapshot.locations[0];
-  if (location) {
+  for (const location of snapshot.locations) {
+    const locationPage = snapshot.pages.find(candidate => candidate.sections.some(section =>
+      (section.type === 'LOCATION' || section.type === 'OPENING_HOURS')
+      && section.locationReference === location.publicReference));
     entries.push({
       '@context': 'https://schema.org',
       '@type': 'LocalBusiness',
       name: snapshot.business.name,
-      url: `${origin}/`,
+      url: locationPage ? canonicalPageUrl(snapshot, locationPage) : `${origin}/#location-${location.publicReference}`,
       ...(location.publicTelephone ? { telephone: location.publicTelephone } : {}),
       address: {
         '@type': 'PostalAddress',
@@ -65,6 +67,118 @@ export function generateSiteStructuredData(
         postalCode: location.postalCode,
         addressCountry: location.countryCode,
       },
+    });
+  }
+
+  if (page.authorship) {
+    const authorUrl = page.authorship.author.profilePath
+      ? new URL(page.authorship.author.profilePath, origin).toString()
+      : undefined;
+    entries.push({
+      '@context': 'https://schema.org',
+      '@type': 'Person',
+      name: page.authorship.author.name,
+      ...(authorUrl ? { url: authorUrl } : {}),
+      ...(page.authorship.author.role ? { jobTitle: page.authorship.author.role } : {}),
+      ...(page.authorship.author.bio ? { description: page.authorship.author.bio } : {}),
+      ...(page.authorship.author.credentials.length ? {
+        hasCredential: page.authorship.author.credentials.map(credentialCategory => ({
+          '@type': 'EducationalOccupationalCredential' as const,
+          credentialCategory,
+        })),
+      } : {}),
+    });
+    if (page.authorship.reviewer) {
+      const reviewerUrl = page.authorship.reviewer.profilePath
+        ? new URL(page.authorship.reviewer.profilePath, origin).toString()
+        : undefined;
+      entries.push({
+        '@context': 'https://schema.org',
+        '@type': 'Person',
+        name: page.authorship.reviewer.name,
+        ...(reviewerUrl ? { url: reviewerUrl } : {}),
+        ...(page.authorship.reviewer.role ? { jobTitle: page.authorship.reviewer.role } : {}),
+        ...(page.authorship.reviewer.bio ? { description: page.authorship.reviewer.bio } : {}),
+        ...(page.authorship.reviewer.credentials.length ? {
+          hasCredential: page.authorship.reviewer.credentials.map(credentialCategory => ({
+            '@type': 'EducationalOccupationalCredential' as const,
+            credentialCategory,
+          })),
+        } : {}),
+      });
+    }
+    const articleType = page.pageType === 'BLOG_POST'
+      ? 'BlogPosting' as const
+      : ['ARTICLE', 'GUIDE', 'HOW_TO', 'FAQ_RESOURCE', 'TUTORIAL', 'DEFINITION', 'TROUBLESHOOTING', 'COMPARISON', 'CASE_STUDY'].includes(page.pageType)
+        ? 'Article' as const
+        : null;
+    if (articleType && page.lastModifiedAt) {
+      entries.push({
+        '@context': 'https://schema.org',
+        '@type': articleType,
+        headline: page.title,
+        description: page.seo.description,
+        url,
+        ...(page.publishedAt ? { datePublished: page.publishedAt } : {}),
+        dateModified: page.lastModifiedAt,
+        ...(page.reviewedAt ? { lastReviewed: page.reviewedAt } : {}),
+        author: {
+          '@type': 'Person',
+          name: page.authorship.author.name,
+          ...(authorUrl ? { url: authorUrl } : {}),
+        },
+        ...(page.authorship.reviewer ? {
+          reviewedBy: {
+            '@type': 'Person' as const,
+            name: page.authorship.reviewer.name,
+            ...(page.authorship.reviewer.profilePath
+              ? { url: new URL(page.authorship.reviewer.profilePath, origin).toString() }
+              : {}),
+          },
+        } : {}),
+      });
+    }
+  }
+
+  if (page.video) {
+    const thumbnail = snapshot.assets.find(asset => asset.publicReference === page.video!.thumbnailAssetReference);
+    if (thumbnail) {
+      entries.push({
+        '@context': 'https://schema.org',
+        '@type': 'VideoObject',
+        name: page.video.name,
+        description: page.video.description,
+        thumbnailUrl: thumbnail.url,
+        uploadDate: page.video.uploadDate,
+        ...(page.video.contentUrl ? { contentUrl: page.video.contentUrl } : {}),
+        ...(page.video.embedUrl ? { embedUrl: page.video.embedUrl } : {}),
+        ...(page.video.transcript ? { transcript: page.video.transcript } : {}),
+      });
+    }
+  }
+
+  const usedAssetReferences = new Set<string>();
+  if (page.seo.openGraphImageAssetReference) usedAssetReferences.add(page.seo.openGraphImageAssetReference);
+  if (page.video?.thumbnailAssetReference) usedAssetReferences.add(page.video.thumbnailAssetReference);
+  for (const section of page.sections) {
+    if ('imageAssetReference' in section && section.imageAssetReference) usedAssetReferences.add(section.imageAssetReference);
+    if (section.type === 'GALLERY') section.assetReferences.forEach(reference => usedAssetReferences.add(reference));
+    if (section.type === 'RESULTS') section.items.forEach(item => {
+      if (item.beforeAssetReference) usedAssetReferences.add(item.beforeAssetReference);
+      usedAssetReferences.add(item.afterAssetReference);
+    });
+  }
+  for (const asset of snapshot.assets) {
+    if (!usedAssetReferences.has(asset.publicReference) || asset.purpose !== 'INFORMATIVE') continue;
+    entries.push({
+      '@context': 'https://schema.org',
+      '@type': 'ImageObject',
+      contentUrl: asset.url,
+      width: asset.width,
+      height: asset.height,
+      ...(asset.caption ? { caption: asset.caption } : {}),
+      ...(asset.creditText ? { creditText: asset.creditText } : {}),
+      ...(asset.licenseUrl ? { license: asset.licenseUrl } : {}),
     });
   }
 
@@ -150,6 +264,7 @@ function isReserved(path: string) {
 }
 
 export function generateTenantSitemap(snapshot: PublishedSiteSnapshot): string {
+  const hasLanguageAlternates = snapshot.pages.some(page => (page.languageAlternates?.length ?? 0) > 0);
   const urls = snapshot.visibility === 'PUBLISHED'
     ? snapshot.pages
     .filter((page) =>
@@ -160,10 +275,18 @@ export function generateTenantSitemap(snapshot: PublishedSiteSnapshot): string {
       && page.pageType !== 'BOOKING'
       && !isReserved(page.path),
     )
-    .map((page) => `<url><loc>${xmlEscape(canonicalPageUrl(snapshot, page))}</loc></url>`)
+    .map((page) => {
+      const alternates = [
+        { languageCode: page.languageCode ?? snapshot.language, path: page.path },
+        ...(page.languageAlternates ?? []),
+      ].map(alternate => `<xhtml:link rel="alternate" hreflang="${xmlEscape(alternate.languageCode)}" href="${xmlEscape(new URL(alternate.path, canonicalOrigin(snapshot)).toString())}"/>`).join('');
+      const lastModified = page.lastModifiedAt ?? snapshot.publishedAt ?? snapshot.createdAt;
+      return `<url><loc>${xmlEscape(canonicalPageUrl(snapshot, page))}</loc><lastmod>${xmlEscape(lastModified)}</lastmod>${alternates}</url>`;
+    })
     .join('')
     : '';
-  return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`;
+  const xhtml = hasLanguageAlternates ? ' xmlns:xhtml="http://www.w3.org/1999/xhtml"' : '';
+  return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${xhtml}>${urls}</urlset>`;
 }
 
 export function generateTenantRobots(input: {

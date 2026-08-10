@@ -365,7 +365,7 @@ const definitions: SiteQualityCheckDefinition[] = [
     checkId: 'KSQ_PERFORMANCE_RENDER',
     category: 'PERFORMANCE',
     name: 'Critical rendering performance',
-    description: 'Pages complete load, render main content, and avoid critical resource failures.',
+    description: 'Pages complete load, render main content, pass lab Core Web Vitals gates, and avoid critical or misconfigured LCP resources.',
     validationMethod: 'RENDERED_BROWSER',
     ruleIds: ['RUL_CRITICAL_RENDER_PERFORMANCE'],
     applicablePageTypes: [],
@@ -373,8 +373,8 @@ const definitions: SiteQualityCheckDefinition[] = [
     severity: 'BLOCKING',
     publicationEffect: 'BLOCK',
     waivable: false,
-    evidenceRequirements: ['Lab timing and critical-resource metrics'],
-    remediationGuidance: 'Repair failing resources or renderer behaviour.',
+    evidenceRequirements: ['LCP, INP, CLS, measurement mode, viewport, LCP element and critical-resource metrics'],
+    remediationGuidance: 'Repair failing resources, Core Web Vitals regressions, or LCP discovery and loading behaviour.',
   }),
   check({
     checkId: 'KSQ_PERFORMANCE_ADVISORY',
@@ -480,6 +480,9 @@ export interface SiteQualityPolicy {
   thresholds: {
     pageLoadWarningMs: number;
     mainContentWarningMs: number;
+    largestContentfulPaintBlockingMs: number;
+    interactionToNextPaintBlockingMs: number;
+    cumulativeLayoutShiftBlocking: number;
     cumulativeLayoutShiftWarning: number;
     transferBytesWarning: number;
     maximumImageTransferBytes: number;
@@ -501,7 +504,10 @@ export const DEFAULT_SITE_QUALITY_POLICY: SiteQualityPolicy = Object.freeze({
   thresholds: {
     pageLoadWarningMs: 4_000,
     mainContentWarningMs: 2_500,
-    cumulativeLayoutShiftWarning: 0.25,
+    largestContentfulPaintBlockingMs: 2_500,
+    interactionToNextPaintBlockingMs: 200,
+    cumulativeLayoutShiftBlocking: 0.1,
+    cumulativeLayoutShiftWarning: 0.05,
     transferBytesWarning: 3_000_000,
     maximumImageTransferBytes: 500_000,
     maximumHorizontalOverflowPixels: 0,

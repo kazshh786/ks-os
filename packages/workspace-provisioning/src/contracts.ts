@@ -153,7 +153,9 @@ export const CreateProvisioningDraftSchema = z.object({
     requestedPageTypes: z.array(z.enum([
       'HOME', 'SERVICE_HUB', 'SERVICE_DETAIL', 'LOCATION_HUB', 'LOCATION_DETAIL',
       'ABOUT', 'TEAM_HUB', 'TEAM_DETAIL', 'CONTACT', 'FAQ', 'POLICIES', 'RESULTS',
-      'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE', 'BOOKING',
+      'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE',
+      'GUIDE', 'HOW_TO', 'ARTICLE', 'BLOG_POST', 'FAQ_RESOURCE', 'TUTORIAL',
+      'DEFINITION', 'TROUBLESHOOTING', 'COMPARISON', 'CASE_STUDY', 'BOOKING',
     ])).max(100),
     /**
      * The default launch selects the strongest ten marketing pages justified by

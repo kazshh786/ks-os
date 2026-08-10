@@ -89,6 +89,7 @@ class MemoryPublicSiteRepository implements PublicSiteRepository {
   readonly published = new Map<string, PublishedSiteSnapshot>();
   readonly previews = new Map<string, PublishedSiteSnapshot>();
   readonly revoked = new Set<string>();
+  readonly redirects = new Map<string, string>();
   reviewSessionValidator?: (
     input: Parameters<NonNullable<PublicSiteRepository['isReviewPreviewSessionActive']>>[0],
   ) => boolean | Promise<boolean>;
@@ -153,6 +154,11 @@ class MemoryPublicSiteRepository implements PublicSiteRepository {
     input: Parameters<NonNullable<PublicSiteRepository['isQualityAuditSessionActive']>>[0],
   ) {
     return this.qualitySessionValidator?.(input) ?? false;
+  }
+
+  async resolvePathRedirect(input: { siteReference: string; sourcePath: string }) {
+    const targetPath = this.redirects.get(`${input.siteReference}:${input.sourcePath}`);
+    return targetPath ? { targetPath, statusCode: 308 as const } : null;
   }
 }
 
@@ -922,6 +928,54 @@ test('structured-data serialisation prevents script breakout', () => {
   assert.match(json, /\\u003c/);
 });
 
+test('eligible editorial content emits governed Person, Article, VideoObject and ImageObject data', () => {
+  const snapshot = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = structuredClone(draft.pages[0]!);
+    const asset = draft.assets[0]!;
+    page.publicReference = '00000999-0000-4000-8000-000000000999';
+    page.pageType = 'ARTICLE';
+    page.compatiblePageTypes = ['ARTICLE'];
+    page.path = '/editorial-guide';
+    page.title = 'Editorial guide';
+    page.seo.canonicalPath = '/editorial-guide';
+    page.seo.title = 'Editorial guide | Northlight Studio';
+    page.seo.description = 'A governed, evidence-backed editorial guide from Northlight Studio.';
+    page.publishedAt = '2026-08-01T09:00:00.000Z';
+    page.lastModifiedAt = '2026-08-10T09:00:00.000Z';
+    page.reviewedAt = '2026-08-10T10:00:00.000Z';
+    page.authorship = {
+      author: { name: 'Amina Expert', role: 'Practitioner', bio: 'A verified practitioner biography.', credentials: ['Registered practitioner'], profilePath: '/team/amina' },
+      reviewer: { name: 'Noor Reviewer', role: 'Clinical reviewer', credentials: ['Clinical reviewer'], profilePath: '/team/noor' },
+    };
+    asset.purpose = 'INFORMATIVE';
+    asset.caption = 'A verified first-hand treatment image.';
+    asset.creditText = 'Northlight Studio';
+    page.seo.openGraphImageAssetReference = asset.publicReference;
+    page.video = {
+      name: 'What to expect',
+      description: 'A verified explanation of what to expect.',
+      thumbnailAssetReference: asset.publicReference,
+      uploadDate: '2026-08-01T09:00:00.000Z',
+      transcript: 'A complete, useful transcript.',
+    };
+    draft.pages.push(page);
+  });
+  const articlePage = snapshot.pages.find(page => page.pageType === 'ARTICLE')!;
+  const structuredData = generateSiteStructuredData(snapshot, articlePage);
+  const types = structuredData.map(entry => entry['@type']);
+  assert.ok(types.filter(type => type === 'Person').length >= 2);
+  assert.ok(types.includes('Article'));
+  assert.ok(types.includes('VideoObject'));
+  assert.ok(types.includes('ImageObject'));
+  const article = structuredData.find(entry => entry['@type'] === 'Article');
+  assert.equal(article && 'datePublished' in article ? article.datePublished : null, '2026-08-01T09:00:00.000Z');
+});
+
+test('LocalBusiness structured data is emitted once per canonical location', () => {
+  const entries = generateSiteStructuredData(baseSnapshot, baseSnapshot.pages[0]!);
+  assert.equal(entries.filter(entry => entry['@type'] === 'LocalBusiness').length, baseSnapshot.locations.length);
+});
+
 // 61
 test('sitemap contains only published indexable active pages', () => {
   const snapshot = mutateSnapshot(baseSnapshot, (draft) => {
@@ -949,6 +1003,39 @@ test('sitemap excludes internal and booking routes', () => {
   const xml = generateTenantSitemap(baseSnapshot);
   assert.doesNotMatch(xml, /\/book/);
   assert.doesNotMatch(xml, /\/api|\/site-preview|\/health/);
+});
+
+test('sitemap and documents emit lastmod plus reciprocal self-referencing hreflang', async () => {
+  const snapshot = mutateSnapshot(baseSnapshot, (draft) => {
+    const first = draft.pages[0]!;
+    const second = draft.pages[1]!;
+    first.languageCode = 'en-GB';
+    second.languageCode = 'fr-FR';
+    first.lastModifiedAt = '2026-08-10T12:00:00.000Z';
+    second.lastModifiedAt = '2026-08-09T12:00:00.000Z';
+    first.languageAlternates = [{ languageCode: 'fr-FR', path: second.path }];
+    second.languageAlternates = [{ languageCode: 'en-GB', path: first.path }];
+  });
+  const xml = generateTenantSitemap(snapshot);
+  assert.match(xml, /xmlns:xhtml=/);
+  assert.match(xml, /<lastmod>2026-08-10T12:00:00.000Z<\/lastmod>/);
+  assert.match(xml, /hreflang="en-GB"/);
+  assert.match(xml, /hreflang="fr-FR"/);
+  const html = await (await publicPage(repoFor(snapshot))).text();
+  assert.match(html, /rel="alternate" hreflang="en-GB"/);
+  assert.match(html, /rel="alternate" hreflang="fr-FR"/);
+});
+
+test('governed path redirects return 308 only when no active page owns the source path', async () => {
+  const repository = repoFor();
+  repository.redirects.set(`${baseSnapshot.siteReference}:/old-guide`, '/services');
+  repository.redirects.set(`${baseSnapshot.siteReference}:/`, '/services');
+  const old = await publicPage(repository, fallbackHostname, '/old-guide');
+  assert.equal(old.status, 308);
+  assert.equal(old.headers.get('location'), '/services');
+  const active = await publicPage(repository, fallbackHostname, '/');
+  assert.equal(active.status, 200);
+  assert.equal(active.headers.get('location'), null);
 });
 
 // 65

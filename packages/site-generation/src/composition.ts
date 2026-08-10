@@ -18,6 +18,7 @@ import {
 import { selectGenerationSafeFacts } from './facts.js';
 import { stableGenerationStringify } from './normalization.js';
 import { pageCompletenessRecipe } from './recipes.js';
+import type { PageSeoBrief, SearchIntelligenceStrategyV2 } from './search-intelligence.js';
 
 type BlueprintPage = z.infer<typeof BlueprintGenerationPageSchema>;
 
@@ -77,6 +78,7 @@ export function composeSiteStrategyPrompt(input: {
   plan: GenerationPlan;
   facts: VerifiedBusinessFacts;
   componentCount?: number;
+  approvedSearchStrategy?: SearchIntelligenceStrategyV2;
 }) {
   return stableGenerationStringify({
     systemContract: [
@@ -89,6 +91,7 @@ export function composeSiteStrategyPrompt(input: {
     componentRegistryVersion: SITE_COMPONENT_REGISTRY_VERSION,
     availableComponentCount: input.componentCount ?? listSiteComponents().length,
     approvedBlueprint: input.plan,
+    approvedSearchIntelligence: input.approvedSearchStrategy,
     verifiedBusinessFacts: selectGenerationSafeFacts(input.facts),
   });
 }
@@ -100,6 +103,8 @@ export function composePageCompositionPrompt(input: {
   facts: VerifiedBusinessFacts;
   knowledge: SiteGenerationKnowledgeContext;
   approvedPageReferences: readonly string[];
+  approvedSearchStrategy?: SearchIntelligenceStrategyV2;
+  pageSeoBrief?: PageSeoBrief;
 }) {
   const catalog = availableComponents(input.page, input.template).map(componentPromptMetadata);
   return stableGenerationStringify({
@@ -114,6 +119,8 @@ export function composePageCompositionPrompt(input: {
     siteStrategy: input.strategy,
     pageRecipe: pageCompletenessRecipe(input.page.pageType),
     approvedBlueprintPage: input.page,
+    approvedSearchStrategy: input.approvedSearchStrategy,
+    immutablePageSeoBrief: input.pageSeoBrief,
     templateConstraints: input.template,
     componentCatalog: catalog,
     approvedPageReferences: input.approvedPageReferences,

@@ -4,8 +4,8 @@ import type { SiteSectionType } from '@ks-os/site-schema';
 import { validatePageCompositionPlan } from '../src/index.js';
 import { recipeCompositionFixtures, recipeFixturePageReferences } from './fixtures/recipe-composition-plans.js';
 
-test('all 16 named page recipes have passing fixture composition plans', () => {
-  assert.equal(recipeCompositionFixtures.length, 16);
+test('all 26 named page recipes have passing fixture composition plans', () => {
+  assert.equal(recipeCompositionFixtures.length, 26);
   for (const fixture of recipeCompositionFixtures) {
     const findings = validatePageCompositionPlan({
       output: fixture.output,
