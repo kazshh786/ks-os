@@ -68,42 +68,60 @@ function StageCard({ stage }: { stage: Stage }) {
 
 const actionClass = 'inline-flex min-h-11 items-center justify-center rounded-xl border border-violet-700 px-4 text-xs font-black text-violet-200 disabled:cursor-not-allowed disabled:opacity-40';
 
-export function AgencyLaunchCommandCenter({ tenantId, onBack }: { tenantId: string; onBack: () => void }) {
+export function AgencyLaunchCommandCenter({
+  tenantReference,
+  tenantDetail,
+  onBack,
+}: {
+  tenantReference: string;
+  tenantDetail: any;
+  onBack: () => void;
+}) {
   const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
+    setLoading(true);
     setError('');
-    const [detail, context, booking, questionnaires] = await Promise.all([
-      agencyFetch(`/tenants/${tenantId}`),
-      agencyFetch(`/tenants/${tenantId}/delivery-context`),
-      agencyFetch(`/tenants/${tenantId}/onboarding-booking`),
-      agencyFetch(`/fact-finding/questionnaires?tenantReference=${encodeURIComponent(tenantId)}`),
-    ]);
-    const siteReference = context.site?.reference || context.run?.siteReference || null;
-    let site: any = { blueprints: [], blueprint: null, search: null, generations: [], studio: null, quality: [], domains: [], publications: [] };
-    if (siteReference) {
-      const [blueprints, search, generations, studio, quality, domains, publications] = await Promise.all([
-        agencyFetch(`/sites/${siteReference}/blueprints`).catch(() => []),
-        agencyFetch(`/sites/${siteReference}/search-intelligence`).catch(() => null),
-        agencyFetch(`/sites/${siteReference}/generation-runs`).catch(() => []),
-        agencyFetch(`/sites/${siteReference}/studio`).catch(() => null),
-        agencyFetch(`/sites/${siteReference}/quality-runs`).catch(() => []),
-        agencyFetch(`/sites/${siteReference}/domains`).catch(() => []),
-        agencyFetch(`/sites/${siteReference}/publications`).catch(() => []),
+    try {
+      const [detail, context, booking, questionnaires] = await Promise.all([
+        Promise.resolve(tenantDetail),
+        agencyFetch(`/tenants/${tenantReference}/delivery-context`),
+        agencyFetch(`/tenants/${tenantReference}/onboarding-booking`),
+        agencyFetch(`/fact-finding/questionnaires?tenantReference=${encodeURIComponent(tenantReference)}`),
       ]);
-      const latestBlueprint = blueprints[0] || null;
-      const blueprint = latestBlueprint?.reference
-        ? await agencyFetch(`/sites/${siteReference}/blueprints/${latestBlueprint.reference}`).catch(() => latestBlueprint)
-        : null;
-      site = { blueprints, blueprint, search, generations, studio, quality, domains, publications };
+      const siteReference = context.site?.reference || context.run?.siteReference || null;
+      let site: any = { blueprints: [], blueprint: null, search: null, generations: [], studio: null, quality: [], domains: [], publications: [] };
+      if (siteReference) {
+        const [blueprints, search, generations, studio, quality, domains, publications] = await Promise.all([
+          agencyFetch(`/sites/${siteReference}/blueprints`).catch(() => []),
+          agencyFetch(`/sites/${siteReference}/search-intelligence`).catch(() => null),
+          agencyFetch(`/sites/${siteReference}/generation-runs`).catch(() => []),
+          agencyFetch(`/sites/${siteReference}/studio`).catch(() => null),
+          agencyFetch(`/sites/${siteReference}/quality-runs`).catch(() => []),
+          agencyFetch(`/sites/${siteReference}/domains`).catch(() => []),
+          agencyFetch(`/sites/${siteReference}/publications`).catch(() => []),
+        ]);
+        const latestBlueprint = blueprints[0] || null;
+        const blueprint = latestBlueprint?.reference
+          ? await agencyFetch(`/sites/${siteReference}/blueprints/${latestBlueprint.reference}`).catch(() => latestBlueprint)
+          : null;
+        site = { blueprints, blueprint, search, generations, studio, quality, domains, publications };
+      }
+      setData({ detail, context, booking, questionnaires, siteReference, site });
+    } catch (cause) {
+      setData(null);
+      setError(cause instanceof Error ? cause.message : 'The governed launch workspace could not be loaded.');
+      throw cause;
+    } finally {
+      setLoading(false);
     }
-    setData({ detail, context, booking, questionnaires, siteReference, site });
-  }, [tenantId]);
+  }, [tenantDetail, tenantReference]);
 
-  useEffect(() => { void load().catch(cause => setError(cause.message)); }, [load]);
+  useEffect(() => { void load().catch(() => undefined); }, [load]);
 
   const command = async (key: string, operation: () => Promise<any>, message: string) => {
     setBusy(key); setError(''); setNotice('');
@@ -208,10 +226,10 @@ export function AgencyLaunchCommandCenter({ tenantId, onBack }: { tenantId: stri
     const publication = site.publications?.[0] || null;
     return [
       { number: 1, name: 'Client', state: 'COMPLETE', owner: 'Agency', summary: `${context.tenant.name} workspace exists`, blockers: [], artifact: `Tenant ${context.tenant.agencyReference}` },
-      { number: 2, name: 'Discovery', state: !latestDiscovery ? 'NOT_STARTED' : discoverySubmitted ? 'COMPLETE' : ['INVITED', 'IN_PROGRESS', 'CLARIFICATION_REQUIRED'].includes(latestDiscovery.status) ? 'NEEDS_CLIENT' : 'NEEDS_AGENCY', owner: latestDiscovery && ['INVITED', 'IN_PROGRESS', 'CLARIFICATION_REQUIRED'].includes(latestDiscovery.status) ? 'Client' : 'Agency', summary: !latestDiscovery ? 'Create a secure client discovery request' : `${latestDiscovery.status.replaceAll('_', ' ')} · ${latestDiscovery.openFollowUpCount || 0} open follow-ups`, blockers: [], artifact: latestDiscovery ? `Discovery v${latestDiscovery.version} · ${latestDiscovery.consentCount || 0} consent decisions` : 'No discovery artifact yet', action: <Link className={actionClass} to={`/agency/fact-finding?tenant=${tenantId}${latestDiscovery ? `&questionnaire=${latestDiscovery.reference}` : ''}`}>{latestDiscovery ? 'Open discovery' : 'Create discovery'}</Link> },
-      { number: 3, name: 'Facts', state: factsLocked ? 'APPROVED' : Number(latestDiscovery?.candidateFactCount || 0) ? 'NEEDS_AGENCY' : 'BLOCKED', owner: 'Agency reviewer', summary: factsLocked ? 'Production facts are versioned and locked' : `${latestDiscovery?.candidateFactCount || 0} candidate facts require review`, blockers: factsLocked ? [] : ['Approve or reject candidate facts, resolve evidence requests, then lock the production brief.'], artifact: context.productionBrief ? `Production brief v${context.productionBrief.version} · ${context.productionBrief.status}` : 'No production brief', action: <Link className={actionClass} to={`/agency/fact-finding?tenant=${tenantId}${latestDiscovery ? `&questionnaire=${latestDiscovery.reference}` : ''}`}>Review facts</Link> },
-      { number: 4, name: 'Booking', state: bookingReady ? 'COMPLETE' : 'NEEDS_AGENCY', owner: 'Agency operations', summary: bookingReady ? 'Minimum booking configuration is ready' : 'Services, locations, staff or availability remain incomplete', blockers: bookingReady ? [] : (booking.readiness?.blockingIssues || []).map((item: any) => item.message || item.code), artifact: `${booking.services?.length || 0} services · ${booking.locations?.length || 0} locations`, action: <Link className={actionClass} to={`/agency/bookings?tenant=${tenantId}`}>Open booking setup</Link> },
-      { number: 5, name: 'Brand and assets', state: approvedAssets > 0 ? 'COMPLETE' : latestDiscovery ? 'NEEDS_AGENCY' : 'BLOCKED', owner: 'Agency creative', summary: approvedAssets > 0 ? `${approvedAssets} governed assets approved` : 'Review provenance, usage rights and required imagery', blockers: approvedAssets > 0 ? [] : ['No approved public asset is currently available; generation will retain explicit asset gaps.'], artifact: `Image policy: ${context.websiteRequirements?.imageSourcePolicy || 'not confirmed'}`, action: <Link className={actionClass} to={`/agency/fact-finding?tenant=${tenantId}${latestDiscovery ? `&questionnaire=${latestDiscovery.reference}` : ''}`}>Review asset library</Link> },
+      { number: 2, name: 'Discovery', state: !latestDiscovery ? 'NOT_STARTED' : discoverySubmitted ? 'COMPLETE' : ['INVITED', 'IN_PROGRESS', 'CLARIFICATION_REQUIRED'].includes(latestDiscovery.status) ? 'NEEDS_CLIENT' : 'NEEDS_AGENCY', owner: latestDiscovery && ['INVITED', 'IN_PROGRESS', 'CLARIFICATION_REQUIRED'].includes(latestDiscovery.status) ? 'Client' : 'Agency', summary: !latestDiscovery ? 'Create a secure client discovery request' : `${latestDiscovery.status.replaceAll('_', ' ')} · ${latestDiscovery.openFollowUpCount || 0} open follow-ups`, blockers: [], artifact: latestDiscovery ? `Discovery v${latestDiscovery.version} · ${latestDiscovery.consentCount || 0} consent decisions` : 'No discovery artifact yet', action: <Link className={actionClass} to={`/agency/fact-finding?tenant=${tenantReference}${latestDiscovery ? `&questionnaire=${latestDiscovery.reference}` : ''}`}>{latestDiscovery ? 'Open discovery' : 'Create discovery'}</Link> },
+      { number: 3, name: 'Facts', state: factsLocked ? 'APPROVED' : Number(latestDiscovery?.candidateFactCount || 0) ? 'NEEDS_AGENCY' : 'BLOCKED', owner: 'Agency reviewer', summary: factsLocked ? 'Production facts are versioned and locked' : `${latestDiscovery?.candidateFactCount || 0} candidate facts require review`, blockers: factsLocked ? [] : ['Approve or reject candidate facts, resolve evidence requests, then lock the production brief.'], artifact: context.productionBrief ? `Production brief v${context.productionBrief.version} · ${context.productionBrief.status}` : 'No production brief', action: <Link className={actionClass} to={`/agency/fact-finding?tenant=${tenantReference}${latestDiscovery ? `&questionnaire=${latestDiscovery.reference}` : ''}`}>Review facts</Link> },
+      { number: 4, name: 'Booking', state: bookingReady ? 'COMPLETE' : 'NEEDS_AGENCY', owner: 'Agency operations', summary: bookingReady ? 'Minimum booking configuration is ready' : 'Services, locations, staff or availability remain incomplete', blockers: bookingReady ? [] : (booking.readiness?.blockingIssues || []).map((item: any) => item.message || item.code), artifact: `${booking.services?.length || 0} services · ${booking.locations?.length || 0} locations`, action: <Link className={actionClass} to={`/agency/bookings?tenant=${tenantReference}`}>Open booking setup</Link> },
+      { number: 5, name: 'Brand and assets', state: approvedAssets > 0 ? 'COMPLETE' : latestDiscovery ? 'NEEDS_AGENCY' : 'BLOCKED', owner: 'Agency creative', summary: approvedAssets > 0 ? `${approvedAssets} governed assets approved` : 'Review provenance, usage rights and required imagery', blockers: approvedAssets > 0 ? [] : ['No approved public asset is currently available; generation will retain explicit asset gaps.'], artifact: `Image policy: ${context.websiteRequirements?.imageSourcePolicy || 'not confirmed'}`, action: <Link className={actionClass} to={`/agency/fact-finding?tenant=${tenantReference}${latestDiscovery ? `&questionnaire=${latestDiscovery.reference}` : ''}`}>Review asset library</Link> },
       { number: 6, name: 'Website plan', state: planReady ? 'COMPLETE' : factsLocked && bookingReady ? 'NEEDS_AGENCY' : 'BLOCKED', owner: 'Agency strategist', summary: planReady ? 'Versioned V3 website plan saved' : 'Confirm requested pages, priorities, exclusions and design direction', blockers: [!factsLocked ? 'Production facts must be locked.' : '', !bookingReady ? 'Booking minimum readiness is incomplete.' : '', !context.designLibrary?.nativeTemplateReady ? 'Approved V3 native template/renderers are not ready.' : ''].filter(Boolean), artifact: context.draft ? `Plan ${context.draft.reference} · ${context.draft.status}` : `${context.websiteRequirements?.requestedPageTypes?.length || 0} requested page types`, action: !planReady ? <button className={actionClass} disabled={Boolean(busy) || !factsLocked || !bookingReady || !context.designLibrary?.nativeTemplateReady} onClick={() => void preparePlan()}>Prepare V3 website plan</button> : undefined },
       { number: 7, name: 'Blueprint', state: !siteReference || !blueprint ? 'NOT_STARTED' : blueprint.status === 'APPROVED' ? 'APPROVED' : blueprintBlocking.length ? 'BLOCKED' : 'READY_FOR_REVIEW', owner: 'Agency strategist', summary: !blueprint ? 'Generate the draft architecture after the plan is ready' : `Revision ${blueprint.revision} · ${blueprint.pages?.length || blueprint.pageCount || 0} pages · ${blueprint.status}`, blockers: blueprintBlocking.map((item: any) => item.message), artifact: blueprint ? `Template ${blueprint.templateVersionReference || V3_TEMPLATE_REFERENCE}` : 'No blueprint', action: <>{!siteReference ? <button className={actionClass} disabled={Boolean(busy) || !planReady} onClick={() => void createSite()}>Create managed draft site</button> : !blueprint ? <button className={actionClass} disabled={Boolean(busy) || !planReady} onClick={() => void generateBlueprint()}>Generate draft blueprint</button> : blueprint.status !== 'APPROVED' ? <><button className={actionClass} disabled={Boolean(busy)} onClick={() => void validateBlueprint()}>Validate blueprint</button><button className={actionClass} disabled={Boolean(busy) || blueprintBlocking.length > 0} onClick={approveBlueprint}>Approve exact revision</button></> : <Link className={actionClass} to={`/agency/sites/${siteReference}/studio`}>Inspect approved architecture</Link>}</> },
       { number: 8, name: 'Search Intelligence', state: blueprint?.status !== 'APPROVED' ? 'BLOCKED' : !search ? 'NOT_STARTED' : searchResearchRequired ? 'NEEDS_AGENCY' : search.status === 'APPROVED' ? 'APPROVED' : 'READY_FOR_REVIEW', owner: 'Agency search strategist', summary: !search ? 'Create one governed brief per approved blueprint page' : searchResearchRequired ? `Planning draft · research required · ${search.briefs?.length || 0} blueprint-bound briefs` : `Strategy v${search.strategy?.strategyVersion || 1} · ${search.briefs?.length || 0} briefs · ${search.status}`, blockers: blueprint?.status !== 'APPROVED' ? ['Approve the exact blueprint first.'] : searchResearchRequired ? ['Complete governed search research, import the evidence-bound strategy and review every page brief before approval.'] : [], artifact: search ? `${search.strategy?.provenance?.providerKey} · exact blueprint revision binding` : 'No Search Intelligence artifact', action: blueprint?.status === 'APPROVED' && !search ? <button className={actionClass} disabled={Boolean(busy)} onClick={() => void createSearch()}>Create Search Intelligence strategy</button> : siteReference ? <Link className={actionClass} to={`/agency/sites/${siteReference}/studio`}>{searchResearchRequired ? 'Complete governed research' : 'Review Search Intelligence'}</Link> : undefined },
@@ -219,9 +237,15 @@ export function AgencyLaunchCommandCenter({ tenantId, onBack }: { tenantId: stri
       { number: 10, name: 'Review and quality', state: !generation || generation.status !== 'READY_FOR_REVIEW' ? 'BLOCKED' : site.studio?.version?.status === 'APPROVED' && quality?.status === 'PASSED' ? 'APPROVED' : 'NEEDS_AGENCY', owner: 'Agency design reviewer', summary: quality ? `Quality ${quality.status}` : 'Signed/noindex preview and visual review required', blockers: !generation || generation.status !== 'READY_FOR_REVIEW' ? ['Website generation must reach READY_FOR_REVIEW.'] : [], artifact: site.studio?.version ? `Site version ${site.studio.version.reference} · ${site.studio.version.status}` : 'No reviewable version', action: siteReference ? <Link className={actionClass} to={`/agency/sites/${siteReference}/studio`}>Open Site Studio review</Link> : undefined },
       { number: 11, name: 'Domain and launch', state: publication?.status === 'LIVE' ? 'COMPLETE' : canonicalDomain?.status === 'ACTIVE' ? 'NEEDS_AGENCY' : 'BLOCKED', owner: 'Agency launch owner', summary: publication?.status === 'LIVE' ? 'Explicit publication is live' : 'Domain, quality and exact-version publication approval remain separate', blockers: [!canonicalDomain || canonicalDomain.status !== 'ACTIVE' ? 'Canonical or managed hostname is not active.' : '', quality?.status !== 'PASSED' ? 'Publication quality gate has not passed.' : '', site.studio?.version?.status !== 'APPROVED' ? 'The exact site version lacks final human approval.' : ''].filter(Boolean), artifact: canonicalDomain ? `${canonicalDomain.hostname} · ${canonicalDomain.status}` : 'No canonical domain', action: siteReference ? <Link className={actionClass} to={`/agency/sites/${siteReference}/studio`}>Review launch gates</Link> : undefined },
     ];
-  }, [busy, data, latestDiscovery, tenantId]);
+  }, [busy, data, latestDiscovery, tenantReference]);
 
-  if (!data) return <div className="rounded-3xl border border-slate-800 bg-slate-900 p-8 text-sm text-slate-400">Loading governed launch workspace…</div>;
+  if (!data) {
+    if (loading) return <div className="rounded-3xl border border-slate-800 bg-slate-900 p-8 text-sm text-slate-400">Loading governed launch workspace…</div>;
+    return <div role="alert" className="rounded-3xl border border-rose-800 bg-rose-950/35 p-8 text-sm text-rose-200">
+      <p>{error || 'The governed launch workspace could not be loaded.'}</p>
+      <button type="button" onClick={() => void load().catch(() => undefined)} className="mt-4 min-h-11 rounded-xl border border-rose-700 px-4 text-xs font-black text-rose-100">Retry</button>
+    </div>;
+  }
   const complete = stages.filter(stage => ['APPROVED', 'COMPLETE'].includes(stage.state)).length;
   return <div className="space-y-6">
     <header className="rounded-3xl border border-violet-800/60 bg-gradient-to-br from-violet-950 via-slate-950 to-slate-900 p-6 sm:p-8">
