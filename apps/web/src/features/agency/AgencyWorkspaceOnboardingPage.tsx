@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { AgencyLaunchCommandCenter } from './AgencyLaunchCommandCenter';
+import { AgencyLaunchTenantResolver } from './AgencyLaunchTenantResolver';
 
 export function AgencyWorkspaceOnboardingPage() {
   const navigate = useNavigate();
@@ -12,8 +12,8 @@ export function AgencyWorkspaceOnboardingPage() {
     </p>;
   }
 
-  return <AgencyLaunchCommandCenter
-    tenantId={tenantId}
+  return <AgencyLaunchTenantResolver
+    tenantIdentifier={tenantId}
     onBack={() => navigate(`/agency/tenants/${tenantId}`)}
   />;
 }
