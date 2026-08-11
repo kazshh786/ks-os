@@ -1,6 +1,6 @@
 # KS OS Live Site Intelligence V1 — implementation report
 
-Status: implemented on `feat/live-site-intelligence-v1`; not deployed. This change does not mutate, generate, approve, or publish Luma.
+Status: the V1 foundation is deployed from `ca3a1dbef938e6a83a584c68aae14c61bea22e16`; the V1.1 follow-up remains an undeployed review PR. Neither release path generates, approves, or publishes Luma.
 
 ## Executive outcome
 
