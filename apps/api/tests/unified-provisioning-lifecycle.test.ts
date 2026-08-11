@@ -7,6 +7,7 @@ const delivery = readFileSync(new URL('../src/modules/provisioning/delivery-cont
 const lifecycle = readFileSync(new URL('../src/modules/provisioning/tenant-lifecycle.service.ts', import.meta.url), 'utf8');
 const workspaceData = readFileSync(new URL('../src/modules/provisioning/workspace-data.service.ts', import.meta.url), 'utf8');
 const web = readFileSync(new URL('../../web/src/features/agency/AgencyProvisioning.tsx', import.meta.url), 'utf8');
+const launchResolver = readFileSync(new URL('../../web/src/features/agency/AgencyLaunchTenantResolver.tsx', import.meta.url), 'utf8');
 const launch = readFileSync(new URL('../../web/src/features/agency/AgencyLaunchCommandCenter.tsx', import.meta.url), 'utf8');
 const controls = readFileSync(new URL('../../web/src/features/agency/WorkspaceDataControls.tsx', import.meta.url), 'utf8');
 
@@ -20,7 +21,8 @@ test('client delivery resolves server-owned plan, brief, template, draft, run an
 });
 
 test('governed delivery presents the staged Agency Launch command centre', () => {
-  assert.match(web, /AgencyLaunchCommandCenter/);
+  assert.match(web, /AgencyLaunchTenantResolver/);
+  assert.match(launchResolver, /AgencyLaunchCommandCenter/);
   assert.match(launch, /Agency Launch V2/);
   assert.match(launch, /Search Intelligence/);
   assert.match(launch, /Complete governed research/);
