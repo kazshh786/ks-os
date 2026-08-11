@@ -43,6 +43,7 @@ import {
   handlePublicPageRequest,
   handleRobotsRequest,
   handleSitemapRequest,
+  handleWaitlistRequest,
 } from '../src/lib/runtime.js';
 import {
   generateSiteStructuredData,
@@ -416,7 +417,62 @@ test('service CTA becomes a waitlist action without removing published service c
   assert.equal(response.status, 200);
   assert.match(body, new RegExp(`<h1>${serviceSection.heading}</h1>`));
   assert.match(body, /Join waitlist/);
+  assert.match(body, /href="\/waitlist\?/);
   assert.match(body, new RegExp(`service=${serviceSection.serviceReference}`));
+});
+
+test('/waitlist preserves only validated eligible published context', async () => {
+  const repository = repoFor(baseSnapshot, 'LIVE');
+  const service = baseSnapshot.services[0]!;
+  repository.resolveLiveSiteData = async () => ({
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: baseSnapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: service.publicReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: true,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  });
+  const response = await handleWaitlistRequest({
+    request: request(fallbackHostname, `/waitlist?service=${service.publicReference}&campaign=summer-2026`),
+    repository,
+    config,
+  });
+  assert.equal(response.status, 302);
+  assert.match(response.headers.get('cache-control') ?? '', /no-store/);
+  assert.match(response.headers.get('location') ?? '', new RegExp(`^https://book\\.kasimshah\\.com/waitlist/northlight\\?service=${service.publicReference}`));
+  assert.match(response.headers.get('location') ?? '', /campaign=summer-2026/);
+
+  repository.resolveLiveSiteData = async snapshot => ({
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: snapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: service.publicReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: false,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  });
+  assert.equal((await handleWaitlistRequest({
+    request: request(fallbackHostname, `/waitlist?service=${service.publicReference}`),
+    repository,
+    config,
+  })).status, 404);
 });
 
 // 17

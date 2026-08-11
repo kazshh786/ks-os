@@ -12,6 +12,7 @@
     "test": "node --import tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
+    "@ks-os/contracts": "workspace:*",
     "@ks-os/live-site-intelligence": "workspace:*",
     "@ks-os/site-schema": "workspace:*"
   },

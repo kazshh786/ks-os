@@ -73,6 +73,22 @@ function liveData(overrides: Partial<PublicLiveSiteData> = {}) {
   });
 }
 
+test('public live data exposes waitlist eligibility but rejects PERSONAL waitlist entries', () => {
+  const publicData = liveData({
+    services: [{
+      ...liveData().services[0]!,
+      bookingEligible: false,
+      waitlistEligible: true,
+    }],
+  });
+  assert.equal(publicData.services[0]?.waitlistEligible, true);
+  assert.doesNotMatch(JSON.stringify(publicData), /customer@example\.com|clientName|waitlistEntries/);
+  assert.equal(PublicLiveSiteDataSchema.safeParse({
+    ...publicData,
+    waitlistEntries: [{ clientName: 'Private person', clientEmail: 'customer@example.com' }],
+  }).success, false);
+});
+
 const input: LiveSiteResolutionInput = {
   siteReference: refs.site,
   tenantReference: refs.tenant,

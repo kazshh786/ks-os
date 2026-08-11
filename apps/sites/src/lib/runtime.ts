@@ -2,6 +2,7 @@ import {
   CampaignReferenceSchema,
   PublicReferenceSchema,
   resolveKsOsBookingUrl,
+  resolveKsOsWaitlistUrl,
 } from '@ks-os/contracts';
 import type { ComponentRenderContext } from '@ks-os/site-components';
 import {
@@ -343,6 +344,53 @@ export async function handleBookingRequest(input: {
       tenantReference: resolved.snapshot.booking.tenantReference,
       tenantSubdomain: resolved.snapshot.booking.tenantSubdomain,
       routeMode: 'FALLBACK',
+      serviceReference: selection.service,
+      locationReference: selection.location,
+      staffReference: selection.staff,
+      campaignReference: selection.campaign
+        ?? resolved.snapshot.booking.campaignReference,
+    });
+    return new Response(null, {
+      status: 302,
+      headers: {
+        ...securityHeaders(NO_STORE, 'text/plain; charset=utf-8'),
+        Location: destination,
+      },
+    });
+  } catch {
+    return notFound();
+  }
+}
+
+export async function handleWaitlistRequest(input: {
+  request: Request;
+  repository: PublicSiteRepository;
+  config: SitesRuntimeConfig;
+}): Promise<Response> {
+  try {
+    const resolved = await resolveLiveSite(input);
+    if (resolved.kind === 'NOT_FOUND') return notFound();
+    if (resolved.kind === 'UNAVAILABLE') return unavailable(resolved.status);
+    if (!input.config.publicBookingOrigin || !input.repository.resolveLiveSiteData) return unavailable();
+    const selection = parseBookingSelection(new URL(input.request.url));
+    if (!selection.service) return notFound();
+    if (!resolved.snapshot.services.some(service => service.publicReference === selection.service)) {
+      return notFound();
+    }
+    if (selection.location && !resolved.snapshot.locations.some(
+      location => location.publicReference === selection.location,
+    )) return notFound();
+    if (selection.staff && !resolved.snapshot.staff.some(
+      staff => staff.publicReference === selection.staff,
+    )) return notFound();
+    const live = await input.repository.resolveLiveSiteData(resolved.snapshot);
+    const waitlistEligible = !live.telemetry.fallbackActivated
+      && live.services.some(service =>
+        service.publicReference === selection.service && service.waitlistEligible);
+    if (!waitlistEligible) return notFound();
+    const destination = resolveKsOsWaitlistUrl({
+      publicOrigin: input.config.publicBookingOrigin,
+      tenantSubdomain: resolved.snapshot.booking.tenantSubdomain,
       serviceReference: selection.service,
       locationReference: selection.location,
       staffReference: selection.staff,

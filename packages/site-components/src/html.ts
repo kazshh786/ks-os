@@ -6,6 +6,7 @@ import type {
   SiteAction,
   SiteAssetReference,
 } from '@ks-os/site-schema';
+import type { KsOsWaitlistAction } from '@ks-os/contracts';
 import type {
   GovernedRecommendation,
   PublicLiveSiteData,
@@ -65,7 +66,7 @@ function contextualBookingAction(
 }
 
 export function actionHref(
-  action: SiteAction,
+  action: SiteAction | KsOsWaitlistAction,
   context: ComponentRenderContext,
 ): string {
   switch (action.type) {
@@ -77,6 +78,13 @@ export function actionHref(
       if (resolved.staffReference) query.push(`staff=${queryValue(resolved.staffReference)}`);
       if (resolved.campaignReference) query.push(`campaign=${queryValue(resolved.campaignReference)}`);
       return `/book${query.length ? `?${query.join('&')}` : ''}`;
+    }
+    case 'KS_OS_WAITLIST': {
+      const query = [`service=${queryValue(action.serviceReference)}`];
+      if (action.locationReference) query.push(`location=${queryValue(action.locationReference)}`);
+      if (action.staffReference) query.push(`staff=${queryValue(action.staffReference)}`);
+      if (action.campaignReference) query.push(`campaign=${queryValue(action.campaignReference)}`);
+      return `/waitlist?${query.join('&')}`;
     }
     case 'INTERNAL_PAGE': {
       const path = context.pagePathByReference[action.pageReference];
@@ -114,7 +122,15 @@ export function renderAction(
       : true;
     if (serviceEligible === false || staffEligible === false || locationEligible === false) {
       if (serviceEligible === false && liveService?.waitlistEligible) {
-        return html`<a class="${escapeHtml(className)} waitlist" href="${escapeHtml(actionHref(resolved, context))}">Join waitlist</a>`;
+        const waitlistAction: KsOsWaitlistAction = {
+          type: 'KS_OS_WAITLIST',
+          label: 'Join waitlist',
+          serviceReference: resolved.serviceReference!,
+          ...(resolved.locationReference ? { locationReference: resolved.locationReference } : {}),
+          ...(resolved.staffReference ? { staffReference: resolved.staffReference } : {}),
+          ...(resolved.campaignReference ? { campaignReference: resolved.campaignReference } : {}),
+        };
+        return html`<a class="${escapeHtml(className)} waitlist" href="${escapeHtml(actionHref(waitlistAction, context))}">${escapeHtml(waitlistAction.label)}</a>`;
       }
       return html`<span class="${escapeHtml(className)} unavailable" aria-disabled="true">Currently unavailable</span>`;
     }

@@ -228,7 +228,7 @@ test('server rendering uses safe live price and bookability with a published fal
   assert.match(liveMarkup, /75 minutes/);
   assert.match(liveMarkup, /<h1>Service detail<\/h1>/);
   assert.match(liveMarkup, /Join waitlist/);
-  assert.ok(liveMarkup.includes(`/book?service=${serviceReference}`));
+  assert.ok(liveMarkup.includes(`/waitlist?service=${serviceReference}`));
 
   const fallbackMarkup = renderSection(serviceSection, {
     ...context,
@@ -237,6 +237,31 @@ test('server rendering uses safe live price and bookability with a published fal
   });
   assert.doesNotMatch(fallbackMarkup, /£95\.00/);
   assert.match(fallbackMarkup, new RegExp(snapshot.services[0]!.name));
+});
+
+test('unavailable services expose a waitlist action only when explicitly eligible', () => {
+  const serviceSection = sectionFor('SERVICE_DETAILS');
+  const servicePage = { ...page, pageType: 'SERVICE_DETAIL', sections: [serviceSection] } as PublishedPageSnapshot;
+  const live = {
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: snapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: serviceReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: false,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  } as const;
+  const markup = renderSection(serviceSection, { ...context, page: servicePage, live });
+  assert.doesNotMatch(markup, /Join waitlist/);
+  assert.doesNotMatch(markup, /href="\/waitlist/);
 });
 
 test('generic booking actions inherit stable service page context server-side', () => {

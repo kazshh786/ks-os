@@ -133,12 +133,12 @@ Security properties include tenant-scope triggers, foreign keys and FK indexes, 
 The V1.1 follow-up completes the deliberately bounded public dynamic-site surface:
 
 - a cursor-bounded producer computes short-lived, service-level availability summaries for services in the exact published snapshot without persisting raw slots or counts;
-- an unavailable but active service may expose a governed waitlist CTA through the existing KS OS booking journey while retaining its published service section and H1;
+- an unavailable but active, waitlist-enabled service may expose the explicit runtime-only `KS_OS_WAITLIST` action while retaining its published service section and H1. A no-store preflight exposes only `waitlistEligible`, so ineligible or tampered direct URLs never display the join action. Submission then revalidates tenant, site, service, optional location/staff context and current eligibility server-side, accepts bounded contact details under stricter rate limiting, persists a tenant-scoped idempotent PERSONAL request, and returns a non-promissory confirmation;
 - exact-version Search Intelligence internal-link records render as visible recommendations, with LIVE state permitted only to remove an operationally ineligible service target;
 - approved active campaigns render in every governed placement (`ANNOUNCEMENT`, `HERO`, `PAGE_BODY`, and `PAGE_END`) without rewriting published SEO content; and
 - operational events are processed automatically into impact assessments and human-reviewed draft proposals, with no autonomous approval or publication path.
 
-Migration 72 only pins `ks_validate_live_site_scope()` to the trusted `public, pg_temp` search path after the production security-advisor review of migration 71. It is additive and must remain unapplied until the V1.1 PR is approved and deployed.
+Migration 72 pins `ks_validate_live_site_scope()` to the trusted `public, pg_temp` search path after the production security-advisor review of migration 71 and adds the canonical `site_waitlist_entries` PERSONAL-data store. The store has tenant/site/entity foreign keys, database-enforced tenant scope, idempotency and active-duplicate protection, supporting indexes, RLS, no direct `anon`/`authenticated` access, and service-role access. It is additive and must remain unapplied until the V1.1 PR is approved and deployed.
 
 ## V1 compatibility and deferred scope
 
@@ -146,7 +146,7 @@ Migration 72 only pins `ks_validate_live_site_scope()` to the trusted `public, p
 - Existing explicit booking actions behave unchanged; generic actions gain safe page context.
 - Existing published price/hours remain the fallback until the corresponding live feature is opted in and available.
 - No client-rendered SPA dependency or new public API is introduced.
-- PERSONAL customer experiences, private waitlist details, raw availability slots, invasive attribution/fingerprinting, automatic redirect application, and autonomous publication are deliberately deferred.
+- private waitlist details never enter `PublicLiveSiteData`, snapshots, structured data, shared caches, public telemetry, or Search Intelligence; only `waitlistEligible` is public. Automatic cancellation-to-notification/invitation matching remains deferred, as do raw availability slots, invasive attribution/fingerprinting, automatic redirect application, and autonomous publication.
 
 ## Deployment classification
 

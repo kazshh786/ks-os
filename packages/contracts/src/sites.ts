@@ -231,6 +231,21 @@ export const KsOsBookingActionSchema = z.object({
   campaignReference: CampaignReferenceSchema.optional(),
 }).strict();
 
+/**
+ * Runtime-governed waitlist actions are deliberately separate from generated
+ * snapshot actions. They can be emitted only after LIVE state confirms that
+ * the referenced service is currently waitlist-eligible.
+ */
+export const KsOsWaitlistActionSchema = z.object({
+  type: z.literal('KS_OS_WAITLIST'),
+  label: z.string().trim().min(1).max(80),
+  serviceReference: PublicReferenceSchema,
+  locationReference: PublicReferenceSchema.optional(),
+  staffReference: PublicReferenceSchema.optional(),
+  campaignReference: CampaignReferenceSchema.optional(),
+}).strict();
+export type KsOsWaitlistAction = z.infer<typeof KsOsWaitlistActionSchema>;
+
 export const InternalPageActionSchema = z.object({
   type: z.literal('INTERNAL_PAGE'),
   label: z.string().trim().min(1).max(80),
@@ -514,6 +529,62 @@ export function resolveKsOsBookingUrl(input: ResolveKsOsBookingUrlInput): string
   if (parsed.campaignReference) url.searchParams.set('campaign', parsed.campaignReference);
   return url.toString();
 }
+
+export const ResolveKsOsWaitlistUrlSchema = z.object({
+  publicOrigin: z.string().url(),
+  tenantSubdomain: TenantSubdomainSchema,
+  serviceReference: PublicReferenceSchema,
+  locationReference: PublicReferenceSchema.optional(),
+  staffReference: PublicReferenceSchema.optional(),
+  campaignReference: CampaignReferenceSchema.optional(),
+}).strict();
+export type ResolveKsOsWaitlistUrlInput = z.input<typeof ResolveKsOsWaitlistUrlSchema>;
+
+export function resolveKsOsWaitlistUrl(input: ResolveKsOsWaitlistUrlInput): string {
+  const parsed = ResolveKsOsWaitlistUrlSchema.parse(input);
+  const url = new URL(parsed.publicOrigin);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error('The configured public waitlist origin is invalid.');
+  }
+  url.pathname = `/waitlist/${encodeURIComponent(parsed.tenantSubdomain)}`;
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('service', parsed.serviceReference);
+  if (parsed.locationReference) url.searchParams.set('location', parsed.locationReference);
+  if (parsed.staffReference) url.searchParams.set('staff', parsed.staffReference);
+  if (parsed.campaignReference) url.searchParams.set('campaign', parsed.campaignReference);
+  return url.toString();
+}
+
+export const PublicWaitlistContextSchema = z.object({
+  serviceReference: PublicReferenceSchema,
+  locationReference: PublicReferenceSchema.optional(),
+  staffReference: PublicReferenceSchema.optional(),
+  campaignReference: CampaignReferenceSchema.optional(),
+}).strict();
+export type PublicWaitlistContext = z.infer<typeof PublicWaitlistContextSchema>;
+
+export const PublicWaitlistEligibilityResponseSchema = z.object({
+  waitlistEligible: z.boolean(),
+}).strict();
+export type PublicWaitlistEligibilityResponse = z.infer<typeof PublicWaitlistEligibilityResponseSchema>;
+
+export const CreatePublicWaitlistRequestSchema = PublicWaitlistContextSchema.extend({
+  preferredDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  customer: z.object({
+    name: z.string().trim().min(2).max(120),
+    email: z.string().trim().email().max(255),
+    phone: z.string().trim().min(7).max(30).regex(/^\+?[0-9 ()-]+$/).optional(),
+  }).strict(),
+  idempotencyKey: z.string().uuid(),
+}).strict();
+export type CreatePublicWaitlistRequest = z.infer<typeof CreatePublicWaitlistRequestSchema>;
+
+export const PublicWaitlistResponseSchema = z.object({
+  status: z.literal('PENDING'),
+  message: z.literal("You're on the waitlist. We'll contact you if a suitable appointment becomes available."),
+}).strict();
+export type PublicWaitlistResponse = z.infer<typeof PublicWaitlistResponseSchema>;
 
 export const BookingConversionPlacementSchema = z.enum([
   'HEADER',

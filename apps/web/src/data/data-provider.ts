@@ -40,6 +40,7 @@ import {
   PaymentsReportQuery, PaymentsReportResponse, RefundsReportQuery, RefundsReportResponse,
   FormsReportQuery, FormsReportResponse, CommunicationsReportQuery, CommunicationsReportResponse,
   AdvancedAnalyticsQuery, AdvancedAnalyticsResponse, CreateReportExport, CreateReportSchedule, UpdateReportSchedule
+  ,CreatePublicWaitlistRequest, PublicWaitlistContext, PublicWaitlistEligibilityResponse, PublicWaitlistResponse
 } from '@ks-os/contracts';
 import { MockDataProvider } from './mock-data-provider.js';
 
@@ -74,6 +75,8 @@ export interface DataProvider {
   getPublicAvailability(subdomain: string, input: any): Promise<any>;
   getPublicBookingStatus(subdomain: string, reference: string): Promise<any>;
   createPublicBooking(subdomain: string, input: any): Promise<any>;
+  getPublicWaitlistEligibility(subdomain: string, input: PublicWaitlistContext): Promise<PublicWaitlistEligibilityResponse>;
+  createPublicWaitlistRequest(subdomain: string, input: CreatePublicWaitlistRequest): Promise<PublicWaitlistResponse>;
   createBookingHold(subdomain: string, input: CreateBookingHold): Promise<BookingHoldResponse>;
   releaseBookingHold(subdomain: string, holdId: string, token: string): Promise<void>;
   recordPublicBookingEvent(subdomain: string, input: Record<string, unknown>): Promise<void>;

@@ -49,6 +49,7 @@ import {
   PaymentsReportQuery, PaymentsReportResponse, RefundsReportQuery, RefundsReportResponse,
   FormsReportQuery, FormsReportResponse, CommunicationsReportQuery, CommunicationsReportResponse,
   AdvancedAnalyticsQuery, AdvancedAnalyticsResponse, CreateReportExport, CreateReportSchedule, UpdateReportSchedule
+  ,CreatePublicWaitlistRequest, PublicWaitlistContext, PublicWaitlistEligibilityResponse, PublicWaitlistResponse
 } from '@ks-os/contracts';
 /**
  * PRODUCTION API DATA PROVIDER
@@ -299,6 +300,31 @@ export class ApiDataProvider implements DataProvider {
       throw new Error(data.error?.message || 'Failed to create public booking');
     }
     return data;
+  }
+
+  async createPublicWaitlistRequest(
+    subdomain: string,
+    input: CreatePublicWaitlistRequest,
+  ): Promise<PublicWaitlistResponse> {
+    const res = await fetch(`/api/v1/public/${encodeURIComponent(subdomain)}/waitlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error?.message || 'Unable to join the waitlist.');
+    return data as PublicWaitlistResponse;
+  }
+
+  async getPublicWaitlistEligibility(
+    subdomain: string,
+    input: PublicWaitlistContext,
+  ): Promise<PublicWaitlistEligibilityResponse> {
+    const query = new URLSearchParams(Object.entries(input).filter((entry): entry is [string, string] => Boolean(entry[1])));
+    const res = await fetch(`/api/v1/public/${encodeURIComponent(subdomain)}/waitlist-eligibility?${query}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { waitlistEligible: false };
+    return data as PublicWaitlistEligibilityResponse;
   }
 
   async createBookingHold(subdomain: string, input: CreateBookingHold): Promise<BookingHoldResponse> {
