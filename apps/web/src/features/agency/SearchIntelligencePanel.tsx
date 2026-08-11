@@ -80,11 +80,13 @@ export function SearchIntelligencePanel({
   siteName,
   canManage,
   pageTitlesByReference,
+  blueprint,
 }: {
   siteReference: string;
   siteName: string;
   canManage: boolean;
   pageTitlesByReference: Record<string, string>;
+  blueprint: { reference: string; revision: number; status: string } | null;
 }) {
   const [data, setData] = useState<SearchIntelligencePayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -162,6 +164,7 @@ export function SearchIntelligencePanel({
   };
 
   const createPlatformDraft = async () => {
+    if (!blueprint || blueprint.status !== 'APPROVED') return;
     setBusy('create'); setError(''); setNotice('');
     try {
       const created = await agencyFetch(`/sites/${siteReference}/search-intelligence/create-draft`, { method: 'POST', body: '{}' });
@@ -188,7 +191,13 @@ export function SearchIntelligencePanel({
   };
 
   if (loading) return <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><div className="flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Loading governed Search Intelligence…</div></section>;
-  if (notCreated) return <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><h2 className="flex items-center gap-2 text-sm font-black"><Search className="h-4 w-4 text-violet-300" />Search Intelligence V2</h2><p className="mt-2 text-xs leading-5 text-slate-400">No versioned strategy exists for this site. Create a governed planning draft from the exact approved blueprint; it will include one brief per page and remain blocked from approval and generation until governed research evidence is imported and reviewed.</p>{error ? <p role="alert" className="mt-4 rounded-xl border border-rose-900 bg-rose-950/30 p-3 text-xs text-rose-200">{error}</p> : null}<button type="button" disabled={!canManage || Boolean(busy)} onClick={() => void createPlatformDraft()} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-black disabled:opacity-40">{busy === 'create' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Create planning draft</button><p className="mt-3 text-[11px] leading-5 text-slate-500">The initial draft uses blueprint context only and records that no external SERP evidence or keyword metrics have yet been asserted.</p></section>;
+  if (notCreated) {
+    const blueprintApproved = blueprint?.status === 'APPROVED';
+    const blockedMessage = !blueprint
+      ? 'Create and approve a blueprint before creating Search Intelligence.'
+      : `Approve blueprint revision ${blueprint.revision} before creating Search Intelligence.`;
+    return <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><h2 className="flex items-center gap-2 text-sm font-black"><Search className="h-4 w-4 text-violet-300" />Search Intelligence V2</h2><p className="mt-2 text-xs leading-5 text-slate-400">No versioned strategy exists for this site. Create a governed planning draft from the exact approved blueprint; it will include one brief per page and remain blocked from approval and generation until governed research evidence is imported and reviewed.</p>{!blueprintApproved ? <p className="mt-4 rounded-xl border border-amber-800 bg-amber-950/25 p-3 text-xs text-amber-200">{blockedMessage}</p> : null}{error ? <p role="alert" className="mt-4 rounded-xl border border-rose-900 bg-rose-950/30 p-3 text-xs text-rose-200">{error}</p> : null}<button type="button" disabled={!canManage || !blueprintApproved || Boolean(busy)} onClick={() => void createPlatformDraft()} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-black disabled:opacity-40">{busy === 'create' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}Create planning draft</button><p className="mt-3 text-[11px] leading-5 text-slate-500">The initial draft uses blueprint context only and records that no external SERP evidence or keyword metrics have yet been asserted.</p></section>;
+  }
   if (!data || !brief) return null;
 
   const isDraft = data.status === 'DRAFT';

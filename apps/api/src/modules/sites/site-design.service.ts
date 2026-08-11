@@ -526,6 +526,14 @@ export class SiteDesignService {
         sourceContentDigestSha256: prepared.contentDigestSha256,
         createdByAgencyUserId: actor.agencyUserId,
       });
+      if (context.generationRunId
+        && ['DESIGN_COMPLETE', 'READY_FOR_REVIEW'].includes(context.generationStatus ?? '')) {
+        await tx.update(siteGenerationRuns).set({
+          ...(context.generationStatus === 'READY_FOR_REVIEW' ? { status: 'DESIGN_COMPLETE' } : {}),
+          outputContentDigestSha256: prepared.contentDigestSha256,
+          updatedAt: new Date(),
+        }).where(eq(siteGenerationRuns.id, context.generationRunId));
+      }
       await tx.update(siteVersions).set({
         status: 'INTERNAL_REVIEW',
         generationStatus: context.generationRunId
@@ -536,14 +544,6 @@ export class SiteDesignService {
         changeSummary: 'Design updated in Site Studio.',
         updatedAt: new Date(),
       }).where(eq(siteVersions.id, context.versionId));
-      if (context.generationRunId
-        && ['DESIGN_COMPLETE', 'READY_FOR_REVIEW'].includes(context.generationStatus ?? '')) {
-        await tx.update(siteGenerationRuns).set({
-          ...(context.generationStatus === 'READY_FOR_REVIEW' ? { status: 'DESIGN_COMPLETE' } : {}),
-          outputContentDigestSha256: prepared.contentDigestSha256,
-          updatedAt: new Date(),
-        }).where(eq(siteGenerationRuns.id, context.generationRunId));
-      }
 
       const [review] = await tx.select({ id: siteReviewCycles.id })
         .from(siteReviewCycles)
