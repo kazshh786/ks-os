@@ -12,6 +12,7 @@ import AgencyLayout from './layouts/AgencyLayout.js';
 // Pages
 import Login from './pages/Login.js';
 import BookingWizardPage from './pages/BookingWizardPage.js';
+import WaitlistPage from './pages/WaitlistPage.js';
 import StaffCalendarPage from './pages/StaffCalendarPage.js';
 import BookingListPage from './pages/BookingListPage.js';
 import ReceptionPage from './pages/ReceptionPage.js';
@@ -158,6 +159,7 @@ const AppContent: React.FC = () => {
         {/* Public Booking Widgets */}
         <Route element={<PublicBookingLayout />}>
           <Route path="/book/:subdomain" element={<BookingWizardPage />} />
+          <Route path="/waitlist/:subdomain" element={<WaitlistPage />} />
           <Route path="/book/:subdomain/manage/:reference" element={<BookingWizardPage />} />
           <Route path="/book/:subdomain/payment/success" element={<PaymentSuccess />} />
           <Route path="/book/:subdomain/payment/cancel" element={<PaymentCancel />} />

@@ -11,6 +11,8 @@ import {
   actionHref,
   componentRegistrySummary,
   listSiteComponents,
+  renderGovernedRecommendations,
+  renderLiveCampaignPlacement,
   renderSection,
   resolveSiteComponent,
   validateSiteSectionComponent,
@@ -225,7 +227,8 @@ test('server rendering uses safe live price and bookability with a published fal
   assert.match(liveMarkup, /£95\.00/);
   assert.match(liveMarkup, /75 minutes/);
   assert.match(liveMarkup, /<h1>Service detail<\/h1>/);
-  assert.match(liveMarkup, /Currently unavailable/);
+  assert.match(liveMarkup, /Join waitlist/);
+  assert.ok(liveMarkup.includes(`/waitlist?service=${serviceReference}`));
 
   const fallbackMarkup = renderSection(serviceSection, {
     ...context,
@@ -234,6 +237,31 @@ test('server rendering uses safe live price and bookability with a published fal
   });
   assert.doesNotMatch(fallbackMarkup, /£95\.00/);
   assert.match(fallbackMarkup, new RegExp(snapshot.services[0]!.name));
+});
+
+test('unavailable services expose a waitlist action only when explicitly eligible', () => {
+  const serviceSection = sectionFor('SERVICE_DETAILS');
+  const servicePage = { ...page, pageType: 'SERVICE_DETAIL', sections: [serviceSection] } as PublishedPageSnapshot;
+  const live = {
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: snapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: serviceReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: false,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  } as const;
+  const markup = renderSection(serviceSection, { ...context, page: servicePage, live });
+  assert.doesNotMatch(markup, /Join waitlist/);
+  assert.doesNotMatch(markup, /href="\/waitlist/);
 });
 
 test('generic booking actions inherit stable service page context server-side', () => {
@@ -283,4 +311,67 @@ test('explicitly optional live sections hide on false and render published fallb
     telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
   } as const;
   assert.equal(String(renderSection(conditional, { ...context, live: disabledLive })), '');
+});
+
+test('all approved campaign placements render through controlled booking actions', () => {
+  const placements = ['ANNOUNCEMENT', 'HERO', 'PAGE_BODY', 'PAGE_END'] as const;
+  const live = {
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: '77777777-7777-4777-8777-777777777777',
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [], staff: [], locations: [], availability: [], warnings: [],
+    campaigns: placements.map((placement, index) => ({
+      publicReference: `88888888-8888-4888-8888-88888888888${index}`,
+      active: true,
+      message: `${placement} approved campaign`,
+      placement,
+      action: {
+        type: 'KS_OS_BOOKING' as const,
+        label: 'View availability',
+        campaignReference: `88888888-8888-4888-8888-88888888888${index}`,
+      },
+      serviceReferences: [],
+      locationReferences: [],
+      startsAt: '2026-08-11T11:00:00.000Z',
+      endsAt: '2026-08-12T11:00:00.000Z',
+    })),
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  } as const;
+  for (const placement of placements) {
+    const markup = placement === 'HERO'
+      ? renderSection(sectionFor('HERO'), { ...context, live })
+      : renderLiveCampaignPlacement(placement, { ...context, live });
+    assert.match(markup, new RegExp(`${placement} approved campaign`));
+    assert.match(markup, /campaign=/);
+  }
+});
+
+test('version-bound recommendations render visibly and keep approved fallback links', () => {
+  const targetPageReference = '99999999-9999-4999-8999-999999999999';
+  const targetPage = {
+    ...page,
+    publicReference: targetPageReference,
+    path: '/guide',
+    title: 'Preparation guide',
+    active: true,
+    pageType: 'GUIDE',
+  } as PublishedPageSnapshot;
+  const recommendationContext: ComponentRenderContext = {
+    ...context,
+    snapshot: { ...snapshot, pages: [page, targetPage] } as PublishedSiteSnapshot,
+    pagePathByReference: { [pageReference]: '/', [targetPageReference]: '/guide' },
+    recommendations: [{
+      sourcePageReference: pageReference,
+      targetPageReference,
+      anchorText: 'Read the preparation guide',
+      relationship: 'USEFUL_GUIDE',
+      governedOrder: 0,
+      approved: true,
+    }],
+  };
+  const markup = renderGovernedRecommendations(recommendationContext);
+  assert.match(markup, /Recommended next/);
+  assert.match(markup, /href="\/guide"/);
+  assert.match(markup, /Read the preparation guide/);
 });

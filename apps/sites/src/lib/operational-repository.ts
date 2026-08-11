@@ -1,9 +1,17 @@
 import {
+  and,
+  asc,
+  eq,
   getDatabase,
+  sitePages,
+  sites,
+  siteVersions,
   sql,
 } from '@ks-os/database';
 import {
   LiveSiteDataResolver,
+  PublishedRecommendationLinksSchema,
+  type GovernedRecommendation,
 } from '@ks-os/live-site-intelligence';
 import { DrizzleLiveSiteDataSource } from '@ks-os/live-site-intelligence/database';
 import {
@@ -62,6 +70,52 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
       serviceReferences: snapshot.services.map(service => service.publicReference),
       staffReferences: snapshot.staff.map(staff => staff.publicReference),
       locationReferences: snapshot.locations.map(location => location.publicReference),
+    });
+  }
+
+  async resolvePublishedRecommendations(
+    snapshot: PublishedSiteSnapshot,
+  ): Promise<readonly GovernedRecommendation[]> {
+    const rows = await this.database.select({
+      sourcePageReference: sitePages.publicReference,
+      links: sitePages.internalLinksJson,
+    }).from(sitePages)
+      .innerJoin(siteVersions, eq(sitePages.versionId, siteVersions.id))
+      .innerJoin(sites, eq(sitePages.siteId, sites.id))
+      .where(and(
+        eq(sites.publicReference, snapshot.siteReference),
+        eq(siteVersions.publicReference, snapshot.versionReference),
+      ))
+      .orderBy(asc(sitePages.sortOrder));
+    const publishedPages = new Map(snapshot.pages
+      .filter(page => page.active)
+      .map(page => [page.publicReference, page]));
+    return rows.flatMap(row => {
+      if (!publishedPages.has(row.sourcePageReference)) return [];
+      const links = PublishedRecommendationLinksSchema.parse(row.links);
+      return links.flatMap((link, governedOrder) => {
+        const target = publishedPages.get(link.targetPageReference);
+        if (!target || target.publicReference === row.sourcePageReference) return [];
+        const serviceSection = target.sections.find(section => section.type === 'SERVICE_DETAILS');
+        const relationship: GovernedRecommendation['relationship'] = target.pageType === 'SERVICE_DETAIL'
+          ? 'RELATED_SERVICE'
+          : target.pageType === 'TEAM_DETAIL'
+            ? 'RELEVANT_STAFF'
+            : target.pageType === 'LOCATION_DETAIL' || target.pageType === 'LOCATION_HUB'
+              ? 'LOCATION_SERVICE'
+              : 'USEFUL_GUIDE';
+        return [{
+          sourcePageReference: row.sourcePageReference,
+          targetPageReference: target.publicReference,
+          anchorText: link.anchorText,
+          ...(serviceSection?.type === 'SERVICE_DETAILS'
+            ? { targetServiceReference: serviceSection.serviceReference }
+            : {}),
+          relationship,
+          governedOrder,
+          approved: true as const,
+        }];
+      });
     });
   }
 

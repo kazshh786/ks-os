@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import type { SiteStatus } from '@ks-os/contracts';
+import type { PublicLiveSiteData } from '@ks-os/live-site-intelligence';
 import {
   SiteActionSchema,
   SiteAssetReferenceSchema,
@@ -42,6 +43,7 @@ import {
   handlePublicPageRequest,
   handleRobotsRequest,
   handleSitemapRequest,
+  handleWaitlistRequest,
 } from '../src/lib/runtime.js';
 import {
   generateSiteStructuredData,
@@ -99,6 +101,8 @@ class MemoryPublicSiteRepository implements PublicSiteRepository {
   qualitySessionValidator?: (
     input: Parameters<NonNullable<PublicSiteRepository['isQualityAuditSessionActive']>>[0],
   ) => boolean | Promise<boolean>;
+  resolveLiveSiteData?: PublicSiteRepository['resolveLiveSiteData'];
+  resolvePublishedRecommendations?: PublicSiteRepository['resolvePublishedRecommendations'];
 
   constructor(snapshot?: PublishedSiteSnapshot, status: SiteStatus = 'LIVE') {
     if (!snapshot) return;
@@ -332,6 +336,143 @@ test('a LIVE site renders its immutable published snapshot', async () => {
   const response = await publicPage(repoFor(baseSnapshot, 'LIVE'));
   assert.equal(response.status, 200);
   assert.match(await response.text(), /Northlight Studio/);
+});
+
+test('public SSR composes all live campaign placements and version-bound recommendations', async () => {
+  const repository = repoFor(baseSnapshot, 'LIVE');
+  const source = baseSnapshot.pages.find(page => page.path === '/')!;
+  const target = baseSnapshot.pages.find(page => page.path !== '/' && page.pageType !== 'BOOKING')!;
+  const placements = ['ANNOUNCEMENT', 'HERO', 'PAGE_BODY', 'PAGE_END'] as const;
+  repository.resolveLiveSiteData = async () => ({
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: baseSnapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: baseSnapshot.services.map(service => ({
+      publicReference: service.publicReference,
+      exists: true,
+      active: true,
+      bookingEligible: true,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: false,
+    })),
+    staff: [], locations: [], availability: [], warnings: [],
+    campaigns: placements.map((placement, index) => ({
+      publicReference: `30000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      active: true,
+      message: `${placement} live campaign`,
+      placement,
+      action: {
+        type: 'KS_OS_BOOKING',
+        label: 'Check availability',
+        campaignReference: `30000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      },
+      serviceReferences: [],
+      locationReferences: [],
+      startsAt: '2026-08-11T11:00:00.000Z',
+      endsAt: '2026-08-12T11:00:00.000Z',
+    })),
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 12, resolutionMs: 8 },
+  } satisfies PublicLiveSiteData);
+  repository.resolvePublishedRecommendations = async () => [{
+    sourcePageReference: source.publicReference,
+    targetPageReference: target.publicReference,
+    anchorText: 'Explore the approved next page',
+    relationship: 'USEFUL_GUIDE',
+    governedOrder: 0,
+    approved: true,
+  }];
+  const response = await publicPage(repository);
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  for (const placement of placements) assert.match(body, new RegExp(`${placement} live campaign`));
+  assert.match(body, /Explore the approved next page/);
+  assert.match(body, new RegExp(`href="${target.path}"`));
+});
+
+test('service CTA becomes a waitlist action without removing published service content', async () => {
+  const repository = repoFor(baseSnapshot, 'LIVE');
+  const page = baseSnapshot.pages.find(candidate => candidate.pageType === 'SERVICE_DETAIL')!;
+  const serviceSection = page.sections.find(section => section.type === 'SERVICE_DETAILS')!;
+  repository.resolveLiveSiteData = async () => ({
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: baseSnapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: serviceSection.serviceReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: true,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 12, resolutionMs: 8 },
+  } satisfies PublicLiveSiteData);
+  const response = await publicPage(repository, fallbackHostname, page.path);
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(body, new RegExp(`<h1>${serviceSection.heading}</h1>`));
+  assert.match(body, /Join waitlist/);
+  assert.match(body, /href="\/waitlist\?/);
+  assert.match(body, new RegExp(`service=${serviceSection.serviceReference}`));
+});
+
+test('/waitlist preserves only validated eligible published context', async () => {
+  const repository = repoFor(baseSnapshot, 'LIVE');
+  const service = baseSnapshot.services[0]!;
+  repository.resolveLiveSiteData = async () => ({
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: baseSnapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: service.publicReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: true,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  });
+  const response = await handleWaitlistRequest({
+    request: request(fallbackHostname, `/waitlist?service=${service.publicReference}&campaign=summer-2026`),
+    repository,
+    config,
+  });
+  assert.equal(response.status, 302);
+  assert.match(response.headers.get('cache-control') ?? '', /no-store/);
+  assert.match(response.headers.get('location') ?? '', new RegExp(`^https://book\\.kasimshah\\.com/waitlist/northlight\\?service=${service.publicReference}`));
+  assert.match(response.headers.get('location') ?? '', /campaign=summer-2026/);
+
+  repository.resolveLiveSiteData = async snapshot => ({
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: snapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: service.publicReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: false,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  });
+  assert.equal((await handleWaitlistRequest({
+    request: request(fallbackHostname, `/waitlist?service=${service.publicReference}`),
+    repository,
+    config,
+  })).status, 404);
 });
 
 // 17

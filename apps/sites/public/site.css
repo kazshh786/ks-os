@@ -175,6 +175,42 @@ summary:focus-visible {
   text-align: center;
 }
 
+.live-campaign,
+.site-recommendations {
+  width: min(72rem, calc(100% - 2rem));
+  margin: 1.5rem auto;
+  border: 1px solid var(--site-border, #d7ddd8);
+  border-radius: 1rem;
+  padding: clamp(1rem, 3vw, 2rem);
+  background: color-mix(in srgb, var(--site-secondary, #5f7464) 9%, #fff);
+}
+
+.live-campaign-hero {
+  width: 100%;
+  margin: 1.25rem 0 0;
+}
+
+.live-campaign-announcement {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0.65rem 1rem;
+  text-align: center;
+}
+
+.live-campaign p {
+  margin-top: 0;
+}
+
+.site-recommendations ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem 1.5rem;
+  padding-left: 1.25rem;
+}
+
 .site-section {
   padding-block: clamp(3rem, 8vw, 7rem);
 }

@@ -545,6 +545,9 @@ importers:
 
   packages/site-components:
     dependencies:
+      '@ks-os/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@ks-os/live-site-intelligence':
         specifier: workspace:*
         version: link:../live-site-intelligence

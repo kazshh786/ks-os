@@ -544,6 +544,8 @@ export class MockDataProvider implements DataProvider {
   async getPublicAvailability(subdomain: string, input: any): Promise<any> { throw new Error('Not implemented in mock'); }
   async getPublicBookingStatus(subdomain: string, reference: string): Promise<any> { throw new Error('Not implemented in mock'); }
   async createPublicBooking(subdomain: string, input: any): Promise<any> { throw new Error('Not implemented in mock'); }
+  async getPublicWaitlistEligibility(): Promise<any> { return { waitlistEligible: false }; }
+  async createPublicWaitlistRequest(): Promise<any> { throw new Error('Not implemented in mock'); }
 
   // Staff Booking Methods (Mock Stubs)
   async createStaffBooking(input: any): Promise<any> { throw new Error('Not implemented in mock'); }

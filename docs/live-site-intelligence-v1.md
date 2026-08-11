@@ -1,6 +1,6 @@
 # KS OS Live Site Intelligence V1 — implementation report
 
-Status: implemented on `feat/live-site-intelligence-v1`; not deployed. This change does not mutate, generate, approve, or publish Luma.
+Status: the V1 foundation is deployed from `ca3a1dbef938e6a83a584c68aae14c61bea22e16`; the V1.1 follow-up remains an undeployed review PR. Neither release path generates, approves, or publishes Luma.
 
 ## Executive outcome
 
@@ -102,7 +102,7 @@ V1 does not emit appointment availability in structured data. Current Service sc
 
 ## Change-impact architecture
 
-Database triggers automatically emit privacy-minimised `site_operational_change_events` containing the public entity reference, controlled change kind, and changed field names—never old/new values. Public rendering automatically consumes safe current LIVE state through the resolver. In V1, `processPendingChanges()` runs only through the explicit Site Studio impact-queue action; that action maps each event across the published snapshot, Search Intelligence brief identity, structured-data eligibility, internal links, and booking journeys, then persists a strict `SiteImpactAssessment` and any governed proposal. There is no automatic event-to-proposal background worker in this PR.
+Database triggers automatically emit privacy-minimised `site_operational_change_events` containing the public entity reference, controlled change kind, and changed field names—never old/new values. Public rendering automatically consumes safe current LIVE state through the resolver. V1.1 adds a bounded API background cycle that claims pending events through the existing transactional processor, maps each event across the published snapshot, Search Intelligence brief identity, structured-data eligibility, internal links, and booking journeys, then persists a strict `SiteImpactAssessment` and any governed proposal. Sites without a published snapshot are skipped, duplicate site work is collapsed, and the explicit Site Studio impact-queue action remains available.
 
 Safe operational changes are `AUTO_APPLY_LIVE`. Permanent removals, staff deactivation, address/phone changes, major descriptions, new/closed locations, and authority changes are `REQUIRE_SITE_REVIEW`. The latter create a `SiteChangeProposal` that always requires an explicit agency decision. Approving the proposal records review only; it does not publish, change routing, create a snapshot, or apply a redirect.
 
@@ -126,7 +126,19 @@ No panel action publishes the site or changes public routing.
 
 `20260811120000_live_site_intelligence_v1.sql` is additive and required before deploying the new API/renderer. It adds public price/waitlist/temporary-unavailability controls, canonical location hours/closures, precomputed availability summaries, approved campaigns, operational change events, impact assessments, and change proposals.
 
-Security properties include tenant-scope triggers, foreign keys and FK indexes, bounded constraints, partial queue/active indexes, RLS enabled on every new table, no `anon` or `authenticated` privileges, least-privilege `service_role` grants, and trigger-function execute revocation. Migration validation/dry-run is required before application. This task does not apply it.
+Security properties include tenant-scope triggers, foreign keys and FK indexes, bounded constraints, partial queue/active indexes, RLS enabled on every new table, no `anon` or `authenticated` privileges, least-privilege `service_role` grants, and trigger-function execute revocation. Migration validation/dry-run is required before application. Migration 71 was applied as part of the separately reviewed V1 foundation release, before the VPS services were updated.
+
+## V1.1 dynamic-site completion
+
+The V1.1 follow-up completes the deliberately bounded public dynamic-site surface:
+
+- a cursor-bounded producer computes short-lived, service-level availability summaries for services in the exact published snapshot without persisting raw slots or counts;
+- an unavailable but active, waitlist-enabled service may expose the explicit runtime-only `KS_OS_WAITLIST` action while retaining its published service section and H1. A no-store preflight exposes only `waitlistEligible`, so ineligible or tampered direct URLs never display the join action. Submission then revalidates tenant, site, service, optional location/staff context and current eligibility server-side, accepts bounded contact details under stricter rate limiting, persists a tenant-scoped idempotent PERSONAL request, and returns a non-promissory confirmation;
+- exact-version Search Intelligence internal-link records render as visible recommendations, with LIVE state permitted only to remove an operationally ineligible service target;
+- approved active campaigns render in every governed placement (`ANNOUNCEMENT`, `HERO`, `PAGE_BODY`, and `PAGE_END`) without rewriting published SEO content; and
+- operational events are processed automatically into impact assessments and human-reviewed draft proposals, with no autonomous approval or publication path.
+
+Migration 72 pins `ks_validate_live_site_scope()` to the trusted `public, pg_temp` search path after the production security-advisor review of migration 71 and adds the canonical `site_waitlist_entries` PERSONAL-data store. The store has tenant/site/entity foreign keys, database-enforced tenant scope, idempotency and active-duplicate protection, supporting indexes, RLS, no direct `anon`/`authenticated` access, and service-role access. It is additive and must remain unapplied until the V1.1 PR is approved and deployed.
 
 ## V1 compatibility and deferred scope
 
@@ -134,8 +146,7 @@ Security properties include tenant-scope triggers, foreign keys and FK indexes, 
 - Existing explicit booking actions behave unchanged; generic actions gain safe page context.
 - Existing published price/hours remain the fallback until the corresponding live feature is opted in and available.
 - No client-rendered SPA dependency or new public API is introduced.
-- Live Site Intelligence V1.1 follow-up: add governed automatic event-to-assessment/proposal queue processing without changing the human publication boundary.
-- PERSONAL customer experiences, private waitlist details, raw availability slots, invasive attribution/fingerprinting, automatic redirect application, and autonomous publication are deliberately deferred.
+- private waitlist details never enter `PublicLiveSiteData`, snapshots, structured data, shared caches, public telemetry, or Search Intelligence; only `waitlistEligible` is public. Automatic cancellation-to-notification/invitation matching remains deferred, as do raw availability slots, invasive attribution/fingerprinting, automatic redirect application, and autonomous publication.
 
 ## Deployment classification
 
@@ -143,9 +154,9 @@ Classification: **BOTH + DATABASE MIGRATION**.
 
 - VPS: API, site renderer, and any site-worker change processing/runtime package build.
 - Cloudflare: Site Studio web bundle only.
-- Database: migration 71, after explicit dry-run/review.
+- Database: migration 71 for the V1 foundation; migration 72 for the V1.1 trusted search-path hardening, each after explicit dry-run/review.
 
-The merge/deployment sequence must be migration-aware and fail closed: validate migration, apply migration, deploy VPS services, verify health/readiness and renderer fallback/live paths, then deploy the Cloudflare UI. No deployment is performed by this implementation task.
+The merge/deployment sequence must be migration-aware and fail closed: validate the pending migration, apply it, deploy VPS services, verify health/readiness and renderer fallback/live paths, then verify the Cloudflare UI. The V1.1 implementation PR does not apply migration 72 or deploy its branch.
 
 ## Luma proof plan (not executed here)
 

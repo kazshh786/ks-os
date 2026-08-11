@@ -670,6 +670,37 @@ export const waitlist = pgTable('waitlist', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// PERSONAL operational requests from the governed public-site waitlist
+// journey. This table is deliberately separate from all public LIVE DTO and
+// immutable snapshot sources.
+export const siteWaitlistEntries = pgTable('site_waitlist_entries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references((): AnyPgColumn => sites.id, { onDelete: 'restrict' }),
+  serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'restrict' }),
+  locationId: uuid('location_id').references(() => locations.id, { onDelete: 'set null' }),
+  staffUserId: uuid('staff_user_id').references(() => users.id, { onDelete: 'set null' }),
+  campaignReference: varchar('campaign_reference', { length: 64 }),
+  clientName: varchar('client_name', { length: 120 }).notNull(),
+  clientEmail: varchar('client_email', { length: 255 }).notNull(),
+  clientPhone: varchar('client_phone', { length: 30 }),
+  preferredDate: date('preferred_date'),
+  status: varchar('status', { length: 20 }).default('PENDING').notNull(),
+  idempotencyKey: uuid('idempotency_key').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  tenantIdempotencyUnique: uniqueIndex('site_waitlist_entries_tenant_idempotency_unique')
+    .on(table.tenantId, table.idempotencyKey),
+  siteStatusCreatedIdx: index('site_waitlist_entries_site_status_created_idx')
+    .on(table.tenantId, table.siteId, table.status, table.createdAt),
+  serviceStatusIdx: index('site_waitlist_entries_service_status_idx')
+    .on(table.serviceId, table.status, table.createdAt),
+  locationIdx: index('site_waitlist_entries_location_idx').on(table.locationId),
+  staffIdx: index('site_waitlist_entries_staff_idx').on(table.staffUserId),
+}));
+
 export const clientWallets = pgTable('client_wallets', {
   id: uuid('id').defaultRandom().primaryKey(),
   clientId: uuid('client_id')

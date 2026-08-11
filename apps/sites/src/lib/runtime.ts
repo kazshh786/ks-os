@@ -2,6 +2,7 @@ import {
   CampaignReferenceSchema,
   PublicReferenceSchema,
   resolveKsOsBookingUrl,
+  resolveKsOsWaitlistUrl,
 } from '@ks-os/contracts';
 import type { ComponentRenderContext } from '@ks-os/site-components';
 import {
@@ -175,11 +176,13 @@ function renderContext(
   snapshot: PublishedSiteSnapshot,
   page: PublishedSiteSnapshot['pages'][number],
   live?: PublicLiveSiteData,
+  recommendations?: ComponentRenderContext['recommendations'],
 ): ComponentRenderContext {
   return {
     snapshot,
     page,
     ...(live ? { live } : {}),
+    ...(recommendations ? { recommendations } : {}),
     pagePathByReference: Object.fromEntries(
       snapshot.pages
         .filter((candidate) => candidate.active)
@@ -242,10 +245,15 @@ export async function handlePublicPageRequest(input: {
       }
       return notFound(resolved.snapshot.business.name);
     }
-    const live = input.repository.resolveLiveSiteData
-      ? await input.repository.resolveLiveSiteData(resolved.snapshot).catch(() => undefined)
-      : undefined;
-    const context = renderContext(resolved.snapshot, page, live);
+    const [live, recommendations] = await Promise.all([
+      input.repository.resolveLiveSiteData
+        ? input.repository.resolveLiveSiteData(resolved.snapshot).catch(() => undefined)
+        : undefined,
+      input.repository.resolvePublishedRecommendations
+        ? input.repository.resolvePublishedRecommendations(resolved.snapshot).catch(() => undefined)
+        : undefined,
+    ]);
+    const context = renderContext(resolved.snapshot, page, live, recommendations);
     const content = renderRegisteredSitePage(page, context);
     const structuredData = generateSiteStructuredData(resolved.snapshot, page);
     return applyHostRobotsPolicy(htmlResponse(
@@ -354,6 +362,53 @@ export async function handleBookingRequest(input: {
   }
 }
 
+export async function handleWaitlistRequest(input: {
+  request: Request;
+  repository: PublicSiteRepository;
+  config: SitesRuntimeConfig;
+}): Promise<Response> {
+  try {
+    const resolved = await resolveLiveSite(input);
+    if (resolved.kind === 'NOT_FOUND') return notFound();
+    if (resolved.kind === 'UNAVAILABLE') return unavailable(resolved.status);
+    if (!input.config.publicBookingOrigin || !input.repository.resolveLiveSiteData) return unavailable();
+    const selection = parseBookingSelection(new URL(input.request.url));
+    if (!selection.service) return notFound();
+    if (!resolved.snapshot.services.some(service => service.publicReference === selection.service)) {
+      return notFound();
+    }
+    if (selection.location && !resolved.snapshot.locations.some(
+      location => location.publicReference === selection.location,
+    )) return notFound();
+    if (selection.staff && !resolved.snapshot.staff.some(
+      staff => staff.publicReference === selection.staff,
+    )) return notFound();
+    const live = await input.repository.resolveLiveSiteData(resolved.snapshot);
+    const waitlistEligible = !live.telemetry.fallbackActivated
+      && live.services.some(service =>
+        service.publicReference === selection.service && service.waitlistEligible);
+    if (!waitlistEligible) return notFound();
+    const destination = resolveKsOsWaitlistUrl({
+      publicOrigin: input.config.publicBookingOrigin,
+      tenantSubdomain: resolved.snapshot.booking.tenantSubdomain,
+      serviceReference: selection.service,
+      locationReference: selection.location,
+      staffReference: selection.staff,
+      campaignReference: selection.campaign
+        ?? resolved.snapshot.booking.campaignReference,
+    });
+    return new Response(null, {
+      status: 302,
+      headers: {
+        ...securityHeaders(NO_STORE, 'text/plain; charset=utf-8'),
+        Location: destination,
+      },
+    });
+  } catch {
+    return notFound();
+  }
+}
+
 export async function handlePreviewRequest(input: {
   request: Request;
   repository: PublicSiteRepository;
@@ -441,7 +496,15 @@ export async function handlePreviewRequest(input: {
       (candidate) => candidate.path === path && candidate.pageType !== 'BOOKING',
     );
     if (!page) return notFound();
-    const context = renderContext(snapshot, page);
+    const [live, recommendations] = await Promise.all([
+      input.repository.resolveLiveSiteData
+        ? input.repository.resolveLiveSiteData(snapshot).catch(() => undefined)
+        : undefined,
+      input.repository.resolvePublishedRecommendations
+        ? input.repository.resolvePublishedRecommendations(snapshot).catch(() => undefined)
+        : undefined,
+    ]);
+    const context = renderContext(snapshot, page, live, recommendations);
     const content = renderRegisteredSitePage(page, context);
     const structuredData = generateSiteStructuredData(snapshot, page);
     const response = htmlResponse(

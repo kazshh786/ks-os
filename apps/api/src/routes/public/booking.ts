@@ -12,12 +12,15 @@ import { env } from '../../config/env.js';
 import { BookingPageService } from '../../modules/bookings/booking-page.service.js';
 import { safeReferrerHost } from '../../modules/bookings/booking-page.utils.js';
 import { FormsService } from '../../modules/forms/forms.service.js';
+import { PublicWaitlistService } from '../../modules/sites/public-waitlist.service.js';
 
 import { 
   calculateDepositAmount,
   CreateBookingRequestSchema, 
   AvailabilityQuerySchema,
   BookingPageSlugSchema,
+  CreatePublicWaitlistRequestSchema,
+  PublicWaitlistContextSchema,
   CreateBookingHoldSchema,
   PublicBookingAnalyticsEventSchema,
   ERROR_CODES 
@@ -29,6 +32,7 @@ const statusSchema = z.object({
 
 export default async function publicBookingRoutes(fastify: FastifyInstance) {
   const bookingPageService = new BookingPageService();
+  const publicWaitlistService = new PublicWaitlistService();
   
   // ============================================================================
   // 1. PUBLIC CATALOGUE
@@ -84,6 +88,39 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: { code: 'INVALID_ANALYTICS_EVENT', message: 'Invalid event.' } });
     await bookingPageService.recordAnalytics(subdomain, parsed.data, request.headers.host);
     return reply.code(202).send({ accepted: true });
+  });
+
+  fastify.get('/:subdomain/waitlist-eligibility', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { subdomain } = request.params as { subdomain: string };
+    if (!BookingPageSlugSchema.safeParse(subdomain).success) {
+      return reply.code(400).send({ error: { code: 'INVALID_SUBDOMAIN', message: 'Invalid booking-page address.' } });
+    }
+    const parsed = PublicWaitlistContextSchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: 'INVALID_WAITLIST_CONTEXT', message: 'Invalid waitlist context.' } });
+    }
+    const result = await publicWaitlistService.eligibility(subdomain, parsed.data, request.headers.host);
+    return reply.header('cache-control', 'no-store').send(result);
+  });
+
+  fastify.post('/:subdomain/waitlist', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { subdomain } = request.params as { subdomain: string };
+    if (!BookingPageSlugSchema.safeParse(subdomain).success) {
+      return reply.code(400).send({ error: { code: 'INVALID_SUBDOMAIN', message: 'Invalid booking-page address.' } });
+    }
+    const parsed = CreatePublicWaitlistRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: 'INVALID_WAITLIST_REQUEST', message: 'Check your waitlist details and try again.' } });
+    }
+    const result = await publicWaitlistService.join(subdomain, parsed.data, request.headers.host);
+    return reply
+      .header('cache-control', 'no-store')
+      .code(202)
+      .send(result);
   });
 
   // ============================================================================

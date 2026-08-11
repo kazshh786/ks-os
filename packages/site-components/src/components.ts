@@ -2,7 +2,11 @@ import type {
   PublishedSiteSnapshot,
   SiteSection,
 } from '@ks-os/site-schema';
-import { evaluateLiveRule } from '@ks-os/live-site-intelligence';
+import {
+  eligibleLiveRecommendations,
+  evaluateLiveRule,
+  type PublicLiveCampaignState,
+} from '@ks-os/live-site-intelligence';
 import {
   escapeHtml,
   findAsset,
@@ -75,13 +79,87 @@ export function AnnouncementBar(
   section: SectionOf<'ANNOUNCEMENT_BAR'>,
   context: ComponentRenderContext,
 ): SafeHtml {
-  const campaign = context.live?.telemetry.fallbackActivated
-    ? undefined
-    : context.live?.campaigns.find(candidate => candidate.active && candidate.placement === 'ANNOUNCEMENT');
+  const campaign = campaignForPlacement('ANNOUNCEMENT', context);
   if (!campaign) {
     return html`<aside class="${sectionClass(section, 'announcement-bar')}" aria-label="Announcement">${escapeHtml(section.message)}</aside>`;
   }
   return html`<aside class="${sectionClass(section, 'announcement-bar')}" aria-label="Announcement"><span>${escapeHtml(campaign.message)}</span>${renderAction(campaign.action, context, 'text-link campaign-action')}</aside>`;
+}
+
+type CampaignPlacement = PublicLiveCampaignState['placement'];
+
+function pageEntityReferences(context: ComponentRenderContext) {
+  const references = new Set<string>();
+  for (const section of context.page.sections) {
+    if (section.type === 'FEATURED_SERVICES' || section.type === 'SERVICE_GRID') {
+      section.serviceReferences.forEach(reference => references.add(reference));
+    } else if (section.type === 'SERVICE_DETAILS') {
+      references.add(section.serviceReference);
+    } else if (section.type === 'TEAM') {
+      section.staffReferences.forEach(reference => references.add(reference));
+    } else if (section.type === 'STAFF_PROFILE') {
+      references.add(section.staffReference);
+    } else if (section.type === 'LOCATION' || section.type === 'OPENING_HOURS') {
+      references.add(section.locationReference);
+    } else if (section.type === 'CONTACT' && section.locationReference) {
+      references.add(section.locationReference);
+    }
+  }
+  return references;
+}
+
+function campaignAppliesToPage(
+  campaign: PublicLiveCampaignState,
+  context: ComponentRenderContext,
+) {
+  const scoped = [
+    campaign.action.serviceReference,
+    campaign.action.staffReference,
+    campaign.action.locationReference,
+  ].filter((reference): reference is string => Boolean(reference));
+  if (!scoped.length) return true;
+  const references = pageEntityReferences(context);
+  return scoped.every(reference => references.has(reference));
+}
+
+function campaignForPlacement(
+  placement: CampaignPlacement,
+  context: ComponentRenderContext,
+) {
+  if (context.live?.telemetry.fallbackActivated) return undefined;
+  return context.live?.campaigns.find(candidate =>
+    candidate.active
+    && candidate.placement === placement
+    && campaignAppliesToPage(candidate, context));
+}
+
+export function renderLiveCampaignPlacement(
+  placement: CampaignPlacement,
+  context: ComponentRenderContext,
+): SafeHtml {
+  const campaign = campaignForPlacement(placement, context);
+  if (!campaign) return '' as SafeHtml;
+  const className = `live-campaign live-campaign-${placement.toLowerCase().replace('_', '-')}`;
+  return html`<aside class="${className}" data-live-campaign-placement="${placement}" aria-label="Current offer"><p>${escapeHtml(campaign.message)}</p>${renderAction(campaign.action, context, 'button campaign-action')}</aside>`;
+}
+
+export function renderGovernedRecommendations(
+  context: ComponentRenderContext,
+): SafeHtml {
+  const recommendations = eligibleLiveRecommendations(
+    (context.recommendations ?? []).filter(item =>
+      item.sourcePageReference === context.page.publicReference),
+    context.live,
+  ).flatMap(item => {
+    const target = context.snapshot.pages.find(page =>
+      page.publicReference === item.targetPageReference && page.active);
+    if (!target || target.publicReference === context.page.publicReference) return [];
+    return [{ item, target }];
+  }).slice(0, 6);
+  if (!recommendations.length) return '' as SafeHtml;
+  const links = recommendations.map(({ item, target }) =>
+    html`<li><a href="${escapeHtml(pageHref(context, target.publicReference))}">${escapeHtml(item.anchorText ?? target.title)}</a></li>`).join('');
+  return html`<aside class="site-recommendations" aria-labelledby="site-recommendations-${context.page.publicReference}"><h2 id="site-recommendations-${context.page.publicReference}">Recommended next</h2><ul>${links}</ul></aside>`;
 }
 
 export function Hero(section: SectionOf<'HERO'>, context: ComponentRenderContext): SafeHtml {
@@ -94,7 +172,8 @@ export function Hero(section: SectionOf<'HERO'>, context: ComponentRenderContext
   const secondary = section.secondaryAction
     ? renderAction(section.secondaryAction, context, 'button secondary')
     : '';
-  return html`<section class="${sectionClass(section, 'hero')}"><div class="section-copy">${section.eyebrow ? `<p class="eyebrow">${escapeHtml(section.eyebrow)}</p>` : ''}<h1>${escapeHtml(section.heading)}</h1><p>${escapeHtml(section.body)}</p><div class="action-row">${renderAction(section.primaryAction, context, 'button primary hero-booking')}${secondary}</div></div>${image}</section>`;
+  const campaign = renderLiveCampaignPlacement('HERO', context);
+  return html`<section class="${sectionClass(section, 'hero')}"><div class="section-copy">${section.eyebrow ? `<p class="eyebrow">${escapeHtml(section.eyebrow)}</p>` : ''}<h1>${escapeHtml(section.heading)}</h1><p>${escapeHtml(section.body)}</p><div class="action-row">${renderAction(section.primaryAction, context, 'button primary hero-booking')}${secondary}</div>${campaign}</div>${image}</section>`;
 }
 
 export function Introduction(

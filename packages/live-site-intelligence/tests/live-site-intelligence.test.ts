@@ -73,6 +73,22 @@ function liveData(overrides: Partial<PublicLiveSiteData> = {}) {
   });
 }
 
+test('public live data exposes waitlist eligibility but rejects PERSONAL waitlist entries', () => {
+  const publicData = liveData({
+    services: [{
+      ...liveData().services[0]!,
+      bookingEligible: false,
+      waitlistEligible: true,
+    }],
+  });
+  assert.equal(publicData.services[0]?.waitlistEligible, true);
+  assert.doesNotMatch(JSON.stringify(publicData), /customer@example\.com|clientName|waitlistEntries/);
+  assert.equal(PublicLiveSiteDataSchema.safeParse({
+    ...publicData,
+    waitlistEntries: [{ clientName: 'Private person', clientEmail: 'customer@example.com' }],
+  }).success, false);
+});
+
 const input: LiveSiteResolutionInput = {
   siteReference: refs.site,
   tenantReference: refs.tenant,
@@ -188,6 +204,7 @@ test('recommendations require both approved semantic relevance and live eligibil
     sourcePageReference: refs.page,
     targetPageReference: refs.targetPage,
     targetServiceReference: refs.service,
+    anchorText: 'Related service',
     relationship: 'RELATED_SERVICE' as const,
     semanticScore: 0.9,
     approved: true as const,
@@ -196,4 +213,8 @@ test('recommendations require both approved semantic relevance and live eligibil
   assert.equal(eligibleLiveRecommendations(approved, liveData({
     services: [{ ...liveData().services[0]!, bookingEligible: false }],
   })).length, 0);
+  assert.deepEqual(eligibleLiveRecommendations(approved, undefined), approved);
+  assert.deepEqual(eligibleLiveRecommendations(approved, liveData({
+    telemetry: { ...liveData().telemetry, fallbackActivated: true },
+  })), approved);
 });

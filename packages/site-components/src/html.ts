@@ -6,7 +6,11 @@ import type {
   SiteAction,
   SiteAssetReference,
 } from '@ks-os/site-schema';
-import type { PublicLiveSiteData } from '@ks-os/live-site-intelligence';
+import type { KsOsWaitlistAction } from '@ks-os/contracts';
+import type {
+  GovernedRecommendation,
+  PublicLiveSiteData,
+} from '@ks-os/live-site-intelligence';
 
 declare const safeHtmlBrand: unique symbol;
 export type SafeHtml = string & { readonly [safeHtmlBrand]: true };
@@ -33,6 +37,8 @@ export interface ComponentRenderContext {
   pagePathByReference: Readonly<Record<string, string>>;
   /** Server-resolved, anonymous-safe operational facts. Never contains PERSONAL data. */
   live?: PublicLiveSiteData;
+  /** Exact internal-link recommendations pinned to this site version. */
+  recommendations?: readonly GovernedRecommendation[];
 }
 
 function queryValue(value: string) {
@@ -60,7 +66,7 @@ function contextualBookingAction(
 }
 
 export function actionHref(
-  action: SiteAction,
+  action: SiteAction | KsOsWaitlistAction,
   context: ComponentRenderContext,
 ): string {
   switch (action.type) {
@@ -72,6 +78,13 @@ export function actionHref(
       if (resolved.staffReference) query.push(`staff=${queryValue(resolved.staffReference)}`);
       if (resolved.campaignReference) query.push(`campaign=${queryValue(resolved.campaignReference)}`);
       return `/book${query.length ? `?${query.join('&')}` : ''}`;
+    }
+    case 'KS_OS_WAITLIST': {
+      const query = [`service=${queryValue(action.serviceReference)}`];
+      if (action.locationReference) query.push(`location=${queryValue(action.locationReference)}`);
+      if (action.staffReference) query.push(`staff=${queryValue(action.staffReference)}`);
+      if (action.campaignReference) query.push(`campaign=${queryValue(action.campaignReference)}`);
+      return `/waitlist?${query.join('&')}`;
     }
     case 'INTERNAL_PAGE': {
       const path = context.pagePathByReference[action.pageReference];
@@ -93,9 +106,12 @@ export function renderAction(
   if (action.type === 'KS_OS_BOOKING') {
     const resolved = contextualBookingAction(action, context);
     const liveAvailable = context.live && !context.live.telemetry.fallbackActivated;
+    const liveService = resolved.serviceReference && liveAvailable
+      ? context.live?.services.find(candidate => candidate.publicReference === resolved.serviceReference)
+      : undefined;
     const serviceEligible = resolved.serviceReference
       ? liveAvailable
-        ? context.live?.services.find(candidate => candidate.publicReference === resolved.serviceReference)?.bookingEligible
+        ? liveService?.bookingEligible
         : context.snapshot.services.find(candidate => candidate.publicReference === resolved.serviceReference)?.bookingEnabled
       : true;
     const staffEligible = resolved.staffReference && liveAvailable
@@ -105,6 +121,17 @@ export function renderAction(
       ? context.live?.locations.find(candidate => candidate.publicReference === resolved.locationReference)?.bookingEligible
       : true;
     if (serviceEligible === false || staffEligible === false || locationEligible === false) {
+      if (serviceEligible === false && liveService?.waitlistEligible) {
+        const waitlistAction: KsOsWaitlistAction = {
+          type: 'KS_OS_WAITLIST',
+          label: 'Join waitlist',
+          serviceReference: resolved.serviceReference!,
+          ...(resolved.locationReference ? { locationReference: resolved.locationReference } : {}),
+          ...(resolved.staffReference ? { staffReference: resolved.staffReference } : {}),
+          ...(resolved.campaignReference ? { campaignReference: resolved.campaignReference } : {}),
+        };
+        return html`<a class="${escapeHtml(className)} waitlist" href="${escapeHtml(actionHref(waitlistAction, context))}">${escapeHtml(waitlistAction.label)}</a>`;
+      }
       return html`<span class="${escapeHtml(className)} unavailable" aria-disabled="true">Currently unavailable</span>`;
     }
   }
