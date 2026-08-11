@@ -71,7 +71,11 @@ export function LiveSiteIntelligencePanel({
 
   useEffect(() => { void load(); }, [load]);
 
+  const pendingEventCount = data?.events.filter(event => !event.processedAt).length ?? 0;
+  const canProcessChanges = Boolean(canManage && data?.published && pendingEventCount > 0);
+
   const processChanges = async () => {
+    if (!canProcessChanges) return;
     setBusy('process'); setError(''); setNotice('');
     try {
       const result = await agencyFetch(`/sites/${siteReference}/live-intelligence/process-changes`, { method: 'POST', body: '{}' }) as { processedCount: number };
@@ -99,7 +103,7 @@ export function LiveSiteIntelligencePanel({
       <div><h2 className="flex items-center gap-2 text-lg font-black"><Activity className="h-5 w-5 text-emerald-300" />Live Site Intelligence V1</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">Published strategy stays immutable. Anonymous-safe operational facts are resolved server-side, while material marketing or SEO consequences enter a governed proposal queue.</p></div>
       <div className="flex gap-2">
         <button type="button" onClick={() => void load()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-700 px-3 text-xs font-black"><RefreshCw className="h-4 w-4" />Refresh</button>
-        {canManage ? <button type="button" disabled={Boolean(busy)} onClick={() => void processChanges()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-700 px-3 text-xs font-black disabled:opacity-50"><ShieldCheck className="h-4 w-4" />Assess queued changes</button> : null}
+        {canManage ? <button type="button" disabled={!canProcessChanges || Boolean(busy)} onClick={() => void processChanges()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-700 px-3 text-xs font-black disabled:opacity-50"><ShieldCheck className="h-4 w-4" />Assess queued changes</button> : null}
       </div>
     </div>
     {error ? <p className="mt-4 rounded-xl border border-rose-800 bg-rose-950/30 p-3 text-xs text-rose-200">{error}</p> : null}
@@ -113,7 +117,8 @@ export function LiveSiteIntelligencePanel({
       <div className="flex flex-wrap items-center justify-between gap-2"><strong className="flex items-center gap-2 text-sm"><Database className="h-4 w-4" />Current resolved public state</strong>{tag(data.live.telemetry.fallbackActivated ? 'fallback active' : 'healthy', data.live.telemetry.fallbackActivated ? 'amber' : 'emerald')}</div>
       <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6"><span>{data.live.services.length} services</span><span>{data.live.staff.length} staff</span><span>{data.live.locations.length} locations</span><span>{data.live.availability.length} summaries</span><span>{data.live.campaigns.length} active campaigns</span><span>{data.live.telemetry.resolutionMs}ms · {data.live.telemetry.queryCount} queries</span></div>
       {data.live.locations.map(location => <p key={location.publicReference} className="mt-2 text-xs text-slate-300">{location.opening.label} · {location.bookingEligible ? 'booking eligible' : 'not booking eligible'}</p>)}
-    </div> : <p className="mt-4 rounded-xl border border-amber-800 bg-amber-950/20 p-4 text-xs text-amber-200"><TriangleAlert className="mr-2 inline h-4 w-4" />No published snapshot exists, so public live state is not resolved.</p>}
+    </div> : <p className="mt-4 rounded-xl border border-amber-800 bg-amber-950/20 p-4 text-xs text-amber-200"><TriangleAlert className="mr-2 inline h-4 w-4" />No published snapshot exists, so public live state is not resolved. Assess queued changes is available after first publication.</p>}
+    {data?.published && pendingEventCount === 0 ? <p className="mt-3 text-xs text-slate-500">No queued operational changes to assess.</p> : null}
 
     <div className="mt-5 grid gap-5 xl:grid-cols-2">
       <div><h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Live component bindings</h3><div className="mt-3 max-h-96 space-y-2 overflow-auto">{data?.componentBindings.map(binding => <article key={binding.sectionReference} className="rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-xs">{binding.sectionType} · {binding.componentKey}</strong>{tag(binding.cacheClass)}</div><p className="mt-2 text-[11px] text-slate-500">{binding.pagePath} · source PUBLISHED</p><dl className="mt-3 grid gap-2 text-[11px] sm:grid-cols-2"><div><dt className="font-black text-slate-300">Live bindings</dt><dd className="text-slate-500">{binding.liveDataCapabilities.join(', ') || 'None'}</dd></div><div><dt className="font-black text-slate-300">Live slots</dt><dd className="text-slate-500">{binding.liveContentSlots.join(', ') || 'None'}</dd></div><div><dt className="font-black text-slate-300">Section visibility</dt><dd className="text-slate-500">{binding.conditionalVisibility.replaceAll('_', ' ')}</dd></div><div><dt className="font-black text-slate-300">Fallback</dt><dd className="text-slate-500">{binding.fallbackBehaviour.replaceAll('_', ' ')}</dd></div><div><dt className="font-black text-slate-300">SEO impact</dt><dd className="text-slate-500">{binding.seoImpact.replaceAll('_', ' ')}</dd></div></dl>{binding.rule ? <p className="mt-3 rounded-lg bg-slate-900 p-2 text-[11px]">Rule: {binding.conditionalVisibility === 'NEVER' ? 'published section retained; live slots governed' : binding.ruleState?.indeterminate ? 'published fallback' : binding.ruleState?.matches ? 'shown' : 'hidden'}</p> : null}</article>)}</div></div>

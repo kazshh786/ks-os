@@ -36,6 +36,18 @@ test('Site Studio changes invalidate browser-backed review readiness', () => {
   assert.doesNotMatch(serviceSource, /sitePublication|publicationPerformed:\s*true/);
 });
 
+test('Site Studio reopens review by updating the owned generation run before its draft version', () => {
+  const generationRunUpdate = serviceSource.indexOf('await tx.update(siteGenerationRuns).set({');
+  const versionUpdate = serviceSource.indexOf('await tx.update(siteVersions).set({', generationRunUpdate);
+  assert.ok(generationRunUpdate >= 0);
+  assert.ok(versionUpdate > generationRunUpdate);
+  assert.match(serviceSource.slice(generationRunUpdate, versionUpdate), /outputContentDigestSha256:\s*prepared\.contentDigestSha256/);
+  assert.match(serviceSource.slice(versionUpdate), /status:\s*'INTERNAL_REVIEW'/);
+  assert.match(serviceSource.slice(versionUpdate), /generationStatus:[\s\S]*'DESIGN_COMPLETE'/);
+  assert.match(serviceSource.slice(versionUpdate), /generationContentDigestSha256:\s*prepared\.contentDigestSha256/);
+  assert.match(serviceSource, /context\.generationStatus === 'READY_FOR_REVIEW' \? \{ status: 'DESIGN_COMPLETE' \} : \{\}/);
+});
+
 test('Design Library V2 approval rejects disabled or incompatible component keys', () => {
   assert.match(librarySource, /component\.status !== 'ACTIVE'/);
   assert.match(librarySource, /!component\.supportedPageTypes\.includes\(pageType\.data\)/);
