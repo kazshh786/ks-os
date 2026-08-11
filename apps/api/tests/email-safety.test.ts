@@ -32,8 +32,8 @@ const validTemplatePayloads: Record<string, Record<string, unknown>> = {
   'account-access-invitation': { tenantName: 'KS OS', recipientName: 'Test User', accessLabel: 'KS OS workspace', invitationUrl: secureUrl },
   'site-review-invitation': { tenantName: 'KS OS', participantName: 'Test Reviewer', invitationReference: 'invite-1', reviewReference: 'review-1', reviewRevision: 1, expiresAt: expiryIso },
   'site-review-notification': { tenantName: 'KS OS', participantName: 'Test Reviewer', heading: 'Website review update', message: 'A review update is available.' },
-  'fact-finding-invitation': { tenantName: 'KS OS', participantName: 'Test Participant', invitationToken: 'secure-token', expiresAt: expiryIso },
-  'fact-finding-notification': { tenantName: 'KS OS', participantName: 'Test Participant', invitationToken: 'secure-token', heading: 'Questionnaire update', message: 'More detail is required.', expiresAt: expiryIso },
+  'fact-finding-invitation': { tenantName: 'KS OS', participantName: 'Test Participant', invitationReference: 'invite-1', questionnaireReference: 'questionnaire-1', participantReference: 'participant-1', expiresAt: expiryIso },
+  'fact-finding-notification': { tenantName: 'KS OS', participantName: 'Test Participant', invitationReference: 'invite-1', questionnaireReference: 'questionnaire-1', participantReference: 'participant-1', heading: 'Questionnaire update', message: 'More detail is required.', expiresAt: expiryIso },
   'business-booking-confirmed': { tenantName: 'KS OS', recipientName: 'Owner', customerName: 'Test Customer', serviceName: 'Consultation', bookingDate: '10 August 2026', bookingTime: '11:00', emailBody: 'A booking has been confirmed.' },
   'business-payment-received': { tenantName: 'KS OS', recipientName: 'Owner', customerName: 'Test Customer', serviceName: 'Consultation', amount: '25.00', currency: 'GBP', emailBody: 'A payment has been received.' },
 };

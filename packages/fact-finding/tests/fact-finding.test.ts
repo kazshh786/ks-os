@@ -144,7 +144,7 @@ describe('fact-finding upload boundaries', () => {
 describe('production brief construction', () => {
   const fact = (overrides: Record<string, unknown> = {}) => ({
     responseReference: reference(10), questionnaireReference: reference(11), questionReference: reference(12),
-    mapping: 'SERVICE.NAME' as const, approvedValue: 'Signature Cut', valueDigestSha256: 'b'.repeat(64),
+    mapping: 'SERVICE.NAME' as const, dataClassification: 'PUBLIC_FACT' as const, approvedValue: 'Signature Cut', valueDigestSha256: 'b'.repeat(64),
     submittedByReference: reference(13), submittedAt: '2026-07-26T10:00:00.000Z',
     reviewedByReference: reference(14), approvedAt: '2026-07-26T11:00:00.000Z',
     publicUseEligible: true, bookingUseEligible: true, generationUseEligible: true, ...overrides,
@@ -162,6 +162,18 @@ describe('production brief construction', () => {
   });
   it('excludes facts with no approved use from every generation context', () => {
     const built = buildProductionBriefData({ facts: [fact({ publicUseEligible: false, bookingUseEligible: false, generationUseEligible: false })], assets: [] });
+    assert.deepEqual(built.data.verifiedFacts, {});
+    assert.deepEqual(built.data.copyContext, {});
+    assert.deepEqual(built.data.provenance, []);
+  });
+  it('excludes PRIVATE_OPERATIONAL and CONSENT values even if eligibility flags are incorrectly asserted', () => {
+    const built = buildProductionBriefData({
+      facts: [
+        fact({ dataClassification: 'PRIVATE_OPERATIONAL', approvedValue: 'private notes' }),
+        fact({ responseReference: reference(15), dataClassification: 'CONSENT', approvedValue: true }),
+      ],
+      assets: [],
+    });
     assert.deepEqual(built.data.verifiedFacts, {});
     assert.deepEqual(built.data.copyContext, {});
     assert.deepEqual(built.data.provenance, []);
@@ -186,6 +198,14 @@ describe('production brief construction', () => {
   it('keeps unapproved assets out of the brief contract', () => {
     const built = buildProductionBriefData({ facts: [], assets: [asset({ agencyReviewStatus: 'PENDING' }) as never] });
     assert.deepEqual(built.data.assetReferences, []);
+  });
+  it('keeps imagery without publication permission or confirmed consent out of generation', () => {
+    const built = buildProductionBriefData({ facts: [], assets: [
+      asset({ publicUsePermission: false }),
+      asset({ assetReference: reference(21), consentStatus: 'REQUIRED' }),
+    ] });
+    assert.deepEqual(built.data.assetReferences, []);
+    assert.deepEqual(built.data.imageBrief, []);
   });
 });
 

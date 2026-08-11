@@ -9,6 +9,7 @@ const SiteGenerationEnvironmentSchema = z.object({
   SITE_AI_API_KEY: z.string().trim().optional(),
   GOOGLE_CLOUD_PROJECT: z.string().trim().max(255).optional(),
   GOOGLE_CLOUD_LOCATION: z.string().trim().max(100).optional(),
+  GOOGLE_APPLICATION_CREDENTIALS: z.string().trim().max(1_024).optional(),
   SITE_AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(60_000),
   SITE_AI_MAX_REPAIR_ATTEMPTS: z.coerce.number().int().min(0).max(5).default(2),
   SITE_AI_MAX_OUTPUT_CHARACTERS: z.coerce.number().int().min(1_000).max(2_000_000).default(250_000),
@@ -47,6 +48,13 @@ const SiteGenerationEnvironmentSchema = z.object({
         message: 'GOOGLE_CLOUD_LOCATION is required when generation is enabled with vertex-gemini.',
       });
     }
+    if (!value.GOOGLE_APPLICATION_CREDENTIALS) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GOOGLE_APPLICATION_CREDENTIALS'],
+        message: 'GOOGLE_APPLICATION_CREDENTIALS is required when generation is enabled with vertex-gemini.',
+      });
+    }
   }
 });
 
@@ -61,6 +69,7 @@ export function parseSiteGenerationConfig(
     apiKey: value.SITE_AI_API_KEY,
     googleCloudProject: value.GOOGLE_CLOUD_PROJECT,
     googleCloudLocation: value.GOOGLE_CLOUD_LOCATION,
+    googleApplicationCredentials: value.GOOGLE_APPLICATION_CREDENTIALS,
     requestTimeoutMs: value.SITE_AI_REQUEST_TIMEOUT_MS,
     maxRepairAttempts: value.SITE_AI_MAX_REPAIR_ATTEMPTS,
     maxOutputCharacters: value.SITE_AI_MAX_OUTPUT_CHARACTERS,
@@ -80,7 +89,7 @@ export function isSiteGenerationProviderReady(config: SiteGenerationConfig): boo
   if (!config.enabled || !config.model) return false;
 
   if (config.provider === 'vertex-gemini') {
-    return Boolean(config.googleCloudProject && config.googleCloudLocation);
+    return Boolean(config.googleCloudProject && config.googleCloudLocation && config.googleApplicationCredentials);
   }
 
   return Boolean(config.apiKey);

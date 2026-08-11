@@ -3393,6 +3393,8 @@ export const factFindingTemplateQuestions = pgTable('fact_finding_template_quest
   bookingUseAllowed: boolean('booking_use_allowed').default(false).notNull(),
   generationUseAllowed: boolean('generation_use_allowed').default(false).notNull(),
   agencyVerificationRequired: boolean('agency_verification_required').default(false).notNull(),
+  dataClassification: varchar('data_classification', { length: 30 }).default('PUBLIC_FACT').notNull(),
+  consentType: varchar('consent_type', { length: 60 }),
   conditionsJson: jsonb('conditions_json').default([]).notNull(),
   validationJson: jsonb('validation_json').default({}).notNull(),
   optionsJson: jsonb('options_json').default([]).notNull(),
@@ -3451,6 +3453,8 @@ export const factFindingQuestionnaireQuestions = pgTable('fact_finding_questionn
   bookingUseAllowed: boolean('booking_use_allowed').default(false).notNull(),
   generationUseAllowed: boolean('generation_use_allowed').default(false).notNull(),
   agencyVerificationRequired: boolean('agency_verification_required').default(false).notNull(),
+  dataClassification: varchar('data_classification', { length: 30 }).default('PUBLIC_FACT').notNull(),
+  consentType: varchar('consent_type', { length: 60 }),
   conditionsJson: jsonb('conditions_json').default([]).notNull(),
   validationJson: jsonb('validation_json').default({}).notNull(),
   optionsJson: jsonb('options_json').default([]).notNull(),
@@ -3536,6 +3540,8 @@ export const factFindingResponses = pgTable('fact_finding_responses', {
   source: varchar('source', { length: 30 }).notNull(),
   valueDigestSha256: varchar('value_digest_sha256', { length: 64 }).notNull(),
   status: varchar('status', { length: 40 }).default('ANSWERED').notNull(),
+  dataClassification: varchar('data_classification', { length: 30 }).default('PUBLIC_FACT').notNull(),
+  verificationBasis: varchar('verification_basis', { length: 30 }).default('UNVERIFIED').notNull(),
   responseVersion: integer('response_version').default(1).notNull(),
   publicUseEligible: boolean('public_use_eligible').default(false).notNull(),
   bookingUseEligible: boolean('booking_use_eligible').default(false).notNull(),
@@ -3615,6 +3621,7 @@ export const factFindingUploads = pgTable('fact_finding_uploads', {
   uploadStatus: varchar('upload_status', { length: 30 }).default('PENDING_UPLOAD').notNull(),
   malwareScanStatus: varchar('malware_scan_status', { length: 30 }).default('NOT_AVAILABLE').notNull(),
   assetCategory: varchar('asset_category', { length: 50 }).notNull(),
+  provenance: varchar('provenance', { length: 40 }).default('CLIENT_SUPPLIED').notNull(),
   publicUsePermission: boolean('public_use_permission').default(false).notNull(),
   aiUsePermission: boolean('ai_use_permission').default(false).notNull(),
   copyrightConfirmed: boolean('copyright_confirmed').notNull(),
@@ -3628,6 +3635,26 @@ export const factFindingUploads = pgTable('fact_finding_uploads', {
   questionnaireReviewIdx: index('fact_finding_uploads_questionnaire_review_idx').on(table.questionnaireId, table.agencyReviewStatus, table.createdAt),
   tenantStatusIdx: index('fact_finding_uploads_tenant_status_idx').on(table.tenantId, table.uploadStatus, table.malwareScanStatus, table.createdAt),
   participantIdx: index('fact_finding_uploads_participant_idx').on(table.participantId, table.createdAt),
+}));
+
+export const factFindingConsentRecords = pgTable('fact_finding_consent_records', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  questionnaireId: uuid('questionnaire_id').notNull().references(() => factFindingQuestionnaires.id, { onDelete: 'restrict' }),
+  participantId: uuid('participant_id').references(() => factFindingParticipants.id, { onDelete: 'restrict' }),
+  responseId: uuid('response_id').notNull().references(() => factFindingResponses.id, { onDelete: 'restrict' }),
+  responseVersion: integer('response_version').notNull(),
+  consentType: varchar('consent_type', { length: 60 }).notNull(),
+  decision: varchar('decision', { length: 20 }).notNull(),
+  wordingVersion: varchar('wording_version', { length: 40 }).default('1.0.0').notNull(),
+  answerDigestSha256: varchar('answer_digest_sha256', { length: 64 }).notNull(),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, table => ({
+  responseVersionUnique: uniqueIndex('fact_finding_consent_records_response_version_unique').on(table.responseId, table.responseVersion),
+  tenantTypeIdx: index('fact_finding_consent_records_tenant_type_idx').on(table.tenantId, table.consentType, table.recordedAt),
+  questionnaireIdx: index('fact_finding_consent_records_questionnaire_idx').on(table.questionnaireId, table.recordedAt),
 }));
 
 export const productionBriefs = pgTable('production_briefs', {

@@ -22,13 +22,20 @@ export async function publicFactFindingRoutes(app: FastifyInstance) {
   const service = () => (instance ||= new FactFindingService());
   const session = async (request: FastifyRequest) => service().sessionContext(sessionToken(request));
 
+  app.addHook('onSend', async (_request, reply, payload) => {
+    reply.header('Cache-Control', 'private, no-store, max-age=0');
+    reply.header('Pragma', 'no-cache');
+    reply.header('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    return payload;
+  });
+
   app.post('/session', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async request => ({
     data: await service().exchangeSession(FactFindingSessionExchangeSchema.parse(request.body).invitationToken),
   }));
-  app.get('/questionnaire', async request => ({
+  app.get('/questionnaire', { config: { rateLimit: { max: 120, timeWindow: '15 minutes' } } }, async request => ({
     data: await service().clientQuestionnaire(await session(request)),
   }));
-  app.patch('/responses/:responseReference', async request => {
+  app.patch('/responses/:responseReference', { config: { rateLimit: { max: 60, timeWindow: '15 minutes' } } }, async request => {
     // The public response reference in the path is checked against the controlled
     // question reference in the body; clients cannot address arbitrary records.
     const { responseReference } = z.object({ responseReference: PublicReferenceSchema }).strict().parse(request.params);
@@ -41,19 +48,19 @@ export async function publicFactFindingRoutes(app: FastifyInstance) {
     }
     return { data: await service().saveClientResponse(await session(request), input) };
   });
-  app.post('/uploads', async request => ({
+  app.post('/uploads', { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } }, async request => ({
     data: await service().initiateUpload(await session(request), FactFindingUploadSchema.parse(request.body)),
   }));
-  app.post('/uploads/:uploadReference/complete', async request => {
+  app.post('/uploads/:uploadReference/complete', { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } }, async request => {
     const { uploadReference } = UploadParams.parse(request.params);
     z.object({}).strict().parse(request.body ?? {});
     return { data: await service().completeUpload(await session(request), uploadReference) };
   });
-  app.post('/submit', async request => ({ data: await service().submit(await session(request)) }));
-  app.get('/clarifications', async request => ({
+  app.post('/submit', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async request => ({ data: await service().submit(await session(request)) }));
+  app.get('/clarifications', { config: { rateLimit: { max: 120, timeWindow: '15 minutes' } } }, async request => ({
     data: await service().clientClarifications(await session(request)),
   }));
-  app.post('/clarifications/:clarificationReference/respond', async request => {
+  app.post('/clarifications/:clarificationReference/respond', { config: { rateLimit: { max: 30, timeWindow: '15 minutes' } } }, async request => {
     const { clarificationReference } = ClarificationParams.parse(request.params);
     return { data: await service().respondToClarification(
       await session(request),

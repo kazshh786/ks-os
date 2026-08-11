@@ -1283,11 +1283,13 @@ test('67a. enabled AI generation requires server-side provider configuration', (
     SITE_AI_MODEL: 'vertex-test-model',
     GOOGLE_CLOUD_PROJECT: 'vertex-proj',
     GOOGLE_CLOUD_LOCATION: 'us-central1',
+    GOOGLE_APPLICATION_CREDENTIALS: '/secure/adc.json',
   });
   assert.equal(vertexConfig.generation.enabled, true);
   assert.equal(vertexConfig.generation.provider, 'vertex-gemini');
   assert.equal(vertexConfig.generation.googleCloudProject, 'vertex-proj');
   assert.equal(vertexConfig.generation.googleCloudLocation, 'us-central1');
+  assert.equal(vertexConfig.generation.googleApplicationCredentials, '/secure/adc.json');
 
   assert.match(compositionSource, /createConfiguredSiteGenerationExecutor/);
   assert.match(generationExecutorSource, /class PostgresSiteGenerationExecutor/);

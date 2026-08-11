@@ -37,6 +37,21 @@ const provenance = {
   generatedByAgencyUserReference: ids[9]!, researchEvidenceReferences: [ids[10]!],
 };
 
+const researchEvidence = (): SearchResearchEvidence => ({
+  reference: ids[10]!,
+  providerKey: 'governed-search-import',
+  query: 'example service',
+  market: 'GB',
+  locale: 'en-GB',
+  location: 'London',
+  language: 'en-GB',
+  device: 'DESKTOP',
+  capturedAt: now,
+  sourceDigestSha256: digest,
+  payloadDigestSha256: digest,
+  notes: [],
+});
+
 function strategy(overrides: Partial<SearchIntelligenceStrategyV2> = {}) {
   return SearchIntelligenceStrategyV2Schema.parse({
     schemaVersion: 2,
@@ -145,7 +160,7 @@ function validPlan() {
     { blueprintPageReference: ids[6]!, pageReference: ids[4]!, pageType: 'HOME' },
     { blueprintPageReference: ids[7]!, pageReference: ids[5]!, pageType: 'SERVICE_DETAIL' },
   ];
-  return { strategy: strategy(), briefs, plannedPages };
+  return { strategy: strategy(), briefs, evidence: [researchEvidence()], plannedPages };
 }
 
 test('exposes the governed intent and keyword taxonomies', () => {
@@ -170,6 +185,29 @@ test('requires evidence references for search-research statements', () => {
 
 test('validates an exact, approved page/brief plan', () => {
   assert.deepEqual(validateSearchIntelligencePlan(validPlan()), []);
+});
+
+test('blocks placeholder and zero-evidence strategies while allowing qualified governed research', () => {
+  const plan = validPlan();
+  const placeholder = strategy({
+    provenance: {
+      ...provenance,
+      providerKey: 'ks-os-governed-draft',
+      modelKey: 'blueprint-context-v1',
+      researchEvidenceReferences: [],
+    },
+  });
+  const placeholderFindings = validateSearchIntelligencePlan({ ...plan, strategy: placeholder, evidence: [] });
+  assert.equal(placeholderFindings.some(finding => finding.code === 'SEARCH_INTELLIGENCE_RESEARCH_REQUIRED'), true);
+
+  const zeroEvidence = strategy({ provenance: { ...provenance, researchEvidenceReferences: [] } });
+  assert.equal(validateSearchIntelligencePlan({ ...plan, strategy: zeroEvidence, evidence: [] })
+    .some(finding => finding.code === 'SEARCH_INTELLIGENCE_RESEARCH_REQUIRED'), true);
+
+  const ungroundedEvidence = strategy({ serpAnalyses: [] });
+  assert.equal(validateSearchIntelligencePlan({ ...plan, strategy: ungroundedEvidence })
+    .some(finding => finding.code === 'SEARCH_INTELLIGENCE_RESEARCH_REQUIRED'), true);
+  assert.deepEqual(validateSearchIntelligencePlan(plan), []);
 });
 
 test('reports exhaustive machine-readable coverage for every PageSeoBrief field', () => {

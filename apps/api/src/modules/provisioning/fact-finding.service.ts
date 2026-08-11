@@ -12,6 +12,7 @@ import {
 import {
   emailOutbox,
   factFindingClarifications,
+  factFindingConsentRecords,
   factFindingInvitations,
   factFindingParticipants,
   factFindingQuestionnaireQuestions,
@@ -193,6 +194,8 @@ export class FactFindingService {
           bookingUseAllowed: question.bookingUseAllowed,
           generationUseAllowed: question.generationUseAllowed,
           agencyVerificationRequired: question.agencyVerificationRequired,
+          dataClassification: question.dataClassification,
+          consentType: question.consentType,
           conditionsJson: question.conditions,
           optionsJson: question.options,
           displayOrder: question.displayOrder,
@@ -218,6 +221,50 @@ export class FactFindingService {
       status: factFindingTemplates.status,
       createdAt: factFindingTemplates.createdAt,
     }).from(factFindingTemplates).orderBy(asc(factFindingTemplates.templateKey), desc(factFindingTemplates.version));
+  }
+
+  async listQuestionnaires(tenantReference?: string) {
+    const tenant = tenantReference ? await this.tenantContext(tenantReference) : null;
+    const rows = await this.db.select({
+      reference: factFindingQuestionnaires.publicReference,
+      tenantReference: tenants.agencyReference,
+      tenantName: tenants.name,
+      version: factFindingQuestionnaires.questionnaireVersion,
+      status: factFindingQuestionnaires.status,
+      dueAt: factFindingQuestionnaires.dueAt,
+      submittedAt: factFindingQuestionnaires.submittedAt,
+      updatedAt: factFindingQuestionnaires.updatedAt,
+      candidateFactCount: sql<number>`(
+        SELECT count(*)::int FROM fact_finding_responses response
+        WHERE response.questionnaire_id = ${factFindingQuestionnaires.id}
+          AND response.status IN ('SUBMITTED','AGENCY_REVIEW_REQUIRED','CLIENT_CONFIRMED','CLARIFICATION_REQUIRED')
+      )`,
+      approvedFactCount: sql<number>`(
+        SELECT count(*)::int FROM fact_finding_responses response
+        WHERE response.questionnaire_id = ${factFindingQuestionnaires.id}
+          AND response.status = 'AGENCY_APPROVED'
+      )`,
+      consentCount: sql<number>`(
+        SELECT count(*)::int FROM fact_finding_consent_records consent
+        WHERE consent.questionnaire_id = ${factFindingQuestionnaires.id}
+          AND consent.revoked_at IS NULL
+      )`,
+      approvedAssetCount: sql<number>`(
+        SELECT count(*)::int FROM fact_finding_uploads upload
+        WHERE upload.questionnaire_id = ${factFindingQuestionnaires.id}
+          AND upload.agency_review_status = 'APPROVED'
+      )`,
+      openFollowUpCount: sql<number>`(
+        SELECT count(*)::int FROM fact_finding_clarifications clarification
+        WHERE clarification.questionnaire_id = ${factFindingQuestionnaires.id}
+          AND clarification.status IN ('OPEN','CLIENT_RESPONDED')
+      )`,
+    }).from(factFindingQuestionnaires)
+      .innerJoin(tenants, eq(factFindingQuestionnaires.tenantId, tenants.id))
+      .where(tenant ? eq(factFindingQuestionnaires.tenantId, tenant.id) : sql`true`)
+      .orderBy(desc(factFindingQuestionnaires.updatedAt))
+      .limit(100);
+    return rows;
   }
 
   async activateTemplate(actor: AgencyActor, templateReference: string) {
@@ -275,6 +322,8 @@ export class FactFindingService {
         bookingUseAllowed: question.bookingUseAllowed,
         generationUseAllowed: question.generationUseAllowed,
         agencyVerificationRequired: question.agencyVerificationRequired,
+        dataClassification: question.dataClassification,
+        consentType: question.consentType,
         conditionsJson: question.conditionsJson,
         validationJson: question.validationJson,
         optionsJson: question.optionsJson,
@@ -306,6 +355,7 @@ export class FactFindingService {
       version: factFindingQuestionnaires.questionnaireVersion,
       responseVersion: factFindingQuestionnaires.responseVersion,
       status: factFindingQuestionnaires.status,
+      templateId: factFindingQuestionnaires.templateId,
       dueAt: factFindingQuestionnaires.dueAt,
       createdAt: factFindingQuestionnaires.createdAt,
       updatedAt: factFindingQuestionnaires.updatedAt,
@@ -313,7 +363,15 @@ export class FactFindingService {
       .innerJoin(tenants, eq(factFindingQuestionnaires.tenantId, tenants.id))
       .where(eq(factFindingQuestionnaires.publicReference, questionnaireReference)).limit(1);
     if (!questionnaire) throw fail(404, 'FACT_FINDING_QUESTIONNAIRE_NOT_FOUND', 'Questionnaire was not found.');
-    const [questions, participants, responses, clarifications, uploads, briefs] = await Promise.all([
+    const [sections, questions, participants, responses, clarifications, uploads, briefs] = await Promise.all([
+      this.db.select({
+        reference: factFindingTemplateSections.publicReference,
+        key: factFindingTemplateSections.sectionKey,
+        title: factFindingTemplateSections.title,
+        description: factFindingTemplateSections.description,
+        displayOrder: factFindingTemplateSections.displayOrder,
+        optional: factFindingTemplateSections.optional,
+      }).from(factFindingTemplateSections).where(eq(factFindingTemplateSections.templateId, questionnaire.templateId)).orderBy(asc(factFindingTemplateSections.displayOrder)),
       this.db.select({
         reference: factFindingQuestionnaireQuestions.publicReference,
         sectionReference: factFindingQuestionnaireQuestions.sectionReference,
@@ -325,17 +383,25 @@ export class FactFindingService {
         included: factFindingQuestionnaireQuestions.included,
         required: factFindingQuestionnaireQuestions.required,
         systemRequired: factFindingQuestionnaireQuestions.systemRequired,
+        evidenceRequired: factFindingQuestionnaireQuestions.evidenceRequired,
+        publicUseAllowed: factFindingQuestionnaireQuestions.publicUseAllowed,
+        bookingUseAllowed: factFindingQuestionnaireQuestions.bookingUseAllowed,
+        generationUseAllowed: factFindingQuestionnaireQuestions.generationUseAllowed,
+        agencyVerificationRequired: factFindingQuestionnaireQuestions.agencyVerificationRequired,
         conditions: factFindingQuestionnaireQuestions.conditionsJson,
         displayOrder: factFindingQuestionnaireQuestions.displayOrder,
         prefilledAnswer: factFindingQuestionnaireQuestions.prefilledAnswerJson,
+        dataClassification: factFindingQuestionnaireQuestions.dataClassification,
+        consentType: factFindingQuestionnaireQuestions.consentType,
       }).from(factFindingQuestionnaireQuestions).where(eq(factFindingQuestionnaireQuestions.questionnaireId, questionnaire.id)).orderBy(asc(factFindingQuestionnaireQuestions.displayOrder)),
       this.db.select({ reference: factFindingParticipants.publicReference, displayName: factFindingParticipants.displayName, email: factFindingParticipants.emailNormalized, status: factFindingParticipants.status, lastAccessedAt: factFindingParticipants.lastAccessedAt }).from(factFindingParticipants).where(eq(factFindingParticipants.questionnaireId, questionnaire.id)),
       this.responses(questionnaireReference),
       this.db.select({ reference: factFindingClarifications.publicReference, status: factFindingClarifications.status, message: factFindingClarifications.agencyMessage, dueAt: factFindingClarifications.dueAt, createdAt: factFindingClarifications.createdAt }).from(factFindingClarifications).where(eq(factFindingClarifications.questionnaireId, questionnaire.id)).orderBy(desc(factFindingClarifications.createdAt)),
-      this.db.select({ reference: factFindingUploads.publicReference, category: factFindingUploads.assetCategory, fileName: factFindingUploads.safeFilename, mimeType: factFindingUploads.mimeType, byteSize: factFindingUploads.byteSize, uploadStatus: factFindingUploads.uploadStatus, scanStatus: factFindingUploads.malwareScanStatus, reviewStatus: factFindingUploads.agencyReviewStatus, createdAt: factFindingUploads.createdAt }).from(factFindingUploads).where(eq(factFindingUploads.questionnaireId, questionnaire.id)).orderBy(desc(factFindingUploads.createdAt)),
+      this.db.select({ reference: factFindingUploads.publicReference, category: factFindingUploads.assetCategory, fileName: factFindingUploads.safeFilename, mimeType: factFindingUploads.mimeType, byteSize: factFindingUploads.byteSize, provenance: factFindingUploads.provenance, publicUsePermission: factFindingUploads.publicUsePermission, aiUsePermission: factFindingUploads.aiUsePermission, consentStatus: factFindingUploads.consentStatus, uploadStatus: factFindingUploads.uploadStatus, scanStatus: factFindingUploads.malwareScanStatus, reviewStatus: factFindingUploads.agencyReviewStatus, createdAt: factFindingUploads.createdAt }).from(factFindingUploads).where(eq(factFindingUploads.questionnaireId, questionnaire.id)).orderBy(desc(factFindingUploads.createdAt)),
       this.db.select({ reference: productionBriefs.publicReference, version: productionBriefs.briefVersion, status: productionBriefs.status, readiness: productionBriefs.readinessJson, createdAt: productionBriefs.createdAt }).from(productionBriefs).where(eq(productionBriefs.questionnaireId, questionnaire.id)).orderBy(desc(productionBriefs.briefVersion)),
     ]);
-    return { ...questionnaire, questions, participants, responses, clarifications, uploads, briefs };
+    const { templateId: _templateId, ...questionnaireDto } = questionnaire;
+    return { ...questionnaireDto, sections, questions, participants, responses, clarifications, uploads, briefs };
   }
 
   private async questionnaireContext(reference: string) {
@@ -382,6 +448,8 @@ export class FactFindingService {
           bookingUseAllowed: question.bookingUseAllowed,
           generationUseAllowed: question.generationUseAllowed,
           agencyVerificationRequired: question.agencyVerificationRequired,
+          dataClassification: question.dataClassification as never,
+          consentType: question.consentType as never,
           conditions: question.conditionsJson as never,
           options: question.optionsJson as never,
           displayOrder: question.displayOrder,
@@ -457,7 +525,7 @@ export class FactFindingService {
         templateKey: 'fact-finding-invitation',
         templateVersion: '1.0.0',
         templateDataJson: templateData,
-        idempotencyKey: `fact-finding:${questionnaire.reference}:${questionnaire.questionnaireVersion}:${participant.publicReference}:invitation`,
+        idempotencyKey: `fact-finding:${questionnaire.reference}:${questionnaire.questionnaireVersion}:${participant.publicReference}:${invitationReference}:invitation`,
         relatedEntityType: 'fact_finding_invitation',
         relatedEntityId: created.id,
       }).onConflictDoNothing({ target: emailOutbox.idempotencyKey });
@@ -468,7 +536,7 @@ export class FactFindingService {
         templateKey: 'fact-finding-notification',
         templateVersion: '1.0.0',
         templateDataJson: { ...templateData, heading: 'Your business questionnaire is still open', message: 'Please complete the remaining sections before the due date.' },
-        idempotencyKey: `fact-finding:${questionnaire.reference}:${questionnaire.questionnaireVersion}:${participant.publicReference}:reminder`,
+        idempotencyKey: `fact-finding:${questionnaire.reference}:${questionnaire.questionnaireVersion}:${participant.publicReference}:${invitationReference}:reminder`,
         relatedEntityType: 'fact_finding_invitation',
         relatedEntityId: created.id,
         scheduledFor: new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000),
@@ -482,7 +550,37 @@ export class FactFindingService {
       tenantId: questionnaire.tenantId,
       metadata: { questionnaireReference: questionnaire.reference, participantReference: participant.publicReference },
     });
-    return { reference: invitation.publicReference, status: invitation.status, expiresAt };
+    return {
+      reference: invitation.publicReference,
+      status: invitation.status,
+      expiresAt,
+      // Returned exactly once so the agency can copy the secure discovery link.
+      // Only its digest is persisted and application logging redacts this field.
+      invitationToken,
+    };
+  }
+
+  async revoke(actor: AgencyActor, questionnaireReference: string) {
+    const questionnaire = await this.questionnaireContext(questionnaireReference);
+    if (['APPROVED', 'CANCELLED', 'SUPERSEDED'].includes(questionnaire.status)) {
+      throw fail(409, 'FACT_FINDING_DISCOVERY_NOT_REVOCABLE', 'This discovery request is already closed.');
+    }
+    const now = new Date();
+    await this.db.transaction(async tx => {
+      await tx.update(factFindingInvitations).set({ status: 'REVOKED', revokedAt: now })
+        .where(and(eq(factFindingInvitations.questionnaireId, questionnaire.id), inArray(factFindingInvitations.status, ['PENDING', 'SENT', 'ACCEPTED'])));
+      await tx.update(factFindingSessions).set({ revokedAt: now })
+        .where(and(eq(factFindingSessions.questionnaireId, questionnaire.id), isNull(factFindingSessions.revokedAt)));
+      await tx.update(factFindingParticipants).set({ status: 'REVOKED', revokedAt: now })
+        .where(eq(factFindingParticipants.questionnaireId, questionnaire.id));
+      await tx.update(factFindingQuestionnaires).set({ status: 'CANCELLED', cancelledAt: now, updatedAt: now })
+        .where(eq(factFindingQuestionnaires.id, questionnaire.id));
+    });
+    await this.audit.write(actor, 'FACT_FINDING_DISCOVERY_REVOKED', 'FACT_FINDING_QUESTIONNAIRE', questionnaireReference, {
+      tenantId: questionnaire.tenantId,
+      metadata: { revokedAt: now.toISOString() },
+    });
+    return { reference: questionnaireReference, status: 'CANCELLED' as const, revokedAt: now };
   }
 
   async responses(questionnaireReference: string) {
@@ -498,6 +596,8 @@ export class FactFindingService {
       publicUseEligible: factFindingResponses.publicUseEligible,
       bookingUseEligible: factFindingResponses.bookingUseEligible,
       generationUseEligible: factFindingResponses.generationUseEligible,
+      dataClassification: factFindingResponses.dataClassification,
+      verificationBasis: factFindingResponses.verificationBasis,
       approvedValue: factFindingResponses.approvedValueJson,
       submittedAt: factFindingResponses.submittedAt,
       approvedAt: factFindingResponses.approvedAt,
@@ -526,21 +626,36 @@ export class FactFindingService {
     if (!['SUBMITTED', 'AGENCY_REVIEW_REQUIRED', 'CLARIFICATION_REQUIRED', 'CLIENT_CONFIRMED'].includes(context.response.status)) {
       throw fail(409, 'FACT_FINDING_RESPONSE_NOT_REVIEWABLE', 'The response is not ready for agency approval.');
     }
+    if (context.question.evidenceRequired) {
+      const [evidence] = await this.db.select({ id: factFindingUploads.id }).from(factFindingUploads).where(and(
+        eq(factFindingUploads.questionnaireId, context.questionnaire.id),
+        eq(factFindingUploads.questionId, context.question.id),
+        eq(factFindingUploads.uploadStatus, 'UPLOADED'),
+        eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
+        inArray(factFindingUploads.malwareScanStatus, ['NOT_AVAILABLE', 'CLEAN']),
+      )).limit(1);
+      if (!evidence) {
+        throw fail(409, 'FACT_FINDING_EVIDENCE_REQUIRED', 'Approve supporting evidence before verifying this claim.');
+      }
+    }
     const approvedValue = safeAnswer(input.approvedValue ?? context.response.answerJson);
+    const directPublicEligible = context.question.dataClassification === 'PUBLIC_FACT';
+    const generationEligible = ['PUBLIC_FACT', 'CONTENT_PREFERENCE'].includes(context.question.dataClassification);
     const [updated] = await this.db.update(factFindingResponses).set({
       status: 'AGENCY_APPROVED',
       agencyReviewerId: actor.agencyUserId,
       approvedValueJson: approvedValue,
-      publicUseEligible: context.question.publicUseAllowed && input.publicUseEligible,
+      publicUseEligible: directPublicEligible && context.question.publicUseAllowed && input.publicUseEligible,
       bookingUseEligible: context.question.bookingUseAllowed && input.bookingUseEligible,
-      generationUseEligible: context.question.generationUseAllowed && input.generationUseEligible,
+      generationUseEligible: generationEligible && context.question.generationUseAllowed && input.generationUseEligible,
+      verificationBasis: input.verificationBasis,
       rejectionReason: null,
       approvedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(factFindingResponses.id, context.response.id)).returning();
     await this.audit.write(actor, 'FACT_FINDING_FACT_APPROVED', 'FACT_FINDING_RESPONSE', updated.publicReference, {
       tenantId: context.questionnaire.tenantId,
-      metadata: { fieldMapping: updated.fieldMapping, publicUseEligible: updated.publicUseEligible, bookingUseEligible: updated.bookingUseEligible, generationUseEligible: updated.generationUseEligible },
+      metadata: { fieldMapping: updated.fieldMapping, dataClassification: updated.dataClassification, verificationBasis: updated.verificationBasis, publicUseEligible: updated.publicUseEligible, bookingUseEligible: updated.bookingUseEligible, generationUseEligible: updated.generationUseEligible },
     });
     return { reference: updated.publicReference, status: updated.status, approvedAt: updated.approvedAt };
   }
@@ -560,6 +675,30 @@ export class FactFindingService {
     await this.audit.write(actor, 'FACT_FINDING_FACT_REJECTED', 'FACT_FINDING_RESPONSE', updated.publicReference, {
       tenantId: context.questionnaire.tenantId,
       metadata: { fieldMapping: updated.fieldMapping },
+    });
+    return { reference: updated.publicReference, status: updated.status };
+  }
+
+  async markNotApplicable(actor: AgencyActor, responseReference: string, reason: string) {
+    const context = await this.responseContext(responseReference);
+    if (context.question.required || context.question.systemRequired) {
+      throw fail(409, 'FACT_FINDING_REQUIRED_RESPONSE_APPLICABLE', 'A required discovery answer cannot be marked not applicable.');
+    }
+    const [updated] = await this.db.update(factFindingResponses).set({
+      status: 'NOT_APPLICABLE',
+      agencyReviewerId: actor.agencyUserId,
+      approvedValueJson: null,
+      publicUseEligible: false,
+      bookingUseEligible: false,
+      generationUseEligible: false,
+      verificationBasis: 'UNVERIFIED',
+      rejectionReason: reason,
+      updatedAt: new Date(),
+    }).where(eq(factFindingResponses.id, context.response.id)).returning();
+    await this.audit.write(actor, 'FACT_FINDING_FACT_NOT_APPLICABLE', 'FACT_FINDING_RESPONSE', updated.publicReference, {
+      tenantId: context.questionnaire.tenantId,
+      reason,
+      metadata: { fieldMapping: updated.fieldMapping, dataClassification: updated.dataClassification },
     });
     return { reference: updated.publicReference, status: updated.status };
   }
@@ -663,6 +802,7 @@ export class FactFindingService {
         questionnaireReference: questionnaire.reference,
         questionReference: response.questionId,
         mapping: mapping.data,
+        dataClassification: response.dataClassification as 'PUBLIC_FACT' | 'PRIVATE_OPERATIONAL' | 'CONSENT' | 'EVIDENCE' | 'CONTENT_PREFERENCE' | 'ASSET',
         approvedValue: response.approvedValueJson,
         valueDigestSha256: digest(response.approvedValueJson),
         submittedByReference: response.participantId,
@@ -678,6 +818,7 @@ export class FactFindingService {
       assetReference: upload.publicReference,
       category: upload.assetCategory,
       digestSha256: upload.digestSha256,
+      provenance: upload.provenance,
       publicUsePermission: upload.publicUsePermission,
       aiUsePermission: upload.aiUsePermission,
       consentStatus: upload.consentStatus,
@@ -821,6 +962,8 @@ export class FactFindingService {
         eq(factFindingInvitations.publicReference, parsed.invitationReference),
         eq(factFindingQuestionnaires.publicReference, parsed.questionnaireReference),
         eq(factFindingParticipants.publicReference, parsed.participantReference),
+        eq(factFindingInvitations.tenantId, factFindingQuestionnaires.tenantId),
+        eq(factFindingParticipants.tenantId, factFindingQuestionnaires.tenantId),
         inArray(factFindingInvitations.status, ['PENDING', 'SENT', 'ACCEPTED']),
         inArray(factFindingQuestionnaires.status, ['INVITED', 'IN_PROGRESS', 'CLARIFICATION_REQUIRED']),
         inArray(factFindingParticipants.status, ['INVITED', 'ACTIVE']),
@@ -864,6 +1007,8 @@ export class FactFindingService {
       .innerJoin(tenants, eq(factFindingSessions.tenantId, tenants.id))
       .where(and(
         eq(factFindingSessions.tokenDigestSha256, digestFactFindingToken(sessionToken)),
+        eq(factFindingSessions.tenantId, factFindingQuestionnaires.tenantId),
+        eq(factFindingParticipants.tenantId, factFindingSessions.tenantId),
         isNull(factFindingSessions.revokedAt),
         inArray(factFindingQuestionnaires.status, ['IN_PROGRESS', 'CLARIFICATION_REQUIRED']),
         eq(factFindingParticipants.status, 'ACTIVE'),
@@ -883,6 +1028,8 @@ export class FactFindingService {
         label: factFindingQuestionnaireQuestions.label,
         guidance: factFindingQuestionnaireQuestions.guidance,
         questionType: factFindingQuestionnaireQuestions.questionType,
+        dataClassification: factFindingQuestionnaireQuestions.dataClassification,
+        consentType: factFindingQuestionnaireQuestions.consentType,
         required: factFindingQuestionnaireQuestions.required,
         conditions: factFindingQuestionnaireQuestions.conditionsJson,
         options: factFindingQuestionnaireQuestions.optionsJson,
@@ -891,6 +1038,14 @@ export class FactFindingService {
       this.db.select({ reference: factFindingResponses.publicReference, questionReference: factFindingQuestionnaireQuestions.publicReference, answer: factFindingResponses.answerJson, status: factFindingResponses.status, approvedValue: factFindingResponses.approvedValueJson, updatedAt: factFindingResponses.updatedAt }).from(factFindingResponses).innerJoin(factFindingQuestionnaireQuestions, eq(factFindingResponses.questionId, factFindingQuestionnaireQuestions.id)).where(eq(factFindingResponses.questionnaireId, session.questionnaireId)),
       this.db.select({ reference: factFindingClarifications.publicReference, questionReference: factFindingQuestionnaireQuestions.publicReference, message: factFindingClarifications.agencyMessage, requiredResponseType: factFindingClarifications.requiredResponseType, evidenceRequested: factFindingClarifications.evidenceRequested, dueAt: factFindingClarifications.dueAt, status: factFindingClarifications.status }).from(factFindingClarifications).innerJoin(factFindingQuestionnaireQuestions, eq(factFindingClarifications.questionId, factFindingQuestionnaireQuestions.id)).where(and(eq(factFindingClarifications.questionnaireId, session.questionnaireId), inArray(factFindingClarifications.status, ['OPEN', 'CLIENT_RESPONDED']))),
     ]);
+    const sections = await this.db.select({
+      reference: factFindingTemplateSections.publicReference,
+      key: factFindingTemplateSections.sectionKey,
+      title: factFindingTemplateSections.title,
+      description: factFindingTemplateSections.description,
+      displayOrder: factFindingTemplateSections.displayOrder,
+      optional: factFindingTemplateSections.optional,
+    }).from(factFindingTemplateSections).where(eq(factFindingTemplateSections.templateId, questionnaire.templateId)).orderBy(asc(factFindingTemplateSections.displayOrder));
     const responseMap = new Map(responses.map(response => [response.questionReference, { status: response.status as never, answer: response.answer }]));
     const completion = completionForQuestions(questions.map(question => ({
       ...question,
@@ -908,6 +1063,7 @@ export class FactFindingService {
       version: questionnaire.questionnaireVersion,
       status: questionnaire.status,
       dueAt: questionnaire.dueAt,
+      sections,
       questions,
       responses,
       clarifications,
@@ -939,6 +1095,8 @@ export class FactFindingService {
         bookingUseAllowed: question.bookingUseAllowed,
         generationUseAllowed: question.generationUseAllowed,
         agencyVerificationRequired: question.agencyVerificationRequired,
+        dataClassification: question.dataClassification as never,
+        consentType: question.consentType as never,
         conditions: question.conditionsJson as never,
         options: question.optionsJson as never,
         displayOrder: question.displayOrder,
@@ -946,9 +1104,29 @@ export class FactFindingService {
       answer: input.answer,
     });
     const answer = safeAnswer(input.answer);
+    if (question.dataClassification === 'CONSENT' && typeof answer !== 'boolean') {
+      throw fail(400, 'FACT_FINDING_CONSENT_BOOLEAN_REQUIRED', 'Consent must be recorded as an explicit yes or no decision.');
+    }
     const now = new Date();
     const [existing] = await this.db.select().from(factFindingResponses).where(and(eq(factFindingResponses.questionnaireId, session.questionnaireId), eq(factFindingResponses.questionId, question.id))).limit(1);
     const response = await this.db.transaction(async tx => {
+      const recordConsent = async (row: typeof factFindingResponses.$inferSelect) => {
+        if (question.dataClassification !== 'CONSENT' || !question.consentType) return;
+        await tx.update(factFindingConsentRecords).set({ revokedAt: now }).where(and(
+          eq(factFindingConsentRecords.responseId, row.id),
+          isNull(factFindingConsentRecords.revokedAt),
+        ));
+        await tx.insert(factFindingConsentRecords).values({
+          tenantId: session.tenantId,
+          questionnaireId: session.questionnaireId,
+          participantId: session.participantId,
+          responseId: row.id,
+          responseVersion: row.responseVersion,
+          consentType: question.consentType,
+          decision: answer === true ? 'GRANTED' : 'DENIED',
+          answerDigestSha256: digest(answer),
+        });
+      };
       if (existing) {
         const nextVersion = existing.responseVersion + 1;
         const [updated] = await tx.update(factFindingResponses).set({
@@ -958,6 +1136,8 @@ export class FactFindingService {
           source: 'CLIENT_PROVIDED',
           valueDigestSha256: digest(answer),
           status: input.clientConfirmed ? 'CLIENT_CONFIRMED' : 'ANSWERED',
+          dataClassification: question.dataClassification,
+          verificationBasis: input.clientConfirmed ? 'TENANT_CONFIRMED' : 'UNVERIFIED',
           responseVersion: nextVersion,
           agencyReviewerId: null,
           approvedValueJson: null,
@@ -979,6 +1159,7 @@ export class FactFindingService {
           valueDigestSha256: updated.valueDigestSha256,
           status: updated.status,
         });
+        await recordConsent(updated);
         return updated;
       }
       const [created] = await tx.insert(factFindingResponses).values({
@@ -992,6 +1173,8 @@ export class FactFindingService {
         source: 'CLIENT_PROVIDED',
         valueDigestSha256: digest(answer),
         status: input.clientConfirmed ? 'CLIENT_CONFIRMED' : 'ANSWERED',
+        dataClassification: question.dataClassification,
+        verificationBasis: input.clientConfirmed ? 'TENANT_CONFIRMED' : 'UNVERIFIED',
         evidenceRequired: question.evidenceRequired,
       }).returning();
       await tx.insert(factFindingResponseVersions).values({
@@ -1005,6 +1188,7 @@ export class FactFindingService {
         valueDigestSha256: created.valueDigestSha256,
         status: created.status,
       });
+      await recordConsent(created);
       return created;
     });
     await this.audit.write(null, 'FACT_FINDING_RESPONSE_SAVED', 'FACT_FINDING_RESPONSE', response.publicReference, {
@@ -1035,6 +1219,8 @@ export class FactFindingService {
       bookingUseAllowed: question.bookingUseAllowed,
       generationUseAllowed: question.generationUseAllowed,
       agencyVerificationRequired: question.agencyVerificationRequired,
+      dataClassification: question.dataClassification as never,
+      consentType: question.consentType as never,
       conditions: question.conditionsJson as never,
       options: question.optionsJson as never,
       displayOrder: question.displayOrder,
@@ -1125,6 +1311,7 @@ export class FactFindingService {
       byteSize: input.byteSize,
       digestSha256: input.digestSha256,
       assetCategory: input.category,
+      provenance: 'CLIENT_SUPPLIED',
       publicUsePermission: input.publicUsePermission,
       aiUsePermission: input.aiUsePermission,
       copyrightConfirmed: input.copyrightConfirmed,

@@ -6,6 +6,7 @@ export interface ApprovedFactInput {
   questionnaireReference: string;
   questionReference: string;
   mapping: FactFieldMapping;
+  dataClassification: 'PUBLIC_FACT' | 'PRIVATE_OPERATIONAL' | 'CONSENT' | 'EVIDENCE' | 'CONTENT_PREFERENCE' | 'ASSET';
   approvedValue: unknown;
   valueDigestSha256: string;
   submittedByReference: string | null;
@@ -21,6 +22,7 @@ export interface ApprovedAssetInput {
   assetReference: string;
   category: string;
   digestSha256: string;
+  provenance?: string;
   publicUsePermission: boolean;
   aiUsePermission: boolean;
   consentStatus: string;
@@ -69,8 +71,15 @@ export function buildProductionBriefData(input: {
   facts: readonly ApprovedFactInput[];
   assets: readonly ApprovedAssetInput[];
 }) {
-  const permittedFacts = input.facts.filter(fact =>
-    fact.publicUseEligible || fact.bookingUseEligible || fact.generationUseEligible);
+  const permittedFacts = input.facts.filter(fact => {
+    if (fact.dataClassification === 'PUBLIC_FACT') {
+      return fact.publicUseEligible || fact.bookingUseEligible || fact.generationUseEligible;
+    }
+    if (fact.dataClassification === 'CONTENT_PREFERENCE') {
+      return fact.generationUseEligible;
+    }
+    return false;
+  });
   const canonical: ProductionBriefData['canonical'] = {
     business: {}, locations: [], services: [], staff: [], booking: {}, brand: {}, content: {},
   };
@@ -79,7 +88,10 @@ export function buildProductionBriefData(input: {
     (verifiedFacts[fact.mapping] ||= []).push(fact.approvedValue);
     setMapped(canonical, fact.mapping, fact.approvedValue);
   }
-  const approvedAssets = input.assets.filter(asset => asset.agencyReviewStatus === 'APPROVED');
+  const approvedAssets = input.assets.filter(asset =>
+    asset.agencyReviewStatus === 'APPROVED'
+    && asset.publicUsePermission
+    && ['CONFIRMED', 'NOT_APPLICABLE'].includes(asset.consentStatus));
   const data: ProductionBriefData = {
     verifiedFacts,
     canonical,
@@ -89,6 +101,7 @@ export function buildProductionBriefData(input: {
     imageBrief: approvedAssets.map(asset => ({
       assetReference: asset.assetReference,
       category: asset.category,
+      provenance: asset.provenance || 'UNKNOWN',
       existingApprovedAsset: true,
       stockImagePermitted: false,
       aiGeneratedImagePermitted: asset.aiUsePermission,

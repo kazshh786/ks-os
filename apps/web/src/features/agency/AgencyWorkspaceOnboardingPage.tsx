@@ -1,4 +1,21 @@
-export {
-  AgencyFocusedLaunchJourney as AgencyWorkspaceOnboardingPage,
-  AgencyFocusedLaunchJourney as default,
-} from './AgencyFocusedLaunchJourney';
+import React from 'react';
+import { useNavigate, useParams } from 'react-router';
+import { AgencyLaunchCommandCenter } from './AgencyLaunchCommandCenter';
+
+export function AgencyWorkspaceOnboardingPage() {
+  const navigate = useNavigate();
+  const { tenantId } = useParams<{ tenantId: string }>();
+
+  if (!tenantId) {
+    return <p role="alert" className="rounded-xl border border-rose-800 bg-rose-950/35 p-4 text-sm text-rose-200">
+      Select a client workspace before opening Agency Launch V2.
+    </p>;
+  }
+
+  return <AgencyLaunchCommandCenter
+    tenantId={tenantId}
+    onBack={() => navigate(`/agency/tenants/${tenantId}`)}
+  />;
+}
+
+export default AgencyWorkspaceOnboardingPage;

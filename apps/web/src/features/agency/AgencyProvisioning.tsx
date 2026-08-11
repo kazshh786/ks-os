@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, Loader2, Plus, Rocket, X } from 'lucide-react';
 import { useSearchParams } from 'react-router';
 import { agencyFetch, useAgencyAuth } from './AgencyAuth';
-import { AgencyFocusedLaunchJourney } from './AgencyFocusedLaunchJourney';
+import { AgencyLaunchCommandCenter } from './AgencyLaunchCommandCenter';
 import { WorkspaceDataControls } from './WorkspaceDataControls';
 
 const isRemovedWorkspace = (tenant: any) => tenant.lifecycleStatus === 'OFFBOARDED'
@@ -41,7 +41,7 @@ function SelectedClientLaunchWorkspace({ tenantId, onBack }: { tenantId: string;
   const isPlatformOwner = session?.user.role === 'PLATFORM_OWNER';
 
   return <div className="space-y-6">
-    <AgencyFocusedLaunchJourney tenantIdOverride={tenantId} onBack={onBack} />
+    <AgencyLaunchCommandCenter tenantId={tenantId} onBack={onBack} />
     {error ? <p role="alert" className="rounded-xl border border-rose-800 bg-rose-950/35 p-4 text-sm text-rose-200">{error}</p> : null}
     {notice ? <p role="status" className="rounded-xl border border-emerald-800 bg-emerald-950/35 p-4 text-sm text-emerald-200">{notice}</p> : null}
     {tenant ? <WorkspaceDataControls
@@ -109,9 +109,9 @@ function ClientLaunchDirectory({ onSelect }: { onSelect: (reference: string) => 
     <section className="rounded-3xl border border-violet-800/60 bg-gradient-to-br from-violet-950 via-slate-950 to-slate-900 p-6 shadow-2xl sm:p-8">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-3xl">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-300">One client launch path</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-white">Create booking and website together</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Create or open a client to complete fact finding, reuse or add booking services, choose the website design, build the ten-page launch site, review the staging subdomain and connect the production domain.</p>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-300">Governed client delivery</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-white">Launch command centre</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Move each client through explicit discovery, fact, booking, blueprint, Search Intelligence, generation, review, quality and publication gates. Human approvals stay visible and separate.</p>
         </div>
         <button type="button" onClick={() => setShowCreate(true)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 text-sm font-black text-slate-950 hover:bg-emerald-400">
           <Plus className="h-4 w-4" />Create new client

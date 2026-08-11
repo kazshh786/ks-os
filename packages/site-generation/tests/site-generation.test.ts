@@ -567,7 +567,7 @@ test('Gemini adapter uses structured JSON, server header, timeout signal and saf
   assert.doesNotMatch(JSON.stringify(result), /server-secret/);
 });
 
-test('vertex-gemini configuration requires project and location, but no API key', () => {
+test('vertex-gemini configuration requires project, location and ADC, but no API key', () => {
   assert.throws(
     () => parseSiteGenerationConfig({
       SITE_AI_GENERATION_ENABLED: 'true',
@@ -587,18 +587,31 @@ test('vertex-gemini configuration requires project and location, but no API key'
     /GOOGLE_CLOUD_LOCATION is required/,
   );
 
+  assert.throws(
+    () => parseSiteGenerationConfig({
+      SITE_AI_GENERATION_ENABLED: 'true',
+      SITE_AI_PROVIDER: 'vertex-gemini',
+      SITE_AI_MODEL: 'gemini-1.5-flash',
+      GOOGLE_CLOUD_PROJECT: 'test-project',
+      GOOGLE_CLOUD_LOCATION: 'global',
+    }),
+    /GOOGLE_APPLICATION_CREDENTIALS is required/,
+  );
+
   const config = parseSiteGenerationConfig({
     SITE_AI_GENERATION_ENABLED: 'true',
     SITE_AI_PROVIDER: 'vertex-gemini',
     SITE_AI_MODEL: 'gemini-1.5-flash',
     GOOGLE_CLOUD_PROJECT: 'test-project',
     GOOGLE_CLOUD_LOCATION: 'us-central1',
+    GOOGLE_APPLICATION_CREDENTIALS: '/secure/adc.json',
   });
   assert.equal(config.enabled, true);
   assert.equal(config.provider, 'vertex-gemini');
   assert.equal(config.model, 'gemini-1.5-flash');
   assert.equal(config.googleCloudProject, 'test-project');
   assert.equal(config.googleCloudLocation, 'us-central1');
+  assert.equal(config.googleApplicationCredentials, '/secure/adc.json');
   assert.equal(config.apiKey, undefined);
   assert.equal(isSiteGenerationProviderReady(config), true);
 });
@@ -819,6 +832,7 @@ test('createSiteGenerationProvider factory instantiates configured provider', ()
     SITE_AI_MODEL: 'gemini-1.5-flash',
     GOOGLE_CLOUD_PROJECT: 'proj-123',
     GOOGLE_CLOUD_LOCATION: 'us-central1',
+    GOOGLE_APPLICATION_CREDENTIALS: '/secure/adc.json',
   });
   const vertexProvider = createSiteGenerationProvider(vertexConfig);
   assert.equal(vertexProvider.providerKey, 'vertex-gemini');

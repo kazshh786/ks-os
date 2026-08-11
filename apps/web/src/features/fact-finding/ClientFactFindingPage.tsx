@@ -22,6 +22,28 @@ export default function ClientFactFindingPage() {
   const [submitted, setSubmitted] = useState(false);
   const [clarificationDrafts, setClarificationDrafts] = useState<Record<string, string>>({});
 
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = 'Secure business discovery | KS OS';
+    const managed: HTMLMetaElement[] = [];
+    const ensureMeta = (name: string, content: string) => {
+      let element = document.head.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
+      if (!element) {
+        element = document.createElement('meta');
+        element.name = name;
+        document.head.appendChild(element);
+        managed.push(element);
+      }
+      element.content = content;
+    };
+    ensureMeta('robots', 'noindex, nofollow, noarchive');
+    ensureMeta('referrer', 'no-referrer');
+    return () => {
+      document.title = previousTitle;
+      managed.forEach(element => element.remove());
+    };
+  }, []);
+
   const load = async (token: string) => {
     const data = await clientFetch('/questionnaire', token);
     setQuestionnaire(data);

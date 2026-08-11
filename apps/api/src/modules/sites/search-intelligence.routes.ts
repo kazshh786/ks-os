@@ -36,6 +36,13 @@ function actor(request: FastifyRequest, capability: AgencyCapability): AgencyAct
 export async function agencySearchIntelligenceRoutes(app: FastifyInstance) {
   const service = new SearchIntelligenceService();
 
+  app.post('/:siteReference/search-intelligence/create-draft', async (request, reply) => {
+    const { siteReference } = ParamsSchema.parse(request.params);
+    z.object({}).strict().parse(request.body ?? {});
+    const data = await service.createPlatformDraft(actor(request, 'sites.manage'), siteReference);
+    return reply.code(data.idempotentReplay ? 200 : 201).send({ data });
+  });
+
   app.post('/:siteReference/search-intelligence/strategies', async (request, reply) => {
     const { siteReference } = ParamsSchema.parse(request.params);
     const data = await service.createDraft(

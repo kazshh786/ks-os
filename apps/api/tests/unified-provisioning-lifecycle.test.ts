@@ -7,7 +7,7 @@ const delivery = readFileSync(new URL('../src/modules/provisioning/delivery-cont
 const lifecycle = readFileSync(new URL('../src/modules/provisioning/tenant-lifecycle.service.ts', import.meta.url), 'utf8');
 const workspaceData = readFileSync(new URL('../src/modules/provisioning/workspace-data.service.ts', import.meta.url), 'utf8');
 const web = readFileSync(new URL('../../web/src/features/agency/AgencyProvisioning.tsx', import.meta.url), 'utf8');
-const launch = readFileSync(new URL('../../web/src/features/agency/AgencyFocusedLaunchJourney.tsx', import.meta.url), 'utf8');
+const launch = readFileSync(new URL('../../web/src/features/agency/AgencyLaunchCommandCenter.tsx', import.meta.url), 'utf8');
 const controls = readFileSync(new URL('../../web/src/features/agency/WorkspaceDataControls.tsx', import.meta.url), 'utf8');
 
 test('client delivery resolves server-owned plan, brief, template, draft, run and readiness', () => {
@@ -19,15 +19,15 @@ test('client delivery resolves server-owned plan, brief, template, draft, run an
   assert.doesNotMatch(web, /Locked production brief reference|Active plan version reference|Approved template version reference/);
 });
 
-test('focused delivery presents one launch journey and one recommended next action', () => {
-  assert.match(web, /AgencyFocusedLaunchJourney/);
-  assert.match(launch, /Setup and onboarding/);
-  assert.match(launch, /Recommended next action/);
-  assert.match(launch, /selectedStageId/);
-  assert.match(launch, /Build booking and website/);
-  assert.match(launch, /Open staging/);
-  assert.match(launch, /Open Site Studio/);
-  assert.match(launch, /Launch readiness/);
+test('governed delivery presents the staged Agency Launch command centre', () => {
+  assert.match(web, /AgencyLaunchCommandCenter/);
+  assert.match(launch, /Agency Launch V2/);
+  assert.match(launch, /Search Intelligence/);
+  assert.match(launch, /Complete governed research/);
+  assert.match(launch, /Approve exact revision/);
+  assert.match(launch, /Website build/);
+  assert.match(launch, /Review and quality/);
+  assert.match(launch, /Domain and launch/);
 });
 
 test('user removal is a guarded lifecycle action rather than destructive history deletion', () => {

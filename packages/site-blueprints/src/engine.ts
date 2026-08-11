@@ -11,6 +11,7 @@ import { scorePageOpportunity } from './scoring.js';
 import {
   allocateUniqueBlueprintPath,
   defaultBlueprintPath,
+  slugifySegment,
 } from './slug.js';
 import type {
   BlueprintEngineInput,
@@ -63,6 +64,7 @@ interface Candidate {
   serviceReference?: string;
   locationReference?: string;
   staffReference?: string;
+  explicitPath?: boolean;
   required: boolean;
   score: number;
   reasons: string[];
@@ -154,6 +156,7 @@ function candidate(
     serviceReference: input.serviceReference,
     locationReference: input.locationReference,
     staffReference: input.staffReference,
+    explicitPath: input.explicitPath,
     required: input.required,
     score: scored.score,
     reasons: scored.reasons,
@@ -171,10 +174,11 @@ function buildCandidates(
     missingMessage?: string,
   ) => {
     const layout = layoutFor(input, pageType);
+    const explicitlyRequested = input.request.preferences.includePageTypes.includes(pageType);
     if (!ready && missingMessage) {
       actionItems.push(actionItem(
         'BUSINESS_PROFILE',
-        pageType === 'HOME' ? 'BLOCKING' : 'WARNING',
+        pageType === 'HOME' || explicitlyRequested ? 'BLOCKING' : 'WARNING',
         `${pageType}_DATA_INCOMPLETE`,
         missingMessage,
       ));
@@ -182,10 +186,10 @@ function buildCandidates(
     candidates.push(candidate({
       pageType,
       title: PAGE_DEFAULTS[pageType].title,
-      required: ['HOME', 'BOOKING'].includes(pageType),
+      required: ['HOME', 'BOOKING'].includes(pageType) || explicitlyRequested,
       scoreInput: {
         pageType,
-        requiredBaseline: ['HOME', 'BOOKING'].includes(pageType),
+        requiredBaseline: ['HOME', 'BOOKING'].includes(pageType) || explicitlyRequested,
         fillsNavigationRole: true,
         handlesObjection: pageType === 'FAQ',
         compatibleLayout: Boolean(layout),
@@ -207,7 +211,7 @@ function buildCandidates(
   baseline(
     'ABOUT',
     input.business.profileComplete,
-    'Complete the business profile before generating a strong About page.',
+    'Complete the verified founder or business story before generating the About page.',
   );
   baseline(
     'CONTACT',
@@ -383,6 +387,61 @@ function buildCandidates(
   ] as const) {
     if (input.request.preferences.includePageTypes.includes(guide)) baseline(guide, true);
   }
+  for (const requestedPageType of [...input.request.preferences.includePageTypes].sort()) {
+    const existing = candidates.filter(item => item.pageType === requestedPageType);
+    if (existing.length) {
+      existing.forEach(item => { item.required = true; });
+      continue;
+    }
+    if (['SERVICE_DETAIL', 'LOCATION_DETAIL', 'TEAM_DETAIL'].includes(requestedPageType)) {
+      actionItems.push(actionItem(
+        requestedPageType === 'SERVICE_DETAIL' ? 'SERVICE_DATA' : requestedPageType === 'LOCATION_DETAIL' ? 'LOCATION_DATA' : 'STAFF_DATA',
+        'BLOCKING',
+        `${requestedPageType}_REQUESTED_SUBJECT_MISSING`,
+        `The explicitly requested ${PAGE_DEFAULTS[requestedPageType].title} page needs an eligible verified subject before it can be planned.`,
+      ));
+      continue;
+    }
+    const ready = requestedPageType === 'ABOUT' ? input.business.profileComplete
+      : requestedPageType === 'CONTACT' ? input.business.contactComplete
+        : requestedPageType === 'SERVICE_HUB' ? input.services.some(service => service.active && service.bookingEligible && service.tenantReference === input.tenantReference)
+          : requestedPageType === 'LOCATION_HUB' ? validLocations.length > 0
+            : requestedPageType === 'TEAM_HUB' ? eligibleStaff.length > 0
+              : requestedPageType === 'RESULTS' ? input.business.approvedResultsAssetCount > 0
+                : true;
+    baseline(
+      requestedPageType,
+      ready,
+      `The explicitly requested ${PAGE_DEFAULTS[requestedPageType].title} page is missing the verified content required to generate it.`,
+    );
+  }
+  for (const explicitPage of [...input.request.preferences.explicitPages]
+    .sort((left, right) => left.title.localeCompare(right.title))) {
+    const layout = layoutFor(input, explicitPage.pageType);
+    candidates.push(candidate({
+      pageType: explicitPage.pageType,
+      title: explicitPage.title,
+      subjectName: explicitPage.title,
+      explicitPath: true,
+      required: true,
+      scoreInput: {
+        pageType: explicitPage.pageType,
+        requiredBaseline: true,
+        fillsNavigationRole: true,
+        compatibleLayout: Boolean(layout),
+      },
+    }));
+    if (!layout) {
+      actionItems.push(actionItem(
+        'LAYOUT',
+        'BLOCKING',
+        'EXPLICIT_PAGE_LAYOUT_MISSING',
+        `The explicitly requested page “${explicitPage.title}” has no approved compatible ${explicitPage.pageType} layout.`,
+        null,
+        { title: explicitPage.title, pageType: explicitPage.pageType },
+      ));
+    }
+  }
   return candidates;
 }
 
@@ -409,7 +468,9 @@ function pageFromCandidate(
   const defaults = PAGE_DEFAULTS[item.pageType];
   const layout = layoutFor(input, item.pageType);
   const plannedSlug = allocateUniqueBlueprintPath(
-    defaultBlueprintPath(item.pageType, item.subjectName),
+    item.explicitPath
+      ? `/${slugifySegment(item.title)}`
+      : defaultBlueprintPath(item.pageType, item.subjectName),
     usedPaths,
   );
   const bookingRequirements = bookingRequirementsForPage({
@@ -504,8 +565,11 @@ export function generateBlueprintPlan(input: BlueprintEngineInput): BlueprintPla
         .localeCompare(
           right.serviceReference || right.locationReference || right.staffReference || '',
         ));
+  const requiredMarketing = marketing.filter(item => item.required);
+  const optionalMarketing = marketing.filter(item => !item.required && item.score >= 0);
   const selected = [
-    ...marketing.filter((item) => item.score >= 0).slice(0, input.marketingPageLimit),
+    ...requiredMarketing,
+    ...optionalMarketing.slice(0, Math.max(0, input.marketingPageLimit - requiredMarketing.length)),
     ...nonMarketing,
   ].sort((left, right) =>
     PAGE_DEFAULTS[left.pageType].priority - PAGE_DEFAULTS[right.pageType].priority

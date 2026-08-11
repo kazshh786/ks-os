@@ -305,14 +305,18 @@ export function validateEmailTemplateData(
       break;
     case 'fact-finding-invitation':
       requireText('participantName');
-      requireText('invitationToken');
+      requireText('invitationReference');
+      requireText('questionnaireReference');
+      requireText('participantReference');
       requireDate('expiresAt');
       break;
     case 'fact-finding-notification':
       requireText('participantName');
       requireText('heading');
       requireText('message');
-      requireText('invitationToken');
+      requireText('invitationReference');
+      requireText('questionnaireReference');
+      requireText('participantReference');
       requireDate('expiresAt');
       break;
     case 'business-booking-confirmed':

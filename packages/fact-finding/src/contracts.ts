@@ -93,6 +93,14 @@ export const FactFieldMappingSchema = z.enum([
   'CONTENT.FAQ',
   'CONTENT.BUSINESS_STORY',
   'CONTENT.TRUST_EVIDENCE',
+  'CONTENT.IMAGE_SOURCE_POLICY',
+  'WEBSITE.REQUESTED_PAGE_TYPES',
+  'WEBSITE.EXPLICIT_PAGES',
+  'WEBSITE.COMMERCIAL_PRIORITIES',
+  'WEBSITE.PRIORITISED_SERVICES',
+  'WEBSITE.PRIORITISED_LOCATIONS',
+  'WEBSITE.REQUIRED_CONTENT',
+  'WEBSITE.PROHIBITED_CONTENT',
   'ASSET.TEAM_PHOTO',
   'ASSET.LOCATION_PHOTO',
   'ASSET.SERVICE_PHOTO',
@@ -131,6 +139,33 @@ export const FactFindingResponseStatusSchema = z.enum([
   'NOT_APPLICABLE',
 ]);
 export type FactFindingResponseStatus = z.infer<typeof FactFindingResponseStatusSchema>;
+
+export const FactDataClassificationSchema = z.enum([
+  'PUBLIC_FACT',
+  'PRIVATE_OPERATIONAL',
+  'CONSENT',
+  'EVIDENCE',
+  'CONTENT_PREFERENCE',
+  'ASSET',
+]);
+export type FactDataClassification = z.infer<typeof FactDataClassificationSchema>;
+
+export const FactVerificationBasisSchema = z.enum([
+  'UNVERIFIED',
+  'TENANT_CONFIRMED',
+  'AGENCY_CONFIRMED',
+  'VERIFIED',
+]);
+export type FactVerificationBasis = z.infer<typeof FactVerificationBasisSchema>;
+
+export const DiscoveryConsentTypeSchema = z.enum([
+  'PUBLIC_BUSINESS_INFORMATION',
+  'SUPPLIED_IMAGERY_PUBLICATION',
+  'TESTIMONIAL_CASE_STUDY_PUBLICATION',
+  'AI_STOCK_SUPPORTING_IMAGES',
+  'AGENCY_REVIEW_ACKNOWLEDGEMENT',
+]);
+export type DiscoveryConsentType = z.infer<typeof DiscoveryConsentTypeSchema>;
 
 export const FactFindingBriefStatusSchema = z.enum([
   'DRAFT',
@@ -186,6 +221,8 @@ export const QuestionnaireQuestionSchema = z.object({
   bookingUseAllowed: z.boolean().default(false),
   generationUseAllowed: z.boolean().default(false),
   agencyVerificationRequired: z.boolean().default(false),
+  dataClassification: FactDataClassificationSchema.default('PUBLIC_FACT'),
+  consentType: DiscoveryConsentTypeSchema.optional(),
   conditions: z.array(QuestionConditionSchema).max(10).default([]),
   options: z.array(SelectOptionSchema).max(100).default([]),
   displayOrder: z.number().int().min(0).max(10_000),
@@ -195,6 +232,24 @@ export const QuestionnaireQuestionSchema = z.object({
   }
   if ((question.bookingUseAllowed || question.generationUseAllowed || question.publicUseAllowed) && !question.fieldMapping) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['fieldMapping'], message: 'Production-eligible questions require a controlled field mapping.' });
+  }
+  if (question.dataClassification === 'CONSENT' && !question.consentType) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['consentType'], message: 'Consent questions require an explicit consent type.' });
+  }
+  if (question.dataClassification !== 'PUBLIC_FACT' && question.publicUseAllowed) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['dataClassification'],
+      message: 'Only PUBLIC_FACT questions may be eligible for direct public use.',
+    });
+  }
+  if (!['PUBLIC_FACT', 'CONTENT_PREFERENCE'].includes(question.dataClassification)
+    && question.generationUseAllowed) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['generationUseAllowed'],
+      message: 'Only reviewed public facts and content preferences may enter generation.',
+    });
   }
 });
 
@@ -273,7 +328,12 @@ export const AgencyFactDecisionSchema = z.object({
   publicUseEligible: z.boolean(),
   bookingUseEligible: z.boolean(),
   generationUseEligible: z.boolean(),
+  verificationBasis: z.enum(['AGENCY_CONFIRMED', 'VERIFIED']).default('AGENCY_CONFIRMED'),
   note: safeFactTextSchema(2_000).optional(),
+}).strict();
+
+export const MarkFactNotApplicableSchema = z.object({
+  reason: safeFactTextSchema(2_000),
 }).strict();
 
 export const RejectFactResponseSchema = z.object({ reason: safeFactTextSchema(2_000) }).strict();
