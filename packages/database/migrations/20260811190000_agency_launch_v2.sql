@@ -217,8 +217,12 @@ BEGIN
   END IF;
 
   UPDATE public.fact_finding_templates
-  SET status = 'SUPERSEDED', updated_at = now()
-  WHERE template_key = 'KS_OS_CLIENT_ONBOARDING' AND status = 'ACTIVE';
+  SET
+    status = 'RETIRED',
+    retired_at = COALESCE(retired_at, now()),
+    updated_at = now()
+  WHERE template_key = 'KS_OS_CLIENT_ONBOARDING'
+    AND status = 'ACTIVE';
 
   INSERT INTO public.fact_finding_templates (
     public_reference, template_key, version, name, description,
