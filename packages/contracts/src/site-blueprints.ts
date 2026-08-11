@@ -268,6 +268,13 @@ export const BlueprintGenerationRequestSchema = z.object({
     prioritisedStaffReferences: z.array(PublicReferenceSchema).max(100).default([]),
     preferredLayoutReferences: z.record(SitePageTypeSchema, PublicReferenceSchema).default({}),
     includePageTypes: z.array(SitePageTypeSchema).max(16).default([]),
+    explicitPages: z.array(z.object({
+      title: z.string().trim().min(1).max(160),
+      pageType: z.enum([
+        'GUIDE', 'HOW_TO', 'ARTICLE', 'FAQ_RESOURCE', 'TUTORIAL',
+        'DEFINITION', 'TROUBLESHOOTING', 'COMPARISON', 'CASE_STUDY',
+      ]).default('GUIDE'),
+    }).strict()).max(50).default([]),
   }).strict().default({}),
 }).strict();
 export type BlueprintGenerationRequest = z.infer<

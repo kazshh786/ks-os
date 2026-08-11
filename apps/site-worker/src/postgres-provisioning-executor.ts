@@ -58,6 +58,7 @@ import {
   buildVerifiedBusinessFacts,
   generationDigest,
   generationIdempotencyKey,
+  isSiteGenerationProviderReady,
 } from '@ks-os/site-generation';
 import {
   GenerateSitePayloadSchema,
@@ -252,7 +253,7 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
     try {
       for (const [index, step] of PROVISIONING_STEPS.entries()) {
         if (step === 'GENERATE_SITE') {
-          lastOutputs = await this.executeStep(run, step, () => this.queueGeneration(run, facts), false);
+          lastOutputs = await this.executeStep(run, step, () => this.queueGeneration(run, facts), 'GENERATION_QUEUED');
           await lease.updateProgress({
             current: index + 1,
             total: PROVISIONING_STEPS.length,
@@ -267,6 +268,30 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
             outputReferences: [run.runReference, run.siteReference, ...lastOutputs].slice(0, 50),
             metrics: { stepsCompleted: index, stepsTotal: PROVISIONING_STEPS.length },
           };
+        }
+        if (step === 'APPROVE_BLUEPRINT') {
+          const [blueprint] = await this.db.select({ status: siteBlueprints.status })
+            .from(siteBlueprints)
+            .where(eq(siteBlueprints.provisioningRunId, run.runId))
+            .limit(1);
+          if (!blueprint || blueprint.status !== 'APPROVED') {
+            lastOutputs = await this.executeStep(
+              run,
+              step,
+              () => this.approveBlueprint(run),
+              'ACTION_REQUIRED',
+            );
+            await lease.updateProgress({
+              current: index,
+              total: PROVISIONING_STEPS.length,
+              message: 'The draft blueprint is ready for explicit agency approval.',
+            });
+            return {
+              summary: 'Workspace records are provisioned; the draft blueprint requires agency approval.',
+              outputReferences: [run.runReference, run.siteReference, ...lastOutputs].slice(0, 50),
+              metrics: { stepsCompleted: index, stepsTotal: PROVISIONING_STEPS.length },
+            };
+          }
         }
         if (['VALIDATE_NATIVE_BOOKING', 'CREATE_INTERNAL_REVIEW', 'CREATE_PREVIEW', 'MARK_READY', 'RECORD_AUDIT'].includes(step)) {
           continue;
@@ -298,7 +323,7 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
     run: ProvisioningContext,
     step: ProvisioningStepKey,
     action: () => Promise<LinkedRecord[]>,
-    markCompleted = true,
+    completionMode: 'COMPLETED' | 'GENERATION_QUEUED' | 'ACTION_REQUIRED' = 'COMPLETED',
   ) {
     const [stored] = await this.db.select({
       status: provisioningRunSteps.status,
@@ -354,7 +379,7 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
             sourceValueDigestSha256: item.source?.digest,
           }).onConflictDoNothing();
         }
-        if (markCompleted) {
+        if (completionMode === 'COMPLETED') {
           await tx.update(provisioningRunSteps).set({
             status: 'COMPLETED',
             outputReferencesJson: outputs,
@@ -375,12 +400,18 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
         await tx.insert(provisioningActivity).values({
           provisioningRunId: run.runId,
           tenantId: run.tenantId,
-          eventType: markCompleted ? 'PROVISIONING_STEP_COMPLETED' : 'PROVISIONING_GENERATION_QUEUED',
-          statusTo: runStatus,
+          eventType: completionMode === 'COMPLETED'
+            ? 'PROVISIONING_STEP_COMPLETED'
+            : completionMode === 'ACTION_REQUIRED'
+              ? 'PROVISIONING_ACTION_REQUIRED'
+              : 'PROVISIONING_GENERATION_QUEUED',
+          statusTo: completionMode === 'ACTION_REQUIRED' ? 'ACTION_REQUIRED' : runStatus,
           stepKey: step,
-          safeMessage: markCompleted
+          safeMessage: completionMode === 'COMPLETED'
             ? `The ${step.replaceAll('_', ' ').toLowerCase()} step completed.`
-            : 'Structured site generation was handed off to the durable generation worker.',
+            : completionMode === 'ACTION_REQUIRED'
+              ? 'The draft blueprint requires explicit agency approval before provisioning can continue.'
+              : 'Structured site generation was handed off to the durable generation worker.',
         });
       });
       return outputs;
@@ -1055,21 +1086,25 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
       .from(siteBlueprints).where(eq(siteBlueprints.provisioningRunId, run.runId)).limit(1);
     if (!blueprint) throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The provisioning blueprint is missing.');
     if (blueprint.status !== 'APPROVED') {
-      const [blocking] = await this.db.select({ id: siteBlueprintActionItems.id }).from(siteBlueprintActionItems).where(and(
-        eq(siteBlueprintActionItems.blueprintId, blueprint.id), eq(siteBlueprintActionItems.status, 'OPEN'), eq(siteBlueprintActionItems.severity, 'BLOCKING'),
-      )).limit(1);
-      if (blocking) throw new SiteJobExecutionError('TERMINAL_VALIDATION_FAILURE', 'Blocking blueprint findings prevent automatic approval.');
-      await this.db.update(siteBlueprints).set({
-        status: 'APPROVED', approvedByAgencyUserId: run.requestedByAgencyUserId,
-        approvedAt: new Date(), updatedAt: new Date(),
-      }).where(eq(siteBlueprints.id, blueprint.id));
-      await this.db.insert(platformAuditEvents).values({
-        agencyUserId: run.requestedByAgencyUserId, tenantId: run.tenantId,
-        action: 'SITE_BLUEPRINT_APPROVED', targetType: 'SITE_BLUEPRINT', targetId: blueprint.reference,
-        eventCategory: 'WEBSITE', sourceComponent: 'site-worker',
-        description: 'The validated provisioning blueprint was approved through the controlled provisioning workflow.',
-        metadata: { provisioningRunReference: run.runReference },
+      await this.db.transaction(async tx => {
+        await tx.update(provisioningRunSteps).set({
+          status: 'ACTION_REQUIRED',
+          safeMessage: 'Review and explicitly approve the exact draft blueprint in the Agency Portal.',
+          updatedAt: new Date(),
+        }).where(and(
+          eq(provisioningRunSteps.provisioningRunId, run.runId),
+          eq(provisioningRunSteps.stepKey, 'APPROVE_BLUEPRINT'),
+        ));
+        await tx.update(provisioningRuns).set({
+          status: 'ACTION_REQUIRED',
+          currentStep: 'APPROVE_BLUEPRINT',
+          failureCode: 'HUMAN_BLUEPRINT_APPROVAL_REQUIRED',
+          failureMessage: 'The generated blueprint is ready for explicit agency review.',
+          retryable: true,
+          updatedAt: new Date(),
+        }).where(eq(provisioningRuns.id, run.runId));
       });
+      return [{ type: 'SITE_BLUEPRINT', reference: blueprint.reference }];
     }
     return [{ type: 'SITE_BLUEPRINT', reference: blueprint.reference }];
   }
@@ -1078,7 +1113,7 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
     const [blueprint] = await this.db.select({ id: siteBlueprints.id, reference: siteBlueprints.publicReference, revision: siteBlueprints.revision, status: siteBlueprints.status })
       .from(siteBlueprints).where(eq(siteBlueprints.provisioningRunId, run.runId)).limit(1);
     if (!blueprint || blueprint.status !== 'APPROVED') throw new SiteJobExecutionError('TERMINAL_PERMISSION_FAILURE', 'An approved pinned blueprint is required.');
-    if (!this.generation.enabled || !this.generation.apiKey || !this.generation.model) {
+    if (!isSiteGenerationProviderReady(this.generation)) {
       await this.db.transaction(async tx => {
         await tx.update(provisioningRunSteps).set({ status: 'ACTION_REQUIRED', safeMessage: 'Configure the server-side structured generation provider, then retry.', updatedAt: new Date() })
           .where(and(eq(provisioningRunSteps.provisioningRunId, run.runId), eq(provisioningRunSteps.stepKey, 'GENERATE_SITE')));
@@ -1120,7 +1155,7 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
         blueprintId: blueprint.id, blueprintRevision: blueprint.revision, templateVersionId: run.templateVersionId,
         knowledgePackId: packs[0].id, knowledgePackSemanticVersion: packs[0].semanticVersion,
         provisioningRunId: run.runId, generationReason: 'INITIAL_SITE', generatorVersion: this.generation.generatorVersion,
-        providerKey: 'gemini', modelKey: this.generation.model!, idempotencyKey,
+        providerKey: this.generation.provider, modelKey: this.generation.model!, idempotencyKey,
         sourceDataDigestSha256, promptTemplateVersion: SITE_GENERATION_PROMPT_TEMPLATE_VERSION,
         pageCountPlanned: (await tx.select({ id: siteBlueprintPages.id }).from(siteBlueprintPages).where(eq(siteBlueprintPages.blueprintId, blueprint.id))).length,
         requestedByAgencyUserId: run.requestedByAgencyUserId,

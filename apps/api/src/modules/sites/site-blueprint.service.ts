@@ -1244,6 +1244,7 @@ export class SiteBlueprintService {
         prioritisedStaffReferences: [],
         preferredLayoutReferences: {},
         includePageTypes: [],
+        explicitPages: [],
       },
     });
     return context;

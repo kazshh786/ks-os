@@ -19,16 +19,50 @@ import {
   pageSeoBriefDigest,
   searchStrategyDigest,
   validateSearchIntelligencePlan,
+  validateSearchIntelligenceResearchReadiness,
   type PageSeoBrief,
   type SearchIntelligenceStrategyV2,
   type SearchResearchEvidence,
 } from '@ks-os/site-generation';
 import { AgencyAuditService, type AgencyActor } from '../agency/agency.service.js';
+import { buildBlueprintSearchIntelligenceDraft } from './search-intelligence-draft.js';
 
 type Database = ReturnType<typeof getDatabase>;
 
 const fail = (statusCode: number, code: string, message: string) =>
   Object.assign(new Error(message), { statusCode, code });
+
+export function assertSearchIntelligenceResearchApprovable(input: {
+  strategy: SearchIntelligenceStrategyV2;
+  evidence: readonly SearchResearchEvidence[];
+}) {
+  const findings = validateSearchIntelligenceResearchReadiness(input);
+  if (findings.length) {
+    throw fail(409, 'SEARCH_INTELLIGENCE_RESEARCH_REQUIRED', findings[0]!.message);
+  }
+}
+
+const parseStoredResearchEvidence = (item: {
+  reference: string;
+  providerKey: string;
+  query: string;
+  market: string;
+  locale: string;
+  location: string;
+  language: string;
+  device: string;
+  capturedAt: Date;
+  expiresAt: Date | null;
+  sourceUrl: string | null;
+  sourceDigestSha256: string;
+  payloadDigestSha256: string;
+  notes: unknown;
+}) => SearchResearchEvidenceSchema.parse({
+  ...item,
+  capturedAt: item.capturedAt.toISOString(),
+  expiresAt: item.expiresAt?.toISOString(),
+  sourceUrl: item.sourceUrl ?? undefined,
+});
 
 export interface SearchIntelligenceBundle {
   strategy: SearchIntelligenceStrategyV2;
@@ -41,6 +75,56 @@ export class SearchIntelligenceService {
     private readonly database: Database = getDatabase(),
     private readonly audit = new AgencyAuditService(),
   ) {}
+
+  async createPlatformDraft(actor: AgencyActor, siteReference: string) {
+    const [context] = await this.database.select({
+      siteId: sites.id,
+      blueprintId: siteBlueprints.id,
+      blueprintReference: siteBlueprints.publicReference,
+      blueprintRevision: siteBlueprints.revision,
+      blueprintStatus: siteBlueprints.status,
+      agencyUserReference: agencyUsers.publicReference,
+    }).from(sites)
+      .innerJoin(siteBlueprints, eq(siteBlueprints.siteId, sites.id))
+      .innerJoin(agencyUsers, and(eq(agencyUsers.id, actor.agencyUserId), eq(agencyUsers.status, 'ACTIVE')))
+      .where(eq(sites.publicReference, siteReference))
+      .orderBy(desc(siteBlueprints.revision))
+      .limit(1);
+    if (!context || context.blueprintStatus !== 'APPROVED') {
+      throw fail(409, 'SEARCH_INTELLIGENCE_BLUEPRINT_NOT_APPROVED', 'Approve the exact blueprint revision before creating Search Intelligence.');
+    }
+    const [existing, latest, pages] = await Promise.all([
+      this.database.select({ reference: siteSearchStrategies.publicReference, status: siteSearchStrategies.status })
+        .from(siteSearchStrategies).where(and(
+          eq(siteSearchStrategies.siteId, context.siteId),
+          eq(siteSearchStrategies.blueprintId, context.blueprintId),
+          eq(siteSearchStrategies.blueprintRevision, context.blueprintRevision),
+        )).orderBy(desc(siteSearchStrategies.strategyVersion)).limit(1),
+      this.database.select({ version: siteSearchStrategies.strategyVersion })
+        .from(siteSearchStrategies).where(eq(siteSearchStrategies.siteId, context.siteId))
+        .orderBy(desc(siteSearchStrategies.strategyVersion)).limit(1),
+      this.database.select({
+        reference: siteBlueprintPages.publicReference,
+        pageType: siteBlueprintPages.pageType,
+        title: siteBlueprintPages.title,
+        proposedSlug: siteBlueprintPages.proposedSlug,
+        sortOrder: siteBlueprintPages.sortOrder,
+      }).from(siteBlueprintPages).where(eq(siteBlueprintPages.blueprintId, context.blueprintId)),
+    ]);
+    if (existing[0]) {
+      return { ...existing[0], pageCount: pages.length, idempotentReplay: true };
+    }
+    const bundle = buildBlueprintSearchIntelligenceDraft({
+      siteReference,
+      blueprintReference: context.blueprintReference,
+      blueprintRevision: context.blueprintRevision,
+      strategyVersion: Number(latest[0]?.version || 0) + 1,
+      generatedByAgencyUserReference: context.agencyUserReference,
+      pages,
+    });
+    const created = await this.createDraft(actor, siteReference, bundle);
+    return { ...created, idempotentReplay: false };
+  }
 
   async createDraft(actor: AgencyActor, siteReference: string, input: SearchIntelligenceBundle) {
     const strategy = SearchIntelligenceStrategyV2Schema.parse(input.strategy);
@@ -208,7 +292,7 @@ export class SearchIntelligenceService {
       .orderBy(desc(siteSearchStrategies.createdAt))
       .limit(1);
     if (!strategy) throw fail(404, 'SEARCH_INTELLIGENCE_NOT_FOUND', 'No search strategy was found for this site.');
-    const [briefs, evidence] = await Promise.all([
+    const [briefs, evidenceRows] = await Promise.all([
       this.database.select({ value: sitePageSeoBriefs.briefJson, status: sitePageSeoBriefs.status })
         .from(sitePageSeoBriefs).where(eq(sitePageSeoBriefs.strategyId, strategy.id)),
       this.database.select({
@@ -228,6 +312,11 @@ export class SearchIntelligenceService {
         notes: siteSearchResearchEvidence.notesJson,
       }).from(siteSearchResearchEvidence).where(eq(siteSearchResearchEvidence.strategyId, strategy.id)),
     ]);
+    const evidence = evidenceRows.map(parseStoredResearchEvidence);
+    const researchFindings = validateSearchIntelligenceResearchReadiness({
+      strategy: SearchIntelligenceStrategyV2Schema.parse(strategy.value),
+      evidence,
+    });
     const now = Date.now();
     return {
       strategy: strategy.value,
@@ -236,8 +325,12 @@ export class SearchIntelligenceService {
       status: strategy.status,
       outputDigestSha256: strategy.outputDigestSha256,
       approvedAt: strategy.approvedAt?.toISOString() ?? null,
+      researchReadiness: {
+        status: researchFindings.length ? 'RESEARCH_REQUIRED' as const : 'QUALIFIED' as const,
+        findings: researchFindings,
+      },
       researchFreshness: {
-        staleCount: evidence.filter(item => item.expiresAt && item.expiresAt.getTime() <= now).length,
+        staleCount: evidence.filter(item => item.expiresAt && new Date(item.expiresAt).getTime() <= now).length,
         evidenceCount: evidence.length,
       },
     };
@@ -320,16 +413,37 @@ export class SearchIntelligenceService {
         eq(siteSearchStrategies.publicReference, strategyReference),
       )).limit(1);
     if (!row) throw fail(404, 'SEARCH_INTELLIGENCE_NOT_FOUND', 'No search strategy was found for this site.');
-    if (row.status === 'APPROVED') return { reference: strategyReference, status: 'APPROVED' as const, idempotentReplay: true };
-    if (row.status !== 'DRAFT') throw fail(409, 'SEARCH_INTELLIGENCE_NOT_APPROVABLE', 'Only a draft strategy can be approved.');
-    const [briefRows, pages] = await Promise.all([
+    if (!['DRAFT', 'APPROVED'].includes(row.status)) throw fail(409, 'SEARCH_INTELLIGENCE_NOT_APPROVABLE', 'Only a draft strategy can be approved.');
+    const [briefRows, pages, evidenceRows] = await Promise.all([
       this.database.select({ id: sitePageSeoBriefs.id, value: sitePageSeoBriefs.briefJson })
         .from(sitePageSeoBriefs).where(eq(sitePageSeoBriefs.strategyId, row.id)),
       this.database.select({
         blueprintPageReference: siteBlueprintPages.publicReference,
         pageType: siteBlueprintPages.pageType,
       }).from(siteBlueprintPages).where(eq(siteBlueprintPages.blueprintId, row.blueprintId)),
+      this.database.select({
+        reference: siteSearchResearchEvidence.publicReference,
+        providerKey: siteSearchResearchEvidence.providerKey,
+        query: siteSearchResearchEvidence.query,
+        market: siteSearchResearchEvidence.market,
+        locale: siteSearchResearchEvidence.locale,
+        location: siteSearchResearchEvidence.searchLocation,
+        language: siteSearchResearchEvidence.language,
+        device: siteSearchResearchEvidence.device,
+        capturedAt: siteSearchResearchEvidence.capturedAt,
+        expiresAt: siteSearchResearchEvidence.expiresAt,
+        sourceUrl: siteSearchResearchEvidence.sourceUrl,
+        sourceDigestSha256: siteSearchResearchEvidence.sourceDigestSha256,
+        payloadDigestSha256: siteSearchResearchEvidence.payloadDigestSha256,
+        notes: siteSearchResearchEvidence.notesJson,
+      }).from(siteSearchResearchEvidence).where(eq(siteSearchResearchEvidence.strategyId, row.id)),
     ]);
+    const evidence = evidenceRows.map(parseStoredResearchEvidence);
+    assertSearchIntelligenceResearchApprovable({
+      strategy: SearchIntelligenceStrategyV2Schema.parse(row.value),
+      evidence,
+    });
+    if (row.status === 'APPROVED') return { reference: strategyReference, status: 'APPROVED' as const, idempotentReplay: true };
     const approvedAt = new Date();
     const approvedAtIso = approvedAt.toISOString();
     const approvedStrategy = SearchIntelligenceStrategyV2Schema.parse({
@@ -347,6 +461,7 @@ export class SearchIntelligenceService {
     const findings = validateSearchIntelligencePlan({
       strategy: approvedStrategy,
       briefs: approvedBriefs,
+      evidence,
       plannedPages: pages.map(page => {
         const matching = approvedBriefs.find(brief => brief.blueprintPageReference === page.blueprintPageReference);
         return {

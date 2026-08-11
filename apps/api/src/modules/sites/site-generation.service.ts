@@ -23,6 +23,7 @@ import {
   siteGenerationPageRuns,
   siteGenerationRuns,
   sitePageSeoBriefs,
+  siteSearchResearchEvidence,
   siteSearchStrategies,
   siteJobEvents,
   siteJobs,
@@ -48,7 +49,9 @@ import {
   searchStrategyDigest,
   validateSearchIntelligencePlan,
   PageSeoBriefSchema,
+  SearchResearchEvidenceSchema,
   SearchIntelligenceStrategyV2Schema,
+  isSiteGenerationProviderReady,
   parseSiteGenerationConfig,
   type GenerationRunRequestSchema,
 } from '@ks-os/site-generation';
@@ -103,14 +106,14 @@ export class AgencySiteGenerationService {
     input: GenerationRunRequest,
   ) {
     const provider = parseSiteGenerationConfig(this.environment);
-    if (!provider.enabled || !provider.model) {
+    if (!isSiteGenerationProviderReady(provider)) {
       throw fail(
         503,
         'SITE_GENERATION_DISABLED',
         'Structured generation is not enabled with a complete server-side provider configuration.',
       );
     }
-    const modelKey = provider.model;
+    const modelKey = provider.model!;
     const [context] = await this.database
       .select({
         tenantId: tenants.id,
@@ -771,17 +774,46 @@ export class AgencySiteGenerationService {
     if (searchStrategyDigest(strategy) !== pinned.digestSha256) {
       throw fail(409, 'SEARCH_INTELLIGENCE_DIGEST_MISMATCH', 'The approved search strategy digest does not match its governed content.');
     }
-    const briefRows = await this.database.select({ value: sitePageSeoBriefs.briefJson })
-      .from(sitePageSeoBriefs)
-      .where(and(
-        eq(sitePageSeoBriefs.strategyId, pinned.id),
-        eq(sitePageSeoBriefs.status, 'APPROVED'),
-      ));
+    const [briefRows, evidenceRows] = await Promise.all([
+      this.database.select({ value: sitePageSeoBriefs.briefJson })
+        .from(sitePageSeoBriefs)
+        .where(and(
+          eq(sitePageSeoBriefs.strategyId, pinned.id),
+          eq(sitePageSeoBriefs.status, 'APPROVED'),
+        )),
+      this.database.select({
+        reference: siteSearchResearchEvidence.publicReference,
+        providerKey: siteSearchResearchEvidence.providerKey,
+        query: siteSearchResearchEvidence.query,
+        market: siteSearchResearchEvidence.market,
+        locale: siteSearchResearchEvidence.locale,
+        location: siteSearchResearchEvidence.searchLocation,
+        language: siteSearchResearchEvidence.language,
+        device: siteSearchResearchEvidence.device,
+        capturedAt: siteSearchResearchEvidence.capturedAt,
+        expiresAt: siteSearchResearchEvidence.expiresAt,
+        sourceUrl: siteSearchResearchEvidence.sourceUrl,
+        sourceDigestSha256: siteSearchResearchEvidence.sourceDigestSha256,
+        payloadDigestSha256: siteSearchResearchEvidence.payloadDigestSha256,
+        notes: siteSearchResearchEvidence.notesJson,
+      }).from(siteSearchResearchEvidence).where(and(
+        eq(siteSearchResearchEvidence.tenantId, context.tenantId),
+        eq(siteSearchResearchEvidence.siteId, context.siteId),
+        eq(siteSearchResearchEvidence.strategyId, pinned.id),
+      )),
+    ]);
     const briefs = briefRows.map(row => PageSeoBriefSchema.parse(row.value));
+    const evidence = evidenceRows.map(row => SearchResearchEvidenceSchema.parse({
+      ...row,
+      capturedAt: row.capturedAt.toISOString(),
+      expiresAt: row.expiresAt?.toISOString(),
+      sourceUrl: row.sourceUrl ?? undefined,
+    }));
     const byBlueprintPage = new Map(briefs.map(brief => [brief.blueprintPageReference, brief]));
     const findings = validateSearchIntelligencePlan({
       strategy,
       briefs,
+      evidence,
       plannedPages: blueprintPages.map(page => ({
         blueprintPageReference: page.publicReference,
         pageReference: byBlueprintPage.get(page.publicReference)?.pageReference ?? '',
@@ -791,7 +823,7 @@ export class AgencySiteGenerationService {
     if (findings.length) {
       throw fail(409, 'SEARCH_INTELLIGENCE_NOT_READY', `V2 generation is blocked by: ${findings.map(item => item.code).join(', ')}.`);
     }
-    return { ...pinned, strategy, briefs };
+    return { ...pinned, strategy, briefs, evidence };
   }
 
   private async assertTemplateLicence(context: {

@@ -17,6 +17,7 @@ import { OperationsIssueReporter } from '../operations/operations.issue-service.
 import { deriveReviewInvitationToken as deriveReputationReviewInvitationToken } from '../reputation/reputation.security.js';
 import { env } from '../../config/env.js';
 import { deriveReviewInvitationToken } from '@ks-os/site-review';
+import { deriveFactFindingInvitationToken } from '@ks-os/fact-finding';
 import {
   appointmentNotificationCancellationCode,
   isPermanentEmailFailure,
@@ -317,16 +318,24 @@ export class EmailService {
           email.template_key === 'fact-finding-invitation'
           || email.template_key === 'fact-finding-notification'
         ) {
-          const invitationToken = String(templateData.invitationToken ?? '');
+          const invitationReference = String(templateData.invitationReference ?? '');
+          const questionnaireReference = String(templateData.questionnaireReference ?? '');
+          const participantReference = String(templateData.participantReference ?? '');
+          const secret = process.env.FACT_FINDING_INVITATION_SECRET;
           const origin = process.env.FACT_FINDING_CLIENT_ORIGIN;
-          if (!origin || !invitationToken) {
+          if (!origin || !secret || secret.length < 32 || !invitationReference || !questionnaireReference || !participantReference) {
             throw new Error('FACT_FINDING_INVITATION_LINK_NOT_CONFIGURED');
           }
+          const invitationToken = deriveFactFindingInvitationToken({
+            invitationReference,
+            questionnaireReference,
+            participantReference,
+            secret,
+          });
           const clientRoute = origin.replace(/\/$/, '').endsWith('/fact-finding')
             ? origin.replace(/\/$/, '')
             : `${origin.replace(/\/$/, '')}/fact-finding`;
           templateData.questionnaireUrl = `${clientRoute}?invitation=${encodeURIComponent(invitationToken)}`;
-          delete templateData.invitationToken;
         }
 
         const [current] = await db.select({ status: emailOutbox.status })

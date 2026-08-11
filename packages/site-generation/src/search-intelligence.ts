@@ -574,6 +574,37 @@ export interface SearchIntelligenceFinding {
   pageReference?: string;
 }
 
+export const SEARCH_INTELLIGENCE_PLACEHOLDER_PROVIDER_KEY = 'ks-os-governed-draft';
+export const SEARCH_INTELLIGENCE_PLACEHOLDER_MODEL_KEY = 'blueprint-context-v1';
+export const SEARCH_INTELLIGENCE_RESEARCH_REQUIRED = 'SEARCH_INTELLIGENCE_RESEARCH_REQUIRED';
+
+function strategyUsesResearchEvidence(value: unknown, references: ReadonlySet<string>): boolean {
+  if (typeof value === 'string') return references.has(value);
+  if (Array.isArray(value)) return value.some(item => strategyUsesResearchEvidence(item, references));
+  if (!value || typeof value !== 'object') return false;
+  return Object.entries(value).some(([key, item]) => key !== 'researchEvidenceReferences'
+    && strategyUsesResearchEvidence(item, references));
+}
+
+export function validateSearchIntelligenceResearchReadiness(input: {
+  strategy: SearchIntelligenceStrategyV2;
+  evidence?: readonly SearchResearchEvidence[];
+}): SearchIntelligenceFinding[] {
+  const evidenceReferences = new Set((input.evidence ?? []).map(item => item.reference));
+  const requiredReferences = input.strategy.provenance.researchEvidenceReferences;
+  const placeholder = input.strategy.provenance.providerKey === SEARCH_INTELLIGENCE_PLACEHOLDER_PROVIDER_KEY
+    || input.strategy.provenance.modelKey === SEARCH_INTELLIGENCE_PLACEHOLDER_MODEL_KEY;
+  const missingEvidence = requiredReferences.length === 0
+    || requiredReferences.some(reference => !evidenceReferences.has(reference))
+    || !strategyUsesResearchEvidence(input.strategy, new Set(requiredReferences));
+  if (!placeholder && !missingEvidence) return [];
+  return [{
+    code: SEARCH_INTELLIGENCE_RESEARCH_REQUIRED,
+    blocking: true,
+    message: 'Blueprint context is a planning draft only. Governed search research and its referenced evidence are required before approval.',
+  }];
+}
+
 export function searchStrategyDigest(strategy: SearchIntelligenceStrategyV2): string {
   const { approvedAt: _approvedAt, approvedByAgencyUserReference: _approvedBy, status: _status, provenance, ...content } = strategy;
   const { outputDigestSha256: _outputDigest, ...sourceProvenance } = provenance;
@@ -599,9 +630,10 @@ export function assertApprovedPageSeoBriefUnchanged(input: {
 export function validateSearchIntelligencePlan(input: {
   strategy: SearchIntelligenceStrategyV2;
   briefs: readonly PageSeoBrief[];
+  evidence?: readonly SearchResearchEvidence[];
   plannedPages: ReadonlyArray<{ blueprintPageReference: string; pageReference: string; pageType: string }>;
 }): SearchIntelligenceFinding[] {
-  const findings: SearchIntelligenceFinding[] = [];
+  const findings: SearchIntelligenceFinding[] = validateSearchIntelligenceResearchReadiness(input);
   const pageByReference = new Map(input.plannedPages.map(page => [page.pageReference, page]));
   const planned = new Set(pageByReference.keys());
   const briefByPage = new Map<string, PageSeoBrief>();

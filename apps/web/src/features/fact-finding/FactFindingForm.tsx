@@ -4,6 +4,7 @@ import { FormRenderer } from '../forms/FormRenderer';
 
 type Question = {
   reference: string;
+  sectionReference?: string;
   label: string;
   guidance?: string;
   questionType: string;
@@ -12,10 +13,13 @@ type Question = {
   conditions?: Array<{ questionReference: string; operator: string; value?: unknown }>;
   options?: Array<{ value: string; label: string }>;
   displayOrder?: number;
+  dataClassification?: 'PUBLIC_FACT' | 'PRIVATE_OPERATIONAL' | 'CONSENT' | 'EVIDENCE' | 'CONTENT_PREFERENCE' | 'ASSET';
+  consentType?: string;
 };
 
 type Questionnaire = {
   tenantName?: string;
+  sections?: Array<{ reference: string; key: string; title: string; description?: string; displayOrder: number }>;
   questions: Question[];
   completion?: { completionPercentage?: number };
 };
@@ -165,7 +169,15 @@ export function FactFindingForm({ questionnaire, answers, onChange, onSave, onSu
   const [busy, setBusy] = useState(false);
   const [operationError, setOperationError] = useState('');
   const visibleQuestions = useMemo(() => questionnaire.questions.filter(question => visible(question, answers)).sort((a, b) => Number(a.displayOrder || 0) - Number(b.displayOrder || 0)), [questionnaire.questions, answers]);
-  const pages = useMemo(() => pageDefinitions.map(page => ({ ...page, questions: visibleQuestions.filter(question => pageKey(question) === page.key) })).filter(page => page.questions.length), [visibleQuestions]);
+  const pages = useMemo(() => {
+    if (questionnaire.sections?.length) {
+      return [...questionnaire.sections]
+        .sort((left, right) => left.displayOrder - right.displayOrder)
+        .map(section => ({ id: section.reference, key: section.key, title: section.title, description: section.description || '', questions: visibleQuestions.filter(question => question.sectionReference === section.reference) }))
+        .filter(page => page.questions.length);
+    }
+    return pageDefinitions.map(page => ({ ...page, questions: visibleQuestions.filter(question => pageKey(question) === page.key) })).filter(page => page.questions.length);
+  }, [questionnaire.sections, visibleQuestions]);
   const activePage = pages[Math.min(pageIndex, Math.max(0, pages.length - 1))];
   const pageQuestions = activePage?.questions || [];
   const normalQuestions = pageQuestions.filter(question => !customTypes.has(question.questionType));

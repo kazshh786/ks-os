@@ -488,6 +488,58 @@ test('31. Google Stitch does not require an Envato licence', () => {
   ), false);
 });
 
+test('explicitly requested About page is preserved and missing story is blocking', () => {
+  const base = fixture();
+  const input = fixture({
+    marketingPageLimit: 3,
+    services: [],
+    locations: [],
+    staff: [],
+    business: { ...base.business, profileComplete: false },
+    request: BlueprintGenerationRequestSchema.parse({
+      templateVersionReference: base.template.reference,
+      preferences: { includePageTypes: ['ABOUT'] },
+    }),
+  });
+  const plan = generateBlueprintPlan(input);
+  assert.equal(plan.pages.some(page => page.pageType === 'ABOUT'), true);
+  assert.ok(plan.actionItems.some(item => item.code === 'ABOUT_DATA_INCOMPLETE' && item.severity === 'BLOCKING'));
+});
+
+test('requested pages are not silently removed when they exceed the marketing allowance', () => {
+  const base = fixture();
+  const input = fixture({
+    marketingPageLimit: 2,
+    request: BlueprintGenerationRequestSchema.parse({
+      templateVersionReference: base.template.reference,
+      preferences: { includePageTypes: ['ABOUT', 'CONTACT', 'FAQ'] },
+    }),
+  });
+  const plan = generateBlueprintPlan(input);
+  assert.deepEqual(
+    new Set(plan.pages.filter(page => ['ABOUT', 'CONTACT', 'FAQ'].includes(page.pageType)).map(page => page.pageType)),
+    new Set(['ABOUT', 'CONTACT', 'FAQ']),
+  );
+  assert.equal(plan.validation.valid, false);
+});
+
+test('an explicitly named editorial page is retained as required architecture', () => {
+  const base = fixture();
+  const input = fixture({
+    request: BlueprintGenerationRequestSchema.parse({
+      templateVersionReference: base.template.reference,
+      preferences: {
+        explicitPages: [{ title: 'Advanced skin health guide', pageType: 'GUIDE' }],
+      },
+    }),
+  });
+  const plan = generateBlueprintPlan(input);
+  const page = plan.pages.find(item => item.titleLabel === 'Advanced skin health guide');
+  assert.ok(page);
+  assert.equal(page.pageType, 'GUIDE');
+  assert.equal(page.plannedSlug.includes('advanced-skin-health-guide'), true);
+});
+
 test('32. Internal template does not require an Envato licence', () => {
   const input = fixture();
   input.template = { ...input.template, sourceType: 'INTERNAL', licensedForSite: false };
