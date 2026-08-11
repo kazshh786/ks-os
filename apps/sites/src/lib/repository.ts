@@ -27,6 +27,7 @@ import {
   validatePublishedSnapshot,
   type PublishedSiteSnapshot,
 } from '@ks-os/site-schema';
+import type { PublicLiveSiteData } from '@ks-os/live-site-intelligence';
 
 export interface ResolvedPublicSite {
   siteReference: string;
@@ -46,6 +47,7 @@ export interface PublicSiteRepository {
     siteReference: string,
     versionReference: string,
   ): Promise<PublishedSiteSnapshot | null>;
+  resolveLiveSiteData?(snapshot: PublishedSiteSnapshot): Promise<PublicLiveSiteData>;
   isPreviewTokenRevoked(input: {
     jti: string;
     siteReference: string;

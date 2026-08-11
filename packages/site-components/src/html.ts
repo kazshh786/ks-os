@@ -6,6 +6,7 @@ import type {
   SiteAction,
   SiteAssetReference,
 } from '@ks-os/site-schema';
+import type { PublicLiveSiteData } from '@ks-os/live-site-intelligence';
 
 declare const safeHtmlBrand: unique symbol;
 export type SafeHtml = string & { readonly [safeHtmlBrand]: true };
@@ -30,10 +31,32 @@ export interface ComponentRenderContext {
   snapshot: PublishedSiteSnapshot;
   page: PublishedPageSnapshot;
   pagePathByReference: Readonly<Record<string, string>>;
+  /** Server-resolved, anonymous-safe operational facts. Never contains PERSONAL data. */
+  live?: PublicLiveSiteData;
 }
 
 function queryValue(value: string) {
   return encodeURIComponent(value);
+}
+
+function contextualBookingAction(
+  action: Extract<SiteAction, { type: 'KS_OS_BOOKING' }>,
+  context: ComponentRenderContext,
+) {
+  const service = context.page.sections.find(section => section.type === 'SERVICE_DETAILS');
+  const staff = context.page.sections.find(section => section.type === 'STAFF_PROFILE');
+  const location = context.page.sections.find(section =>
+    section.type === 'LOCATION' || section.type === 'OPENING_HOURS');
+  return {
+    ...action,
+    serviceReference: action.serviceReference
+      ?? (service?.type === 'SERVICE_DETAILS' ? service.serviceReference : undefined),
+    staffReference: action.staffReference
+      ?? (staff?.type === 'STAFF_PROFILE' ? staff.staffReference : undefined),
+    locationReference: action.locationReference
+      ?? (location && (location.type === 'LOCATION' || location.type === 'OPENING_HOURS')
+        ? location.locationReference : undefined),
+  };
 }
 
 export function actionHref(
@@ -42,11 +65,12 @@ export function actionHref(
 ): string {
   switch (action.type) {
     case 'KS_OS_BOOKING': {
+      const resolved = contextualBookingAction(action, context);
       const query: string[] = [];
-      if (action.serviceReference) query.push(`service=${queryValue(action.serviceReference)}`);
-      if (action.locationReference) query.push(`location=${queryValue(action.locationReference)}`);
-      if (action.staffReference) query.push(`staff=${queryValue(action.staffReference)}`);
-      if (action.campaignReference) query.push(`campaign=${queryValue(action.campaignReference)}`);
+      if (resolved.serviceReference) query.push(`service=${queryValue(resolved.serviceReference)}`);
+      if (resolved.locationReference) query.push(`location=${queryValue(resolved.locationReference)}`);
+      if (resolved.staffReference) query.push(`staff=${queryValue(resolved.staffReference)}`);
+      if (resolved.campaignReference) query.push(`campaign=${queryValue(resolved.campaignReference)}`);
       return `/book${query.length ? `?${query.join('&')}` : ''}`;
     }
     case 'INTERNAL_PAGE': {
@@ -66,11 +90,21 @@ export function renderAction(
   context: ComponentRenderContext,
   className = 'site-action',
 ): SafeHtml {
-  if (action.type === 'KS_OS_BOOKING' && action.serviceReference) {
-    const service = context.snapshot.services.find(
-      candidate => candidate.publicReference === action.serviceReference,
-    );
-    if (!service?.bookingEnabled) {
+  if (action.type === 'KS_OS_BOOKING') {
+    const resolved = contextualBookingAction(action, context);
+    const liveAvailable = context.live && !context.live.telemetry.fallbackActivated;
+    const serviceEligible = resolved.serviceReference
+      ? liveAvailable
+        ? context.live?.services.find(candidate => candidate.publicReference === resolved.serviceReference)?.bookingEligible
+        : context.snapshot.services.find(candidate => candidate.publicReference === resolved.serviceReference)?.bookingEnabled
+      : true;
+    const staffEligible = resolved.staffReference && liveAvailable
+      ? context.live?.staff.find(candidate => candidate.publicReference === resolved.staffReference)?.bookingEligible
+      : true;
+    const locationEligible = resolved.locationReference && liveAvailable
+      ? context.live?.locations.find(candidate => candidate.publicReference === resolved.locationReference)?.bookingEligible
+      : true;
+    if (serviceEligible === false || staffEligible === false || locationEligible === false) {
       return html`<span class="${escapeHtml(className)} unavailable" aria-disabled="true">Currently unavailable</span>`;
     }
   }

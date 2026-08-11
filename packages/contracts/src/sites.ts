@@ -158,6 +158,49 @@ export const TemplateSourceTypeSchema = z.enum([
 export type TemplateSourceType = z.infer<typeof TemplateSourceTypeSchema>;
 
 export const PublicReferenceSchema = z.string().uuid();
+export const LiveConditionKeySchema = z.enum([
+  'SERVICE_EXISTS',
+  'SERVICE_BOOKABLE',
+  'STAFF_ACTIVE',
+  'STAFF_BOOKABLE',
+  'LOCATION_ACTIVE',
+  'LOCATION_OPEN',
+  'CAMPAIGN_ACTIVE',
+  'TESTIMONIAL_AVAILABLE',
+  'WAITLIST_AVAILABLE',
+  'AVAILABILITY_KNOWN',
+  'APPOINTMENTS_AVAILABLE',
+]);
+export type LiveConditionKey = z.infer<typeof LiveConditionKeySchema>;
+
+export const LiveConditionFactSchema = z.object({
+  key: LiveConditionKeySchema,
+  subjectReference: PublicReferenceSchema.optional(),
+}).strict();
+export type LiveConditionFact = z.infer<typeof LiveConditionFactSchema>;
+
+export const LiveConditionRuleV1Schema = z.object({
+  version: z.literal(1),
+  all: z.array(LiveConditionFactSchema).max(20).default([]),
+  any: z.array(LiveConditionFactSchema).max(20).default([]),
+  none: z.array(LiveConditionFactSchema).max(20).default([]),
+}).strict().superRefine((rule, context) => {
+  if (!rule.all.length && !rule.any.length && !rule.none.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'A live rule requires at least one controlled fact.',
+    });
+  }
+  const facts = [...rule.all, ...rule.any, ...rule.none];
+  const keys = facts.map(fact => `${fact.key}:${fact.subjectReference ?? '*'}`);
+  if (new Set(keys).size !== keys.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'A live rule cannot repeat a fact.',
+    });
+  }
+});
+export type LiveConditionRuleV1 = z.infer<typeof LiveConditionRuleV1Schema>;
 export const SiteSlugSchema = z
   .string()
   .min(1)

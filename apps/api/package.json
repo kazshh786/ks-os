@@ -28,6 +28,7 @@
     "@ks-os/database": "workspace:*",
     "@ks-os/email": "workspace:*",
     "@ks-os/fact-finding": "workspace:*",
+    "@ks-os/live-site-intelligence": "workspace:*",
     "@ks-os/notifications": "workspace:*",
     "@ks-os/site-blueprints": "workspace:*",
     "@ks-os/site-components": "workspace:*",

@@ -8,10 +8,12 @@ import type {
 } from '@ks-os/site-schema';
 import { SiteSectionSchema } from '@ks-os/site-schema';
 import {
+  actionHref,
   componentRegistrySummary,
   listSiteComponents,
   renderSection,
   resolveSiteComponent,
+  validateSiteSectionComponent,
   validateSiteComponentDefinition,
   type ComponentRenderContext,
   type SiteComponentDefinition,
@@ -176,4 +178,109 @@ test('grouped navigation renders accessible native disclosure controls', () => {
   const markup = renderSection(sectionFor('HEADER'), { ...context, snapshot: grouped });
   assert.match(markup, /<details><summary>Services<\/summary>/);
   assert.match(markup, /aria-label="Mobile navigation"/);
+});
+
+test('registry exposes governed live capability and never enables PERSONAL output', () => {
+  const serviceComponent = resolveSiteComponent({ sectionType: 'SERVICE_DETAILS' });
+  assert.ok(serviceComponent.liveDataCapabilities.includes('SERVICE_STATE'));
+  assert.ok(serviceComponent.supportedConditions.includes('SERVICE_BOOKABLE'));
+  assert.equal(serviceComponent.conditionalVisibility, 'NEVER');
+  assert.equal(resolveSiteComponent({ sectionType: 'ANNOUNCEMENT_BAR' }).conditionalVisibility, 'OPTIONAL_LIVE_SECTION');
+  assert.equal(listSiteComponents().some(component => component.sectionType !== 'ANNOUNCEMENT_BAR'
+    && component.conditionalVisibility !== 'NEVER'), false);
+  assert.equal(serviceComponent.fallbackBehaviour, 'RENDER_PUBLISHED');
+  assert.equal(serviceComponent.personalisationMode, 'PUBLIC_ONLY');
+  assert.equal(listSiteComponents().some(component => component.cacheClass === 'PERSONAL'), false);
+});
+
+test('server rendering uses safe live price and bookability with a published fallback', () => {
+  const serviceSection = SiteSectionSchema.parse({
+    ...sectionFor('SERVICE_DETAILS'),
+    showIf: {
+      version: 1,
+      all: [{ key: 'SERVICE_BOOKABLE', subjectReference: serviceReference }],
+    },
+  });
+  const servicePage = { ...page, pageType: 'SERVICE_DETAIL', sections: [serviceSection] } as PublishedPageSnapshot;
+  const live = {
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: '77777777-7777-4777-8777-777777777777',
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: serviceReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      durationMinutes: 75,
+      publicPrice: { amountMinor: 9500, currency: 'GBP', formatted: '£95.00' },
+      staffReferences: [staffReference],
+      locationReferences: [locationReference],
+      waitlistEligible: true,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  } as const;
+  const liveMarkup = renderSection(serviceSection, { ...context, page: servicePage, live });
+  assert.match(liveMarkup, /£95\.00/);
+  assert.match(liveMarkup, /75 minutes/);
+  assert.match(liveMarkup, /<h1>Service detail<\/h1>/);
+  assert.match(liveMarkup, /Currently unavailable/);
+
+  const fallbackMarkup = renderSection(serviceSection, {
+    ...context,
+    page: servicePage,
+    live: { ...live, services: [], telemetry: { ...live.telemetry, fallbackActivated: true } },
+  });
+  assert.doesNotMatch(fallbackMarkup, /£95\.00/);
+  assert.match(fallbackMarkup, new RegExp(snapshot.services[0]!.name));
+});
+
+test('generic booking actions inherit stable service page context server-side', () => {
+  const serviceSection = sectionFor('SERVICE_DETAILS');
+  const servicePage = { ...page, pageType: 'SERVICE_DETAIL', sections: [serviceSection] } as PublishedPageSnapshot;
+  assert.equal(
+    actionHref({ type: 'KS_OS_BOOKING', label: 'Book now' }, { ...context, page: servicePage }),
+    `/book?service=${serviceReference}`,
+  );
+});
+
+test('unsupported section/component conditions fail deterministic validation', () => {
+  const conditional = SiteSectionSchema.parse({
+    ...sectionFor('SERVICE_DETAILS'),
+    showIf: {
+      version: 1,
+      all: [{ key: 'STAFF_ACTIVE', subjectReference: staffReference }],
+    },
+  });
+  const component = resolveSiteComponent({ sectionType: 'SERVICE_DETAILS' });
+  assert.deepEqual(validateSiteSectionComponent(conditional, component), [
+    'Component does not support condition STAFF_ACTIVE.',
+  ]);
+  const servicePage = { ...page, pageType: 'SERVICE_DETAIL', sections: [conditional] } as PublishedPageSnapshot;
+  assert.throws(
+    () => renderSection(conditional, { ...context, page: servicePage }),
+    /does not support condition STAFF_ACTIVE/,
+  );
+});
+
+test('explicitly optional live sections hide on false and render published fallback on unknown', () => {
+  const conditional = SiteSectionSchema.parse({
+    ...sectionFor('ANNOUNCEMENT_BAR'),
+    showIf: {
+      version: 1,
+      all: [{ key: 'CAMPAIGN_ACTIVE', subjectReference: serviceReference }],
+    },
+  });
+  const noLive = renderSection(conditional, context);
+  assert.match(noLive, /Appointments are available this week/);
+  const disabledLive = {
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: '77777777-7777-4777-8777-777777777777',
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [], staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  } as const;
+  assert.equal(String(renderSection(conditional, { ...context, live: disabledLive })), '');
 });

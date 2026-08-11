@@ -141,6 +141,9 @@ export const services = pgTable('services', {
   price: integer('price').notNull(),
   discount: integer('discount').default(0).notNull(),
   requiresDeposit: boolean('requires_deposit').default(false).notNull(),
+  publicPriceEnabled: boolean('public_price_enabled').default(false).notNull(),
+  waitlistEnabled: boolean('waitlist_enabled').default(false).notNull(),
+  temporaryUnavailableUntil: timestamp('temporary_unavailable_until', { withTimezone: true }),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -4323,4 +4326,134 @@ export const siteDomainEvents = pgTable('site_domain_events', {
   domainIdx: index('site_domain_events_domain_idx').on(table.domainId, table.occurredAt),
   siteIdx: index('site_domain_events_site_idx').on(table.tenantId, table.siteId, table.occurredAt),
   agencyUserIdx: index('site_domain_events_agency_user_idx').on(table.agencyUserId),
+}));
+
+// Live Site Intelligence V1. These records are server-only operational facts;
+// immutable marketing/SEO content remains in published render snapshots.
+export const siteLocationOperatingHours = pgTable('site_location_operating_hours', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  locationId: uuid('location_id').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+  dayOfWeek: integer('day_of_week').notNull(),
+  intervalNumber: integer('interval_number').default(1).notNull(),
+  opensAt: time('opens_at').notNull(),
+  closesAt: time('closes_at').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  locationDayUnique: uniqueIndex('site_location_operating_hours_location_day_unique')
+    .on(table.locationId, table.dayOfWeek, table.intervalNumber),
+  tenantLocationIdx: index('site_location_operating_hours_tenant_location_idx')
+    .on(table.tenantId, table.locationId, table.dayOfWeek),
+}));
+
+export const siteLocationClosures = pgTable('site_location_closures', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  locationId: uuid('location_id').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+  startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+  endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+  publicLabel: varchar('public_label', { length: 120 }).default('Temporarily closed').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  activeIdx: index('site_location_closures_active_idx').on(table.tenantId, table.locationId, table.startsAt, table.endsAt),
+}));
+
+export const siteLiveAvailabilitySummaries = pgTable('site_live_availability_summaries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+  staffUserId: uuid('staff_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  locationId: uuid('location_id').references(() => locations.id, { onDelete: 'cascade' }),
+  state: varchar('state', { length: 30 }).notNull(),
+  publicMessage: varchar('public_message', { length: 160 }).notNull(),
+  nextAvailableAt: timestamp('next_available_at', { withTimezone: true }),
+  computedAt: timestamp('computed_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  siteExpiryIdx: index('site_live_availability_summaries_site_expiry_idx').on(table.tenantId, table.siteId, table.expiresAt),
+  serviceIdx: index('site_live_availability_summaries_service_idx').on(table.serviceId, table.expiresAt),
+  staffIdx: index('site_live_availability_summaries_staff_idx').on(table.staffUserId),
+  locationIdx: index('site_live_availability_summaries_location_idx').on(table.locationId),
+}));
+
+export const siteLiveCampaigns = pgTable('site_live_campaigns', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  status: varchar('status', { length: 20 }).default('DRAFT').notNull(),
+  audience: varchar('audience', { length: 20 }).default('PUBLIC').notNull(),
+  message: varchar('message', { length: 240 }).notNull(),
+  placement: varchar('placement', { length: 30 }).notNull(),
+  actionLabel: varchar('action_label', { length: 80 }).notNull(),
+  serviceReference: uuid('service_reference'),
+  locationReference: uuid('location_reference'),
+  staffReference: uuid('staff_reference'),
+  startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+  endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+  createdByAgencyUserId: uuid('created_by_agency_user_id').notNull().references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  approvedByAgencyUserId: uuid('approved_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  activeIdx: index('site_live_campaigns_active_idx').on(table.tenantId, table.siteId, table.status, table.startsAt, table.endsAt),
+  createdByIdx: index('site_live_campaigns_created_by_idx').on(table.createdByAgencyUserId),
+  approvedByIdx: index('site_live_campaigns_approved_by_idx').on(table.approvedByAgencyUserId),
+}));
+
+export const siteOperationalChangeEvents = pgTable('site_operational_change_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  entityType: varchar('entity_type', { length: 30 }).notNull(),
+  entityReference: uuid('entity_reference').notNull(),
+  changeKind: varchar('change_kind', { length: 50 }).notNull(),
+  changedFields: text('changed_fields').array().notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+}, table => ({
+  pendingIdx: index('site_operational_change_events_pending_idx').on(table.tenantId, table.siteId, table.processedAt, table.occurredAt),
+}));
+
+export const siteImpactAssessments = pgTable('site_impact_assessments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  changeEventId: uuid('change_event_id').notNull().unique().references(() => siteOperationalChangeEvents.id, { onDelete: 'restrict' }),
+  classification: varchar('classification', { length: 30 }).notNull(),
+  assessmentJson: jsonb('assessment_json').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  siteIdx: index('site_impact_assessments_site_idx').on(table.tenantId, table.siteId, table.createdAt),
+}));
+
+export const siteChangeProposals = pgTable('site_change_proposals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  assessmentId: uuid('assessment_id').notNull().unique().references(() => siteImpactAssessments.id, { onDelete: 'restrict' }),
+  status: varchar('status', { length: 20 }).default('DRAFT').notNull(),
+  summary: varchar('summary', { length: 500 }).notNull(),
+  affectedPageReferencesJson: jsonb('affected_page_references_json').default([]).notNull(),
+  recommendationsJson: jsonb('recommendations_json').default([]).notNull(),
+  requiresHumanApproval: boolean('requires_human_approval').default(true).notNull(),
+  reviewedByAgencyUserId: uuid('reviewed_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  reviewQueueIdx: index('site_change_proposals_review_queue_idx').on(table.tenantId, table.siteId, table.status, table.createdAt),
+  reviewerIdx: index('site_change_proposals_reviewer_idx').on(table.reviewedByAgencyUserId),
 }));
