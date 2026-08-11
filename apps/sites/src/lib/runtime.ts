@@ -175,11 +175,13 @@ function renderContext(
   snapshot: PublishedSiteSnapshot,
   page: PublishedSiteSnapshot['pages'][number],
   live?: PublicLiveSiteData,
+  recommendations?: ComponentRenderContext['recommendations'],
 ): ComponentRenderContext {
   return {
     snapshot,
     page,
     ...(live ? { live } : {}),
+    ...(recommendations ? { recommendations } : {}),
     pagePathByReference: Object.fromEntries(
       snapshot.pages
         .filter((candidate) => candidate.active)
@@ -242,10 +244,15 @@ export async function handlePublicPageRequest(input: {
       }
       return notFound(resolved.snapshot.business.name);
     }
-    const live = input.repository.resolveLiveSiteData
-      ? await input.repository.resolveLiveSiteData(resolved.snapshot).catch(() => undefined)
-      : undefined;
-    const context = renderContext(resolved.snapshot, page, live);
+    const [live, recommendations] = await Promise.all([
+      input.repository.resolveLiveSiteData
+        ? input.repository.resolveLiveSiteData(resolved.snapshot).catch(() => undefined)
+        : undefined,
+      input.repository.resolvePublishedRecommendations
+        ? input.repository.resolvePublishedRecommendations(resolved.snapshot).catch(() => undefined)
+        : undefined,
+    ]);
+    const context = renderContext(resolved.snapshot, page, live, recommendations);
     const content = renderRegisteredSitePage(page, context);
     const structuredData = generateSiteStructuredData(resolved.snapshot, page);
     return applyHostRobotsPolicy(htmlResponse(
@@ -441,7 +448,15 @@ export async function handlePreviewRequest(input: {
       (candidate) => candidate.path === path && candidate.pageType !== 'BOOKING',
     );
     if (!page) return notFound();
-    const context = renderContext(snapshot, page);
+    const [live, recommendations] = await Promise.all([
+      input.repository.resolveLiveSiteData
+        ? input.repository.resolveLiveSiteData(snapshot).catch(() => undefined)
+        : undefined,
+      input.repository.resolvePublishedRecommendations
+        ? input.repository.resolvePublishedRecommendations(snapshot).catch(() => undefined)
+        : undefined,
+    ]);
+    const context = renderContext(snapshot, page, live, recommendations);
     const content = renderRegisteredSitePage(page, context);
     const structuredData = generateSiteStructuredData(snapshot, page);
     const response = htmlResponse(

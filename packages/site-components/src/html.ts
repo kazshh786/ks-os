@@ -6,7 +6,10 @@ import type {
   SiteAction,
   SiteAssetReference,
 } from '@ks-os/site-schema';
-import type { PublicLiveSiteData } from '@ks-os/live-site-intelligence';
+import type {
+  GovernedRecommendation,
+  PublicLiveSiteData,
+} from '@ks-os/live-site-intelligence';
 
 declare const safeHtmlBrand: unique symbol;
 export type SafeHtml = string & { readonly [safeHtmlBrand]: true };
@@ -33,6 +36,8 @@ export interface ComponentRenderContext {
   pagePathByReference: Readonly<Record<string, string>>;
   /** Server-resolved, anonymous-safe operational facts. Never contains PERSONAL data. */
   live?: PublicLiveSiteData;
+  /** Exact internal-link recommendations pinned to this site version. */
+  recommendations?: readonly GovernedRecommendation[];
 }
 
 function queryValue(value: string) {
@@ -93,9 +98,12 @@ export function renderAction(
   if (action.type === 'KS_OS_BOOKING') {
     const resolved = contextualBookingAction(action, context);
     const liveAvailable = context.live && !context.live.telemetry.fallbackActivated;
+    const liveService = resolved.serviceReference && liveAvailable
+      ? context.live?.services.find(candidate => candidate.publicReference === resolved.serviceReference)
+      : undefined;
     const serviceEligible = resolved.serviceReference
       ? liveAvailable
-        ? context.live?.services.find(candidate => candidate.publicReference === resolved.serviceReference)?.bookingEligible
+        ? liveService?.bookingEligible
         : context.snapshot.services.find(candidate => candidate.publicReference === resolved.serviceReference)?.bookingEnabled
       : true;
     const staffEligible = resolved.staffReference && liveAvailable
@@ -105,6 +113,9 @@ export function renderAction(
       ? context.live?.locations.find(candidate => candidate.publicReference === resolved.locationReference)?.bookingEligible
       : true;
     if (serviceEligible === false || staffEligible === false || locationEligible === false) {
+      if (serviceEligible === false && liveService?.waitlistEligible) {
+        return html`<a class="${escapeHtml(className)} waitlist" href="${escapeHtml(actionHref(resolved, context))}">Join waitlist</a>`;
+      }
       return html`<span class="${escapeHtml(className)} unavailable" aria-disabled="true">Currently unavailable</span>`;
     }
   }

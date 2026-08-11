@@ -81,6 +81,43 @@ function pageContexts(
   }));
 }
 
+export async function runAutomaticImpactProcessing(input: {
+  siteReferences: readonly string[];
+  limit: number;
+  processSite: (
+    siteReference: string,
+    remaining: number,
+  ) => Promise<{ processedCount: number; proposalCount: number }>;
+}) {
+  const boundedLimit = Math.max(1, Math.min(500, Math.trunc(input.limit)));
+  let processedCount = 0;
+  let proposalCount = 0;
+  let skippedWithoutPublishedSnapshot = 0;
+  for (const siteReference of [...new Set(input.siteReferences)]) {
+    try {
+      const processed = await input.processSite(
+        siteReference,
+        boundedLimit - processedCount,
+      );
+      processedCount += processed.processedCount;
+      proposalCount += processed.proposalCount;
+    } catch (error) {
+      if ((error as { code?: unknown })?.code === 'PUBLISHED_SNAPSHOT_REQUIRED') {
+        skippedWithoutPublishedSnapshot += 1;
+        continue;
+      }
+      throw error;
+    }
+    if (processedCount >= boundedLimit) break;
+  }
+  return {
+    sitesScanned: new Set(input.siteReferences).size,
+    processedCount,
+    proposalCount,
+    skippedWithoutPublishedSnapshot,
+  };
+}
+
 export interface CreateLiveCampaignInput {
   message: string;
   placement: 'ANNOUNCEMENT' | 'HERO' | 'PAGE_BODY' | 'PAGE_END';
@@ -251,6 +288,50 @@ export class LiveSiteIntelligenceService {
   }
 
   async processPendingChanges(actor: AgencyActor, siteReference: string) {
+    const processed = await this.processPendingForSite(siteReference);
+    await this.audit.write(actor, 'SITE_LIVE_IMPACT_QUEUE_PROCESSED', 'SITE', siteReference, {
+      tenantId: processed.context.tenantId,
+      category: 'WEBSITE',
+      metadata: { processedCount: processed.processedCount },
+    });
+    return { processedCount: processed.processedCount, results: processed.results };
+  }
+
+  async processPendingChangesAutomatically(limit = 100) {
+    const boundedLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
+    const pendingRows = await this.database.select({
+      siteReference: sites.publicReference,
+    }).from(siteOperationalChangeEvents)
+      .innerJoin(sites, eq(siteOperationalChangeEvents.siteId, sites.id))
+      .where(isNull(siteOperationalChangeEvents.processedAt))
+      .orderBy(asc(siteOperationalChangeEvents.occurredAt))
+      .limit(boundedLimit);
+    const siteReferences = pendingRows.map(row => row.siteReference);
+    return runAutomaticImpactProcessing({
+      siteReferences,
+      limit: boundedLimit,
+      processSite: async (siteReference, remaining) => {
+        const processed = await this.processPendingForSite(
+          siteReference,
+          remaining,
+        );
+        if (processed.processedCount > 0) {
+          await this.audit.write(null, 'SITE_LIVE_IMPACT_QUEUE_AUTOMATICALLY_PROCESSED', 'SITE', siteReference, {
+            tenantId: processed.context.tenantId,
+            category: 'WEBSITE',
+            sourceComponent: 'live-site-intelligence-worker',
+            metadata: { processedCount: processed.processedCount },
+          });
+        }
+        return {
+          processedCount: processed.processedCount,
+          proposalCount: processed.results.filter(result => result.proposalReference).length,
+        };
+      },
+    });
+  }
+
+  private async processPendingForSite(siteReference: string, limit = 100) {
     const context = await this.context(siteReference);
     const published = await this.publishedSnapshot(context.siteId);
     if (!published) throw fail(409, 'PUBLISHED_SNAPSHOT_REQUIRED', 'Impact analysis requires a published snapshot.');
@@ -266,7 +347,8 @@ export class LiveSiteIntelligenceService {
         .where(and(
           eq(siteOperationalChangeEvents.siteId, context.siteId),
           isNull(siteOperationalChangeEvents.processedAt),
-        )).orderBy(asc(siteOperationalChangeEvents.occurredAt)).limit(100),
+        )).orderBy(asc(siteOperationalChangeEvents.occurredAt))
+        .limit(Math.max(1, Math.min(500, Math.trunc(limit)))),
     ]);
     const contexts = pageContexts(
       published.snapshot,
@@ -318,12 +400,7 @@ export class LiveSiteIntelligenceService {
       });
       if (result) results.push(result);
     }
-    await this.audit.write(actor, 'SITE_LIVE_IMPACT_QUEUE_PROCESSED', 'SITE', siteReference, {
-      tenantId: context.tenantId,
-      category: 'WEBSITE',
-      metadata: { processedCount: results.length },
-    });
-    return { processedCount: results.length, results };
+    return { context, processedCount: results.length, results };
   }
 
   async createCampaign(actor: AgencyActor, siteReference: string, input: CreateLiveCampaignInput) {

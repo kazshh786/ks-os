@@ -76,4 +76,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260809120000_seed_native_component_system_v2.sql', order: 69, description: 'Seed the immutable KS Native Component System V2 with analysed layout capabilities and registry-governed section manifests' },
   { filename: '20260810210000_search_intelligence_v2.sql', order: 70, description: 'Governed Search Intelligence V2, editorial page constraints, immutable native template V3, research provenance, redirects, language alternates, and pinned generation provenance' },
   { filename: '20260811120000_live_site_intelligence_v1.sql', order: 71, description: 'Live Site Intelligence V1 public operational DTO sources, governed campaigns, bounded availability summaries, change events, impact assessments, and human-reviewed proposals' },
+  { filename: '20260811153000_live_site_intelligence_v1_1_hardening.sql', order: 72, description: 'Harden the applied Live Site Intelligence scope validator with an immutable trusted search path' },
 ];

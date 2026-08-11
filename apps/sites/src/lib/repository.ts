@@ -27,7 +27,10 @@ import {
   validatePublishedSnapshot,
   type PublishedSiteSnapshot,
 } from '@ks-os/site-schema';
-import type { PublicLiveSiteData } from '@ks-os/live-site-intelligence';
+import type {
+  GovernedRecommendation,
+  PublicLiveSiteData,
+} from '@ks-os/live-site-intelligence';
 
 export interface ResolvedPublicSite {
   siteReference: string;
@@ -48,6 +51,9 @@ export interface PublicSiteRepository {
     versionReference: string,
   ): Promise<PublishedSiteSnapshot | null>;
   resolveLiveSiteData?(snapshot: PublishedSiteSnapshot): Promise<PublicLiveSiteData>;
+  resolvePublishedRecommendations?(
+    snapshot: PublishedSiteSnapshot,
+  ): Promise<readonly GovernedRecommendation[]>;
   isPreviewTokenRevoked(input: {
     jti: string;
     siteReference: string;

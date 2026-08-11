@@ -230,7 +230,7 @@ export class DrizzleLiveSiteDataSource implements LiveSiteDataSource {
         eq(siteLiveCampaigns.audience, 'PUBLIC'),
         lte(siteLiveCampaigns.startsAt, now),
         gt(siteLiveCampaigns.endsAt, now),
-      )),
+      )).orderBy(asc(siteLiveCampaigns.startsAt), asc(siteLiveCampaigns.publicReference)),
     ]);
 
     const serviceById = new Map(serviceRows.map(row => [row.id, row]));
@@ -310,7 +310,7 @@ export class DrizzleLiveSiteDataSource implements LiveSiteDataSource {
         publicPrice: service.publicPriceEnabled ? publicMoney(amountMinor, scope.currency) : undefined,
         staffReferences,
         locationReferences,
-        waitlistEligible: service.waitlistEnabled && !bookingEligible,
+        waitlistEligible: service.active && service.waitlistEnabled && !bookingEligible,
       };
     });
 

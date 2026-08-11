@@ -188,6 +188,7 @@ test('recommendations require both approved semantic relevance and live eligibil
     sourcePageReference: refs.page,
     targetPageReference: refs.targetPage,
     targetServiceReference: refs.service,
+    anchorText: 'Related service',
     relationship: 'RELATED_SERVICE' as const,
     semanticScore: 0.9,
     approved: true as const,
@@ -196,4 +197,8 @@ test('recommendations require both approved semantic relevance and live eligibil
   assert.equal(eligibleLiveRecommendations(approved, liveData({
     services: [{ ...liveData().services[0]!, bookingEligible: false }],
   })).length, 0);
+  assert.deepEqual(eligibleLiveRecommendations(approved, undefined), approved);
+  assert.deepEqual(eligibleLiveRecommendations(approved, liveData({
+    telemetry: { ...liveData().telemetry, fallbackActivated: true },
+  })), approved);
 });
