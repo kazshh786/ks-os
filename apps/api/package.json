@@ -55,7 +55,7 @@
     "stripe": "^22.3.2",
     "svix": "^1.21.0",
     "twilio": "5.10.3",
-    "zod": "^3.23.8"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@ks-os/config": "workspace:*",
