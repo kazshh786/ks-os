@@ -4,6 +4,15 @@ import type {
   SiteSection,
   SiteSectionType,
 } from '@ks-os/site-schema';
+import {
+  LiveComponentPolicySchema,
+  type LiveConditionKey,
+  type LiveDataDependency,
+  type LiveFallbackMode,
+  type LivePersonalisationPolicy,
+  type LiveSeoImpact,
+  type LiveSiteCacheClass,
+} from '@ks-os/live-site-intelligence';
 
 export const SITE_COMPONENT_REGISTRY_VERSION = 2 as const;
 
@@ -73,6 +82,13 @@ export interface SiteComponentDefinition {
   accessibilityContract: readonly string[];
   allowedThemeModes: readonly ('LIGHT' | 'DARK' | 'SURFACE' | 'OVERLAY')[];
   compatibilityRules: readonly string[];
+  liveDataCapabilities: readonly LiveDataDependency[];
+  supportedConditions: readonly LiveConditionKey[];
+  liveContentSlots: readonly string[];
+  fallbackBehaviour: LiveFallbackMode;
+  cacheClass: LiveSiteCacheClass;
+  personalisationMode: LivePersonalisationPolicy;
+  seoImpact: LiveSeoImpact;
 }
 
 const EDITORIAL_PAGE_TYPES: readonly SitePageType[] = [
@@ -213,6 +229,62 @@ const COMPONENT_NAMES: Record<SiteSectionType, readonly string[]> = {
   RICH_TEXT: ['richtext-standard', 'richtext-editorial', 'richtext-policy', 'richtext-guide', 'richtext-narrow'],
 };
 
+type RegistryLivePolicy = {
+  capabilities: readonly LiveDataDependency[];
+  conditions: readonly LiveConditionKey[];
+  slots: readonly string[];
+  fallback: LiveFallbackMode;
+  cacheClass: LiveSiteCacheClass;
+  personalisation: LivePersonalisationPolicy;
+  seoImpact: LiveSeoImpact;
+};
+
+const NO_LIVE_POLICY: RegistryLivePolicy = {
+  capabilities: [],
+  conditions: [],
+  slots: [],
+  fallback: 'RENDER_PUBLISHED',
+  cacheClass: 'PUBLISHED',
+  personalisation: 'NONE',
+  seoImpact: 'NONE',
+};
+
+function livePolicy(sectionType: SiteSectionType): RegistryLivePolicy {
+  if (sectionType === 'ANNOUNCEMENT_BAR') return {
+    capabilities: ['CAMPAIGN_STATE'], conditions: ['CAMPAIGN_ACTIVE'], slots: ['message', 'primaryAction'],
+    fallback: 'RENDER_PUBLISHED', cacheClass: 'LIVE_FAST', personalisation: 'PUBLIC_ONLY', seoImpact: 'VISIBLE_NON_CRITICAL',
+  };
+  if (['FEATURED_SERVICES', 'SERVICE_GRID', 'SERVICE_DETAILS', 'PRICING'].includes(sectionType)) return {
+    capabilities: ['SERVICE_STATE', 'AVAILABILITY_SUMMARY', 'WAITLIST_STATE', 'RECOMMENDATION_ELIGIBILITY'],
+    conditions: ['SERVICE_EXISTS', 'SERVICE_BOOKABLE', 'WAITLIST_AVAILABLE', 'AVAILABILITY_KNOWN', 'APPOINTMENTS_AVAILABLE'],
+    slots: ['publicPrice', 'bookingEligibility', 'availabilitySummary', 'waitlistEligibility'],
+    fallback: 'RENDER_PUBLISHED', cacheClass: 'LIVE_FAST', personalisation: 'PUBLIC_ONLY',
+    seoImpact: sectionType === 'PRICING' || sectionType === 'SERVICE_DETAILS'
+      ? 'STRUCTURED_DATA_SYNC_REQUIRED' : 'VISIBLE_NON_CRITICAL',
+  };
+  if (['TEAM', 'STAFF_PROFILE'].includes(sectionType)) return {
+    capabilities: ['STAFF_STATE', 'AVAILABILITY_SUMMARY'],
+    conditions: ['STAFF_ACTIVE', 'STAFF_BOOKABLE', 'AVAILABILITY_KNOWN', 'APPOINTMENTS_AVAILABLE'],
+    slots: ['bookingEligibility', 'availabilitySummary'], fallback: 'RENDER_PUBLISHED',
+    cacheClass: 'LIVE_FAST', personalisation: 'PUBLIC_ONLY', seoImpact: 'VISIBLE_NON_CRITICAL',
+  };
+  if (['LOCATION', 'OPENING_HOURS', 'CONTACT'].includes(sectionType)) return {
+    capabilities: ['LOCATION_STATE', 'OPENING_STATE', 'AVAILABILITY_SUMMARY'],
+    conditions: ['LOCATION_ACTIVE', 'LOCATION_OPEN', 'AVAILABILITY_KNOWN'],
+    slots: ['openingState', 'bookingEligibility', 'availabilitySummary'],
+    fallback: sectionType === 'OPENING_HOURS' ? 'STATIC_STATUS' : 'RENDER_PUBLISHED',
+    cacheClass: 'LIVE_FAST', personalisation: 'PUBLIC_ONLY',
+    seoImpact: sectionType === 'OPENING_HOURS' ? 'STRUCTURED_DATA_SYNC_REQUIRED' : 'VISIBLE_NON_CRITICAL',
+  };
+  if (['HEADER', 'BOOKING_CTA', 'FINAL_CTA', 'FOOTER'].includes(sectionType)) return {
+    capabilities: ['SERVICE_STATE', 'STAFF_STATE', 'LOCATION_STATE', 'WAITLIST_STATE'],
+    conditions: ['SERVICE_BOOKABLE', 'STAFF_BOOKABLE', 'LOCATION_ACTIVE', 'WAITLIST_AVAILABLE'],
+    slots: ['primaryAction'], fallback: 'STANDARD_BOOKING_CTA', cacheClass: 'LIVE_SLOW',
+    personalisation: 'PUBLIC_ONLY', seoImpact: 'NONE',
+  };
+  return NO_LIVE_POLICY;
+}
+
 function layoutIntent(name: string) {
   return name.replaceAll('-', ' ')
     .replace(/\b(grid|cards?)\b/g, 'structured $1')
@@ -233,6 +305,7 @@ function componentDefinition(
     : defaults.requiredAssets ?? [];
   const canonicalName = COMPONENT_NAMES[sectionType][0];
   const servicesLed = name.includes('services-led');
+  const live = livePolicy(sectionType);
   return {
     componentKey: `${name}-v1`,
     sectionType,
@@ -279,6 +352,13 @@ function componentDefinition(
       'Use only approved public references from the current tenant snapshot.',
       'Native booking actions remain server-resolved.',
     ],
+    liveDataCapabilities: live.capabilities,
+    supportedConditions: live.conditions,
+    liveContentSlots: live.slots,
+    fallbackBehaviour: live.fallback,
+    cacheClass: live.cacheClass,
+    personalisationMode: live.personalisation,
+    seoImpact: live.seoImpact,
   };
 }
 
@@ -314,6 +394,18 @@ export function validateSiteComponentDefinition(
   if (!definition.rendererMarkupKey.trim()) errors.push('rendererMarkupKey is required.');
   if (definition.cssSelector !== `.component-${definition.componentKey}`) {
     errors.push('cssSelector must be the deterministic componentKey selector.');
+  }
+  const livePolicyResult = LiveComponentPolicySchema.safeParse({
+    liveDataDependencies: definition.liveDataCapabilities,
+    fallbackMode: definition.fallbackBehaviour,
+    cacheClass: definition.cacheClass,
+    personalisationPolicy: definition.personalisationMode,
+    seoImpact: definition.seoImpact,
+    liveContentSlots: definition.liveContentSlots,
+  });
+  if (!livePolicyResult.success) errors.push('live component policy is invalid.');
+  if (definition.cacheClass === 'PERSONAL' || definition.personalisationMode === 'PRIVATE_REQUEST_ONLY') {
+    errors.push('Public component registry V1 must not enable PERSONAL output.');
   }
   return errors;
 }

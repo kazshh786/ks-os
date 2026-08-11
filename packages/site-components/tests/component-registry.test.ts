@@ -8,6 +8,7 @@ import type {
 } from '@ks-os/site-schema';
 import { SiteSectionSchema } from '@ks-os/site-schema';
 import {
+  actionHref,
   componentRegistrySummary,
   listSiteComponents,
   renderSection,
@@ -176,4 +177,80 @@ test('grouped navigation renders accessible native disclosure controls', () => {
   const markup = renderSection(sectionFor('HEADER'), { ...context, snapshot: grouped });
   assert.match(markup, /<details><summary>Services<\/summary>/);
   assert.match(markup, /aria-label="Mobile navigation"/);
+});
+
+test('registry exposes governed live capability and never enables PERSONAL output', () => {
+  const serviceComponent = resolveSiteComponent({ sectionType: 'SERVICE_DETAILS' });
+  assert.ok(serviceComponent.liveDataCapabilities.includes('SERVICE_STATE'));
+  assert.ok(serviceComponent.supportedConditions.includes('SERVICE_BOOKABLE'));
+  assert.equal(serviceComponent.fallbackBehaviour, 'RENDER_PUBLISHED');
+  assert.equal(serviceComponent.personalisationMode, 'PUBLIC_ONLY');
+  assert.equal(listSiteComponents().some(component => component.cacheClass === 'PERSONAL'), false);
+});
+
+test('server rendering uses safe live price and bookability with a published fallback', () => {
+  const serviceSection = sectionFor('SERVICE_DETAILS');
+  const servicePage = { ...page, pageType: 'SERVICE_DETAIL', sections: [serviceSection] } as PublishedPageSnapshot;
+  const live = {
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: '77777777-7777-4777-8777-777777777777',
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: serviceReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      durationMinutes: 75,
+      publicPrice: { amountMinor: 9500, currency: 'GBP', formatted: '£95.00' },
+      staffReferences: [staffReference],
+      locationReferences: [locationReference],
+      waitlistEligible: true,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  } as const;
+  const liveMarkup = renderSection(serviceSection, { ...context, page: servicePage, live });
+  assert.match(liveMarkup, /£95\.00/);
+  assert.match(liveMarkup, /75 minutes/);
+  assert.match(liveMarkup, /Currently unavailable/);
+
+  const fallbackMarkup = renderSection(serviceSection, {
+    ...context,
+    page: servicePage,
+    live: { ...live, services: [], telemetry: { ...live.telemetry, fallbackActivated: true } },
+  });
+  assert.doesNotMatch(fallbackMarkup, /£95\.00/);
+  assert.match(fallbackMarkup, new RegExp(snapshot.services[0]!.name));
+});
+
+test('generic booking actions inherit stable service page context server-side', () => {
+  const serviceSection = sectionFor('SERVICE_DETAILS');
+  const servicePage = { ...page, pageType: 'SERVICE_DETAIL', sections: [serviceSection] } as PublishedPageSnapshot;
+  assert.equal(
+    actionHref({ type: 'KS_OS_BOOKING', label: 'Book now' }, { ...context, page: servicePage }),
+    `/book?service=${serviceReference}`,
+  );
+});
+
+test('conditional components hide on a definitive false and render published fallback on unknown', () => {
+  const conditional = SiteSectionSchema.parse({
+    ...sectionFor('FEATURED_SERVICES'),
+    showIf: {
+      version: 1,
+      all: [{ key: 'SERVICE_BOOKABLE', subjectReference: serviceReference }],
+    },
+  });
+  const noLive = renderSection(conditional, context);
+  assert.match(noLive, /Featured services/);
+  const disabledLive = {
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: '77777777-7777-4777-8777-777777777777',
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{ publicReference: serviceReference, exists: true, active: true, bookingEligible: false, staffReferences: [], locationReferences: [], waitlistEligible: true }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  } as const;
+  assert.equal(String(renderSection(conditional, { ...context, live: disabledLive })), '');
 });

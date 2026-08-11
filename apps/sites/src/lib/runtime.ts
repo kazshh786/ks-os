@@ -5,6 +5,10 @@ import {
 } from '@ks-os/contracts';
 import type { ComponentRenderContext } from '@ks-os/site-components';
 import {
+  liveSiteCacheControl,
+  type PublicLiveSiteData,
+} from '@ks-os/live-site-intelligence';
+import {
   RESERVED_PUBLIC_SITE_PATHS,
   type PublishedSiteSnapshot,
 } from '@ks-os/site-schema';
@@ -170,10 +174,12 @@ function canonicalRedirect(
 function renderContext(
   snapshot: PublishedSiteSnapshot,
   page: PublishedSiteSnapshot['pages'][number],
+  live?: PublicLiveSiteData,
 ): ComponentRenderContext {
   return {
     snapshot,
     page,
+    ...(live ? { live } : {}),
     pagePathByReference: Object.fromEntries(
       snapshot.pages
         .filter((candidate) => candidate.active)
@@ -236,7 +242,10 @@ export async function handlePublicPageRequest(input: {
       }
       return notFound(resolved.snapshot.business.name);
     }
-    const context = renderContext(resolved.snapshot, page);
+    const live = input.repository.resolveLiveSiteData
+      ? await input.repository.resolveLiveSiteData(resolved.snapshot).catch(() => undefined)
+      : undefined;
+    const context = renderContext(resolved.snapshot, page, live);
     const content = renderRegisteredSitePage(page, context);
     const structuredData = generateSiteStructuredData(resolved.snapshot, page);
     return applyHostRobotsPolicy(htmlResponse(
@@ -247,7 +256,7 @@ export async function handlePublicPageRequest(input: {
         structuredData,
       }),
       200,
-      PUBLIC_PAGE_CACHE,
+      live ? liveSiteCacheControl('LIVE_FAST') : PUBLIC_PAGE_CACHE,
     ), input.request, input.config);
   } catch (error) {
     if (error instanceof SiteRenderabilityError) return unavailable();

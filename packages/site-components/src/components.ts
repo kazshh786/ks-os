@@ -2,6 +2,7 @@ import type {
   PublishedSiteSnapshot,
   SiteSection,
 } from '@ks-os/site-schema';
+import { evaluateLiveRule } from '@ks-os/live-site-intelligence';
 import {
   escapeHtml,
   findAsset,
@@ -70,8 +71,17 @@ export function SiteHeader(
   return html`<header class="${sectionClass(section, 'site-header')}"><a class="brand" href="/" aria-label="${escapeHtml(context.snapshot.business.name)} home">${logo}</a><nav class="desktop-navigation" aria-label="Primary navigation"><ul>${navigation}</ul></nav>${MobileNavigation(context)}${renderAction(section.primaryAction, context, 'button primary header-booking')}</header>`;
 }
 
-export function AnnouncementBar(section: SectionOf<'ANNOUNCEMENT_BAR'>): SafeHtml {
-  return html`<aside class="${sectionClass(section, 'announcement-bar')}" aria-label="Announcement">${escapeHtml(section.message)}</aside>`;
+export function AnnouncementBar(
+  section: SectionOf<'ANNOUNCEMENT_BAR'>,
+  context: ComponentRenderContext,
+): SafeHtml {
+  const campaign = context.live?.telemetry.fallbackActivated
+    ? undefined
+    : context.live?.campaigns.find(candidate => candidate.active && candidate.placement === 'ANNOUNCEMENT');
+  if (!campaign) {
+    return html`<aside class="${sectionClass(section, 'announcement-bar')}" aria-label="Announcement">${escapeHtml(section.message)}</aside>`;
+  }
+  return html`<aside class="${sectionClass(section, 'announcement-bar')}" aria-label="Announcement"><span>${escapeHtml(campaign.message)}</span>${renderAction(campaign.action, context, 'text-link campaign-action')}</aside>`;
 }
 
 export function Hero(section: SectionOf<'HERO'>, context: ComponentRenderContext): SafeHtml {
@@ -115,7 +125,13 @@ function serviceCards(
       label: `Book ${service.name}`,
       serviceReference: service.publicReference,
     };
-    return html`<article class="service-card">${image}<h3>${escapeHtml(service.name)}</h3><p>${escapeHtml(service.shortDescription)}</p>${service.priceText ? `<p class="price">${escapeHtml(service.priceText)}</p>` : ''}${renderAction(action, context, 'text-link')}</article>`;
+    const liveService = context.live?.telemetry.fallbackActivated
+      ? undefined
+      : context.live?.services.find(candidate => candidate.publicReference === service.publicReference);
+    const price = liveService?.publicPrice?.formatted ?? service.priceText;
+    const availability = context.live?.availability.find(candidate =>
+      candidate.serviceReference === service.publicReference && candidate.state !== 'UNKNOWN');
+    return html`<article class="service-card">${image}<h3>${escapeHtml(service.name)}</h3><p>${escapeHtml(service.shortDescription)}</p>${price ? `<p class="price">${escapeHtml(price)}</p>` : ''}${availability ? `<p class="availability-summary">${escapeHtml(availability.message)}</p>` : ''}${renderAction(action, context, 'text-link')}</article>`;
   }).join('') as SafeHtml;
 }
 
@@ -146,7 +162,14 @@ export function ServiceDetails(
       className: 'service-detail-image',
     })
     : '';
-  return html`<section class="${sectionClass(section, 'service-details')}">${image}<div><p class="eyebrow">${escapeHtml(service.name)}</p><h1>${escapeHtml(section.heading)}</h1><p>${escapeHtml(section.body)}</p>${service.durationMinutes ? `<p>${String(service.durationMinutes)} minutes</p>` : ''}${service.priceText ? `<p class="price">${escapeHtml(service.priceText)}</p>` : ''}${renderAction(section.primaryAction, context, 'button primary service-booking')}</div></section>`;
+  const liveService = context.live?.telemetry.fallbackActivated
+    ? undefined
+    : context.live?.services.find(candidate => candidate.publicReference === service.publicReference);
+  const durationMinutes = liveService?.durationMinutes ?? service.durationMinutes;
+  const price = liveService?.publicPrice?.formatted ?? service.priceText;
+  const availability = context.live?.availability.find(candidate =>
+    candidate.serviceReference === service.publicReference && candidate.state !== 'UNKNOWN');
+  return html`<section class="${sectionClass(section, 'service-details')}">${image}<div><p class="eyebrow">${escapeHtml(service.name)}</p><h1>${escapeHtml(section.heading)}</h1><p>${escapeHtml(section.body)}</p>${durationMinutes ? `<p>${String(durationMinutes)} minutes</p>` : ''}${price ? `<p class="price">${escapeHtml(price)}</p>` : ''}${availability ? `<p class="availability-summary">${escapeHtml(availability.message)}</p>` : ''}${renderAction(section.primaryAction, context, 'button primary service-booking')}</div></section>`;
 }
 
 export function Benefits(
@@ -192,7 +215,13 @@ export function TeamGrid(
     const image = staff.imageAssetReference
       ? renderImage(findAsset(context.snapshot, staff.imageAssetReference))
       : '';
-    return html`<article>${image}<h3>${escapeHtml(staff.displayName)}</h3><p>${escapeHtml(staff.role)}</p></article>`;
+    const liveStaff = context.live?.telemetry.fallbackActivated
+      ? undefined
+      : context.live?.staff.find(candidate => candidate.publicReference === reference);
+    const status = liveStaff && !liveStaff.bookingEligible
+      ? '<p class="live-status">Currently unavailable for online booking</p>'
+      : '';
+    return html`<article>${image}<h3>${escapeHtml(staff.displayName)}</h3><p>${escapeHtml(staff.role)}</p>${status}</article>`;
   }).join('');
   return html`<section class="${sectionClass(section, 'team-grid')}"><h2>${escapeHtml(section.heading)}</h2><div class="card-grid">${items}</div></section>`;
 }
@@ -223,7 +252,13 @@ export function StaffProfile(
   const heading = primaryHeadingAlreadyRendered
     ? `<h2>${escapeHtml(staff.displayName)}</h2>`
     : `<h1>${escapeHtml(staff.displayName)}</h1>`;
-  return html`<section class="${sectionClass(section, 'staff-profile')}">${image}<div>${heading}<p class="eyebrow">${escapeHtml(staff.role)}</p>${staff.biography ? `<p>${escapeHtml(staff.biography)}</p>` : ''}${services ? `<ul class="profile-services" aria-label="Services">${services}</ul>` : ''}${action}</div></section>`;
+  const liveStaff = context.live?.telemetry.fallbackActivated
+    ? undefined
+    : context.live?.staff.find(candidate => candidate.publicReference === staff.publicReference);
+  const status = liveStaff && !liveStaff.bookingEligible
+    ? '<p class="live-status">Currently unavailable for online booking</p>'
+    : '';
+  return html`<section class="${sectionClass(section, 'staff-profile')}">${image}<div>${heading}<p class="eyebrow">${escapeHtml(staff.role)}</p>${staff.biography ? `<p>${escapeHtml(staff.biography)}</p>` : ''}${status}${services ? `<ul class="profile-services" aria-label="Services">${services}</ul>` : ''}${action}</div></section>`;
 }
 
 export function Gallery(section: SectionOf<'GALLERY'>, context: ComponentRenderContext): SafeHtml {
@@ -286,7 +321,10 @@ export function LocationDetails(
   const image = section.imageAssetReference
     ? renderImage(findAsset(context.snapshot, section.imageAssetReference))
     : '';
-  return html`<section class="${sectionClass(section, 'location-details')}"><div><h2>${escapeHtml(section.heading)}</h2><h3>${escapeHtml(location.name)}</h3><address>${address}</address></div>${image}</section>`;
+  const opening = context.live?.telemetry.fallbackActivated
+    ? undefined
+    : context.live?.locations.find(candidate => candidate.publicReference === location.publicReference)?.opening;
+  return html`<section class="${sectionClass(section, 'location-details')}"><div><h2>${escapeHtml(section.heading)}</h2><h3>${escapeHtml(location.name)}</h3>${opening && opening.state !== 'UNKNOWN' ? `<p class="live-opening-state">${escapeHtml(opening.label)}</p>` : ''}<address>${address}</address></div>${image}</section>`;
 }
 
 export function OpeningHours(
@@ -301,7 +339,10 @@ export function OpeningHours(
   const image = section.imageAssetReference
     ? renderImage(findAsset(context.snapshot, section.imageAssetReference))
     : '';
-  return html`<section class="${sectionClass(section, 'opening-hours')}"><div><h2>${escapeHtml(section.heading)}</h2><table><tbody>${rows}</tbody></table></div>${image}</section>`;
+  const opening = context.live?.telemetry.fallbackActivated
+    ? undefined
+    : context.live?.locations.find(candidate => candidate.publicReference === location.publicReference)?.opening;
+  return html`<section class="${sectionClass(section, 'opening-hours')}"><div><h2>${escapeHtml(section.heading)}</h2>${opening && opening.state !== 'UNKNOWN' ? `<p class="live-opening-state">${escapeHtml(opening.label)}</p>` : ''}<table><tbody>${rows}</tbody></table></div>${image}</section>`;
 }
 
 export function ContactDetails(
@@ -370,7 +411,7 @@ function renderSectionContent(
 ): SafeHtml {
   switch (section.type) {
     case 'HEADER': return SiteHeader(section, context);
-    case 'ANNOUNCEMENT_BAR': return AnnouncementBar(section);
+    case 'ANNOUNCEMENT_BAR': return AnnouncementBar(section, context);
     case 'HERO': return Hero(section, context);
     case 'INTRODUCTION': return Introduction(section, context);
     case 'FEATURED_SERVICES': return FeaturedServices(section, context);
@@ -432,6 +473,14 @@ export function renderSection(
   // reach executable markup. V1 sections without a componentKey use the
   // deterministic legacy type/variant mapping in the registry.
   const component = componentForSection(section, context.page);
+  if (section.showIf) {
+    const decision = evaluateLiveRule(section.showIf, context.live);
+    if (decision.definitiveFalse || (!decision.matches && (!decision.indeterminate
+      || component.fallbackBehaviour === 'HIDE_COMPONENT'
+      || component.fallbackBehaviour === 'FAIL_CLOSED'))) {
+      return '' as SafeHtml;
+    }
+  }
   const rendered = renderSectionContent(section, context);
   if (!component.requiredAssetSlots.length || hasApprovedMedia(section, context)) return rendered;
   if (context.snapshot.visibility !== 'PREVIEW') {

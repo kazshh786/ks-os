@@ -50,7 +50,7 @@ function fakeDatabase(input: {
   };
 }
 
-test('booking data refreshes existing services and hours without auto-adding new services', async () => {
+test('operational data never mutates the immutable published snapshot', async () => {
   const snapshot = createOriginalInternalSiteFixture();
   const service = snapshot.services[0]!;
   const location = snapshot.locations[0]!;
@@ -90,17 +90,8 @@ test('booking data refreshes existing services and hours without auto-adding new
 
   const hydrated = await repository.loadPublishedSnapshot(snapshot.siteReference);
   assert.ok(hydrated);
-  assert.equal(hydrated.services.length, snapshot.services.length);
-  assert.equal(hydrated.services[0]!.name, 'Live clarity treatment');
-  assert.equal(hydrated.services[0]!.durationMinutes, 75);
-  assert.equal(hydrated.services[0]!.priceText, '£45.00');
-  assert.equal(hydrated.services[0]!.bookingEnabled, true);
-  assert.equal(
-    hydrated.services.some(item => item.publicReference === unpublishedServiceReference),
-    false,
-  );
-  const monday = hydrated.locations[0]!.openingHours.find(item => item.day === 'MONDAY');
-  assert.deepEqual(monday, { day: 'MONDAY', opens: '09:00', closes: '17:00' });
+  assert.deepEqual(hydrated, snapshot);
+  assert.equal(hydrated.services.some(item => item.publicReference === unpublishedServiceReference), false);
 });
 
 test('a stale service booking action is rendered unavailable instead of linking to booking', () => {

@@ -3,6 +3,7 @@ import {
   EmailActionSchema,
   InternalPageActionSchema,
   KsOsBookingActionSchema,
+  LiveConditionRuleV1Schema,
   PhoneActionSchema,
   PublicReferenceSchema,
   SiteStructuredDataEligibilitySchema,
@@ -355,6 +356,7 @@ export type SiteAction = z.infer<typeof SiteActionSchema>;
 
 const SectionBaseShape = {
   reference: PublicReferenceSchema,
+  showIf: LiveConditionRuleV1Schema.optional(),
   componentKey: z.string().trim().min(1).max(120)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$/)
     .optional(),
