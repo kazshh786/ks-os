@@ -62,6 +62,7 @@ The component registry remains the single component framework. Each component no
 
 - `liveDataCapabilities`;
 - `supportedConditions`;
+- `conditionalVisibility` (`NEVER` or `OPTIONAL_LIVE_SECTION`);
 - `liveContentSlots`;
 - `fallbackBehaviour`;
 - `cacheClass`;
@@ -70,13 +71,15 @@ The component registry remains the single component framework. Each component no
 
 Representative SSR integrations cover service cards/details, staff cards/profiles, locations, opening hours, booking CTAs, campaign announcements, and approved-semantic/live-eligible recommendation filtering. Temporarily unavailable services retain their stable page and copy while booking is disabled or waitlist eligibility is offered by the DTO.
 
+Whole-section conditional visibility is closed and deterministic. Only `ANNOUNCEMENT_BAR`, an intentionally optional non-critical live experience, is registered as `OPTIONAL_LIVE_SECTION`; all chrome, hero, service, staff, location, hours, contact, editorial, primary content, conversion, and footer components are `NEVER`. A `showIf` rule on a `NEVER` component cannot remove its published markup. Every fact key is validated against the selected component's `supportedConditions`, and an unsupported pairing is rejected before rendering. `RENDER_PUBLISHED` therefore retains the published section on missing or unknown live state, while governed slots alone may change booking eligibility, availability messaging, waitlist eligibility, opening state, or public price.
+
 ## Booking and recommendation integration
 
 Controlled page context is carried into `/book` server-side. A generic CTA on a service, staff, or location page inherits the page's canonical public reference; explicit action context remains authoritative. The existing booking flow validates those references against the tenant catalogue and preserves campaign attribution. Generated content still cannot contain a raw booking destination.
 
 Search Intelligence continues to define semantic relationships. `eligibleLiveRecommendations()` only filters an already approved relationship set by current operational eligibility; it cannot create a new SEO link or promote unrelated capacity.
 
-Availability is read only from `site_live_availability_summaries`. A missing/stale summary becomes UNKNOWN or the normal booking CTA—never invented availability, scarcity, or slot counts.
+Availability is read only from `site_live_availability_summaries`. Results are tenant/site scoped and snapshot bounded: the service must be published, and every non-null staff or location reference must also be present in the validated published snapshot. A missing/stale or out-of-snapshot summary becomes UNKNOWN or the normal booking CTA—never invented availability, scarcity, slot counts, or unpublished entity references.
 
 ## Cache, performance, and failure strategy
 
@@ -99,7 +102,7 @@ V1 does not emit appointment availability in structured data. Current Service sc
 
 ## Change-impact architecture
 
-Database triggers emit privacy-minimised `site_operational_change_events` containing the public entity reference, controlled change kind, and changed field names—never old/new values. `processPendingChanges()` maps each event across the published snapshot, Search Intelligence brief identity, structured-data eligibility, internal links, and booking journeys, then persists a strict `SiteImpactAssessment`.
+Database triggers automatically emit privacy-minimised `site_operational_change_events` containing the public entity reference, controlled change kind, and changed field names—never old/new values. Public rendering automatically consumes safe current LIVE state through the resolver. In V1, `processPendingChanges()` runs only through the explicit Site Studio impact-queue action; that action maps each event across the published snapshot, Search Intelligence brief identity, structured-data eligibility, internal links, and booking journeys, then persists a strict `SiteImpactAssessment` and any governed proposal. There is no automatic event-to-proposal background worker in this PR.
 
 Safe operational changes are `AUTO_APPLY_LIVE`. Permanent removals, staff deactivation, address/phone changes, major descriptions, new/closed locations, and authority changes are `REQUIRE_SITE_REVIEW`. The latter create a `SiteChangeProposal` that always requires an explicit agency decision. Approving the proposal records review only; it does not publish, change routing, create a snapshot, or apply a redirect.
 
@@ -131,6 +134,7 @@ Security properties include tenant-scope triggers, foreign keys and FK indexes, 
 - Existing explicit booking actions behave unchanged; generic actions gain safe page context.
 - Existing published price/hours remain the fallback until the corresponding live feature is opted in and available.
 - No client-rendered SPA dependency or new public API is introduced.
+- Live Site Intelligence V1.1 follow-up: add governed automatic event-to-assessment/proposal queue processing without changing the human publication boundary.
 - PERSONAL customer experiences, private waitlist details, raw availability slots, invasive attribution/fingerprinting, automatic redirect application, and autonomous publication are deliberately deferred.
 
 ## Deployment classification

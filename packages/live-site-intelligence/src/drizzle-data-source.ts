@@ -25,7 +25,7 @@ import {
   type LiveSiteResolutionInput,
   type PublicOpeningState,
 } from './contracts.js';
-import type { LiveSiteDataSource } from './resolver.js';
+import { isSnapshotBoundAvailability, type LiveSiteDataSource } from './resolver.js';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -370,7 +370,7 @@ export class DrizzleLiveSiteDataSource implements LiveSiteDataSource {
     });
 
     const availability = availabilityRows
-      .filter(row => input.serviceReferences.includes(row.serviceReference))
+      .filter(row => isSnapshotBoundAvailability(row, input))
       .map(row => ({
         serviceReference: row.serviceReference,
         ...(row.staffReference ? { staffReference: row.staffReference } : {}),

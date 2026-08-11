@@ -238,6 +238,7 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
+  source_row record;
   target_tenant uuid;
   target_site uuid;
   target_reference uuid;
@@ -245,59 +246,73 @@ DECLARE
   target_kind varchar(50);
   fields text[] := ARRAY[]::text[];
 BEGIN
+  IF TG_OP = 'DELETE' THEN source_row := OLD; ELSE source_row := NEW; END IF;
   IF TG_TABLE_NAME = 'services' THEN
-    target_tenant := NEW.tenant_id; target_reference := NEW.public_reference; target_type := 'SERVICE';
-    IF OLD.price IS DISTINCT FROM NEW.price OR OLD.discount IS DISTINCT FROM NEW.discount
-      OR OLD.public_price_enabled IS DISTINCT FROM NEW.public_price_enabled THEN
-      fields := fields || ARRAY['price']; target_kind := 'PRICE_CHANGED';
-    END IF;
-    IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
-      fields := fields || ARRAY['is_active']; target_kind := CASE WHEN NOT NEW.is_active THEN 'SERVICE_DISABLED' ELSE 'BOOKABILITY_CHANGED' END;
-    END IF;
-    IF OLD.temporary_unavailable_until IS DISTINCT FROM NEW.temporary_unavailable_until
-      OR OLD.waitlist_enabled IS DISTINCT FROM NEW.waitlist_enabled THEN
-      fields := fields || ARRAY['booking_state']; target_kind := COALESCE(target_kind, 'BOOKABILITY_CHANGED');
-    END IF;
-    IF OLD.description IS DISTINCT FROM NEW.description THEN
-      fields := fields || ARRAY['description']; target_kind := 'SERVICE_DESCRIPTION_CHANGED';
+    target_tenant := source_row.tenant_id; target_reference := source_row.public_reference; target_type := 'SERVICE';
+    IF TG_OP = 'UPDATE' THEN
+      IF OLD.price IS DISTINCT FROM NEW.price OR OLD.discount IS DISTINCT FROM NEW.discount
+        OR OLD.public_price_enabled IS DISTINCT FROM NEW.public_price_enabled THEN
+        fields := fields || ARRAY['price']; target_kind := 'PRICE_CHANGED';
+      END IF;
+      IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+        fields := fields || ARRAY['is_active']; target_kind := CASE WHEN NOT NEW.is_active THEN 'SERVICE_DISABLED' ELSE 'BOOKABILITY_CHANGED' END;
+      END IF;
+      IF OLD.temporary_unavailable_until IS DISTINCT FROM NEW.temporary_unavailable_until
+        OR OLD.waitlist_enabled IS DISTINCT FROM NEW.waitlist_enabled THEN
+        fields := fields || ARRAY['booking_state']; target_kind := COALESCE(target_kind, 'BOOKABILITY_CHANGED');
+      END IF;
+      IF OLD.description IS DISTINCT FROM NEW.description THEN
+        fields := fields || ARRAY['description']; target_kind := 'SERVICE_DESCRIPTION_CHANGED';
+      END IF;
     END IF;
   ELSIF TG_TABLE_NAME = 'users' THEN
-    target_tenant := NEW.tenant_id; target_reference := NEW.public_reference; target_type := 'STAFF';
-    IF OLD.account_status IS DISTINCT FROM NEW.account_status THEN
-      fields := fields || ARRAY['account_status'];
-      target_kind := CASE WHEN NEW.account_status <> 'ACTIVE' THEN 'STAFF_DEACTIVATED' ELSE 'STAFF_BOOKABILITY_CHANGED' END;
-    END IF;
-    IF OLD.booking_enabled IS DISTINCT FROM NEW.booking_enabled THEN
-      fields := fields || ARRAY['booking_enabled']; target_kind := COALESCE(target_kind, 'STAFF_BOOKABILITY_CHANGED');
+    target_tenant := source_row.tenant_id; target_reference := source_row.public_reference; target_type := 'STAFF';
+    IF TG_OP = 'UPDATE' THEN
+      IF OLD.account_status IS DISTINCT FROM NEW.account_status THEN
+        fields := fields || ARRAY['account_status'];
+        target_kind := CASE WHEN NEW.account_status <> 'ACTIVE' THEN 'STAFF_DEACTIVATED' ELSE 'STAFF_BOOKABILITY_CHANGED' END;
+      END IF;
+      IF OLD.booking_enabled IS DISTINCT FROM NEW.booking_enabled THEN
+        fields := fields || ARRAY['booking_enabled']; target_kind := COALESCE(target_kind, 'STAFF_BOOKABILITY_CHANGED');
+      END IF;
     END IF;
   ELSIF TG_TABLE_NAME = 'locations' THEN
-    target_tenant := NEW.tenant_id; target_reference := NEW.public_reference; target_type := 'LOCATION';
-    IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
-      fields := fields || ARRAY['is_active']; target_kind := CASE WHEN NOT NEW.is_active THEN 'LOCATION_CLOSED' ELSE 'LOCATION_ADDED' END;
+    target_tenant := source_row.tenant_id; target_reference := source_row.public_reference; target_type := 'LOCATION';
+    IF TG_OP = 'INSERT' THEN
+      fields := ARRAY['location']; target_kind := 'LOCATION_ADDED';
+    ELSIF TG_OP = 'UPDATE' THEN
+      IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+        fields := fields || ARRAY['is_active']; target_kind := CASE WHEN NOT NEW.is_active THEN 'LOCATION_CLOSED' ELSE 'LOCATION_ADDED' END;
+      END IF;
+      IF OLD.address IS DISTINCT FROM NEW.address OR OLD.postcode IS DISTINCT FROM NEW.postcode THEN
+        fields := fields || ARRAY['address']; target_kind := 'LOCATION_ADDRESS_CHANGED';
+      END IF;
+      IF OLD.phone IS DISTINCT FROM NEW.phone THEN fields := fields || ARRAY['phone']; target_kind := 'LOCATION_PHONE_CHANGED'; END IF;
     END IF;
-    IF OLD.address IS DISTINCT FROM NEW.address OR OLD.postcode IS DISTINCT FROM NEW.postcode THEN
-      fields := fields || ARRAY['address']; target_kind := 'LOCATION_ADDRESS_CHANGED';
-    END IF;
-    IF OLD.phone IS DISTINCT FROM NEW.phone THEN fields := fields || ARRAY['phone']; target_kind := 'LOCATION_PHONE_CHANGED'; END IF;
   ELSIF TG_TABLE_NAME = 'site_location_operating_hours' THEN
-    target_tenant := NEW.tenant_id; target_type := 'LOCATION'; target_kind := 'OPENING_HOURS_CHANGED';
-    SELECT public_reference INTO target_reference FROM locations WHERE id = NEW.location_id;
+    target_tenant := source_row.tenant_id; target_type := 'LOCATION'; target_kind := 'OPENING_HOURS_CHANGED';
+    SELECT public_reference INTO target_reference FROM locations WHERE id = source_row.location_id;
     fields := ARRAY['opening_hours'];
   ELSIF TG_TABLE_NAME = 'site_location_closures' THEN
-    target_tenant := NEW.tenant_id; target_type := 'LOCATION'; target_kind := 'LOCATION_TEMPORARILY_CLOSED';
-    SELECT public_reference INTO target_reference FROM locations WHERE id = NEW.location_id;
-    fields := ARRAY['temporary_closure'];
+    target_tenant := source_row.tenant_id; target_type := 'LOCATION';
+    target_kind := CASE WHEN TG_OP = 'DELETE' THEN 'OPENING_HOURS_CHANGED' ELSE 'LOCATION_TEMPORARILY_CLOSED' END;
+    SELECT public_reference INTO target_reference FROM locations WHERE id = source_row.location_id;
+    fields := CASE WHEN TG_OP = 'DELETE' THEN ARRAY['temporary_closure_removed'] ELSE ARRAY['temporary_closure'] END;
   ELSIF TG_TABLE_NAME = 'site_live_campaigns' THEN
-    target_tenant := NEW.tenant_id; target_site := NEW.site_id; target_reference := NEW.public_reference;
+    target_tenant := source_row.tenant_id; target_site := source_row.site_id; target_reference := source_row.public_reference;
     target_type := 'CAMPAIGN'; target_kind := 'CAMPAIGN_SCHEDULE_CHANGED'; fields := ARRAY['campaign_state'];
   END IF;
-  IF target_kind IS NULL OR cardinality(fields) = 0 THEN RETURN NEW; END IF;
+  IF target_kind IS NULL OR cardinality(fields) = 0 THEN
+    IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+  END IF;
   IF target_site IS NULL THEN SELECT id INTO target_site FROM sites WHERE tenant_id = target_tenant; END IF;
-  IF target_site IS NULL OR target_reference IS NULL THEN RETURN NEW; END IF;
+  IF target_site IS NULL OR target_reference IS NULL THEN
+    IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+  END IF;
   INSERT INTO site_operational_change_events
     (tenant_id, site_id, entity_type, entity_reference, change_kind, changed_fields)
   VALUES (target_tenant, target_site, target_type, target_reference, target_kind, ARRAY(SELECT DISTINCT unnest(fields)));
-  RETURN NEW;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END;
 $$;
 
@@ -320,11 +335,11 @@ CREATE TRIGGER services_live_site_change AFTER UPDATE ON services
   FOR EACH ROW EXECUTE FUNCTION ks_emit_site_operational_change();
 CREATE TRIGGER users_live_site_change AFTER UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION ks_emit_site_operational_change();
-CREATE TRIGGER locations_live_site_change AFTER UPDATE ON locations
+CREATE TRIGGER locations_live_site_change AFTER INSERT OR UPDATE ON locations
   FOR EACH ROW EXECUTE FUNCTION ks_emit_site_operational_change();
-CREATE TRIGGER site_location_operating_hours_change AFTER INSERT OR UPDATE ON site_location_operating_hours
+CREATE TRIGGER site_location_operating_hours_change AFTER INSERT OR UPDATE OR DELETE ON site_location_operating_hours
   FOR EACH ROW EXECUTE FUNCTION ks_emit_site_operational_change();
-CREATE TRIGGER site_location_closures_change AFTER INSERT OR UPDATE ON site_location_closures
+CREATE TRIGGER site_location_closures_change AFTER INSERT OR UPDATE OR DELETE ON site_location_closures
   FOR EACH ROW EXECUTE FUNCTION ks_emit_site_operational_change();
 CREATE TRIGGER site_live_campaigns_change AFTER INSERT OR UPDATE ON site_live_campaigns
   FOR EACH ROW EXECUTE FUNCTION ks_emit_site_operational_change();

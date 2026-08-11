@@ -7,6 +7,7 @@ import type {
 import {
   LiveComponentPolicySchema,
   type LiveConditionKey,
+  type LiveConditionalVisibility,
   type LiveDataDependency,
   type LiveFallbackMode,
   type LivePersonalisationPolicy,
@@ -84,6 +85,7 @@ export interface SiteComponentDefinition {
   compatibilityRules: readonly string[];
   liveDataCapabilities: readonly LiveDataDependency[];
   supportedConditions: readonly LiveConditionKey[];
+  conditionalVisibility: LiveConditionalVisibility;
   liveContentSlots: readonly string[];
   fallbackBehaviour: LiveFallbackMode;
   cacheClass: LiveSiteCacheClass;
@@ -115,6 +117,33 @@ const SECTION_TYPES: readonly SiteSectionType[] = [
   'FAQ', 'LOCATION', 'OPENING_HOURS', 'CONTACT', 'BOOKING_CTA', 'FINAL_CTA',
   'FOOTER', 'RICH_TEXT',
 ];
+
+const SECTION_CONDITIONAL_VISIBILITY = {
+  HEADER: 'NEVER',
+  ANNOUNCEMENT_BAR: 'OPTIONAL_LIVE_SECTION',
+  HERO: 'NEVER',
+  INTRODUCTION: 'NEVER',
+  FEATURED_SERVICES: 'NEVER',
+  SERVICE_GRID: 'NEVER',
+  SERVICE_DETAILS: 'NEVER',
+  BENEFITS: 'NEVER',
+  PROCESS: 'NEVER',
+  PRICING: 'NEVER',
+  TEAM: 'NEVER',
+  STAFF_PROFILE: 'NEVER',
+  GALLERY: 'NEVER',
+  RESULTS: 'NEVER',
+  TESTIMONIALS: 'NEVER',
+  TRUST_INDICATORS: 'NEVER',
+  FAQ: 'NEVER',
+  LOCATION: 'NEVER',
+  OPENING_HOURS: 'NEVER',
+  CONTACT: 'NEVER',
+  BOOKING_CTA: 'NEVER',
+  FINAL_CTA: 'NEVER',
+  FOOTER: 'NEVER',
+  RICH_TEXT: 'NEVER',
+} as const satisfies Record<SiteSectionType, LiveConditionalVisibility>;
 
 const SECTION_DEFAULTS: Record<SiteSectionType, {
   classification: SiteComponentClassification;
@@ -354,6 +383,7 @@ function componentDefinition(
     ],
     liveDataCapabilities: live.capabilities,
     supportedConditions: live.conditions,
+    conditionalVisibility: SECTION_CONDITIONAL_VISIBILITY[sectionType],
     liveContentSlots: live.slots,
     fallbackBehaviour: live.fallback,
     cacheClass: live.cacheClass,
@@ -397,6 +427,7 @@ export function validateSiteComponentDefinition(
   }
   const livePolicyResult = LiveComponentPolicySchema.safeParse({
     liveDataDependencies: definition.liveDataCapabilities,
+    conditionalVisibility: definition.conditionalVisibility,
     fallbackMode: definition.fallbackBehaviour,
     cacheClass: definition.cacheClass,
     personalisationPolicy: definition.personalisationMode,
@@ -404,6 +435,10 @@ export function validateSiteComponentDefinition(
     liveContentSlots: definition.liveContentSlots,
   });
   if (!livePolicyResult.success) errors.push('live component policy is invalid.');
+  if (SECTION_TYPES.includes(definition.sectionType)
+    && definition.conditionalVisibility !== SECTION_CONDITIONAL_VISIBILITY[definition.sectionType]) {
+    errors.push('conditionalVisibility is incompatible with the controlled section policy.');
+  }
   if (definition.cacheClass === 'PERSONAL' || definition.personalisationMode === 'PRIVATE_REQUEST_ONLY') {
     errors.push('Public component registry V1 must not enable PERSONAL output.');
   }
@@ -495,7 +530,7 @@ export function componentForSection(
   section: SiteSection,
   page?: { pageType: SitePageType; conversionRole: SiteConversionRole },
 ) {
-  return resolveSiteComponent({
+  const component = resolveSiteComponent({
     sectionType: section.type,
     ...('componentKey' in section && section.componentKey
       ? { componentKey: section.componentKey }
@@ -503,6 +538,30 @@ export function componentForSection(
     ...(section.variant ? { legacyVariant: section.variant } : {}),
     ...(page ? { pageType: page.pageType, conversionRole: page.conversionRole } : {}),
   });
+  const errors = validateSiteSectionComponent(section, component);
+  if (errors.length) {
+    throw new Error(`Invalid live rule for ${component.componentKey}: ${errors.join(' ')}`);
+  }
+  return component;
+}
+
+export function validateSiteSectionComponent(
+  section: SiteSection,
+  component: SiteComponentDefinition,
+): readonly string[] {
+  const errors: string[] = [];
+  if (!component.compatibleSectionTypes.includes(section.type)) {
+    errors.push(`Component does not support section type ${section.type}.`);
+  }
+  if (!section.showIf) return errors;
+  const facts = [...section.showIf.all, ...section.showIf.any, ...section.showIf.none];
+  const unsupported = [...new Set(facts
+    .map(fact => fact.key)
+    .filter(key => !component.supportedConditions.includes(key)))];
+  if (unsupported.length) {
+    errors.push(`Component does not support condition${unsupported.length === 1 ? '' : 's'} ${unsupported.join(', ')}.`);
+  }
+  return errors;
 }
 
 export function componentRegistrySummary() {

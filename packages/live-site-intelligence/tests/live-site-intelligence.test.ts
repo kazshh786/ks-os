@@ -23,6 +23,8 @@ const refs = {
   page: '10000000-0000-4000-8000-000000000006',
   targetPage: '10000000-0000-4000-8000-000000000007',
   change: '10000000-0000-4000-8000-000000000008',
+  unpublishedStaff: '10000000-0000-4000-8000-000000000009',
+  unpublishedLocation: '10000000-0000-4000-8000-000000000010',
 } as const;
 
 function liveData(overrides: Partial<PublicLiveSiteData> = {}) {
@@ -128,6 +130,32 @@ test('resolver batches once, caches public state and fails safe', async () => {
   assert.equal(failed.services.length, 0);
   assert.equal(failed.warnings[0]?.code, 'LIVE_SOURCE_UNAVAILABLE');
   assert.equal(liveSiteCacheControl('PERSONAL'), 'private, no-store, max-age=0');
+});
+
+test('resolver removes availability references outside the published snapshot', async () => {
+  const availabilityBase = {
+    serviceReference: refs.service,
+    state: 'AVAILABLE_THIS_WEEK' as const,
+    message: 'Appointments available this week',
+    computedAt: '2026-08-11T12:00:00.000Z',
+    expiresAt: '2026-08-11T12:05:00.000Z',
+  };
+  const resolver = new LiveSiteDataResolver({
+    async resolveBatch() {
+      return liveData({
+        availability: [
+          availabilityBase,
+          { ...availabilityBase, staffReference: refs.unpublishedStaff },
+          { ...availabilityBase, locationReference: refs.unpublishedLocation },
+        ],
+      });
+    },
+  }, new BoundedLiveSiteCache(4), 100);
+
+  const resolved = await resolver.resolve(input);
+  assert.deepEqual(resolved.availability, [availabilityBase]);
+  assert.equal(resolved.availability.some(item => item.staffReference === refs.unpublishedStaff), false);
+  assert.equal(resolved.availability.some(item => item.locationReference === refs.unpublishedLocation), false);
 });
 
 test('impact engine separates immediate live effects from published review', () => {

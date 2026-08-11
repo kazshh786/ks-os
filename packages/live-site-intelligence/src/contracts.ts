@@ -47,8 +47,15 @@ export const LiveSeoImpactSchema = z.enum([
 ]);
 export type LiveSeoImpact = z.infer<typeof LiveSeoImpactSchema>;
 
+export const LiveConditionalVisibilitySchema = z.enum([
+  'NEVER',
+  'OPTIONAL_LIVE_SECTION',
+]);
+export type LiveConditionalVisibility = z.infer<typeof LiveConditionalVisibilitySchema>;
+
 export const LiveComponentPolicySchema = z.object({
   liveDataDependencies: z.array(LiveDataDependencySchema).max(12),
+  conditionalVisibility: LiveConditionalVisibilitySchema,
   fallbackMode: LiveFallbackModeSchema,
   cacheClass: LiveSiteCacheClassSchema,
   personalisationPolicy: LivePersonalisationPolicySchema,

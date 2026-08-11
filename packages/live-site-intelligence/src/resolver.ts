@@ -11,6 +11,19 @@ export interface LiveSiteDataSource {
   resolveBatch(input: LiveSiteResolutionInput): Promise<PublicLiveSiteData>;
 }
 
+export function isSnapshotBoundAvailability(
+  availability: {
+    serviceReference: string;
+    staffReference?: string | null;
+    locationReference?: string | null;
+  },
+  input: Pick<LiveSiteResolutionInput, 'serviceReferences' | 'staffReferences' | 'locationReferences'>,
+) {
+  return input.serviceReferences.includes(availability.serviceReference)
+    && (!availability.staffReference || input.staffReferences.includes(availability.staffReference))
+    && (!availability.locationReference || input.locationReferences.includes(availability.locationReference));
+}
+
 function cacheKey(input: LiveSiteResolutionInput) {
   const digest = createHash('sha256').update(JSON.stringify({
     tenantReference: input.tenantReference,
@@ -77,6 +90,7 @@ export class LiveSiteDataResolver {
       const parsed = PublicLiveSiteDataSchema.parse({
         ...result,
         siteReference: input.siteReference,
+        availability: result.availability.filter(item => isSnapshotBoundAvailability(item, input)),
         telemetry: {
           ...result.telemetry,
           cacheClass: 'LIVE_FAST',

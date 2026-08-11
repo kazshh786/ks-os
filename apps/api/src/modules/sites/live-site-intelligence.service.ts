@@ -196,6 +196,7 @@ export class LiveSiteIntelligenceService {
         liveDataCapabilities: component.liveDataCapabilities,
         liveContentSlots: component.liveContentSlots,
         supportedConditions: component.supportedConditions,
+        conditionalVisibility: component.conditionalVisibility,
         rule: section.showIf ?? null,
         ruleState: section.showIf ? evaluateLiveRule(section.showIf, live ?? undefined) : null,
         fallbackBehaviour: component.fallbackBehaviour,

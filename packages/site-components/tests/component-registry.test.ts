@@ -13,6 +13,7 @@ import {
   listSiteComponents,
   renderSection,
   resolveSiteComponent,
+  validateSiteSectionComponent,
   validateSiteComponentDefinition,
   type ComponentRenderContext,
   type SiteComponentDefinition,
@@ -183,13 +184,23 @@ test('registry exposes governed live capability and never enables PERSONAL outpu
   const serviceComponent = resolveSiteComponent({ sectionType: 'SERVICE_DETAILS' });
   assert.ok(serviceComponent.liveDataCapabilities.includes('SERVICE_STATE'));
   assert.ok(serviceComponent.supportedConditions.includes('SERVICE_BOOKABLE'));
+  assert.equal(serviceComponent.conditionalVisibility, 'NEVER');
+  assert.equal(resolveSiteComponent({ sectionType: 'ANNOUNCEMENT_BAR' }).conditionalVisibility, 'OPTIONAL_LIVE_SECTION');
+  assert.equal(listSiteComponents().some(component => component.sectionType !== 'ANNOUNCEMENT_BAR'
+    && component.conditionalVisibility !== 'NEVER'), false);
   assert.equal(serviceComponent.fallbackBehaviour, 'RENDER_PUBLISHED');
   assert.equal(serviceComponent.personalisationMode, 'PUBLIC_ONLY');
   assert.equal(listSiteComponents().some(component => component.cacheClass === 'PERSONAL'), false);
 });
 
 test('server rendering uses safe live price and bookability with a published fallback', () => {
-  const serviceSection = sectionFor('SERVICE_DETAILS');
+  const serviceSection = SiteSectionSchema.parse({
+    ...sectionFor('SERVICE_DETAILS'),
+    showIf: {
+      version: 1,
+      all: [{ key: 'SERVICE_BOOKABLE', subjectReference: serviceReference }],
+    },
+  });
   const servicePage = { ...page, pageType: 'SERVICE_DETAIL', sections: [serviceSection] } as PublishedPageSnapshot;
   const live = {
     schemaVersion: 1,
@@ -213,6 +224,7 @@ test('server rendering uses safe live price and bookability with a published fal
   const liveMarkup = renderSection(serviceSection, { ...context, page: servicePage, live });
   assert.match(liveMarkup, /£95\.00/);
   assert.match(liveMarkup, /75 minutes/);
+  assert.match(liveMarkup, /<h1>Service detail<\/h1>/);
   assert.match(liveMarkup, /Currently unavailable/);
 
   const fallbackMarkup = renderSection(serviceSection, {
@@ -233,23 +245,41 @@ test('generic booking actions inherit stable service page context server-side', 
   );
 });
 
-test('conditional components hide on a definitive false and render published fallback on unknown', () => {
+test('unsupported section/component conditions fail deterministic validation', () => {
   const conditional = SiteSectionSchema.parse({
-    ...sectionFor('FEATURED_SERVICES'),
+    ...sectionFor('SERVICE_DETAILS'),
     showIf: {
       version: 1,
-      all: [{ key: 'SERVICE_BOOKABLE', subjectReference: serviceReference }],
+      all: [{ key: 'STAFF_ACTIVE', subjectReference: staffReference }],
+    },
+  });
+  const component = resolveSiteComponent({ sectionType: 'SERVICE_DETAILS' });
+  assert.deepEqual(validateSiteSectionComponent(conditional, component), [
+    'Component does not support condition STAFF_ACTIVE.',
+  ]);
+  const servicePage = { ...page, pageType: 'SERVICE_DETAIL', sections: [conditional] } as PublishedPageSnapshot;
+  assert.throws(
+    () => renderSection(conditional, { ...context, page: servicePage }),
+    /does not support condition STAFF_ACTIVE/,
+  );
+});
+
+test('explicitly optional live sections hide on false and render published fallback on unknown', () => {
+  const conditional = SiteSectionSchema.parse({
+    ...sectionFor('ANNOUNCEMENT_BAR'),
+    showIf: {
+      version: 1,
+      all: [{ key: 'CAMPAIGN_ACTIVE', subjectReference: serviceReference }],
     },
   });
   const noLive = renderSection(conditional, context);
-  assert.match(noLive, /Featured services/);
+  assert.match(noLive, /Appointments are available this week/);
   const disabledLive = {
     schemaVersion: 1,
     dataClass: 'LIVE',
     siteReference: '77777777-7777-4777-8777-777777777777',
     resolvedAt: '2026-08-11T12:00:00.000Z',
-    services: [{ publicReference: serviceReference, exists: true, active: true, bookingEligible: false, staffReferences: [], locationReferences: [], waitlistEligible: true }],
-    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    services: [], staff: [], locations: [], availability: [], campaigns: [], warnings: [],
     telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
   } as const;
   assert.equal(String(renderSection(conditional, { ...context, live: disabledLive })), '');

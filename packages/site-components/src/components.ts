@@ -473,7 +473,7 @@ export function renderSection(
   // reach executable markup. V1 sections without a componentKey use the
   // deterministic legacy type/variant mapping in the registry.
   const component = componentForSection(section, context.page);
-  if (section.showIf) {
+  if (section.showIf && component.conditionalVisibility === 'OPTIONAL_LIVE_SECTION') {
     const decision = evaluateLiveRule(section.showIf, context.live);
     if (decision.definitiveFalse || (!decision.matches && (!decision.indeterminate
       || component.fallbackBehaviour === 'HIDE_COMPONENT'
