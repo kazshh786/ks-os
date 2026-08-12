@@ -1,0 +1,29 @@
+name: UX V3 diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  focused-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Navigation regression
+        run: pnpm --filter web exec vitest run src/navigation/navigation.utils.test.ts
+      - name: Agency layout regression
+        run: pnpm --filter web exec vitest run src/layouts/AgencyLayout.test.tsx
+      - name: Launch tenant-reference regression
+        run: pnpm --filter web exec vitest run src/features/agency/AgencyLaunchTenantReference.test.tsx
+      - name: Client UX V3 regression
+        run: pnpm --filter web exec vitest run src/features/agency/AgencyClientExperienceV3.test.tsx
+      - name: System issue language regression
+        run: pnpm --filter web exec vitest run src/features/agency/AgencyErrorLogPage.test.tsx
