@@ -9,14 +9,35 @@ import {
 import { z } from 'zod';
 import type { AgencyActor } from '../agency/agency.service.js';
 import { SearchIntelligenceService } from './search-intelligence.service.js';
+import { SearchResearchInboxService } from './search-research-inbox.service.js';
 
 const ParamsSchema = z.object({ siteReference: z.string().uuid() }).strict();
 const StrategyParamsSchema = ParamsSchema.extend({ strategyReference: z.string().uuid() }).strict();
 const BriefParamsSchema = StrategyParamsSchema.extend({ briefReference: z.string().uuid() }).strict();
+const ResearchSourceParamsSchema = ParamsSchema.extend({ sourceReference: z.string().uuid() }).strict();
 const CreateDraftSchema = z.object({
   strategy: SearchIntelligenceStrategyV2Schema,
   briefs: z.array(PageSeoBriefSchema).min(1).max(100),
   evidence: z.array(SearchResearchEvidenceSchema).max(1_000).default([]),
+}).strict();
+const ResearchUploadSchema = z.object({
+  fileName: z.string().trim().min(1).max(255).refine(value => !/[\\/\0]/.test(value), 'Filename is unsafe.'),
+  mimeType: z.enum([
+    'text/csv',
+    'text/plain',
+    'application/json',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ]),
+  byteSize: z.number().int().positive().max(20 * 1024 * 1024),
+  digestSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  providerHint: z.string().trim().min(1).max(80).optional(),
+  market: z.string().trim().min(2).max(80),
+  locale: z.string().trim().min(2).max(35),
+  location: z.string().trim().min(1).max(160),
+  language: z.string().trim().min(2).max(35),
+  device: z.enum(['DESKTOP', 'MOBILE']),
+  capturedAt: z.string().datetime().optional(),
 }).strict();
 
 function actor(request: FastifyRequest, capability: AgencyCapability): AgencyActor {
@@ -35,6 +56,7 @@ function actor(request: FastifyRequest, capability: AgencyCapability): AgencyAct
 
 export async function agencySearchIntelligenceRoutes(app: FastifyInstance) {
   const service = new SearchIntelligenceService();
+  const research = new SearchResearchInboxService();
 
   app.post('/:siteReference/search-intelligence/create-draft', async (request, reply) => {
     const { siteReference } = ParamsSchema.parse(request.params);
@@ -86,5 +108,35 @@ export async function agencySearchIntelligenceRoutes(app: FastifyInstance) {
     const { siteReference, strategyReference } = StrategyParamsSchema.parse(request.params);
     z.object({}).strict().parse(request.body ?? {});
     return { data: await service.approve(actor(request, 'sites.manage'), siteReference, strategyReference) };
+  });
+
+  app.get('/:siteReference/search-intelligence/research-sources', async request => {
+    const { siteReference } = ParamsSchema.parse(request.params);
+    actor(request, 'sites.studio.read');
+    return { data: await research.list(siteReference) };
+  });
+
+  app.post('/:siteReference/search-intelligence/research-sources', async (request, reply) => {
+    const { siteReference } = ParamsSchema.parse(request.params);
+    const data = await research.initiate(actor(request, 'sites.manage'), siteReference, ResearchUploadSchema.parse(request.body));
+    return reply.code(201).send({ data });
+  });
+
+  app.post('/:siteReference/search-intelligence/research-sources/:sourceReference/complete', async request => {
+    const { siteReference, sourceReference } = ResearchSourceParamsSchema.parse(request.params);
+    z.object({}).strict().parse(request.body ?? {});
+    return { data: await research.complete(actor(request, 'sites.manage'), siteReference, sourceReference) };
+  });
+
+  app.post('/:siteReference/search-intelligence/research-sources/:sourceReference/apply', async request => {
+    const { siteReference, sourceReference } = ResearchSourceParamsSchema.parse(request.params);
+    z.object({}).strict().parse(request.body ?? {});
+    return { data: await research.apply(actor(request, 'sites.manage'), siteReference, sourceReference) };
+  });
+
+  app.post('/:siteReference/search-intelligence/research-sources/:sourceReference/reject', async request => {
+    const { siteReference, sourceReference } = ResearchSourceParamsSchema.parse(request.params);
+    z.object({}).strict().parse(request.body ?? {});
+    return { data: await research.reject(actor(request, 'sites.manage'), siteReference, sourceReference) };
   });
 }
