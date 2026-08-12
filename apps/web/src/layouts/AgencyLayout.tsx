@@ -99,6 +99,7 @@ export const AgencyLayout: React.FC = () => {
   const managedBusinessSecondaryActions = <div className="space-y-2">
     {canStartSupport ? <button type="button" onClick={() => { setMobileOpen(false); setSupportOpen(true); }} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-700/70 bg-amber-950/20 px-3 text-xs font-bold text-amber-100 transition hover:bg-amber-950/40"><DoorOpen aria-hidden="true" className="h-4 w-4" />Support access</button> : null}
     {canManageUsers ? <button type="button" onClick={() => { setMobileOpen(false); setManualUserOpen(true); }} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 text-xs font-bold text-slate-200 transition hover:border-violet-700 hover:text-white"><UserPlus aria-hidden="true" className="h-4 w-4" />Add workspace user</button> : null}
+    {canManageUsers ? <button type="button" onClick={openPasswordControl} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><KeyRound aria-hidden="true" className="h-4 w-4" />User password control</button> : null}
     <Link to="/agency/tenants" className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><ArrowLeft aria-hidden="true" className="h-4 w-4" />Back to all clients</Link>
   </div>;
 
