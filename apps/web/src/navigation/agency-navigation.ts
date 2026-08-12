@@ -78,7 +78,18 @@ export const managedBusinessNavigation: NavigationGroup[] = [
       { id: 'managed-onboarding', label: 'Launch', href: '/agency/tenants/:tenantId/onboarding', icon: ClipboardCheck, agencyCapabilitiesAny: ['tenants.read'] },
       { id: 'managed-website', label: 'Website', href: '/agency/tenants/:tenantId/fulfilment', icon: WandSparkles, agencyCapabilitiesAny: ['fulfilment.read', 'sites.studio.read'] },
       { id: 'managed-operations', label: 'Operations', href: '/agency/tenants/:tenantId/health', icon: Activity, agencyCapabilitiesAny: ['support.read'] },
-      { id: 'managed-account', label: 'Account', href: '/agency/tenants/:tenantId/billing', icon: CreditCard, agencyCapabilitiesAny: ['billing.read'] },
+      {
+        id: 'managed-account',
+        label: 'Account',
+        href: '/agency/tenants/:tenantId/billing',
+        icon: CreditCard,
+        agencyCapabilitiesAny: ['billing.read', 'plans.read', 'tenants.read'],
+        activePrefixes: [
+          '/agency/tenants/:tenantId/billing',
+          '/agency/tenants/:tenantId/entitlements',
+          '/agency/tenants/:tenantId/users',
+        ],
+      },
     ],
   },
 ];
