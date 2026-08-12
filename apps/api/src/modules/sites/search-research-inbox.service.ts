@@ -378,14 +378,15 @@ export class SearchResearchInboxService {
 
     briefs = briefs.map(item => {
       const imported = assignments.get(item.value.reference) ?? [];
-      if (!imported.length) return item;
       const questions = imported.filter(keyword => keywordClasses(keyword, source.searchLocation).includes('QUESTION'));
       const longTail = imported.filter(keyword => keyword.split(/\s+/).length >= 4 && !questions.includes(keyword));
       const draftBrief = PageSeoBriefSchema.parse({
         ...item.value,
-        secondaryKeywords: [...new Set([...item.value.secondaryKeywords, ...imported])].slice(0, 100),
-        longTailKeywords: [...new Set([...item.value.longTailKeywords, ...longTail])].slice(0, 100),
-        questionKeywords: [...new Set([...item.value.questionKeywords, ...questions])].slice(0, 100),
+        ...(imported.length ? {
+          secondaryKeywords: [...new Set([...item.value.secondaryKeywords, ...imported])].slice(0, 100),
+          longTailKeywords: [...new Set([...item.value.longTailKeywords, ...longTail])].slice(0, 100),
+          questionKeywords: [...new Set([...item.value.questionKeywords, ...questions])].slice(0, 100),
+        } : {}),
         provenance: {
           ...item.value.provenance,
           providerKey: 'ks-os-research-inbox',
