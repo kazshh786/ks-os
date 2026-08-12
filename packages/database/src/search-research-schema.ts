@@ -1,4 +1,4 @@
-import { bigint, index, integer, jsonb, pgTable, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, index, jsonb, pgTable, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { agencyUsers, siteSearchStrategies, sites, tenants } from './schema.js';
 
 export const siteSearchResearchSources = pgTable('site_search_research_sources', {
