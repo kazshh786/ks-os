@@ -5,12 +5,10 @@ import {
   DatabaseZap,
   FileSearch,
   FileSpreadsheet,
-  FileText,
   Loader2,
   Search,
   ShieldCheck,
   UploadCloud,
-  XCircle,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { agencyFetch, useAgencyAuth } from './AgencyAuth';
