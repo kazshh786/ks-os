@@ -170,9 +170,12 @@ function fromXlsx(bytes: Buffer) {
   return fromTable(table);
 }
 
+const pdfEscapes: Record<string, string> = {
+  n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', '(': '(', ')': ')', '\\': '\\',
+};
 function decodePdfLiteral(value: string) {
-  return value.replace(/\\([nrtbf()\\])/g, (_match, char) => ({ n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', '(': '(', ')': ')', '\\': '\\' }[char] ?? char))
-    .replace(/\\([0-7]{1,3})/g, (_match, octal) => String.fromCharCode(parseInt(octal, 8)));
+  return value.replace(/\\([nrtbf()\\])/g, (_match: string, char: string) => pdfEscapes[char] ?? char)
+    .replace(/\\([0-7]{1,3})/g, (_match: string, octal: string) => String.fromCharCode(parseInt(octal, 8)));
 }
 function pdfText(bytes: Buffer) {
   const chunks: string[] = [];
