@@ -69,7 +69,7 @@ describe('AgencyLayout UX V3', () => {
     expect(screen.getByRole('link', { name: 'Operations' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/health`);
     expect(screen.getByRole('link', { name: 'Account' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Back to all clients' })).toHaveAttribute('href', '/agency/tenants');
-    expect(screen.getByRole('button', { name: 'Support access' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Support access' }).length).toBeGreaterThan(0);
     await user.selectOptions(screen.getByRole('combobox', { name: 'Switch managed business' }), tenantTwo);
     await waitFor(() => expect(screen.getByRole('status', { name: 'Current route' })).toHaveTextContent(`/agency/tenants/${tenantTwo}`));
   });
