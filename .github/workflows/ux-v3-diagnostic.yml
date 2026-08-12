@@ -27,5 +27,19 @@ jobs:
         run: pnpm --filter web exec vitest run src/features/agency/AgencyClientExperienceV3.test.tsx
       - name: System issue language regression
         run: pnpm --filter web exec vitest run src/features/agency/AgencyErrorLogPage.test.tsx
+      - name: Site Studio guards
+        run: pnpm --filter web exec vitest run src/features/agency/SiteStudioWorkflowGuards.test.tsx
+      - name: Workspace onboarding manager
+        run: pnpm --filter web exec vitest run src/features/agency/AgencyWorkspaceOnboardingManager.test.tsx
+      - name: Workspace users
+        run: pnpm --filter web exec vitest run src/features/agency/AgencyWorkspaceUsersPage.test.tsx
+      - name: Launch publication policy
+        run: pnpm --filter web exec vitest run src/features/agency/launch-publication-policy.test.ts
+      - name: Agency auth
+        run: pnpm --filter web exec vitest run src/features/agency/__tests__/AgencyAuth.test.ts
+      - name: Agency booking system
+        run: pnpm --filter web exec vitest run src/features/agency/__tests__/AgencyBookingSystem.test.tsx
+      - name: Agency tenant users contract
+        run: pnpm --filter web exec vitest run src/features/agency/__tests__/AgencyTenantUsersPanel.contract.test.ts
       - name: Full web test suite
         run: pnpm --filter web test
