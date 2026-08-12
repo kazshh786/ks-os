@@ -27,3 +27,5 @@ jobs:
         run: pnpm --filter web exec vitest run src/features/agency/AgencyClientExperienceV3.test.tsx
       - name: System issue language regression
         run: pnpm --filter web exec vitest run src/features/agency/AgencyErrorLogPage.test.tsx
+      - name: Full web test suite
+        run: pnpm --filter web test
