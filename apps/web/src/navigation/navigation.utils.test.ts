@@ -31,22 +31,24 @@ describe('navigation resolution', () => {
     expect(groups.map(group => group.label)).not.toContain('Growth');
   });
 
-  it('filters agency navigation using server-issued capabilities', () => {
+  it('filters the simplified agency navigation using server-issued capabilities', () => {
     const groups = resolveNavigation(agencyNavigation, {
       portal: 'agency', agencyCapabilities: ['tenants.read', 'support.read', 'support.session.start'],
     });
     expect(labels(groups)).toEqual(expect.arrayContaining([
       'Clients',
-      'Onboarding',
-      'Support centre',
+      'Work queue',
+      'Support',
       'System issues',
       'Background jobs',
-      'Integrations and webhooks',
+      'Integrations',
       'Security',
     ]));
     expect(labels(groups)).not.toContain('Home');
     expect(labels(groups)).not.toContain('Revenue and billing');
     expect(labels(groups)).not.toContain('Agency team');
+    expect(labels(groups)).not.toContain('Fact finding');
+    expect(labels(groups)).not.toContain('Website delivery');
   });
 
   it('honours feature flags without leaving an empty group label', () => {
@@ -87,15 +89,19 @@ describe('route matching', () => {
     expect(findActiveNavigationItem(groups, '/app/bookings')?.label).toBe('Booking Calendar');
   });
 
-  it('replaces managed-business route parameters and matches exact tenant routes', () => {
-    const groups = resolveNavigation(managedBusinessNavigation, { portal: 'managed-business', agencyCapabilities: ['tenants.read', 'billing.read'] });
+  it('replaces managed-business route parameters and rolls account detail routes into Account', () => {
+    const groups = resolveNavigation(managedBusinessNavigation, {
+      portal: 'managed-business',
+      agencyCapabilities: ['tenants.read', 'billing.read', 'plans.read'],
+    });
     const summary = groups[0].items.find(item => item.id === 'managed-summary')!;
-    const users = groups[0].items.find(item => item.id === 'managed-users')!;
+    const account = groups[0].items.find(item => item.id === 'managed-account')!;
     expect(navigationHref(summary, { tenantId: 'tenant-1' })).toBe('/agency/tenants/tenant-1');
-    expect(navigationHref(users, { tenantId: 'tenant-1' })).toBe('/agency/tenants/tenant-1/users');
+    expect(navigationHref(account, { tenantId: 'tenant-1' })).toBe('/agency/tenants/tenant-1/billing');
     expect(isNavigationItemActive(summary, '/agency/tenants/tenant-1', { tenantId: 'tenant-1' })).toBe(true);
     expect(isNavigationItemActive(summary, '/agency/tenants/tenant-1/users', { tenantId: 'tenant-1' })).toBe(false);
-    expect(isNavigationItemActive(users, '/agency/tenants/tenant-1/users', { tenantId: 'tenant-1' })).toBe(true);
-    expect(isNavigationItemActive(summary, '/agency/tenants/tenant-1/billing', { tenantId: 'tenant-1' })).toBe(false);
+    expect(isNavigationItemActive(account, '/agency/tenants/tenant-1/users', { tenantId: 'tenant-1' })).toBe(true);
+    expect(isNavigationItemActive(account, '/agency/tenants/tenant-1/entitlements', { tenantId: 'tenant-1' })).toBe(true);
+    expect(isNavigationItemActive(account, '/agency/tenants/tenant-1/billing', { tenantId: 'tenant-1' })).toBe(true);
   });
 });
