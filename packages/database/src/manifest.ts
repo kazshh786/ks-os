@@ -80,4 +80,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260811190000_agency_launch_v2.sql', order: 73, description: 'Agency Launch V2 discovery classifications, explicit consent ledger, governed asset provenance, and versioned discovery template' },
   { filename: '20260812090000_fix_search_intelligence_scope_trigger.sql', order: 74, description: 'Fix shared Search Intelligence scope trigger so strategy inserts do not reference child-only columns' },
   { filename: '20260812093000_fix_search_intelligence_scope_trigger_generic_rows.sql', order: 75, description: 'Make shared Search Intelligence scope trigger safe across all attached row types' },
+  { filename: '20260812130000_search_research_inbox.sql', order: 76, description: 'Add private tenant-scoped Search Research source uploads, deterministic extraction review state, and explicit strategy-application provenance' },
 ];

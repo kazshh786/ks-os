@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AgencyCapability } from '@ks-os/contracts';
+import { FactFindingUploadSchema } from '@ks-os/fact-finding';
 import {
   CreateProvisioningDraftSchema,
   ProvisioningActionReasonSchema,
@@ -10,6 +11,7 @@ import {
 } from '@ks-os/workspace-provisioning';
 import type { AgencyActor } from '../agency/agency.service.js';
 import { AgencyBookingSetupService } from './agency-booking-setup.service.js';
+import { AssetLibraryService } from './asset-library.service.js';
 import { BookingAwareProvisioningService } from './booking-aware-provisioning.service.js';
 import { DeliveryContextService } from './delivery-context.service.js';
 import { TenantLifecycleService } from './tenant-lifecycle.service.js';
@@ -19,6 +21,13 @@ const DraftParams = z.object({ draftReference: z.string().uuid() }).strict();
 const RunParams = z.object({ runReference: z.string().uuid() }).strict();
 const TenantParams = z.object({ tenantReference: z.string().uuid() }).strict();
 const TenantUserParams = TenantParams.extend({ userReference: z.string().uuid() }).strict();
+const TenantAssetParams = TenantParams.extend({ uploadReference: z.string().uuid() }).strict();
+const AssetPermissionsBody = z.object({
+  publicUsePermission: z.boolean(),
+  aiUsePermission: z.boolean(),
+  copyrightConfirmed: z.boolean(),
+  consentStatus: z.enum(['NOT_APPLICABLE', 'CONFIRMED', 'REQUIRED']),
+}).strict();
 const CreateBookingServiceBody = z.object({
   name: z.string().trim().min(2).max(160),
   description: z.string().trim().min(10).max(4_000),
@@ -64,11 +73,13 @@ export async function agencyProvisioningRoutes(app: FastifyInstance) {
   let lifecycleInstance: TenantLifecycleService | undefined;
   let workspaceDataInstance: WorkspaceDataService | undefined;
   let bookingSetupInstance: AgencyBookingSetupService | undefined;
+  let assetLibraryInstance: AssetLibraryService | undefined;
   const service = () => (instance ||= new BookingAwareProvisioningService());
   const delivery = () => (deliveryInstance ||= new DeliveryContextService());
   const lifecycle = () => (lifecycleInstance ||= new TenantLifecycleService());
   const workspaceData = () => (workspaceDataInstance ||= new WorkspaceDataService());
   const bookingSetup = () => (bookingSetupInstance ||= new AgencyBookingSetupService());
+  const assetLibrary = () => (assetLibraryInstance ||= new AssetLibraryService());
 
   app.post('/provisioning-drafts', async (request, reply) => reply.code(201).send({
     data: await service().createDraft(
@@ -144,6 +155,31 @@ export async function agencyProvisioningRoutes(app: FastifyInstance) {
         CreateBookingServiceBody.parse(request.body),
       ),
     });
+  });
+
+  app.get('/tenants/:tenantReference/assets', async request => {
+    const { tenantReference } = TenantParams.parse(request.params);
+    actor(request, 'fact_finding.read');
+    return { data: await assetLibrary().list(tenantReference) };
+  });
+  app.post('/tenants/:tenantReference/assets', async (request, reply) => {
+    const { tenantReference } = TenantParams.parse(request.params);
+    const upload = FactFindingUploadSchema.parse(request.body);
+    return reply.code(201).send({ data: await assetLibrary().initiate(actor(request, 'fact_finding.manage'), tenantReference, upload) });
+  });
+  app.post('/tenants/:tenantReference/assets/:uploadReference/complete', async request => {
+    const { tenantReference, uploadReference } = TenantAssetParams.parse(request.params);
+    z.object({}).strict().parse(request.body ?? {});
+    return { data: await assetLibrary().complete(actor(request, 'fact_finding.manage'), tenantReference, uploadReference) };
+  });
+  app.patch('/tenants/:tenantReference/assets/:uploadReference/permissions', async request => {
+    const { tenantReference, uploadReference } = TenantAssetParams.parse(request.params);
+    return { data: await assetLibrary().updatePermissions(
+      actor(request, 'fact_finding.manage'),
+      tenantReference,
+      uploadReference,
+      AssetPermissionsBody.parse(request.body),
+    ) };
   });
 
   app.get('/tenants/:tenantReference/users/:userReference/removal-preview', async request => {

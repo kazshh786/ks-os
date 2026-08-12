@@ -1,0 +1,35 @@
+import { bigint, index, jsonb, pgTable, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { agencyUsers, siteSearchStrategies, sites, tenants } from './schema.js';
+
+export const siteSearchResearchSources = pgTable('site_search_research_sources', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
+  uploadedByAgencyUserId: uuid('uploaded_by_agency_user_id').notNull().references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  storageBucket: varchar('storage_bucket', { length: 100 }).notNull(),
+  storagePath: varchar('storage_path', { length: 1000 }).notNull(),
+  safeFilename: varchar('safe_filename', { length: 255 }).notNull(),
+  mimeType: varchar('mime_type', { length: 120 }).notNull(),
+  byteSize: bigint('byte_size', { mode: 'number' }).notNull(),
+  digestSha256: varchar('digest_sha256', { length: 64 }).notNull(),
+  providerHint: varchar('provider_hint', { length: 80 }).notNull(),
+  market: varchar('market', { length: 80 }).notNull(),
+  locale: varchar('locale', { length: 35 }).notNull(),
+  searchLocation: varchar('search_location', { length: 160 }).notNull(),
+  language: varchar('language', { length: 35 }).notNull(),
+  device: varchar('device', { length: 20 }).notNull(),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+  status: varchar('status', { length: 30 }).default('PENDING_UPLOAD').notNull(),
+  extractedJson: jsonb('extracted_json').default({}).notNull(),
+  extractedAt: timestamp('extracted_at', { withTimezone: true }),
+  appliedStrategyId: uuid('applied_strategy_id').references(() => siteSearchStrategies.id, { onDelete: 'restrict' }),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
+  rejectedAt: timestamp('rejected_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  storageUnique: uniqueIndex('site_search_research_sources_storage_unique').on(table.storageBucket, table.storagePath),
+  siteStatusIdx: index('site_search_research_sources_site_status_idx').on(table.tenantId, table.siteId, table.status, table.createdAt),
+  strategyIdx: index('site_search_research_sources_strategy_idx').on(table.appliedStrategyId, table.appliedAt),
+}));

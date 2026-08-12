@@ -81,7 +81,7 @@ describe('Agency client UX V3', () => {
     render(<MemoryRouter><AgencyLaunchJourneyV3 tenantReference={agencyReference} tenantDetail={detail} onBack={() => undefined} /></MemoryRouter>);
 
     expect(await screen.findByRole('heading', { name: 'Add real search research' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Open search strategy/ })).toHaveAttribute('href', `/agency/tenants/${tenantId}/fulfilment?view=search`);
+    expect(screen.getByRole('link', { name: /Open research inbox/ })).toHaveAttribute('href', `/agency/tenants/${tenantId}/fulfilment?view=research`);
     expect(screen.queryByText('Legacy governed controls')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Show controls' }));
@@ -109,7 +109,7 @@ describe('Agency client UX V3', () => {
     expect(agencyFetch.mock.calls.some(([path, options]) => path === `/sites/${siteReference}/search-intelligence/create-draft` && options?.method === 'POST')).toBe(false);
   });
 
-  it('surfaces governed research import in Website → Search after blueprint approval', async () => {
+  it('surfaces the research inbox from Website → Search after blueprint approval', async () => {
     agencyFetch.mockImplementation(async (path: string) => {
       if (path === `/sites/${siteReference}/search-intelligence`) return {
         status: 'DRAFT',
@@ -134,7 +134,7 @@ describe('Agency client UX V3', () => {
     );
 
     expect(await screen.findByRole('heading', { name: 'Add real search research before approval' })).toBeInTheDocument();
-    expect(screen.getByText('Import research JSON')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open research inbox' })).toHaveAttribute('href', `/agency/tenants/${tenantId}/fulfilment?view=research`);
     expect(screen.getByRole('heading', { name: 'Page search briefs' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Home')).toBeInTheDocument());
   });
