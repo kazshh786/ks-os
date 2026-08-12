@@ -103,10 +103,10 @@ describe('Agency Launch tenant reference boundary', () => {
     );
   });
 
-  it('normalizes a legacy internal-id URL before command-centre requests', async () => {
+  it('normalizes a legacy internal-id URL before the guided launch requests', async () => {
     renderProvisioning(`/agency/provisioning?tenant=${internalId}`);
 
-    expect(await screen.findByRole('heading', { name: 'North Star Studio' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Start client discovery' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(`?tenant=${agencyReference}`));
 
     const paths = agencyFetch.mock.calls.map(([path]) => path as string);
