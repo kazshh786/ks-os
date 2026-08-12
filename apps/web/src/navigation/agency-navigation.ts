@@ -47,7 +47,7 @@ export const agencyNavigation: NavigationGroup[] = [
     label: 'Agency',
     items: [
       { id: 'agency-bookings', label: 'Appointments', href: '/agency/bookings', icon: CalendarDays },
-      { id: 'billing', label: 'Revenue & billing', href: '/agency/billing', icon: CreditCard, agencyCapabilitiesAny: ['billing.read'] },
+      { id: 'billing', label: 'Revenue and billing', href: '/agency/billing', icon: CreditCard, agencyCapabilitiesAny: ['billing.read'] },
       { id: 'plans', label: 'Packages', href: '/agency/plans', icon: Package, agencyCapabilitiesAny: ['plans.read'], activePrefixes: ['/agency/plans/'] },
       { id: 'agency-team', label: 'Agency team', href: '/agency/users', icon: Users, agencyCapabilitiesAny: ['agency.users.manage'], activePrefixes: ['/agency/users/'] },
       { id: 'agency-security', label: 'Security', href: '/agency/settings/security', icon: ShieldCheck },
