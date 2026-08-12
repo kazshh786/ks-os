@@ -439,25 +439,58 @@ export class SearchIntelligenceService {
       }).from(siteSearchResearchEvidence).where(eq(siteSearchResearchEvidence.strategyId, row.id)),
     ]);
     const evidence = evidenceRows.map(parseStoredResearchEvidence);
+    const currentStrategy = SearchIntelligenceStrategyV2Schema.parse(row.value);
     assertSearchIntelligenceResearchApprovable({
-      strategy: SearchIntelligenceStrategyV2Schema.parse(row.value),
+      strategy: currentStrategy,
       evidence,
     });
     if (row.status === 'APPROVED') return { reference: strategyReference, status: 'APPROVED' as const, idempotentReplay: true };
     const approvedAt = new Date();
     const approvedAtIso = approvedAt.toISOString();
     const approvedStrategy = SearchIntelligenceStrategyV2Schema.parse({
-      ...(row.value as Record<string, unknown>),
+      ...currentStrategy,
       status: 'APPROVED',
       approvedAt: approvedAtIso,
       approvedByAgencyUserReference: agencyUser.reference,
     });
-    const approvedBriefs = briefRows.map(brief => PageSeoBriefSchema.parse({
-      ...(brief.value as Record<string, unknown>),
-      status: 'APPROVED',
-      approvedAt: approvedAtIso,
-      approvedByAgencyUserReference: agencyUser.reference,
-    }));
+    const approvedBriefs = briefRows.map(brief => {
+      const current = PageSeoBriefSchema.parse(brief.value);
+      const canRepairResearchPin = currentStrategy.provenance.providerKey === 'ks-os-research-inbox'
+        && current.strategyReference === currentStrategy.reference
+        && current.strategyVersion === currentStrategy.strategyVersion
+        && current.provenance.strategyReference === currentStrategy.reference
+        && current.provenance.strategyVersion === currentStrategy.strategyVersion;
+      const draft = canRepairResearchPin
+        ? PageSeoBriefSchema.parse({
+            ...current,
+            provenance: {
+              ...current.provenance,
+              providerKey: currentStrategy.provenance.providerKey,
+              modelKey: currentStrategy.provenance.modelKey,
+              researchDigestSha256: currentStrategy.provenance.researchDigestSha256,
+              researchEvidenceReferences: currentStrategy.provenance.researchEvidenceReferences,
+              strategyDigestSha256: currentStrategy.provenance.outputDigestSha256,
+              generatedAt: currentStrategy.provenance.generatedAt,
+              outputDigestSha256: '0'.repeat(64),
+            },
+          })
+        : current;
+      const repinned = canRepairResearchPin
+        ? PageSeoBriefSchema.parse({
+            ...draft,
+            provenance: {
+              ...draft.provenance,
+              outputDigestSha256: pageSeoBriefDigest(draft),
+            },
+          })
+        : draft;
+      return PageSeoBriefSchema.parse({
+        ...repinned,
+        status: 'APPROVED',
+        approvedAt: approvedAtIso,
+        approvedByAgencyUserReference: agencyUser.reference,
+      });
+    });
     const findings = validateSearchIntelligencePlan({
       strategy: approvedStrategy,
       briefs: approvedBriefs,
@@ -482,6 +515,7 @@ export class SearchIntelligenceService {
         await tx.update(sitePageSeoBriefs).set({
           status: 'APPROVED',
           briefJson: approved,
+          outputDigestSha256: approved.provenance.outputDigestSha256,
           approvedAt,
           approvedByAgencyUserId: actor.agencyUserId,
         }).where(and(eq(sitePageSeoBriefs.id, briefRow.id), eq(sitePageSeoBriefs.status, 'DRAFT')));
