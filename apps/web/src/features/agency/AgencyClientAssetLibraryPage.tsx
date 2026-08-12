@@ -147,7 +147,10 @@ export default function AgencyClientAssetLibraryPage() {
     if (candidate.size > 20 * 1024 * 1024) { setFile(null); setError('Assets must be smaller than 20 MB.'); return; }
     setFile(candidate);
   };
-  const grouped = useMemo(() => categories.map(group => ({ ...group, assets: data?.assets.filter(asset => group.values.some(([key]) => key === asset.category)) ?? [] })), [data?.assets]);
+  const grouped = useMemo(() => categories.map(group => ({
+    ...group,
+    assets: data?.assets.filter(asset => group.values.some(value => value[0] === asset.category)) ?? [],
+  })), [data?.assets]);
   const upload = async () => {
     if (!data || !file || !copyright) return;
     setBusy(true); setError(''); setNotice('');
