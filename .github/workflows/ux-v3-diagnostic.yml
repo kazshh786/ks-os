@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 jobs:
-  web-test-groups:
+  component-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,35 +17,13 @@ jobs:
           node-version: 24.18.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Agency tests
-        run: pnpm --filter web exec vitest run src/features/agency
-      - name: Auth and API tests
-        run: pnpm --filter web exec vitest run src/auth src/api --passWithNoTests
-      - name: Component tests
-        run: pnpm --filter web exec vitest run src/components --passWithNoTests
-      - name: Context data and lib tests
-        run: pnpm --filter web exec vitest run src/context src/data src/lib --passWithNoTests
-      - name: Non-agency feature tests
-        shell: bash
-        run: |
-          mapfile -t files < <(find apps/web/src/features -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) ! -path '*/agency/*' | sort)
-          if [ ${#files[@]} -eq 0 ]; then exit 0; fi
-          rel=()
-          for file in "${files[@]}"; do rel+=("${file#apps/web/}"); done
-          pnpm --filter web exec vitest run "${rel[@]}"
-      - name: Layout tests
-        run: pnpm --filter web exec vitest run src/layouts --passWithNoTests
-      - name: Navigation tests
-        run: pnpm --filter web exec vitest run src/navigation --passWithNoTests
-      - name: Page tests
-        run: pnpm --filter web exec vitest run src/pages --passWithNoTests
-      - name: Root web tests
-        shell: bash
-        run: |
-          mapfile -t files < <(find apps/web/src -maxdepth 1 -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) | sort)
-          if [ ${#files[@]} -eq 0 ]; then exit 0; fi
-          rel=()
-          for file in "${files[@]}"; do rel+=("${file#apps/web/}"); done
-          pnpm --filter web exec vitest run "${rel[@]}"
-      - name: Full web test suite
-        run: pnpm --filter web test
+      - name: Client CRM
+        run: pnpm --filter web exec vitest run src/components/__tests__/ClientCRM.test.tsx
+      - name: Entitlement UI
+        run: pnpm --filter web exec vitest run src/components/__tests__/EntitlementUI.test.tsx
+      - name: Public booking
+        run: pnpm --filter web exec vitest run src/components/__tests__/PublicBooking.test.tsx
+      - name: Public form completion
+        run: pnpm --filter web exec vitest run src/components/__tests__/PublicFormCompletion.test.tsx
+      - name: Mobile navigation
+        run: pnpm --filter web exec vitest run src/components/navigation/MobileNavigation.test.tsx
