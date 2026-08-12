@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { agencyFetch } from './AgencyAuth';
-import { AgencyLaunchCommandCenter } from './AgencyLaunchCommandCenter';
+import { AgencyLaunchJourneyV3 } from './AgencyClientExperienceV3';
 
 type TenantSummary = {
   id: string;
@@ -77,15 +77,16 @@ export function AgencyLaunchTenantResolver({
   if (loading || !detailMatchesIdentifier) {
     if (error && !loading) {
       return <div role="alert" className="rounded-3xl border border-rose-800 bg-rose-950/35 p-8 text-sm text-rose-200">
-        <p>{error}</p>
-        <button type="button" onClick={() => void load()} className="mt-4 min-h-11 rounded-xl border border-rose-700 px-4 text-xs font-black text-rose-100">Retry</button>
+        <p className="font-black">The client launch workspace could not be loaded</p>
+        <p className="mt-2 text-rose-200/75">{error}</p>
+        <button type="button" onClick={() => void load()} className="mt-4 min-h-11 rounded-xl border border-rose-700 px-4 text-xs font-black text-rose-100">Try again</button>
       </div>;
     }
-    return <div className="rounded-3xl border border-slate-800 bg-slate-900 p-8 text-sm text-slate-400">Loading governed launch workspace…</div>;
+    return <div className="rounded-3xl border border-slate-800 bg-slate-900 p-8 text-sm text-slate-400">Loading the client launch plan…</div>;
   }
 
   return <div className="space-y-6">
-    <AgencyLaunchCommandCenter
+    <AgencyLaunchJourneyV3
       tenantReference={detail.tenant.agencyReference}
       tenantDetail={detail}
       onBack={onBack}
