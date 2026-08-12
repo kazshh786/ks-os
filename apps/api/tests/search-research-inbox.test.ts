@@ -6,6 +6,7 @@ import { extractSearchResearch, searchResearchFileMatchesMime } from '../src/mod
 const provisioningRoutes = readFileSync(new URL('../src/modules/provisioning/provisioning.routes.ts', import.meta.url), 'utf8');
 const searchRoutes = readFileSync(new URL('../src/modules/sites/search-intelligence.routes.ts', import.meta.url), 'utf8');
 const searchService = readFileSync(new URL('../src/modules/sites/search-research-inbox.service.ts', import.meta.url), 'utf8');
+const searchIntelligenceService = readFileSync(new URL('../src/modules/sites/search-intelligence.service.ts', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../../../packages/database/migrations/20260812130000_search_research_inbox.sql', import.meta.url), 'utf8');
 const assetUi = readFileSync(new URL('../../web/src/features/agency/AgencyClientAssetLibraryPage.tsx', import.meta.url), 'utf8');
 const researchUi = readFileSync(new URL('../../web/src/features/agency/AgencyClientSearchResearchPage.tsx', import.meta.url), 'utf8');
@@ -68,6 +69,15 @@ test('search research sources require explicit extraction review and apply actio
   assert.match(researchUi, /Google Search Console/);
   assert.match(researchUi, /Not connected/);
   assert.match(layout, /view=research/);
+});
+
+test('research updates repin every draft page brief to the new strategy digest', () => {
+  assert.doesNotMatch(searchService, /if \(!imported\.length\) return item/);
+  assert.match(searchService, /strategyDigestSha256: strategy\.provenance\.outputDigestSha256/);
+  assert.match(searchService, /outputDigestSha256: pageSeoBriefDigest\(draftBrief\)/);
+  assert.match(searchIntelligenceService, /canRepairResearchPin/);
+  assert.match(searchIntelligenceService, /providerKey === 'ks-os-research-inbox'/);
+  assert.match(searchIntelligenceService, /outputDigestSha256: approved\.provenance\.outputDigestSha256/);
 });
 
 test('research source persistence is private and tenant/site scoped', () => {
