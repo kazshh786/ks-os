@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CircleHelp, DoorOpen, KeyRound, Plus, ShieldCheck, UserPlus } from 'lucide-react';
+import { ArrowLeft, CircleHelp, DoorOpen, KeyRound, Plus, Search, ShieldCheck, UserPlus } from 'lucide-react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { AccountMenu } from '../components/navigation/AccountMenu';
 import { AppSidebar } from '../components/navigation/AppSidebar';
@@ -8,6 +8,7 @@ import { MobileNavigation } from '../components/navigation/MobileNavigation';
 import { PageHeader } from '../components/navigation/PageHeader';
 import { AdminPasswordDialog } from '../features/agency/AdminPasswordDialog';
 import { agencyFetch, useAgencyAuth } from '../features/agency/AgencyAuth';
+import AgencyClientSearchResearchPage from '../features/agency/AgencyClientSearchResearchPage';
 import AgencyClientWorkspaceOverviewPage from '../features/agency/AgencyClientWorkspaceOverviewPage';
 import {
   AgencyClientAccountPage,
@@ -126,7 +127,10 @@ export const AgencyLayout: React.FC = () => {
     onNavigate={isMobile ? closeMobile : undefined}
   />;
 
+  const query = new URLSearchParams(location.search);
+  const onWebsite = Boolean(tenantId && location.pathname === `/agency/tenants/${tenantId}/fulfilment`);
   const headerActions = <div className="flex items-center gap-2">
+    {onWebsite && query.get('view') !== 'research' ? <Link to={`/agency/tenants/${tenantId}/fulfilment?view=research`} className="hidden min-h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs font-black text-slate-200 transition hover:border-violet-500 sm:inline-flex"><Search className="h-4 w-4" />Search research</Link> : null}
     {session?.user.role === 'PLATFORM_OWNER' ? <DeploymentControl /> : null}
     {!tenantId && capabilities.includes('tenants.manage') ? <Link to="/agency/tenants/new" className="hidden min-h-10 items-center gap-2 rounded-xl bg-violet-600 px-3 text-xs font-black text-white shadow-lg shadow-violet-950/30 transition hover:bg-violet-500 sm:inline-flex"><Plus className="h-4 w-4" />Add client</Link> : null}
     {tenantId && canStartSupport ? <button type="button" onClick={() => setSupportOpen(true)} className="hidden min-h-10 items-center gap-2 rounded-xl bg-amber-400 px-3 text-xs font-black text-slate-950 transition hover:bg-amber-300 sm:inline-flex"><DoorOpen className="h-4 w-4" />Support access</button> : null}
@@ -135,7 +139,6 @@ export const AgencyLayout: React.FC = () => {
 
   const tenantWorkspaceMatch = location.pathname.match(/^\/agency\/tenants\/[0-9a-f-]{36}(?:\/(onboarding|fulfilment|health|billing))?\/?$/i);
   const tenantWorkspaceMode = tenantWorkspaceMatch?.[1];
-  const query = new URLSearchParams(location.search);
   const redesignedContent = (location.pathname === '/agency' || location.pathname === '/agency/overview') && capabilities.includes('analytics.read')
     ? <AgencyHomePage />
     : location.pathname === '/agency/tenants' && capabilities.includes('tenants.read')
@@ -146,7 +149,9 @@ export const AgencyLayout: React.FC = () => {
           ? tenantWorkspaceMode === 'onboarding'
             ? <AgencyWorkspaceOnboardingPage />
             : tenantWorkspaceMode === 'fulfilment'
-              ? <AgencyClientWebsiteWorkspacePage />
+              ? query.get('view') === 'research'
+                ? <AgencyClientSearchResearchPage />
+                : <AgencyClientWebsiteWorkspacePage />
               : tenantWorkspaceMode === 'health' && query.get('technical') !== '1'
                 ? <AgencyClientOperationsPage />
                 : tenantWorkspaceMode === 'billing' && query.get('details') !== '1'
@@ -161,9 +166,9 @@ export const AgencyLayout: React.FC = () => {
     <MobileNavigation open={mobileOpen} title={tenantId ? 'Client workspace' : 'Agency navigation'} onClose={closeMobile} triggerRef={menuButtonRef}>{sidebar(true)}</MobileNavigation>
     <div className="flex min-w-0 flex-1 flex-col">
       <PageHeader
-        title={activeItem?.label ?? (tenantId ? 'Client workspace' : 'Agency home')}
+        title={query.get('view') === 'research' && tenantWorkspaceMode === 'fulfilment' ? 'Search research' : activeItem?.label ?? (tenantId ? 'Client workspace' : 'Agency home')}
         eyebrow={tenantId ? tenantName : 'KS Agency'}
-        breadcrumbs={activeItem ? [tenantId ? tenantName : 'Agency', activeItem.label] : undefined}
+        breadcrumbs={query.get('view') === 'research' && tenantWorkspaceMode === 'fulfilment' ? [tenantName, 'Website', 'Search research'] : activeItem ? [tenantId ? tenantName : 'Agency', activeItem.label] : undefined}
         tone="dark"
         menuButtonRef={menuButtonRef}
         onOpenNavigation={() => setMobileOpen(true)}
