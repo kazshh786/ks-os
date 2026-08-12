@@ -78,4 +78,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260811120000_live_site_intelligence_v1.sql', order: 71, description: 'Live Site Intelligence V1 public operational DTO sources, governed campaigns, bounded availability summaries, change events, impact assessments, and human-reviewed proposals' },
   { filename: '20260811153000_live_site_intelligence_v1_1_hardening.sql', order: 72, description: 'Harden Live Site Intelligence scope validation and add tenant-scoped governed public waitlist persistence' },
   { filename: '20260811190000_agency_launch_v2.sql', order: 73, description: 'Agency Launch V2 discovery classifications, explicit consent ledger, governed asset provenance, and versioned discovery template' },
+  { filename: '20260812090000_fix_search_intelligence_scope_trigger.sql', order: 74, description: 'Fix shared Search Intelligence scope trigger so strategy inserts do not reference child-only columns' },
 ];
