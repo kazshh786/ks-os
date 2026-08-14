@@ -118,9 +118,14 @@ describe('provisioning readiness', () => {
     const result = evaluateProvisioningReadiness({ ...ready, paymentStatus: 'RESTRICTED', payLaterAllowed: false });
     assert.ok(result.blockingIssues.some(issue => issue.code === 'PAYMENT_NOT_READY'));
   });
-  it('always reports publication as deferred', () => {
+  it('reports publication as not started until publishing has its own live state', () => {
     const result = combinedReadiness({ workspaceReady: true, bookingReady: true, websiteReady: true, reviewReady: true, paymentStatus: 'READY', blockingIssues: [], warnings: [] });
-    assert.equal(result.publication, 'NOT_AVAILABLE_UNTIL_PHASE_15_9');
+    assert.equal(result.publication, 'NOT_STARTED');
+    assert.equal(result.ready, true);
+  });
+  it('uses canonical booking readiness as proof that a stale provisioning run did create the workspace', () => {
+    const result = combinedReadiness({ workspaceReady: false, bookingReady: true, websiteReady: true, reviewReady: true, paymentStatus: 'READY', blockingIssues: [], warnings: [] });
+    assert.equal(result.workspace, 'READY');
     assert.equal(result.ready, true);
   });
   it('does not report a partially ready workspace as ready', () => {
