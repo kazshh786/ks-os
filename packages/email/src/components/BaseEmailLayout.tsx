@@ -1,5 +1,6 @@
-import { Body, Container, Head, Html, Tailwind, Preview, Section, Heading, Text, Link, Img } from '@react-email/components';
+import { Body, Container, Head, Html, Preview, Section, Tailwind } from '@react-email/components';
 import { ReactNode } from 'react';
+import { BrandHeader, EmailFooter } from './FormEmailComponents.js';
 
 export interface EmailBrandingProps {
   tenantName: string;
@@ -22,66 +23,30 @@ interface BaseEmailLayoutProps extends EmailBrandingProps {
 
 export const BaseEmailLayout = ({
   tenantName,
-  tenantPrimaryColor = '#000000',
+  tenantPrimaryColor = '#111827',
   businessName = tenantName,
-  businessEmail,
-  businessPhone,
   businessAddress,
-  businessWebsiteUrl,
   businessLogoUrl,
-  instagramUrl,
-  facebookUrl,
-  tiktokUrl,
   children,
   previewText,
-}: BaseEmailLayoutProps) => {
-  const socialLinks = [
-    ['Instagram', instagramUrl],
-    ['Facebook', facebookUrl],
-    ['TikTok', tiktokUrl],
-  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
-
-  return (
-    <Html>
-      <Head />
-      {previewText && <Preview>{previewText}</Preview>}
-      <Tailwind>
-        <Body className="bg-gray-100 font-sans">
-          <Container className="mx-auto my-[40px] max-w-[600px] p-[20px]">
-            <Section className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              <Section 
-                className="p-6 text-center" 
-                style={{ backgroundColor: tenantPrimaryColor }}
-              >
-                {businessLogoUrl && <Img src={businessLogoUrl} alt={businessName + ' logo'} className="mx-auto mb-3 max-h-16 max-w-40 object-contain" />}
-                <Heading className="text-white m-0 text-xl font-bold">{businessName}</Heading>
-              </Section>
-              <Section className="p-6">
-                {children}
-              </Section>
-              <Section className="px-6 pb-6 text-center">
-                {(businessAddress || businessPhone || businessEmail || businessWebsiteUrl) && (
-                  <Text className="m-0 mb-2 text-xs leading-5 text-gray-600">
-                    {businessAddress && <span>{businessAddress}<br /></span>}
-                    {businessPhone && <span>{businessPhone}<br /></span>}
-                    {businessEmail && <Link href={'mailto:' + businessEmail} className="text-gray-600">{businessEmail}</Link>}
-                    {businessEmail && businessWebsiteUrl && <span> · </span>}
-                    {businessWebsiteUrl && <Link href={businessWebsiteUrl} className="text-gray-600">Website</Link>}
-                  </Text>
-                )}
-                {socialLinks.length > 0 && (
-                  <Text className="m-0 mb-3 text-xs">
-                    {socialLinks.map(([label, url], index) => (
-                      <span key={label}>{index > 0 && <span> · </span>}<Link href={url} className="font-semibold text-gray-700">{label}</Link></span>
-                    ))}
-                  </Text>
-                )}
-                <Text className="m-0 text-xs text-gray-500">Sent securely by KS OS on behalf of {tenantName}.</Text>
-              </Section>
-            </Section>
-          </Container>
-        </Body>
-      </Tailwind>
-    </Html>
-  );
-};
+}: BaseEmailLayoutProps) => (
+  <Html lang="en" dir="ltr">
+    <Head />
+    {previewText ? <Preview>{previewText}</Preview> : null}
+    <Tailwind>
+      <Body style={{ backgroundColor: '#f3f4f6', fontFamily: 'Arial, Helvetica, sans-serif', margin: 0 }}>
+        <Container style={{ margin: '40px auto', maxWidth: '600px', padding: '0 16px' }}>
+          <Section style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden' }}>
+            <BrandHeader
+              businessName={businessName}
+              businessLogoUrl={businessLogoUrl}
+              brandColor={tenantPrimaryColor}
+            />
+            <Section style={{ padding: '28px 24px 20px' }}>{children}</Section>
+            <EmailFooter tenantName={tenantName} businessAddress={businessAddress} />
+          </Section>
+        </Container>
+      </Body>
+    </Tailwind>
+  </Html>
+);

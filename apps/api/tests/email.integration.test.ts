@@ -36,11 +36,15 @@ test('form assignment, form reminder and appointment reminder emails are wired t
   const bookings = read('modules/bookings/booking.service.ts');
 
   assert.match(forms, /templateKey:'form-assigned'/);
+  assert.match(forms, /input\.deliveryMethod === 'EMAIL'/);
   assert.match(forms, /templateKey:'form-reminder'/);
   assert.match(forms, /idempotencyKey:`form-assigned-email:\$\{created\.id\}`/);
   assert.match(forms, /idempotencyKey:`form-reminder-email:\$\{created\.id\}:\$\{hours\}`/);
   assert.match(bookings, /templateKey: 'appointment-reminder'/);
   assert.match(bookings, /cancelAppointmentReminders\(auth\.tenantId,bookingId,tx\)/);
+  const emailService = read('modules/email/email.service.ts');
+  assert.match(emailService, /formReminderCancellationCode/);
+  assert.match(emailService, /FORM_REMINDER_NO_LONGER_APPLICABLE|cancellationCode/);
 });
 
 test('direct Resend sends are now tracked through the email outbox', () => {

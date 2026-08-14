@@ -371,6 +371,26 @@ export function prepareEmailTemplateData(templateKey: string, data: Record<strin
   return prepared;
 }
 
+export type FormReminderSnapshot = {
+  exists: boolean;
+  status?: string | null;
+  expiresAt?: Date | string | null;
+};
+
+export function formReminderCancellationCode(
+  snapshot: FormReminderSnapshot,
+  templateKey: string,
+  now = Date.now(),
+): string | null {
+  if (templateKey !== 'form-reminder') return null;
+  if (!snapshot.exists || !snapshot.expiresAt || !['PENDING', 'OPENED'].includes(snapshot.status || '')) {
+    return 'FORM_REMINDER_NO_LONGER_APPLICABLE';
+  }
+  const expiresAt = new Date(snapshot.expiresAt).getTime();
+  if (!Number.isFinite(expiresAt) || expiresAt <= now) return 'FORM_REMINDER_NO_LONGER_APPLICABLE';
+  return null;
+}
+
 export function isPermanentEmailFailure(code: string): boolean {
   return /EMAIL_(?:TEMPLATE_VALIDATION_FAILED|INVALID_RECIPIENT|PRODUCTION_TEST_RECIPIENT_BLOCKED|INVALID_IDEMPOTENCY_KEY)|VALIDATION|SUPPRESSED|NOT_CONFIGURED/i.test(code);
 }

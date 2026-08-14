@@ -5,7 +5,9 @@ import { FormDraftInputSchema, FormSchemaJsonSchema, type CreateFormAssignmentIn
 import { renderAnswers, validateSubmission } from './forms.validation.js';
 import { SmsService } from '../sms/sms.service.js';
 import { EmailService } from '../email/email.service.js';
+import { EmailSettingsService, emailBrandingTemplateData } from '../email/email-settings.service.js';
 import { env } from '../../config/env.js';
+import { buildSecureFormUrl, formReminderScheduledFor, shouldQueueFormAssignmentEmail, shouldQueueFormReminder } from './form-delivery.js';
 import { BusinessEventsService, stableEventId } from '../automations/business-events.service.js';
 
 type Actor = { tenantId: string; userId: string; role: 'owner' | 'staff' };
@@ -39,6 +41,7 @@ export class FormsService {
   private db = getDatabase();
   private businessEvents = new BusinessEventsService();
   private email = new EmailService();
+  private emailSettings = new EmailSettingsService();
 
   async listForms(actor: Actor) {
     const statusScope = actor.role === 'owner' ? undefined : eq(forms.status, 'PUBLISHED');
@@ -120,20 +123,155 @@ export class FormsService {
       const [client] = await tx.select().from(clients).where(and(eq(clients.id,input.clientId),eq(clients.tenantId,actor.tenantId))).limit(1);
       if (!client) throw err(404,'FORM_ASSIGNMENT_NOT_FOUND','Assignment target not found.');
       if (input.appointmentId) { const [appt] = await tx.select({ id: appointments.id, userId: appointments.userId }).from(appointments).where(and(eq(appointments.id,input.appointmentId),eq(appointments.clientId,input.clientId),eq(appointments.tenantId,actor.tenantId))).limit(1); if (!appt) throw err(404,'FORM_ASSIGNMENT_NOT_FOUND','Assignment target not found.'); if (actor.role === 'staff' && appt.userId !== actor.userId) throw err(403,'FORM_ACCESS_DENIED','You cannot assign forms for this appointment.'); }
-      const versionResult = await tx.execute(sql`select v.id,v.title_snapshot from form_versions v join forms f on f.id=v.form_id and f.tenant_id=v.tenant_id where v.form_id=${input.formId}::uuid and v.tenant_id=${actor.tenantId}::uuid and f.status<>'ARCHIVED' ${input.formVersionId ? sql`and v.id=${input.formVersionId}::uuid` : sql``} order by v.version_number desc limit 1`);
-      const version = versionResult.rows[0] as { id:string; title_snapshot:string } | undefined;
+      const versionResult = await tx.execute(sql`
+        select v.id, v.title_snapshot, v.description_snapshot, v.schema_json
+        from form_versions v
+        join forms f on f.id=v.form_id and f.tenant_id=v.tenant_id
+        where v.form_id=${input.formId}::uuid
+          and v.tenant_id=${actor.tenantId}::uuid
+          and f.status<>'ARCHIVED'
+          ${input.formVersionId ? sql`and v.id=${input.formVersionId}::uuid` : sql``}
+        order by v.version_number desc
+        limit 1
+      `);
+      const version = versionResult.rows[0] as { id:string; title_snapshot:string; description_snapshot:string | null; schema_json:unknown } | undefined;
       if (!version) throw err(409,'FORM_NOT_PUBLISHED','A published form version is required.');
       const expiresAt = new Date(Date.now() + expiryDays * 86400000);
       const [created] = await tx.insert(formAssignments).values({ tenantId: actor.tenantId, formId: input.formId, formVersionId: version.id, clientId: input.clientId, appointmentId: input.appointmentId, publicTokenHash: hashFormToken(token), expiresAt, assignedByUserId: actor.userId }).returning();
       await this.businessEvents.emit({id:stableEventId('FORM_ASSIGNED',created.id,'created'),tenantId:actor.tenantId,type:'FORM_ASSIGNED',occurredAt:new Date().toISOString(),sourceType:'form_assignment',sourceId:created.id,payload:{assignmentId:created.id,formId:created.formId,appointmentId:created.appointmentId,status:'PENDING'}},tx);
       const [tenant]=await tx.select().from(tenants).where(eq(tenants.id,actor.tenantId)).limit(1);
-      const secureUrl = env.PUBLIC_APP_ORIGIN ? `${env.PUBLIC_APP_ORIGIN}/forms/complete/${token}` : undefined;
-      if(input.deliveryMethod==='SMS'&&client.phone){if(tenant?.smsEnabled&&tenant.smsFormDeliveryEnabled&&secureUrl)await new SmsService().enqueue({tenantId:actor.tenantId,clientId:client.id,appointmentId:input.appointmentId,formAssignmentId:created.id,recipientPhone:client.phone,templateKey:'form-assigned',templateData:{formTitle:version.title_snapshot,secureUrl},idempotencyKey:`sms-form-${created.id}`,validUntil:expiresAt},tx);}
-      if(client.email&&tenant?.formDeliveryEnabled&&secureUrl) {
-        await this.email.enqueueEmail({tenantId:actor.tenantId,recipientEmail:client.email,recipientName:client.name,replyToEmail:tenant.replyToEmail||undefined,templateKey:'form-assigned',templateDataJson:{tenantName:tenant.senderDisplayName||tenant.name,tenantPrimaryColor:tenant.primaryColor,customerName:client.name,formName:version.title_snapshot,formLink:secureUrl},idempotencyKey:`form-assigned-email:${created.id}`,relatedEntityType:'form_assignment',relatedEntityId:created.id},tx);
-        if(tenant.formRemindersEnabled&&input.appointmentId&&tenant.formReminderTiming!=='none'){
-          const [appt]=await tx.select({startTime:appointments.startTime}).from(appointments).where(and(eq(appointments.id,input.appointmentId),eq(appointments.tenantId,actor.tenantId))).limit(1);
-          if(appt?.startTime){const hours=tenant.formReminderTiming.startsWith('48')?48:24;const scheduledFor=new Date(appt.startTime.getTime()-hours*3600000);if(scheduledFor>new Date()&&scheduledFor<expiresAt)await this.email.enqueueEmail({tenantId:actor.tenantId,recipientEmail:client.email,recipientName:client.name,replyToEmail:tenant.replyToEmail||undefined,templateKey:'form-reminder',templateDataJson:{tenantName:tenant.senderDisplayName||tenant.name,tenantPrimaryColor:tenant.primaryColor,customerName:client.name,formName:version.title_snapshot,formLink:secureUrl},idempotencyKey:`form-reminder-email:${created.id}:${hours}`,relatedEntityType:'form_assignment',relatedEntityId:created.id,scheduledFor},tx);}
+      const secureUrl = buildSecureFormUrl(env.PUBLIC_APP_ORIGIN, token);
+      if (input.deliveryMethod === 'SMS' && client.phone) {
+        if (tenant?.smsEnabled && tenant.smsFormDeliveryEnabled && secureUrl) {
+          await new SmsService().enqueue({
+            tenantId: actor.tenantId,
+            clientId: client.id,
+            appointmentId: input.appointmentId,
+            formAssignmentId: created.id,
+            recipientPhone: client.phone,
+            templateKey: 'form-assigned',
+            templateData: { formTitle: version.title_snapshot, secureUrl },
+            idempotencyKey: `sms-form-${created.id}`,
+            validUntil: expiresAt,
+          }, tx);
+        }
+      }
+
+      const recipientEmail = client.email || undefined;
+      if (
+        input.deliveryMethod === 'EMAIL'
+        && shouldQueueFormAssignmentEmail({
+          deliveryMethod: input.deliveryMethod,
+          recipientEmail,
+          formDeliveryEnabled: tenant?.formDeliveryEnabled,
+          secureUrl,
+        })
+      ) {
+        const settings = await this.emailSettings.get(actor.tenantId, tx);
+        const formSchema = FormSchemaJsonSchema.safeParse(version.schema_json);
+        const estimatedMinutes = formSchema.success ? formSchema.data.settings.estimatedMinutes : undefined;
+        let appointmentStart: Date | undefined;
+        let appointmentTemplateData: Record<string, string> = {};
+
+        if (input.appointmentId) {
+          const appointmentResult = await tx.execute(sql`
+            select a.start_time "startTime", s.name "serviceName", u.name "staffName", l.name "locationName"
+            from appointments a
+            left join services s on s.id=a.service_id and s.tenant_id=a.tenant_id
+            left join users u on u.id=a.user_id and u.tenant_id=a.tenant_id
+            left join locations l on l.id=a.location_id and l.tenant_id=a.tenant_id
+            where a.id=${input.appointmentId}::uuid and a.tenant_id=${actor.tenantId}::uuid
+            limit 1
+          `);
+          const appointment = appointmentResult.rows[0] as {
+            startTime?: Date | string;
+            serviceName?: string | null;
+            staffName?: string | null;
+            locationName?: string | null;
+          } | undefined;
+          if (appointment?.startTime) {
+            const parsedAppointmentStart = new Date(appointment.startTime);
+            if (Number.isFinite(parsedAppointmentStart.getTime())) {
+              appointmentStart = parsedAppointmentStart;
+              const appointmentDate = new Intl.DateTimeFormat('en-GB', {
+                dateStyle: 'full',
+                timeZone: tenant?.timezone || 'Europe/London',
+              }).format(parsedAppointmentStart);
+              appointmentTemplateData = {
+                appointmentDate,
+                appointmentTime: new Intl.DateTimeFormat('en-GB', {
+                  timeStyle: 'short',
+                  timeZone: tenant?.timezone || 'Europe/London',
+                }).format(parsedAppointmentStart),
+                appointmentDateTime: parsedAppointmentStart.toISOString(),
+                dueDate: appointmentDate,
+                ...(appointment.serviceName ? { serviceName: appointment.serviceName } : {}),
+                ...(appointment.staffName ? { staffName: appointment.staffName } : {}),
+                ...(appointment.locationName ? { locationName: appointment.locationName } : {}),
+              };
+            }
+          }
+        }
+
+        const formName = version.title_snapshot;
+        const commonTemplateData = {
+          ...emailBrandingTemplateData(settings.branding),
+          tenantPrimaryColor: tenant!.primaryColor,
+          customerName: client.name,
+          formName,
+          formLink: secureUrl!,
+          timezone: tenant!.timezone,
+          ...(version.description_snapshot ? { formDescription: version.description_snapshot } : {}),
+          ...(estimatedMinutes ? { estimatedMinutes } : {}),
+          ...appointmentTemplateData,
+        };
+        await this.email.enqueueEmail({
+          tenantId: actor.tenantId,
+          recipientEmail: recipientEmail!,
+          recipientName: client.name,
+          replyToEmail: settings.replyToEmail || undefined,
+          templateKey: 'form-assigned',
+          templateDataJson: {
+            ...commonTemplateData,
+            emailSubject: ('Action required: complete your ' + formName).slice(0, 160),
+          },
+          idempotencyKey: `form-assigned-email:${created.id}`,
+          relatedEntityType: 'form_assignment',
+          relatedEntityId: created.id,
+        }, tx);
+
+        const scheduledFor = formReminderScheduledFor(
+          settings.formReminderTiming,
+          created.createdAt || new Date(),
+          appointmentStart,
+        );
+        if (shouldQueueFormReminder({
+          deliveryMethod: input.deliveryMethod,
+          recipientEmail,
+          formDeliveryEnabled: settings.formDeliveryEnabled,
+          formRemindersEnabled: settings.formRemindersEnabled,
+          secureUrl,
+          scheduledFor,
+          expiresAt,
+        })) {
+          const reminderSubject = appointmentStart
+            ? 'One form to complete before your appointment — ' + settings.branding.businessName
+            : 'Reminder: ' + formName + ' still needs completing';
+          await this.email.enqueueEmail({
+            tenantId: actor.tenantId,
+            recipientEmail: recipientEmail!,
+            recipientName: client.name,
+            replyToEmail: settings.replyToEmail || undefined,
+            templateKey: 'form-reminder',
+            templateDataJson: {
+              ...commonTemplateData,
+              emailSubject: reminderSubject.slice(0, 160),
+            },
+            idempotencyKey: `form-reminder-email:${created.id}:${settings.formReminderTiming}`,
+            relatedEntityType: 'form_assignment',
+            relatedEntityId: created.id,
+            scheduledFor: scheduledFor!,
+          }, tx);
         }
       }
       return created;

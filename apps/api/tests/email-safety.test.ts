@@ -3,6 +3,7 @@ import test from 'node:test';
 import { decideOutboxRetry } from '@ks-os/notifications';
 import {
   appointmentNotificationCancellationCode,
+  formReminderCancellationCode,
   isBlockedProductionEmailDomain,
   isPermanentEmailFailure,
   normalizeAndValidateEmailAddress,
@@ -161,4 +162,32 @@ test('retry, dead-letter and idempotency decisions remain bounded and determinis
   assert.equal(terminal.deadLetter, true);
   assert.equal(isPermanentEmailFailure('EMAIL_TEMPLATE_VALIDATION_FAILED:booking-confirmed:serviceName'), true);
   assert.equal(isPermanentEmailFailure('PROVIDER_REJECTED'), false);
+});
+
+test('submitted, cancelled and expired form reminders are cancelled before send', () => {
+  const future = '2026-08-20T10:00:00.000Z';
+  const now = Date.parse('2026-08-19T10:00:00.000Z');
+
+  assert.equal(formReminderCancellationCode({
+    exists: true,
+    status: 'PENDING',
+    expiresAt: future,
+  }, 'form-reminder', now), null);
+
+  for (const status of ['SUBMITTED', 'CANCELLED', 'EXPIRED']) {
+    assert.equal(formReminderCancellationCode({
+      exists: true,
+      status,
+      expiresAt: future,
+    }, 'form-reminder', now), 'FORM_REMINDER_NO_LONGER_APPLICABLE');
+  }
+
+  assert.equal(formReminderCancellationCode({
+    exists: true,
+    status: 'PENDING',
+    expiresAt: '2026-08-18T10:00:00.000Z',
+  }, 'form-reminder', now), 'FORM_REMINDER_NO_LONGER_APPLICABLE');
+  assert.equal(formReminderCancellationCode({
+    exists: false,
+  }, 'form-reminder', now), 'FORM_REMINDER_NO_LONGER_APPLICABLE');
 });
