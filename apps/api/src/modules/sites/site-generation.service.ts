@@ -49,7 +49,7 @@ import {
   searchStrategyDigest,
   validateSearchIntelligencePlan,
   PageSeoBriefSchema,
-  SearchResearchEvidenceSchema,
+  parseSearchResearchEvidenceDatabaseRow,
   SearchIntelligenceStrategyV2Schema,
   isSiteGenerationProviderReady,
   parseSiteGenerationConfig,
@@ -803,12 +803,7 @@ export class AgencySiteGenerationService {
       )),
     ]);
     const briefs = briefRows.map(row => PageSeoBriefSchema.parse(row.value));
-    const evidence = evidenceRows.map(row => SearchResearchEvidenceSchema.parse({
-      ...row,
-      capturedAt: row.capturedAt.toISOString(),
-      expiresAt: row.expiresAt?.toISOString(),
-      sourceUrl: row.sourceUrl ?? undefined,
-    }));
+    const evidence = evidenceRows.map(parseSearchResearchEvidenceDatabaseRow);
     const byBlueprintPage = new Map(briefs.map(brief => [brief.blueprintPageReference, brief]));
     const findings = validateSearchIntelligencePlan({
       strategy,

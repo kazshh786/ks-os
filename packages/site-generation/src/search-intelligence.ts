@@ -97,6 +97,44 @@ export const SearchResearchEvidenceSchema = z.object({
 }).strict();
 export type SearchResearchEvidence = z.infer<typeof SearchResearchEvidenceSchema>;
 
+export interface SearchResearchEvidenceDatabaseRow {
+  reference: string;
+  providerKey: string;
+  query: string;
+  market: string;
+  locale: string;
+  location: string;
+  language: string;
+  device: string;
+  capturedAt: Date;
+  expiresAt: Date | null;
+  sourceUrl: string | null;
+  sourceDigestSha256: string;
+  payloadDigestSha256: string;
+  notes: unknown;
+}
+
+export function parseSearchResearchEvidenceDatabaseRow(
+  row: SearchResearchEvidenceDatabaseRow,
+): SearchResearchEvidence {
+  return SearchResearchEvidenceSchema.parse({
+    reference: row.reference,
+    providerKey: row.providerKey,
+    query: row.query,
+    market: row.market,
+    locale: row.locale,
+    location: row.location,
+    language: row.language,
+    device: row.device,
+    capturedAt: row.capturedAt.toISOString(),
+    expiresAt: row.expiresAt?.toISOString(),
+    sourceUrl: row.sourceUrl ?? undefined,
+    sourceDigestSha256: row.sourceDigestSha256,
+    payloadDigestSha256: row.payloadDigestSha256,
+    notes: row.notes,
+  });
+}
+
 export const SerpAnalysisSchema = z.object({
   reference: PublicReferenceSchema,
   evidenceReference: PublicReferenceSchema,
