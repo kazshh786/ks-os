@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Check, Loader2, Monitor, Save, Search, ShieldCheck, Smartphone } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, Monitor, RefreshCw, Save, Search, ShieldCheck, Smartphone } from 'lucide-react';
 import { agencyFetch, type AgencyRequestError } from './AgencyAuth';
 
 interface SearchBrief {
@@ -190,6 +190,29 @@ export function SearchIntelligencePanel({
     } finally { setBusy(''); }
   };
 
+  const rebuildWebsite = async () => {
+    if (!data || data.status !== 'APPROVED' || !blueprint || blueprint.status !== 'APPROVED') return;
+    const confirmed = window.confirm(
+      `Rebuild ${siteName} from the current approved inputs?\n\nBlueprint revision ${blueprint.revision}\nSearch Intelligence version ${data.strategy.strategyVersion}\n\nA new governed website version will be created. The current version is preserved.`,
+    );
+    if (!confirmed) return;
+    setBusy('rebuild'); setError(''); setNotice('');
+    try {
+      const generation = await agencyFetch(`/sites/${siteReference}/generation-runs`, {
+        method: 'POST',
+        body: JSON.stringify({
+          blueprintReference: blueprint.reference,
+          generationReason: 'BLUEPRINT_REVISION',
+        }),
+      });
+      setNotice(generation.idempotentReplay
+        ? 'A website generation run already exists for these exact approved inputs. KS OS reused that governed run instead of creating a duplicate.'
+        : 'A new website version is queued from the current approved blueprint, Search Intelligence, verified business facts and generation context. The previous version remains preserved.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The website rebuild could not be queued.');
+    } finally { setBusy(''); }
+  };
+
   if (loading) return <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5"><div className="flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Loading governed Search Intelligence…</div></section>;
   if (notCreated) {
     const blueprintApproved = blueprint?.status === 'APPROVED';
@@ -219,6 +242,7 @@ export function SearchIntelligencePanel({
     {error ? <p role="alert" className="mt-4 rounded-xl border border-rose-900 bg-rose-950/30 p-3 text-xs text-rose-200">{error}</p> : null}
     {notice ? <p role="status" className="mt-4 rounded-xl border border-emerald-900 bg-emerald-950/30 p-3 text-xs text-emerald-200">{notice}</p> : null}
     {researchRequired ? <div className="mt-4 rounded-xl border border-amber-800 bg-amber-950/25 p-4"><p className="flex items-center gap-2 text-xs font-black text-amber-200"><AlertTriangle className="h-4 w-4" />Research required</p><p className="mt-2 text-xs leading-5 text-amber-100/80">This is a blueprint-context planning draft. It cannot be approved or used for website generation until a governed research bundle with referenced evidence and one complete brief per blueprint page is imported and reviewed.</p>{isDraft && canManage ? <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-amber-700 px-4 text-xs font-black text-amber-200"><Search className="h-4 w-4" />{busy === 'import' ? 'Importing governed research…' : 'Import governed research bundle'}<input type="file" accept="application/json,.json" disabled={Boolean(busy)} className="sr-only" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void importResearchBundle(file); }} /></label> : null}</div> : null}
+    {data.status === 'APPROVED' && blueprint?.status === 'APPROVED' ? <div className="mt-4 rounded-xl border border-violet-700/70 bg-violet-950/25 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-black text-violet-100">Approved inputs are ready for a full rebuild</p><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">Create a new governed website version from blueprint revision {blueprint.revision} and Search Intelligence version {data.strategy.strategyVersion}. The existing website version and version history are preserved.</p></div><button type="button" disabled={!canManage || Boolean(busy)} onClick={() => void rebuildWebsite()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-black text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40">{busy === 'rebuild' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{busy === 'rebuild' ? 'Queuing rebuild…' : 'Rebuild website'}</button></div></div> : null}
 
     <div className="mt-5 grid gap-3 md:grid-cols-4">
       <div className="rounded-xl bg-slate-950 p-3"><small className="font-black uppercase text-slate-500">Audience</small><p className="mt-2 text-xs leading-5">{data.strategy.targetAudience.segments.map(segment => segment.name).join(' · ')}</p></div>
