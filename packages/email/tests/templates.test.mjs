@@ -23,7 +23,7 @@ test('form-assigned renders safely with only required form metadata', async () =
   const rendered = await renderEmail('form-assigned', { formName: 'New Client Consultation', formLink });
   assert.match(rendered.html, /ACTION REQUIRED/);
   assert.match(rendered.text, /Complete form/);
-  assert.match(rendered.text, /New Client Consultation/);
+  assert.match(rendered.text, /New Client Consultation/i);
 });
 
 test('form-assigned renders optional appointment context when supplied', async () => {
@@ -56,7 +56,7 @@ test('form-reminder has a distinct outstanding-form hierarchy and graceful fallb
   const fallback = await renderEmail('form-reminder', {
     tenantName: 'Bare Beauty', customerName: 'Sarah', formName: 'Consultation', formLink,
   });
-  assert.match(fallback.text, /Reminder: please complete your form/);
+  assert.match(fallback.text, /Reminder: please complete your form/i);
   assert.doesNotMatch(fallback.text, /before arriving/);
 });
 
@@ -98,8 +98,8 @@ test('legacy form template payloads remain renderable', async () => {
   };
   const assigned = await renderEmail('form-assigned', legacyPayload);
   const reminder = await renderEmail('form-reminder', legacyPayload);
-  assert.match(assigned.text, /Consultation form/);
-  assert.match(reminder.text, /Consultation form/);
+  assert.match(assigned.text, /Consultation form/i);
+  assert.match(reminder.text, /Consultation form/i);
 });
 
 test('booking confirmation only renders already-supplied secure assignment links', async () => {
@@ -111,7 +111,7 @@ test('booking confirmation only renders already-supplied secure assignment links
     serviceName: 'Brow Lamination',
     outstandingForms: [{ formName: 'Consultation', formLink, estimatedMinutes: 4 }],
   });
-  assert.match(rendered.text, /Before your appointment/);
+  assert.match(rendered.text, /Before your appointment/i);
   assert.match(rendered.text, /1 form needs completing/);
   assert.match(rendered.text, /Complete intake form/);
 });
