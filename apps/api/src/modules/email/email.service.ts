@@ -8,6 +8,7 @@ import {
   factFindingInvitations,
   factFindingQuestionnaires,
   appointments,
+  formAssignments,
 } from '@ks-os/database';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { renderEmail } from '@ks-os/email';
@@ -20,6 +21,7 @@ import { deriveReviewInvitationToken } from '@ks-os/site-review';
 import { deriveFactFindingInvitationToken } from '@ks-os/fact-finding';
 import {
   appointmentNotificationCancellationCode,
+  formReminderCancellationCode,
   isPermanentEmailFailure,
   normalizeAndValidateEmailAddress,
   normalizeEmailDisplayName,
@@ -49,8 +51,8 @@ const SUBJECTS: Record<string, string> = {
   'appointment-reminder': 'Reminder: upcoming appointment',
   'payment-confirmed': 'Payment confirmed',
   'refund-updated': 'Refund update',
-  'form-assigned': 'Please complete your form',
-  'form-reminder': 'Reminder: form completion required',
+  'form-assigned': 'Action required: complete your form',
+  'form-reminder': 'Reminder: your form still needs completing',
   'staff-operational-notification': 'Operational notification',
   'scheduled-report-ready': 'Your scheduled report is ready',
   'review-invitation': 'An invitation to share honest feedback',
@@ -228,6 +230,31 @@ export class EmailService {
             idempotencyKey: email.idempotency_key,
             templateData,
           });
+          if (cancellationCode) {
+            await db.update(emailOutbox).set({
+              status: 'CANCELLED',
+              lastErrorCode: cancellationCode,
+            }).where(eq(emailOutbox.id, email.id));
+            continue;
+          }
+        }
+        if (
+          email.template_key === 'form-reminder'
+          && email.related_entity_type === 'form_assignment'
+          && email.related_entity_id
+        ) {
+          const [assignment] = await db.select({
+            status: formAssignments.status,
+            expiresAt: formAssignments.expiresAt,
+          }).from(formAssignments).where(and(
+            eq(formAssignments.id, email.related_entity_id),
+            email.tenant_id ? eq(formAssignments.tenantId, email.tenant_id) : undefined,
+          )).limit(1);
+          const cancellationCode = formReminderCancellationCode({
+            exists: Boolean(assignment),
+            status: assignment?.status,
+            expiresAt: assignment?.expiresAt,
+          }, email.template_key);
           if (cancellationCode) {
             await db.update(emailOutbox).set({
               status: 'CANCELLED',

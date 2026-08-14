@@ -61,3 +61,6 @@ export async function renderEmail(templateKey: string, data: any): Promise<{ htm
 
   return { html, text };
 }
+
+export { getReadableTextColor } from './components/email-colors.js';
+export { SocialFollowCard } from './components/FormEmailComponents.js';
