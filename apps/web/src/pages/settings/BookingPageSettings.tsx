@@ -176,18 +176,18 @@ export function BookingPageSettings() {
   };
 
   return <main className="space-y-5">
-    <header className="flex flex-col justify-between gap-4 rounded-3xl bg-slate-950 p-6 text-white lg:flex-row lg:items-end">
-      <div>
+    <header className="flex flex-col justify-between gap-4 rounded-3xl bg-slate-950 p-4 text-white sm:p-6 lg:flex-row lg:items-end">
+      <div className="min-w-0">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-300">Online booking</p>
-        <h1 className="mt-2 text-3xl font-black">Booking page and customer choices</h1>
+        <h1 className="mt-2 text-2xl font-black sm:text-3xl">Booking page and customer choices</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">Control the public address, branding, appointment types, booking window and payment rules from one place.</p>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => setPoliciesOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><ReceiptText className="h-4 w-4" />Booking policies</button>
-        <button onClick={() => navigator.clipboard.writeText(page.publicUrl).then(() => setMessage('Booking link copied.'))} className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><Clipboard className="h-4 w-4" />Copy link</button>
-        <a href={page.publicUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><ExternalLink className="h-4 w-4" />Open page</a>
-        <button onClick={() => void publish()} disabled={saving} className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-black">{page.published ? 'Unpublish' : 'Publish'}</button>
-        <button onClick={() => void save()} disabled={saving || !slugIsValid} className="rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+        <button onClick={() => setPoliciesOpen(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><ReceiptText className="h-4 w-4" />Booking policies</button>
+        <button onClick={() => navigator.clipboard.writeText(page.publicUrl).then(() => setMessage('Booking link copied.'))} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><Clipboard className="h-4 w-4" />Copy link</button>
+        <a href={page.publicUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold"><ExternalLink className="h-4 w-4" />Open page</a>
+        <button onClick={() => void publish()} disabled={saving} className="min-h-11 rounded-xl bg-indigo-500 px-4 py-2 text-sm font-black">{page.published ? 'Unpublish' : 'Publish'}</button>
+        <button onClick={() => void save()} disabled={saving || !slugIsValid} className="min-h-11 rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
       </div>
     </header>
 
@@ -216,7 +216,7 @@ export function BookingPageSettings() {
           <div className="flex items-start gap-3"><Palette className="mt-0.5 h-5 w-5 text-indigo-600" /><div><h2 className="text-lg font-black">Brand controls</h2><p className="mt-1 text-xs leading-5 text-slate-500">Logo and colour controls apply immediately to the live preview.</p></div></div>
           <div className="mt-5 grid gap-4">
             <label className="text-sm font-bold">Logo URL<input type="url" value={page.logoUrl || ''} onChange={event => update('logoUrl', event.target.value || null)} placeholder="https://…" className="mt-1 w-full rounded-xl border p-3" /></label>
-            <div className="grid grid-cols-2 gap-4"><label className="text-sm font-bold">Primary colour<input type="color" value={page.theme.primaryColor} onChange={event => update('theme', { ...page.theme, primaryColor: event.target.value })} className="mt-1 h-12 w-full rounded-lg border p-1" /></label><label className="text-sm font-bold">Accent colour<input type="color" value={page.theme.accentColor} onChange={event => update('theme', { ...page.theme, accentColor: event.target.value })} className="mt-1 h-12 w-full rounded-lg border p-1" /></label></div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><label className="text-sm font-bold">Primary colour<input type="color" value={page.theme.primaryColor} onChange={event => update('theme', { ...page.theme, primaryColor: event.target.value })} className="mt-1 h-12 w-full rounded-lg border p-1" /></label><label className="text-sm font-bold">Accent colour<input type="color" value={page.theme.accentColor} onChange={event => update('theme', { ...page.theme, accentColor: event.target.value })} className="mt-1 h-12 w-full rounded-lg border p-1" /></label></div>
             <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={page.enabled} onChange={event => update('enabled', event.target.checked)} />Accept bookings through the platform URL</label>
           </div>
         </section>
@@ -232,7 +232,7 @@ export function BookingPageSettings() {
 
         <section className="rounded-2xl border bg-white p-5">
           <div className="flex items-start gap-3"><LockKeyhole className="mt-0.5 h-5 w-5 text-indigo-600" /><div><h2 className="text-lg font-black">Booking and payment rules</h2><p className="mt-1 text-xs leading-5 text-slate-500">Customers can always browse at least six weeks of dates.</p></div></div>
-          <div className="mt-5 grid grid-cols-2 gap-4">
+          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="text-sm font-bold">Minimum notice (minutes)<input type="number" min={0} value={page.bookingRules.minimumNoticeMinutes} onChange={event => update('bookingRules', { ...page.bookingRules, minimumNoticeMinutes: Number(event.target.value) })} className="mt-1 w-full rounded-xl border p-3" /></label>
             <label className="text-sm font-bold">Future booking window (days)<input type="number" min={minimumCustomerWindowDays} max={730} value={page.bookingRules.maximumFutureDays} onChange={event => update('bookingRules', { ...page.bookingRules, maximumFutureDays: Math.max(minimumCustomerWindowDays, Number(event.target.value)) })} className="mt-1 w-full rounded-xl border p-3" /><span className="mt-1 block text-xs font-normal text-slate-500">Minimum 42 days.</span></label>
             <label className="text-sm font-bold">Payment requirement<select value={page.paymentSettings.mode} onChange={event => update('paymentSettings', { ...page.paymentSettings, mode: event.target.value as BookingPageResponse['paymentSettings']['mode'] })} className="mt-1 w-full rounded-xl border bg-white p-3"><option value="NONE">No payment</option><option value="PAY_LATER">Pay later</option><option value="DEPOSIT">Deposit</option><option value="FULL">Full payment</option><option value="CUSTOMER_CHOICE">Customer choice</option></select></label>
@@ -254,8 +254,8 @@ export function BookingPageSettings() {
         {analytics && <section className="rounded-2xl border bg-white p-5"><h2 className="text-lg font-black">Last 30 days</h2><div className="mt-3 grid grid-cols-3 gap-3"><div><p className="text-xs text-slate-500">Views</p><p className="text-2xl font-black">{analytics.counts.PAGE_VIEW || 0}</p></div><div><p className="text-xs text-slate-500">Bookings</p><p className="text-2xl font-black">{analytics.counts.BOOKING_COMPLETED || 0}</p></div><div><p className="text-xs text-slate-500">Conversion</p><p className="text-2xl font-black">{analytics.conversionRate}%</p></div></div></section>}
       </div>
 
-      <section className="min-w-0 rounded-2xl border bg-slate-100 p-3">
-        <header className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Universal live preview</p><p className="text-sm text-slate-600">Interactions are isolated from booking creation.</p></div><div className="flex rounded-lg border bg-white p-1"><button onClick={() => setPreviewWidth('desktop')} aria-label="Desktop preview" aria-pressed={previewWidth === 'desktop'} className={`rounded-md p-2 ${previewWidth === 'desktop' ? 'bg-slate-900 text-white' : ''}`}><Monitor className="h-4 w-4" /></button><button onClick={() => setPreviewWidth('tablet')} aria-label="Tablet preview" aria-pressed={previewWidth === 'tablet'} className={`rounded-md p-2 ${previewWidth === 'tablet' ? 'bg-slate-900 text-white' : ''}`}><Tablet className="h-4 w-4" /></button><button onClick={() => setPreviewWidth('mobile')} aria-label="Mobile preview" aria-pressed={previewWidth === 'mobile'} className={`rounded-md p-2 ${previewWidth === 'mobile' ? 'bg-slate-900 text-white' : ''}`}><Smartphone className="h-4 w-4" /></button></div></header>
+      <section className="min-w-0 rounded-2xl border bg-slate-100 p-2 sm:p-3">
+        <header className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Universal live preview</p><p className="text-sm text-slate-600">Interactions are isolated from booking creation.</p></div><div className="flex rounded-lg border bg-white p-1"><button onClick={() => setPreviewWidth('desktop')} aria-label="Desktop preview" aria-pressed={previewWidth === 'desktop'} className={`grid h-11 w-11 place-items-center rounded-md ${previewWidth === 'desktop' ? 'bg-slate-900 text-white' : ''}`}><Monitor className="h-4 w-4" /></button><button onClick={() => setPreviewWidth('tablet')} aria-label="Tablet preview" aria-pressed={previewWidth === 'tablet'} className={`grid h-11 w-11 place-items-center rounded-md ${previewWidth === 'tablet' ? 'bg-slate-900 text-white' : ''}`}><Tablet className="h-4 w-4" /></button><button onClick={() => setPreviewWidth('mobile')} aria-label="Mobile preview" aria-pressed={previewWidth === 'mobile'} className={`grid h-11 w-11 place-items-center rounded-md ${previewWidth === 'mobile' ? 'bg-slate-900 text-white' : ''}`}><Smartphone className="h-4 w-4" /></button></div></header>
         <div className="mx-auto overflow-auto rounded-xl bg-slate-50 p-2 transition-all" style={{ maxWidth: previewWidths[previewWidth] }}><PublicBookingFlow slug={loadedSlug} preview pageOverride={pageOverride} /></div>
       </section>
     </div>

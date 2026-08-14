@@ -97,22 +97,22 @@ export function AgencyBookingSystemPage() {
   const publicUrl = workspace.publicBookingPath;
 
   return <div className="space-y-5">
-    <header className="rounded-3xl border border-violet-800/70 bg-gradient-to-br from-violet-950 to-slate-900 p-6 shadow-xl">
+    <header className="rounded-3xl border border-violet-800/70 bg-gradient-to-br from-violet-950 to-slate-900 p-4 shadow-xl sm:p-6">
       <div className="flex flex-col justify-between gap-5 xl:flex-row xl:items-start">
         <div>
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-violet-300"><ShieldCheck className="h-4 w-4" />Dedicated internal workspace</div>
-          <h1 className="mt-2 text-3xl font-black text-white">KS OS Agency Bookings</h1>
+          <h1 className="mt-2 text-2xl font-black text-white sm:text-3xl">KS OS Agency Bookings</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-300">The agency now uses the same live, tenant-isolated booking engine as client businesses. Services, bookings, customers, payments, forms and availability persist independently under <strong>KS OS Agency</strong>.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <a href="/app/calendar" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-500 px-4 py-2 text-sm font-black text-white hover:bg-violet-400"><ExternalLink className="h-4 w-4" />Open full booking workspace</a>
-          <a href={publicUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-600 bg-slate-950/60 px-4 py-2 text-sm font-black text-white"><Globe2 className="h-4 w-4" />Open public booking page</a>
+        <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
+          <a href="/app/calendar" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-500 px-4 py-2 text-center text-sm font-black text-white hover:bg-violet-400"><ExternalLink className="h-4 w-4 shrink-0" />Open full booking workspace</a>
+          <a href={publicUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-600 bg-slate-950/60 px-4 py-2 text-center text-sm font-black text-white"><Globe2 className="h-4 w-4 shrink-0" />Open public booking page</a>
         </div>
       </div>
       <nav aria-label="Agency booking tools" className="mt-6 flex flex-wrap gap-2 border-t border-white/10 pt-5">
         {tabs.map(tab => {
           const Icon = tab.icon;
-          return <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} aria-pressed={activeTab === tab.id} className={`inline-flex min-h-10 items-center gap-2 rounded-xl px-4 py-2 text-xs font-black ${activeTab === tab.id ? 'bg-white text-slate-950' : 'border border-slate-700 bg-slate-950/50 text-slate-300 hover:text-white'}`}><Icon className="h-4 w-4" />{tab.label}</button>;
+          return <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} aria-pressed={activeTab === tab.id} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 py-2 text-xs font-black ${activeTab === tab.id ? 'bg-white text-slate-950' : 'border border-slate-700 bg-slate-950/50 text-slate-300 hover:text-white'}`}><Icon className="h-4 w-4" />{tab.label}</button>;
         })}
       </nav>
     </header>
@@ -123,11 +123,11 @@ export function AgencyBookingSystemPage() {
       {activeTab === 'availability' && <AvailabilityPage />}
       {activeTab === 'pos' && <POSCheckout tenant={tenant} onCheckoutCompleted={() => setActiveTab('calendar')} />}
       {activeTab === 'public' && <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-5">
+        <div className="flex flex-col items-start justify-between gap-3 rounded-2xl border bg-white p-4 sm:flex-row sm:items-center sm:p-5">
           <div><h2 className="text-xl font-black">Live agency booking page</h2><p className="mt-1 text-sm text-slate-600">This is the customer-facing booking journey for agency consultations and support sessions.</p></div>
-          <a href={publicUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white">Open in a new tab</a>
+          <a href={publicUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white sm:w-auto">Open in a new tab</a>
         </div>
-        <iframe title="KS OS Agency public booking page" src={publicUrl} className="h-[760px] w-full rounded-2xl border bg-white" />
+        <iframe title="KS OS Agency public booking page" src={publicUrl} className="h-[75dvh] min-h-[560px] w-full rounded-2xl border bg-white sm:h-[760px]" />
       </div>}
     </section>
   </div>;

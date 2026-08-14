@@ -27,7 +27,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({ item, href, active, co
     onClick={onNavigate}
     aria-current={active ? 'page' : undefined}
     title={collapsed ? item.label : undefined}
-    className={`group relative flex min-h-10 items-center rounded-xl px-3 text-sm font-bold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${collapsed ? 'justify-center' : 'gap-3'} ${active ? activeStyle : inactive}`}
+    className={`group relative flex min-h-11 items-center rounded-xl px-3 text-sm font-bold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${collapsed ? 'justify-center' : 'gap-3'} ${active ? activeStyle : inactive}`}
   >
     <Icon aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
     {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}

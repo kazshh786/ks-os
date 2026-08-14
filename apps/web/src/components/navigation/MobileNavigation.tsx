@@ -38,8 +38,8 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({ open, title,
   if (!open) return null;
   return <div className="fixed inset-0 z-[200] lg:hidden" role="dialog" aria-modal="true" aria-label={title} data-mobile-navigation-layer>
     <button type="button" aria-label="Close navigation" onClick={onClose} className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" />
-    <div ref={panelRef} className="relative h-full w-[min(88vw,320px)] shadow-2xl">
-      <button type="button" onClick={onClose} aria-label="Close navigation" className="absolute right-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-xl bg-slate-800 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"><X aria-hidden="true" className="h-5 w-5" /></button>
+    <div ref={panelRef} className="relative h-dvh w-[min(90vw,320px)] pt-[env(safe-area-inset-top)] shadow-2xl">
+      <button type="button" onClick={onClose} aria-label="Close navigation" className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-20 grid h-11 w-11 place-items-center rounded-xl bg-slate-800 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"><X aria-hidden="true" className="h-5 w-5" /></button>
       {children}
     </div>
   </div>;

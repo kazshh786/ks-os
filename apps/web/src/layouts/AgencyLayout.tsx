@@ -86,18 +86,18 @@ export const AgencyLayout: React.FC = () => {
     : undefined;
 
   const agencySecondaryActions = <div className="space-y-2">
-    <Link to="/agency/onboarding" className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 text-xs font-bold text-slate-300 transition hover:border-slate-700 hover:text-white">View onboarding</Link>
-    {canManageAgencyUsers ? <button type="button" onClick={openPasswordControl} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><KeyRound aria-hidden="true" className="h-4 w-4" />Agency password control</button> : null}
+    <Link to="/agency/onboarding" className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 text-xs font-bold text-slate-300 transition hover:border-slate-700 hover:text-white">View onboarding</Link>
+    {canManageAgencyUsers ? <button type="button" onClick={openPasswordControl} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><KeyRound aria-hidden="true" className="h-4 w-4" />Agency password control</button> : null}
   </div>;
 
   const managedBusinessSecondaryActions = <div className="space-y-2">
-    {canManageUsers ? <button type="button" onClick={() => { setMobileOpen(false); setManualUserOpen(true); }} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 text-xs font-bold text-slate-200 transition hover:border-violet-700 hover:text-white"><UserPlus aria-hidden="true" className="h-4 w-4" />Add workspace user</button> : null}
-    {canManageUsers ? <button type="button" onClick={openPasswordControl} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><KeyRound aria-hidden="true" className="h-4 w-4" />User password control</button> : null}
-    <Link to="/agency/tenants" className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><ArrowLeft aria-hidden="true" className="h-4 w-4" />Back to all clients</Link>
+    {canManageUsers ? <button type="button" onClick={() => { setMobileOpen(false); setManualUserOpen(true); }} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 text-xs font-bold text-slate-200 transition hover:border-violet-700 hover:text-white"><UserPlus aria-hidden="true" className="h-4 w-4" />Add workspace user</button> : null}
+    {canManageUsers ? <button type="button" onClick={openPasswordControl} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><KeyRound aria-hidden="true" className="h-4 w-4" />User password control</button> : null}
+    <Link to="/agency/tenants" className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-800 px-3 text-xs font-bold text-slate-400 transition hover:text-white"><ArrowLeft aria-hidden="true" className="h-4 w-4" />Back to all clients</Link>
   </div>;
 
   const footer = <div className="space-y-1">
-    <a href="mailto:support@ks-os.com" className={`flex min-h-10 items-center rounded-xl text-xs font-bold text-slate-500 transition hover:bg-slate-900 hover:text-white ${collapsed ? 'justify-center' : 'gap-3 px-3'}`} aria-label="Help and support" title={collapsed ? 'Help and support' : undefined}><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />{!collapsed && 'Help and support'}</a>
+    <a href="mailto:support@ks-os.com" className={`flex min-h-11 items-center rounded-xl text-xs font-bold text-slate-500 transition hover:bg-slate-900 hover:text-white ${collapsed ? 'justify-center' : 'gap-3 px-3'}`} aria-label="Help and support" title={collapsed ? 'Help and support' : undefined}><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />{!collapsed && 'Help and support'}</a>
     <AccountMenu displayName={session?.user.displayName ?? 'Agency user'} email={session?.user.email} roleLabel={(session?.user.role ?? 'Agency user').replaceAll('_', ' ')} settingsHref="/agency/settings/security" tone="dark" compact={collapsed} onSignOut={() => void signOut()} />
   </div>;
 
@@ -114,7 +114,7 @@ export const AgencyLayout: React.FC = () => {
     contextHeader={isMobile || !collapsed ? contextHeader : undefined}
     primaryAction={tenantId ? managedPrimaryAction : agencyPrimaryAction}
     secondaryActions={tenantId ? managedBusinessSecondaryActions : agencySecondaryActions}
-    footer={isMobile ? <div className="space-y-1"><a href="mailto:support@ks-os.com" className="flex min-h-10 items-center gap-3 rounded-xl px-3 text-xs font-bold text-slate-500 hover:bg-slate-900 hover:text-white"><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />Help and support</a><AccountMenu displayName={session?.user.displayName ?? 'Agency user'} email={session?.user.email} roleLabel={(session?.user.role ?? 'Agency user').replaceAll('_', ' ')} settingsHref="/agency/settings/security" tone="dark" onSignOut={() => void signOut()} /></div> : footer}
+    footer={isMobile ? <div className="space-y-1"><a href="mailto:support@ks-os.com" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-xs font-bold text-slate-500 hover:bg-slate-900 hover:text-white"><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />Help and support</a><AccountMenu displayName={session?.user.displayName ?? 'Agency user'} email={session?.user.email} roleLabel={(session?.user.role ?? 'Agency user').replaceAll('_', ' ')} settingsHref="/agency/settings/security" tone="dark" onSignOut={() => void signOut()} /></div> : footer}
     onToggleCollapsed={toggleCollapsed}
     onNavigate={isMobile ? closeMobile : undefined}
   />;
@@ -139,7 +139,7 @@ export const AgencyLayout: React.FC = () => {
             : <AgencyClientWorkspaceOverviewPage />
           : <Outlet />;
 
-  return <div className="flex h-screen min-h-0 overflow-hidden bg-slate-950 font-sans text-white antialiased">
+  return <div className="flex h-dvh min-h-0 overflow-hidden bg-slate-950 font-sans text-white antialiased">
     <div className="hidden h-full shrink-0 lg:block">{sidebar()}</div>
     <MobileNavigation open={mobileOpen} title={tenantId ? 'Client workspace' : 'Agency navigation'} onClose={closeMobile} triggerRef={menuButtonRef}>{sidebar(true)}</MobileNavigation>
     <div className="flex min-w-0 flex-1 flex-col">
@@ -153,7 +153,7 @@ export const AgencyLayout: React.FC = () => {
         notificationHref={capabilities.includes('support.read') ? '/agency/support' : undefined}
         actions={headerActions}
       />
-      <main id="main-content" className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.08),transparent_28%),#020617] p-4 text-slate-100 sm:p-6 lg:p-8"><div className="mx-auto w-full max-w-[1600px]">{redesignedContent}</div></main>
+      <main id="main-content" className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.08),transparent_28%),#020617] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-slate-100 sm:p-6 lg:p-8"><div className="mx-auto w-full max-w-[1600px]">{redesignedContent}</div></main>
     </div>
     {tenantId ? <SupportSessionDialog open={supportOpen} tenantId={tenantId} tenantName={tenantName} onClose={() => setSupportOpen(false)} /> : null}
     {tenantId ? <ManualTenantUserDialog open={manualUserOpen} tenantId={tenantId} tenantName={tenantName} onClose={() => setManualUserOpen(false)} onCreated={() => window.location.reload()} /> : null}

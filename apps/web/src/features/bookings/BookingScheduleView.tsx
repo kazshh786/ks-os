@@ -220,6 +220,7 @@ export function BookingScheduleView({
   const [dragging, setDragging] = useState<BookingOperationsItem | null>(null);
   const [dropPreview, setDropPreview] = useState<{ key: string; minute: number } | null>(null);
   const [availabilityMembers, setAvailabilityMembers] = useState<AvailabilityMember[]>([]);
+  const [mobileColumnKey, setMobileColumnKey] = useState('');
   const focusAnchor = useRef<HTMLDivElement>(null);
   const hourHeight = hourHeightByDensity[density];
   const pixelsPerMinute = hourHeight / 60;
@@ -310,6 +311,13 @@ export function BookingScheduleView({
     return true;
   });
 
+  useEffect(() => {
+    if (renderColumns.some(column => column.key === mobileColumnKey)) return;
+    setMobileColumnKey(renderColumns.find(column => column.day === selectedDay)?.key || renderColumns[0]?.key || '');
+  }, [mobileColumnKey, renderColumns, selectedDay]);
+
+  const mobileColumn = renderColumns.find(column => column.key === mobileColumnKey) || renderColumns[0];
+
   const totalMinutes = visibleRange.endMinute - visibleRange.startMinute;
   const gridHeight = Math.max(hourHeight, totalMinutes * pixelsPerMinute);
   const hourLabels = Array.from(
@@ -340,7 +348,26 @@ export function BookingScheduleView({
     setDropPreview(null);
   };
 
-  return <section aria-label="Booking schedule" className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+  return <>
+    <section aria-label="Mobile booking schedule" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:hidden">
+      {renderColumns.length > 0 ? <>
+        <label className="block border-b bg-slate-50 p-3 text-xs font-black uppercase tracking-wide text-slate-500">Schedule column
+          <select aria-label="Choose schedule column" value={mobileColumn?.key || ''} onChange={event => {
+            const next = renderColumns.find(column => column.key === event.target.value);
+            setMobileColumnKey(event.target.value);
+            if (next) onSelectDay?.(next.day);
+          }} className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-base font-bold normal-case text-slate-900">
+            {renderColumns.map(column => <option key={column.key} value={column.key}>{column.label}{column.subtitle ? ` · ${column.subtitle}` : ''}</option>)}
+          </select>
+        </label>
+        {mobileColumn && <section aria-labelledby={`mobile-column-${mobileColumn.key}`}>
+          <header className="border-b bg-white p-4"><h3 id={`mobile-column-${mobileColumn.key}`} className="break-words text-base font-black text-slate-900">{mobileColumn.label}</h3>{mobileColumn.subtitle && <p className="break-words text-sm text-slate-500">{mobileColumn.subtitle}</p>}</header>
+          <div className="space-y-3 p-3">{bookingsForColumn(mobileColumn).map(booking => <BookingCard key={booking.id} booking={booking} density={density} onOpen={onOpen} />)}{bookingsForColumn(mobileColumn).length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center"><p className="text-sm font-semibold text-slate-500">No bookings in this column.</p><button type="button" onClick={onCreate} className="mt-3 min-h-11 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white">Create booking</button></div>}</div>
+        </section>}
+      </> : <div className="p-8 text-center text-sm text-slate-500">No schedule columns are available.</div>}
+    </section>
+
+    <section aria-label="Booking schedule" className="hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:block">
     <div className="overflow-x-auto">
       <div className="min-w-max" style={{ minWidth: `calc(64px + ${Math.max(1, renderColumns.length)} * ${minimumColumnWidth}px)` }}>
         <div className="sticky top-0 z-40 grid border-b border-slate-200 bg-white shadow-[0_8px_18px_rgba(15,23,42,0.08)]" style={{ gridTemplateColumns: templateColumns }}>
@@ -473,7 +500,8 @@ export function BookingScheduleView({
 
     <footer className="flex flex-col justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 sm:flex-row sm:items-center">
       <p><strong className="text-slate-800">Availability:</strong> indigo shows at-business hours, amber shows mobile hours, and a green outline marks a date override. Drag bookings to reschedule in 15-minute intervals.</p>
-      <button type="button" onClick={onCreate} className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 font-black text-slate-800 hover:border-indigo-300 hover:text-indigo-700">Add to calendar</button>
+      <button type="button" onClick={onCreate} className="min-h-11 shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 font-black text-slate-800 hover:border-indigo-300 hover:text-indigo-700">Add to calendar</button>
     </footer>
-  </section>;
+    </section>
+  </>;
 }

@@ -46,13 +46,13 @@ export default function PaymentCancel() {
   };
 
   return (
-    <main className="mx-auto mt-6 w-full max-w-3xl overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl shadow-slate-300/40" aria-live="polite">
-      <div className="px-6 py-10 text-center sm:px-10">
+    <main className="mx-auto mt-4 w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-300/40 sm:mt-6 sm:rounded-[2rem]" aria-live="polite">
+      <div className="px-5 py-8 text-center sm:px-10 sm:py-10">
         <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-amber-50 text-amber-600 shadow-inner">
           <AlertTriangle className="h-9 w-9" aria-hidden="true" />
         </div>
         <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-amber-700">Payment not completed</p>
-        <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Your appointment still needs payment</h1>
+        <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Your appointment still needs payment</h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">
           No successful payment was recorded. Use the same booking reference to reopen secure checkout without creating a duplicate appointment.
         </p>

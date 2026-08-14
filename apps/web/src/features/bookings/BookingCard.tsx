@@ -52,8 +52,8 @@ export function BookingCard({ booking, density, onOpen, draggable, onDragStart, 
         {veryShort || !canShowSeparateService
           ? <p className="mt-0.5 truncate text-[11px] font-black leading-tight text-slate-950" title={`${booking.customer.name} · ${booking.service.name}`}>{booking.customer.name} · <span className="font-semibold text-slate-600">{booking.service.name}</span></p>
           : <>
-            <p className="mt-0.5 truncate text-sm font-black leading-tight text-slate-950" title={booking.customer.name}>{booking.customer.name}</p>
-            <p className="mt-0.5 truncate text-[11px] font-semibold leading-tight text-slate-600" title={`${booking.service.name} with ${booking.staff.name}`}>{booking.service.name}{density !== 'compact' ? ` · ${booking.staff.name}` : ''}</p>
+            <p className={`mt-0.5 text-sm font-black leading-tight text-slate-950 ${timeGrid ? 'truncate' : 'line-clamp-2 break-words'}`} title={booking.customer.name}>{booking.customer.name}</p>
+            <p className={`mt-0.5 text-[11px] font-semibold leading-tight text-slate-600 ${timeGrid ? 'truncate' : 'line-clamp-2 break-words'}`} title={`${booking.service.name} with ${booking.staff.name}`}>{booking.service.name}{density !== 'compact' ? ` · ${booking.staff.name}` : ''}</p>
           </>}
 
         {detailed && <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-bold text-slate-500">
