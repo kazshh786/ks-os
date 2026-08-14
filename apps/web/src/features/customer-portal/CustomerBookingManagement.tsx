@@ -94,7 +94,7 @@ export function GuestBookingManagementPage() {
   if (!appointment || !policy || !identifier) return <GuestShell><Loading /></GuestShell>;
   return <GuestShell color={appointment.salon.primaryColor}>
     <p className="text-sm font-semibold" style={{ color: appointment.salon.primaryColor }}>{appointment.salon.displayName}</p>
-    <h1 className="mt-1 text-3xl font-black text-slate-900">Manage your booking</h1>
+    <h1 className="mt-1 text-2xl font-black text-slate-900 sm:text-3xl">Manage your booking</h1>
     <BookingCard appointment={appointment} />
     <PolicyDetails policy={policy} timezone={appointment.timezone} />
     <div className="grid gap-3 sm:grid-cols-2">
@@ -107,14 +107,14 @@ export function GuestBookingManagementPage() {
 }
 
 function GuestShell({ children, color }: { children: React.ReactNode; color?: string }) {
-  return <main className="min-h-screen bg-slate-50 px-4 py-8"><section className="mx-auto max-w-2xl space-y-5 rounded-3xl bg-white p-5 shadow-sm sm:p-8" style={{ borderTop: `5px solid ${color || '#0f172a'}` }}>{children}</section></main>;
+  return <main className="min-h-dvh bg-slate-50 px-3 py-4 sm:px-4 sm:py-8"><section className="mx-auto max-w-2xl space-y-5 rounded-2xl bg-white p-4 shadow-sm sm:rounded-3xl sm:p-8" style={{ borderTop: `5px solid ${color || '#0f172a'}` }}>{children}</section></main>;
 }
 
 function BookingCard({ appointment }: { appointment: any }) {
   return <article className="rounded-2xl bg-slate-50 p-5">
-    <h2 className="text-xl font-bold text-slate-900">{appointment.serviceName}</h2>
+    <h2 className="break-words text-xl font-bold text-slate-900">{appointment.serviceName}</h2>
     <p className="mt-2 text-slate-700">{when(appointment.startTime, appointment.timezone)}</p>
-    <p className="text-sm text-slate-500">{appointment.staffName} · {appointment.location}</p>
+    <p className="break-words text-sm text-slate-500">{appointment.staffName} · {appointment.location}</p>
     <p className="mt-3 text-sm text-slate-600">Payment: {appointment.payment?.status}</p>
   </article>;
 }
@@ -177,7 +177,7 @@ function ReschedulePage({ guest }: { guest: boolean }) {
   };
 
   return <PageShell guest={guest}>
-    <h1 className="text-3xl font-black text-slate-900">Reschedule booking</h1>
+    <h1 className="text-2xl font-black text-slate-900 sm:text-3xl">Reschedule booking</h1>
     {!review ? <>
       <BookingCard appointment={appointment} />
       <label className="block text-sm font-semibold text-slate-700">Choose a date
@@ -186,7 +186,7 @@ function ReschedulePage({ guest }: { guest: boolean }) {
       {!availability && !availabilityError && <Loading />}
       {availability && availability.slots.length === 0 && <Notice>No available times were found for this date. Try another date or contact the salon.</Notice>}
       {availability && availability.slots.length > 0 && <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {availability.slots.map((slot) => <button key={`${slot.startTime}-${slot.staffReference}`} onClick={() => setSelected(slot)} className={`rounded-xl border px-3 py-3 text-left text-sm ${selected === slot ? 'border-violet-600 bg-violet-50' : 'border-slate-200 bg-white'}`}>
+        {availability.slots.map((slot) => <button key={`${slot.startTime}-${slot.staffReference}`} aria-pressed={selected === slot} onClick={() => setSelected(slot)} className={`min-h-12 rounded-xl border px-3 py-3 text-left text-sm ${selected === slot ? 'border-violet-600 bg-violet-50' : 'border-slate-200 bg-white'}`}>
           <span className="block font-bold">{new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: appointment.timezone }).format(new Date(slot.startTime))}</span>
           <span className="text-xs text-slate-500">{slot.staffName}{slot.isCurrentStaff ? ' · current' : ''}</span>
         </button>)}
@@ -243,7 +243,7 @@ function CancellationPage({ guest }: { guest: boolean }) {
   };
   const reasonMissing = policy.requireCancellationReason && !reasonCode;
   return <PageShell guest={guest}>
-    <h1 className="text-3xl font-black text-slate-900">Cancel booking</h1>
+    <h1 className="text-2xl font-black text-slate-900 sm:text-3xl">Cancel booking</h1>
     <BookingCard appointment={appointment} />
     <Notice>{policy.paymentImpact.message}</Notice>
     <p className="text-sm text-slate-600">{policy.cancellationPolicyMessage}</p>
@@ -263,7 +263,7 @@ function PageShell({ guest, children }: { guest: boolean; children: React.ReactN
   return guest ? <GuestShell>{children}</GuestShell> : <section className="mx-auto max-w-2xl space-y-5">{children}</section>;
 }
 function BackLink({ guest, identifier }: { guest: boolean; identifier: string }) {
-  return <Link className="inline-block text-sm font-semibold text-violet-700 hover:underline" to={guest ? `/manage/${identifier}` : `/customer/appointments/${identifier}`}>Back to booking</Link>;
+  return <Link className="inline-flex min-h-11 items-center text-sm font-semibold text-violet-700 hover:underline" to={guest ? `/manage/${identifier}` : `/customer/appointments/${identifier}`}>Back to booking</Link>;
 }
 
 export function CustomerReschedulePage() { return <ReschedulePage guest={false} />; }

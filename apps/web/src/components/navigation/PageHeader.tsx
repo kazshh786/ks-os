@@ -15,8 +15,8 @@ interface PageHeaderProps {
 
 export const PageHeader: React.FC<PageHeaderProps> = ({ title, eyebrow, breadcrumbs, tone = 'light', menuButtonRef, onOpenNavigation, actions, notificationHref, helpHref = 'mailto:support@ks-os.com' }) => {
   const dark = tone === 'dark';
-  return <header className={`sticky top-0 z-30 flex min-h-16 items-center gap-3 border-b px-4 sm:px-6 ${dark ? 'border-slate-800 bg-slate-950/95 text-white' : 'border-slate-200 bg-white/95 text-slate-950'} backdrop-blur`}>
-    <button ref={menuButtonRef} type="button" onClick={onOpenNavigation} aria-label="Open navigation" aria-haspopup="dialog" className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl lg:hidden ${dark ? 'hover:bg-slate-900' : 'hover:bg-slate-100'}`}><Menu aria-hidden="true" className="h-5 w-5" /></button>
+  return <header className={`sticky top-0 z-30 flex min-h-16 items-center gap-2 border-b px-3 sm:gap-3 sm:px-6 ${dark ? 'border-slate-800 bg-slate-950/95 text-white' : 'border-slate-200 bg-white/95 text-slate-950'} backdrop-blur`}>
+    <button ref={menuButtonRef} type="button" onClick={onOpenNavigation} aria-label="Open navigation" aria-haspopup="dialog" className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl lg:hidden ${dark ? 'hover:bg-slate-900' : 'hover:bg-slate-100'}`}><Menu aria-hidden="true" className="h-5 w-5" /></button>
     <div className="min-w-0 flex-1">
       {eyebrow && <p className={`truncate text-[10px] font-black uppercase tracking-[0.14em] ${dark ? 'text-violet-300' : 'text-indigo-600'}`}>{eyebrow}</p>}
       <div className="flex min-w-0 items-center gap-2">
@@ -25,8 +25,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({ title, eyebrow, breadcru
       </div>
     </div>
     <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-      <a href={helpHref} aria-label="Help and support" title="Help and support" className={`grid h-10 w-10 place-items-center rounded-xl ${dark ? 'text-slate-400 hover:bg-slate-900 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'}`}><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" /></a>
-      {notificationHref && <a href={notificationHref} aria-label="Notifications" title="Notifications" className={`grid h-10 w-10 place-items-center rounded-xl ${dark ? 'text-slate-400 hover:bg-slate-900 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'}`}><Bell aria-hidden="true" className="h-[18px] w-[18px]" /></a>}
+      <a href={helpHref} aria-label="Help and support" title="Help and support" className={`grid h-11 w-11 place-items-center rounded-xl ${dark ? 'text-slate-400 hover:bg-slate-900 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'}`}><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" /></a>
+      {notificationHref && <a href={notificationHref} aria-label="Notifications" title="Notifications" className={`grid h-11 w-11 place-items-center rounded-xl ${dark ? 'text-slate-400 hover:bg-slate-900 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'}`}><Bell aria-hidden="true" className="h-[18px] w-[18px]" /></a>}
       {actions}
     </div>
   </header>;

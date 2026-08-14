@@ -36,3 +36,14 @@ select:focus {
   background-color: #ffffff;
 }
 
+body {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

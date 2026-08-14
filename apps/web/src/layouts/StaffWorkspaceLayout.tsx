@@ -64,7 +64,7 @@ export const StaffWorkspaceLayout: React.FC = () => {
     <button type="button" onClick={copyBookingLink} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-bold text-slate-600 hover:bg-slate-100 hover:text-slate-950"><Clipboard aria-hidden="true" className="h-4 w-4" />Copy booking link</button>
     <p aria-live="polite" className="sr-only">{copyMessage}</p>
   </div>;
-  const account = <div className="space-y-1"><a href="mailto:support@ks-os.com" className={`flex min-h-10 items-center rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-950 ${collapsed ? 'justify-center' : 'gap-3 px-3'}`} aria-label="Help and support" title={collapsed ? 'Help and support' : undefined}><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />{!collapsed && 'Help and support'}</a><AccountMenu displayName={accountName} email={auth.email} roleLabel={auth.role === 'owner' ? 'Business owner' : 'Team member'} settingsHref="/app/settings/security" compact={collapsed} onSignOut={() => void auth.signOut()} /></div>;
+  const account = <div className="space-y-1"><a href="mailto:support@ks-os.com" className={`flex min-h-11 items-center rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-950 ${collapsed ? 'justify-center' : 'gap-3 px-3'}`} aria-label="Help and support" title={collapsed ? 'Help and support' : undefined}><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />{!collapsed && 'Help and support'}</a><AccountMenu displayName={accountName} email={auth.email} roleLabel={auth.role === 'owner' ? 'Business owner' : 'Team member'} settingsHref="/app/settings/security" compact={collapsed} onSignOut={() => void auth.signOut()} /></div>;
   const sidebar = (isMobile = false) => <AppSidebar
     ariaLabel="Business navigation"
     productName={auth.tenantName || 'Business workspace'}
@@ -76,12 +76,12 @@ export const StaffWorkspaceLayout: React.FC = () => {
     badges={{ operations: operationsCount }}
     primaryAction={isMobile && canCreateBooking ? <div className="space-y-2"><Link to="/app/calendar?create=1" onClick={() => setMobileOpen(false)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white"><Plus aria-hidden="true" className="h-5 w-5" />Create booking</Link>{auth.role === 'owner' && <Link to="/app/services?add=1" onClick={() => setMobileOpen(false)} className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700"><Plus aria-hidden="true" className="h-4 w-4" />Add service</Link>}</div> : primaryAction}
     secondaryActions={secondaryActions}
-    footer={isMobile ? <div className="space-y-1"><a href="mailto:support@ks-os.com" className="flex min-h-10 items-center gap-3 rounded-xl px-3 text-xs font-bold text-slate-500 hover:bg-slate-100"><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />Help and support</a><AccountMenu displayName={accountName} email={auth.email} roleLabel={auth.role === 'owner' ? 'Business owner' : 'Team member'} settingsHref="/app/settings/security" onSignOut={() => void auth.signOut()} /></div> : account}
+    footer={isMobile ? <div className="space-y-1"><a href="mailto:support@ks-os.com" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-xs font-bold text-slate-500 hover:bg-slate-100"><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />Help and support</a><AccountMenu displayName={accountName} email={auth.email} roleLabel={auth.role === 'owner' ? 'Business owner' : 'Team member'} settingsHref="/app/settings/security" onSignOut={() => void auth.signOut()} /></div> : account}
     onToggleCollapsed={toggleCollapsed}
     onNavigate={isMobile ? closeMobile : undefined}
   />;
 
-  return <div className="flex h-screen min-h-0 overflow-hidden bg-slate-50 font-sans text-slate-950 antialiased">
+  return <div className="flex h-dvh min-h-0 overflow-hidden bg-slate-50 font-sans text-slate-950 antialiased">
     <div className="hidden h-full shrink-0 lg:block">{sidebar()}</div>
     <MobileNavigation open={mobileOpen} title="Business navigation" onClose={closeMobile} triggerRef={menuButtonRef}>{sidebar(true)}</MobileNavigation>
     <div className="flex min-w-0 flex-1 flex-col">
@@ -95,7 +95,7 @@ export const StaffWorkspaceLayout: React.FC = () => {
         notificationHref={groups.some(group => group.items.some(item => item.id === 'operations')) ? '/app/operations' : undefined}
         actions={<>{auth.memberships.length > 1 && <label className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 sm:flex"><Store aria-hidden="true" className="h-4 w-4 text-slate-500" /><span className="sr-only">Switch business</span><select value={auth.businessReference} onChange={event => void switchWorkspace(event.target.value)} className="max-w-40 border-0 bg-transparent py-2 text-xs font-bold focus:shadow-none">{auth.memberships.map(membership => <option key={membership.businessReference} value={membership.businessReference}>{membership.businessName}</option>)}</select></label>}</>}
       />
-      <main id="main-content" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 lg:p-8"><Outlet /></main>
+      <main id="main-content" className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-6 lg:p-8"><Outlet /></main>
     </div>
   </div>;
 };

@@ -298,28 +298,28 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-100 shadow-xl overflow-hidden max-w-4xl mx-auto font-sans">
+    <div className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-slate-100 bg-white font-sans shadow-xl sm:rounded-3xl">
       {/* Header */}
-      <div className="bg-slate-950 p-6 text-white flex justify-between items-center">
-        <div>
+      <div className="flex flex-col gap-3 bg-slate-950 p-4 text-white sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div className="min-w-0">
           <h2 className="text-xl font-extrabold tracking-tight">Reception Booking Desk</h2>
           <p className="text-xs text-slate-400 mt-1">
             Log telephone walk-ins, manage client files, and allocate salon resources.
           </p>
         </div>
-        <div className="bg-white/10 px-3 py-1 rounded-full text-xs font-bold font-mono text-slate-200">
+        <div className="w-fit rounded-full bg-white/10 px-3 py-1.5 font-mono text-xs font-bold text-slate-200">
           Operator Console
         </div>
       </div>
 
       {/* Dynamic Booking/Block Type Selector */}
-      <div className="mx-8 mt-6 p-1 bg-slate-100 rounded-2xl flex max-w-lg border border-slate-200">
+      <div className="mx-3 mt-4 grid max-w-lg grid-cols-2 rounded-2xl border border-slate-200 bg-slate-100 p-1 sm:mx-8 sm:mt-6">
         <button
           type="button"
           onClick={() => {
             setIsPersonalBlock(false);
           }}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer select-none ${
+          className={`flex min-h-14 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-center text-xs font-bold transition cursor-pointer select-none ${
             !isPersonalBlock
               ? 'bg-white text-slate-900 shadow-sm font-extrabold'
               : 'text-slate-500 hover:text-slate-800'
@@ -333,7 +333,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
             setIsPersonalBlock(true);
             setSelectedClient(null);
           }}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer select-none ${
+          className={`flex min-h-14 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-center text-xs font-bold transition cursor-pointer select-none ${
             isPersonalBlock
               ? 'bg-slate-900 text-white shadow-sm font-extrabold'
               : 'text-slate-500 hover:text-slate-800'
@@ -343,7 +343,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
         </button>
       </div>
 
-      <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+      <div className="grid grid-cols-1 gap-6 p-4 pt-4 sm:p-6 md:grid-cols-2 md:gap-8 lg:p-8 lg:pt-4">
         {/* Left Side: Client Search & Quick Client Setup OR Personal Block */}
         <div className="space-y-6">
           {isPersonalBlock ? (
@@ -359,7 +359,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                   placeholder="e.g. Lunch Break, Staff Training, Personal Appointment..."
                   value={blockReason}
                   onChange={(e) => setBlockReason(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-1 focus:ring-slate-900 focus:outline-none text-xs font-bold text-slate-800"
+                  className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
                 />
                 
                 {/* Preset quick buttons */}
@@ -369,7 +369,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                       key={preset}
                       type="button"
                       onClick={() => setBlockReason(preset)}
-                      className={`text-[9px] px-2.5 py-1 rounded-lg border font-bold transition cursor-pointer select-none ${
+                      className={`min-h-11 rounded-lg border px-2.5 py-1 text-[10px] font-bold transition cursor-pointer select-none ${
                         blockReason === preset
                           ? 'bg-slate-900 text-white border-slate-900 font-black'
                           : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
@@ -386,7 +386,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                 <select
                   value={blockDuration}
                   onChange={(e) => setBlockDuration(Number(e.target.value))}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs font-bold text-slate-800"
+                  className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-bold text-slate-800 focus:outline-none"
                 >
                   <option value={15}>15 Minutes</option>
                   <option value={30}>30 Minutes</option>
@@ -414,17 +414,18 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                     placeholder="Search existing client by name or phone..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-950 focus:outline-none text-sm font-medium"
+                    className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-950"
                   />
                 </div>
 
                 {searchQuery && (
                   <div className="max-h-40 overflow-y-auto border border-slate-100 rounded-xl divide-y bg-white">
                     {filteredClients.map(c => (
-                      <div
+                      <button
                         key={c.id}
+                        type="button"
                         onClick={() => setSelectedClient(c)}
-                        className="p-3 hover:bg-slate-50 cursor-pointer text-xs flex justify-between items-center"
+                        className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 p-3 text-left text-xs hover:bg-slate-50"
                       >
                         <div>
                           <p className="font-bold text-slate-800">{c.name}</p>
@@ -433,7 +434,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                         <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-full font-bold text-slate-500">
                           {c.loyaltyPoints} pts
                         </span>
-                      </div>
+                      </button>
                     ))}
                     {filteredClients.length === 0 && (
                       <div className="p-4 text-center text-xs text-slate-400 font-medium">No clients found</div>
@@ -445,7 +446,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                   <button
                     type="button"
                     onClick={() => setIsCreatingClient(!isCreatingClient)}
-                    className="text-xs font-bold text-slate-950 hover:underline flex items-center justify-center gap-1 mx-auto"
+                    className="mx-auto flex min-h-11 items-center justify-center gap-1 text-xs font-bold text-slate-950 hover:underline"
                   >
                     <UserPlus className="w-4 h-4" /> Or Register Walk-in Client Instantly
                   </button>
@@ -453,16 +454,16 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex justify-between items-center">
-                  <div>
+                <div className="flex items-start justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="min-w-0">
                     <h4 className="font-bold text-slate-950 text-sm">{selectedClient.name}</h4>
-                    <p className="text-xs text-slate-500 mt-0.5">{selectedClient.phone} • {selectedClient.email}</p>
+                    <p className="mt-0.5 break-all text-xs text-slate-500">{selectedClient.phone} • {selectedClient.email}</p>
                     <p className="text-[10px] text-indigo-600 font-bold mt-1.5">★ {selectedClient.loyaltyPoints} Loyalty Balance</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setSelectedClient(null)}
-                    className="text-xs font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-xl"
+                    className="min-h-11 shrink-0 rounded-xl bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-500 hover:bg-rose-100"
                   >
                     Change
                   </button>
@@ -478,7 +479,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                             <p className="text-[10px] font-bold text-slate-800">{b.date} • {b.startTime}</p>
                             <p className="text-[10px] text-slate-500">Amount: £{b.price}</p>
                           </div>
-                          <Link to={`/app/pos?appointmentId=${b.id}`} className="text-[10px] font-bold text-indigo-600 hover:underline">
+                          <Link to={`/app/pos?appointmentId=${b.id}`} className="inline-flex min-h-11 items-center text-[10px] font-bold text-indigo-600 hover:underline">
                             Take payment &rarr;
                           </Link>
                         </div>
@@ -504,7 +505,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                   required
                   value={newClientName}
                   onChange={(e) => setNewClientName(e.target.value)}
-                  className="w-full p-2.5 bg-white border rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-slate-950"
+                  className="min-h-11 w-full rounded-xl border bg-white p-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-slate-950"
                 />
                 <input
                   type="tel"
@@ -512,27 +513,27 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                   required
                   value={newClientPhone}
                   onChange={(e) => setNewClientPhone(e.target.value)}
-                  className="w-full p-2.5 bg-white border rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-slate-950"
+                  className="min-h-11 w-full rounded-xl border bg-white p-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-slate-950"
                 />
                 <input
                   type="email"
                   placeholder="Email Address (Optional)"
                   value={newClientEmail}
                   onChange={(e) => setNewClientEmail(e.target.value)}
-                  className="w-full p-2.5 bg-white border rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-slate-950"
+                  className="min-h-11 w-full rounded-xl border bg-white p-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-slate-950"
                 />
               </div>
-              <div className="flex gap-2 justify-end text-xs font-bold">
+              <div className="grid grid-cols-2 gap-2 text-xs font-bold sm:flex sm:justify-end">
                 <button
                   type="button"
                   onClick={() => setIsCreatingClient(false)}
-                  className="px-3 py-1.5 text-slate-500 hover:text-slate-800"
+                  className="min-h-11 px-3 py-1.5 text-slate-500 hover:text-slate-800"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-slate-950 text-white rounded-lg hover:opacity-90 shadow-sm"
+                  className="min-h-11 rounded-lg bg-slate-950 px-4 py-1.5 text-white shadow-sm hover:opacity-90"
                 >
                   Create & Select
                 </button>
@@ -552,7 +553,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                 <select
                   value={selectedService?.id || ''}
                   onChange={(e) => setSelectedService(services.find(s => s.id === e.target.value) || null)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs font-bold text-slate-800"
+                  className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-bold text-slate-800 focus:outline-none"
                 >
                   <option value="">-- Choose service catalog --</option>
                   {services.map(s => (
@@ -574,7 +575,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
               <select
                 value={selectedStaff?.id || ''}
                 onChange={(e) => setSelectedStaff(staffList.find(s => s.id === e.target.value) || null)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs font-bold text-slate-800"
+                className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-bold text-slate-800 focus:outline-none"
               >
                 <option value="">-- Choose professional --</option>
                 {staffList.map(s => (
@@ -592,7 +593,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
               <Calendar className="w-4 h-4 text-slate-500" /> 3. Calendar & Date/Time
             </h3>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 min-[360px]:grid-cols-2">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Target Date</label>
                 <div className="relative">
@@ -606,7 +607,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                         setPickerMonth(m - 1);
                       }
                     }}
-                    className="w-full flex items-center justify-between font-black text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 p-2.5 rounded-xl text-xs transition shadow-3xs cursor-pointer select-none"
+                    className="flex min-h-11 w-full cursor-pointer select-none items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-black text-slate-800 shadow-3xs transition hover:bg-slate-100"
                   >
                     <div className="flex items-center gap-1.5 min-w-0">
                       <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
@@ -618,7 +619,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                     <>
                       {/* Backdrop */}
                       <div className="fixed inset-0 z-40" onClick={() => setShowDatePicker(false)} />
-                      <div className="absolute left-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 w-72 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                      <div className="fixed inset-x-0 bottom-0 z-50 w-full animate-in rounded-t-3xl border border-slate-200 bg-white p-3 shadow-xl duration-150 fade-in slide-in-from-bottom-1 sm:absolute sm:bottom-auto sm:left-0 sm:mt-2 sm:w-72 sm:rounded-2xl sm:p-4 sm:slide-in-from-top-1">
                         
                         {/* Month Navigation */}
                         <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
@@ -632,7 +633,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                                 setPickerMonth(pickerMonth - 1);
                               }
                             }}
-                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 transition cursor-pointer"
+                            className="grid h-11 w-11 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100"
                           >
                             <ChevronLeft className="w-4 h-4" />
                           </button>
@@ -649,21 +650,21 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                                 setPickerMonth(pickerMonth + 1);
                               }
                             }}
-                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 transition cursor-pointer"
+                            className="grid h-11 w-11 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100"
                           >
                             <ChevronRight className="w-4 h-4" />
                           </button>
                         </div>
 
                         {/* Weekday labels */}
-                        <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-black text-slate-400 uppercase mb-1">
+                        <div className="mb-1 grid grid-cols-7 gap-0.5 text-center text-[10px] font-black uppercase text-slate-400 sm:gap-1">
                           <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
                         </div>
 
                         {/* Days Grid */}
-                        <div className="grid grid-cols-7 gap-1 text-center">
+                        <div className="grid grid-cols-7 gap-0.5 text-center sm:gap-1">
                           {Array.from({ length: new Date(pickerYear, pickerMonth, 1).getDay() }).map((_, i) => (
-                            <div key={`empty-${i}`} className="w-8 h-8" />
+                            <div key={`empty-${i}`} className="h-10 w-full" />
                           ))}
 
                           {Array.from({ length: new Date(pickerYear, pickerMonth + 1, 0).getDate() }).map((_, i) => {
@@ -680,7 +681,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                                   setSelectedDate(dateStr);
                                   setShowDatePicker(false);
                                 }}
-                                className={`w-8 h-8 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                                className={`flex h-10 w-full cursor-pointer items-center justify-center rounded-lg text-xs font-bold transition ${
                                   isSelected
                                     ? 'bg-slate-900 text-white font-black'
                                     : isToday
@@ -704,7 +705,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                               setPickerMonth(6);
                               setShowDatePicker(false);
                             }}
-                            className="font-black uppercase text-indigo-600 hover:text-indigo-800 transition flex items-center gap-1 cursor-pointer"
+                            className="flex min-h-11 cursor-pointer items-center gap-1 font-black uppercase text-indigo-600 transition hover:text-indigo-800"
                           >
                             <RefreshCw className="w-3 h-3 text-indigo-500 animate-spin" style={{ animationDuration: '6s' }} /> Go to Today
                           </button>
@@ -721,7 +722,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                   <button
                     type="button"
                     onClick={() => setShowTimePicker(!showTimePicker)}
-                    className="w-full flex items-center justify-between font-black text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 p-2.5 rounded-xl text-xs transition shadow-3xs cursor-pointer select-none"
+                    className="flex min-h-11 w-full cursor-pointer select-none items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-black text-slate-800 shadow-3xs transition hover:bg-slate-100"
                   >
                     <div className="flex items-center gap-1.5 min-w-0">
                       <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0 animate-pulse" />
@@ -737,7 +738,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                       <>
                         {/* Backdrop */}
                         <div className="fixed inset-0 z-40" onClick={() => setShowTimePicker(false)} />
-                        <div className="absolute right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 w-64 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                        <div className="fixed inset-x-0 bottom-0 z-50 w-full animate-in rounded-t-3xl border border-slate-200 bg-white p-4 shadow-xl duration-150 fade-in slide-in-from-bottom-1 sm:absolute sm:bottom-auto sm:left-auto sm:right-0 sm:mt-2 sm:w-64 sm:rounded-2xl sm:p-3 sm:slide-in-from-top-1">
                           <div className="text-center font-bold text-[10px] uppercase text-slate-400 tracking-wider mb-2 pb-1.5 border-b border-slate-100">
                             Select Time Slot
                           </div>
@@ -754,7 +755,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                                       const newTime = formatTime24h(h, minute, isPM);
                                       setSelectedTime(newTime);
                                     }}
-                                    className={`w-full py-1 text-center text-xs font-bold rounded-lg transition cursor-pointer block ${
+                                    className={`block min-h-11 w-full cursor-pointer rounded-lg py-1 text-center text-xs font-bold transition ${
                                       hour12 === h
                                         ? 'bg-slate-900 text-white font-black'
                                         : 'hover:bg-slate-100 text-slate-700'
@@ -778,7 +779,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                                       const newTime = formatTime24h(hour12, m, isPM);
                                       setSelectedTime(newTime);
                                     }}
-                                    className={`w-full py-1 text-center text-xs font-bold rounded-lg transition cursor-pointer block ${
+                                    className={`block min-h-11 w-full cursor-pointer rounded-lg py-1 text-center text-xs font-bold transition ${
                                       minute === m
                                         ? 'bg-slate-900 text-white font-black'
                                         : 'hover:bg-slate-100 text-slate-700'
@@ -802,7 +803,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                                       const newTime = formatTime24h(hour12, minute, pm);
                                       setSelectedTime(newTime);
                                     }}
-                                    className={`w-full py-1.5 text-center text-xs font-bold rounded-lg transition cursor-pointer block ${
+                                    className={`block min-h-11 w-full cursor-pointer rounded-lg py-1.5 text-center text-xs font-bold transition ${
                                       isPM === pm
                                         ? 'bg-indigo-600 text-white font-black'
                                         : 'hover:bg-slate-100 text-slate-700 border border-slate-100'
@@ -823,7 +824,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                                 setSelectedTime('09:00');
                                 setShowTimePicker(false);
                               }}
-                              className="text-[9px] font-bold py-1 bg-slate-50 rounded text-slate-500 hover:bg-slate-100 text-center transition cursor-pointer"
+                              className="min-h-11 cursor-pointer rounded bg-slate-50 py-1 text-center text-xs font-bold text-slate-500 transition hover:bg-slate-100"
                             >
                               9:00 AM (Open)
                             </button>
@@ -833,7 +834,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                                 setSelectedTime('13:00');
                                 setShowTimePicker(false);
                               }}
-                              className="text-[9px] font-bold py-1 bg-slate-50 rounded text-slate-500 hover:bg-slate-100 text-center transition cursor-pointer"
+                              className="min-h-11 cursor-pointer rounded bg-slate-50 py-1 text-center text-xs font-bold text-slate-500 transition hover:bg-slate-100"
                             >
                               1:00 PM (Lunch)
                             </button>
@@ -853,7 +854,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
               <select
                 value={selectedResource}
                 onChange={(e) => setSelectedResource(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-xs font-bold text-slate-800"
+                className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs font-bold text-slate-800 focus:outline-none"
               >
                 <option value="">-- Use service default equipment --</option>
                 {resources.map(r => (
@@ -919,7 +920,7 @@ export default function ReceptionDesk({ tenant, onBookingCompleted }: ReceptionD
                   ? !selectedStaff
                   : (!selectedClient || !selectedService || !selectedStaff || ((hasStaffConflict || hasResourceConflict) && !overrideAllowed))
               }
-              className="w-full bg-slate-950 text-white font-bold text-xs py-3 rounded-2xl hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              className="flex min-h-12 w-full cursor-pointer items-center justify-center gap-1.5 rounded-2xl bg-slate-950 py-3 text-xs font-bold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isPersonalBlock ? (
                 <>

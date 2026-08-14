@@ -47,7 +47,7 @@ export default function PaymentSuccess() {
   }, [subdomain, reference]);
 
   return (
-    <div className="w-full max-w-3xl mx-auto bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden p-8 text-center mt-10">
+    <div className="mx-auto mt-4 w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 text-center shadow-xl sm:mt-10 sm:rounded-3xl sm:p-8">
       {status === 'LOADING' && (
         <div className="py-10">
           <Loader2 className="w-16 h-16 animate-spin text-indigo-500 mx-auto mb-6" />
@@ -63,9 +63,9 @@ export default function PaymentSuccess() {
           </div>
           <h3 className="text-2xl font-bold text-slate-800">Payment Successful!</h3>
           <p className="text-slate-500 mt-2">
-            Your booking is confirmed. Reference: <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded">{reference}</span>
+            Your booking is confirmed. Reference: <span className="mt-2 inline-block max-w-full break-all rounded bg-slate-100 px-2 py-1 font-mono font-bold text-slate-900">{reference}</span>
           </p>
-          <Link to={`/book/${subdomain}`} className="mt-8 inline-block px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition">
+          <Link to={`/book/${subdomain}`} className="mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-slate-900 px-6 py-3 font-bold text-white transition hover:bg-slate-800 sm:w-auto">
             Book Another Appointment
           </Link>
         </div>
@@ -78,7 +78,7 @@ export default function PaymentSuccess() {
           </div>
           <h3 className="text-2xl font-bold text-slate-800">Payment Unsuccessful</h3>
           <p className="text-slate-500 mt-2">We could not verify your payment. Please contact the salon or try again.</p>
-          <Link to={`/book/${subdomain}`} className="mt-8 inline-block px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition">
+          <Link to={`/book/${subdomain}`} className="mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-slate-900 px-6 py-3 font-bold text-white transition hover:bg-slate-800 sm:w-auto">
             Return to Booking
           </Link>
         </div>

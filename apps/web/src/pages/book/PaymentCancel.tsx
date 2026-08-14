@@ -43,7 +43,7 @@ export default function PaymentCancel() {
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden p-8 text-center mt-10">
+    <div className="mx-auto mt-4 w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 text-center shadow-xl sm:mt-10 sm:rounded-3xl sm:p-8">
       <div className="py-10">
         <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
           <AlertTriangle className="w-10 h-10" />
@@ -59,17 +59,17 @@ export default function PaymentCancel() {
           </div>
         )}
 
-        <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center sm:gap-4">
           <button
             onClick={handleRetry}
             disabled={isLoading || !reference}
-            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition disabled:opacity-50"
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50"
           >
             {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : null}
             Retry Payment
           </button>
           
-          <Link to={`/book/${subdomain}`} className="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition">
+          <Link to={`/book/${subdomain}`} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-100 px-6 py-3 font-bold text-slate-700 transition hover:bg-slate-200">
             Start New Booking
           </Link>
         </div>

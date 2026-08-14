@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, Outlet, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, Navigate, NavLink, Outlet, useNavigate, useParams, useSearchParams } from 'react-router';
 import { supabase } from '../../lib/supabase.js';
 import { fetchWithAuth } from '../../api/client.js';
 import { customerPortalProvider } from './customer-portal-provider.js';
@@ -352,7 +352,7 @@ export function CustomerPortalLayout() {
 
   return (
     <CustomerContext.Provider value={session}>
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-dvh bg-slate-50">
         {/* Top nav */}
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white shadow-sm">
           <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
@@ -364,17 +364,17 @@ export function CustomerPortalLayout() {
             {/* Desktop nav */}
             <nav className="hidden items-center gap-1 sm:flex" aria-label="Customer portal navigation">
               {navLinks.map((link) => (
-                <Link
+                <NavLink
                   key={link.to}
                   to={link.to}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                  className={({ isActive }) => `inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium transition ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
                 >
                   {link.label}
-                </Link>
+                </NavLink>
               ))}
               <button
                 onClick={signOut}
-                className="ml-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+                className="ml-2 min-h-11 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
               >
                 Sign out
               </button>
@@ -382,9 +382,11 @@ export function CustomerPortalLayout() {
 
             {/* Mobile hamburger */}
             <button
-              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 sm:hidden"
+              className="grid h-11 w-11 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:hidden"
               onClick={() => setMenuOpen(!menuOpen)}
-              aria-label="Open navigation"
+              aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
+              aria-expanded={menuOpen}
+              aria-controls="customer-mobile-navigation"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 {menuOpen
@@ -396,21 +398,21 @@ export function CustomerPortalLayout() {
 
           {/* Mobile menu */}
           {menuOpen && (
-            <div className="border-t border-slate-100 bg-white px-4 pb-4 sm:hidden">
-              <nav className="flex flex-col gap-1 pt-2">
+            <div id="customer-mobile-navigation" className="border-t border-slate-100 bg-white px-4 pb-4 sm:hidden">
+              <nav className="flex flex-col gap-1 pt-2" aria-label="Customer mobile navigation">
                 {navLinks.map((link) => (
-                  <Link
+                  <NavLink
                     key={link.to}
                     to={link.to}
                     onClick={() => setMenuOpen(false)}
-                    className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                    className={({ isActive }) => `flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
                   >
                     {link.label}
-                  </Link>
+                  </NavLink>
                 ))}
                 <button
                   onClick={signOut}
-                  className="mt-1 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+                  className="mt-1 min-h-11 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50"
                 >
                   Sign out
                 </button>
@@ -419,7 +421,7 @@ export function CustomerPortalLayout() {
           )}
         </header>
 
-        <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+        <main className="mx-auto max-w-5xl px-3 py-5 sm:px-6 sm:py-6">
           <Outlet />
         </main>
       </div>
@@ -458,7 +460,7 @@ export function CustomerHomePage() {
       {/* Welcome */}
       <div>
         <p className="text-sm text-slate-500">Welcome back</p>
-        <h1 className="text-3xl font-black text-slate-900">{customer.customer.displayName}</h1>
+        <h1 className="break-words text-2xl font-black text-slate-900 sm:text-3xl">{customer.customer.displayName}</h1>
       </div>
 
       {error && (
@@ -560,10 +562,10 @@ export function CustomerHomePage() {
           <ul className="mt-4 divide-y divide-slate-100">
             {appointments.map((appt) => (
               <li key={appt.bookingReference} className="py-3">
-                <Link className="flex items-start justify-between gap-4" to={`/customer/appointments/${appt.bookingReference}`}>
-                  <div>
-                    <p className="font-semibold text-slate-900">{appt.serviceName}</p>
-                    <p className="mt-0.5 text-sm text-slate-500">{appt.salonName} · {appt.staffName}</p>
+                <Link className="flex min-h-11 flex-col items-start gap-3 min-[360px]:flex-row min-[360px]:justify-between" to={`/customer/appointments/${appt.bookingReference}`}>
+                  <div className="min-w-0">
+                    <p className="break-words font-semibold text-slate-900">{appt.serviceName}</p>
+                    <p className="mt-0.5 break-words text-sm text-slate-500">{appt.salonName} · {appt.staffName}</p>
                     <p className="mt-1 text-sm text-slate-700">{formatWhen(appt.startTime, appt.timezone)}</p>
                   </div>
                   <Badge label={appt.status} />
@@ -656,7 +658,7 @@ export function CustomerAppointmentsPage() {
 
   return (
     <section className="space-y-5">
-      <h1 className="text-3xl font-black text-slate-900">Appointments</h1>
+      <h1 className="text-2xl font-black text-slate-900 sm:text-3xl">Appointments</h1>
 
       {/* Tab bar */}
       <div role="tablist" className="flex gap-2">
@@ -667,7 +669,7 @@ export function CustomerAppointmentsPage() {
             role="tab"
             aria-selected={status === key}
             onClick={() => setStatus(key)}
-            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+            className={`min-h-11 rounded-full px-4 py-2 text-sm font-medium transition ${
               status === key
                 ? 'bg-slate-900 text-white shadow-sm'
                 : 'bg-white text-slate-600 hover:bg-slate-100'
@@ -691,12 +693,12 @@ export function CustomerAppointmentsPage() {
               <li key={appt.bookingReference}>
                 <Link
                   id={`appt-card-${appt.bookingReference}`}
-                  className="flex items-start justify-between gap-4 rounded-2xl bg-white p-5 shadow-sm transition hover:shadow-md"
+                  className="flex min-h-11 flex-col items-start gap-3 rounded-2xl bg-white p-4 shadow-sm transition hover:shadow-md min-[360px]:flex-row min-[360px]:justify-between sm:p-5"
                   to={`/customer/appointments/${appt.bookingReference}`}
                 >
                   <div className="min-w-0">
-                    <h2 className="font-semibold text-slate-900">{appt.serviceName}</h2>
-                    <p className="mt-0.5 text-sm text-slate-500">{appt.salonName} · {appt.staffName}</p>
+                    <h2 className="break-words font-semibold text-slate-900">{appt.serviceName}</h2>
+                    <p className="mt-0.5 break-words text-sm text-slate-500">{appt.salonName} · {appt.staffName}</p>
                     <p className="mt-2 text-sm text-slate-700">{formatWhen(appt.startTime, appt.timezone)}</p>
                     <p className={`mt-1 text-sm font-medium ${paymentColour(appt.payment.status)}`}>
                       {appt.payment.status}
@@ -751,7 +753,7 @@ export function CustomerAppointmentDetailPage() {
       {/* Header */}
       <div>
         <p className="text-sm text-slate-500">{appointment.salon.displayName}</p>
-        <h1 className="mt-1 text-3xl font-black text-slate-900">{appointment.serviceName}</h1>
+        <h1 className="mt-1 break-words text-2xl font-black text-slate-900 sm:text-3xl">{appointment.serviceName}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge label={appointment.status} />
           <span className="text-sm text-slate-500">{appointment.location}</span>
@@ -796,15 +798,15 @@ export function CustomerAppointmentDetailPage() {
           <h2 className="font-semibold text-slate-800">Forms</h2>
           <ul className="mt-3 space-y-2">
             {appointment.forms.map((form: any) => (
-              <li key={form.assignmentReference} className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-slate-800">{form.title}</p>
+              <li key={form.assignmentReference} className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-medium text-slate-800">{form.title}</p>
                   <p className="text-xs text-slate-500">Version {form.version}</p>
                 </div>
                 {['PENDING', 'OPENED'].includes(form.status) ? (
                   <Link
                     to={`/customer/forms/${form.assignmentReference}`}
-                    className="shrink-0 rounded-full bg-violet-600 px-3 py-1 text-xs font-bold text-white hover:bg-violet-700"
+                    className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-violet-600 px-3 py-1 text-xs font-bold text-white hover:bg-violet-700"
                   >
                     Complete
                   </Link>
