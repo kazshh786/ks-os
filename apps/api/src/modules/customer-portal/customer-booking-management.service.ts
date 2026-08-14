@@ -31,6 +31,11 @@ import type {
 import { calculateAvailability } from '../availability/availability.service.js';
 import { BusinessEventsService, stableEventId } from '../automations/business-events.service.js';
 import { EmailService } from '../email/email.service.js';
+import {
+  EmailSettingsService,
+  emailBrandingTemplateData,
+  renderAutomatedEmailCopy,
+} from '../email/email-settings.service.js';
 import { OperationsIssueReporter } from '../operations/operations.issue-service.js';
 import { SmsService } from '../sms/sms.service.js';
 import { env } from '../../config/env.js';
@@ -131,6 +136,7 @@ const actorScope = (access: CustomerBookingAccess) => hashCustomerBookingManagem
 
 export class CustomerBookingManagementService {
   private readonly email = new EmailService();
+  private readonly emailSettings = new EmailSettingsService();
   private readonly sms = new SmsService();
   private readonly events = new BusinessEventsService();
   private readonly issues = new OperationsIssueReporter();
@@ -709,6 +715,7 @@ export class CustomerBookingManagementService {
           serviceName: row.serviceName || 'Service',
           oldDateTime: oldLocal,
           newDateTime: local,
+          startTime: newStart.toISOString(),
           staffName,
           location: row.locationName || (row.bookingChannel === 'mobile' ? 'Mobile service' : 'At the salon'),
           managementUrl,
@@ -719,7 +726,7 @@ export class CustomerBookingManagementService {
       }, tx);
     }
     const phone = row.clientPhone || row.clientPhoneFallback;
-      if (row.smsEnabled && row.smsBookingRescheduleEnabled && phone) {
+    if (row.smsEnabled && row.smsBookingRescheduleEnabled && phone) {
       await this.sms.enqueue({
         tenantId: row.tenantId,
         clientId: row.clientId,
@@ -747,17 +754,55 @@ export class CustomerBookingManagementService {
           }, tx);
         }
       }
-      if (row.bookingRescheduleEmailEnabled && row.clientEmail) {
-        const hours = row.smsReminderTiming === '24_and_48_hours_before' ? [48, 24] : row.smsReminderTiming === 'none' ? [] : [row.smsReminderTiming.startsWith('48') ? 48 : 24];
+    }
+
+    if (row.clientEmail) {
+      const settings = await this.emailSettings.get(row.tenantId, tx);
+      if (settings.appointmentRemindersEnabled) {
+        const hours = [
+          ...(settings.automations.reminderThreeDaysEnabled ? [72] : []),
+          ...(settings.automations.reminderOneDayEnabled ? [24] : []),
+        ];
+        const bookingDate = new Intl.DateTimeFormat('en-GB', {
+          dateStyle: 'medium',
+          timeZone: row.timezone,
+        }).format(newStart);
+        const bookingTime = new Intl.DateTimeFormat('en-GB', {
+          timeStyle: 'short',
+          timeZone: row.timezone,
+        }).format(newStart);
         for (const hoursBefore of hours) {
           const scheduledFor = new Date(newStart.getTime() - hoursBefore * 3_600_000);
-          if (scheduledFor > new Date()) await this.email.enqueueEmail({
+          if (scheduledFor <= new Date()) continue;
+          const template = hoursBefore === 72
+            ? settings.templates.reminderThreeDays
+            : settings.templates.reminderOneDay;
+          const replacements = {
+            businessName: settings.branding.businessName,
+            customerName: row.clientName || 'there',
+            serviceName: row.serviceName || 'your appointment',
+            bookingDate,
+            bookingTime,
+            staffName,
+          };
+          await this.email.enqueueEmail({
             tenantId: row.tenantId,
             recipientEmail: row.clientEmail,
             recipientName: row.clientName,
-            replyToEmail: row.replyToEmail ?? undefined,
+            replyToEmail: settings.replyToEmail || undefined,
             templateKey: 'appointment-reminder',
-            templateDataJson: { tenantName: row.senderDisplayName || row.salonName, tenantPrimaryColor: row.primaryColor, customerName: row.clientName || 'there', bookingDate: new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: row.timezone }).format(newStart), bookingTime: new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: row.timezone }).format(newStart), serviceName: row.serviceName || 'your appointment', managementUrl },
+            templateDataJson: {
+              ...emailBrandingTemplateData(settings.branding),
+              tenantPrimaryColor: row.primaryColor,
+              customerName: replacements.customerName,
+              bookingDate,
+              bookingTime,
+              serviceName: replacements.serviceName,
+              appointmentDateTime: newStart.toISOString(),
+              managementUrl,
+              reminderHours: hoursBefore,
+              ...renderAutomatedEmailCopy(template, replacements),
+            },
             idempotencyKey: `customer-reminder-email:${changeId}:${hoursBefore}`,
             relatedEntityType: 'appointment',
             relatedEntityId: row.appointmentId,

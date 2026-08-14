@@ -410,7 +410,7 @@ export type AppointmentNotificationMessage = {
 function parseIntendedAppointmentTime(data: Record<string, unknown>): number | null {
   for (const key of ['startTime', 'appointmentDateTime']) {
     const value = text(data, key);
-    if (!value) continue;
+    if (!value || !/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) continue;
     const parsed = Date.parse(value);
     if (Number.isFinite(parsed)) return parsed;
   }

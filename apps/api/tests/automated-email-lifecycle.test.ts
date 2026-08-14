@@ -92,3 +92,13 @@ test('automated-email settings remain backend-only and tenant-scoped', () => {
   assert.match(migration, /REVOKE ALL ON TABLE public\.tenant_email_automation_settings FROM anon, authenticated/);
   assert.match(migration, /jsonb_typeof\(settings_json\) = 'object'/);
 });
+
+test('automation email actions provide valid appointment tokens and reject non-queued sends', () => {
+  const automation = source('modules/automations/automation.service.ts');
+
+  assert.match(automation, /bookingDate=c\.startTime\?new Intl\.DateTimeFormat/);
+  assert.match(automation, /bookingTime=c\.startTime\?new Intl\.DateTimeFormat/);
+  assert.match(automation, /appointmentDateTime:c\.startTime\?\.toISOString\(\)/);
+  assert.match(automation, /if\(!result\.queued\)throw fail\(409,'AUTOMATION_EMAIL_NOT_QUEUED'/);
+  assert.match(automation, /Form emails require a secure assignment link/);
+});
