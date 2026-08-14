@@ -20,6 +20,9 @@ const results = {};
 results.schedules = await run('/api/v1/internal/automation-worker/schedules', automationSecret);
 results.events = await run('/api/v1/internal/automation-worker/events', automationSecret);
 results.actions = await run('/api/v1/internal/automation-worker/actions', automationSecret);
+results.reportSchedules = await run('/api/v1/internal/report-worker/schedules', automationSecret);
+results.reportExports = await run('/api/v1/internal/report-worker/exports', automationSecret);
 results.email = await run('/api/v1/communications/worker/run', emailSecret);
+results.reportCleanup = await run('/api/v1/internal/report-worker/cleanup', automationSecret);
 
 process.stdout.write(JSON.stringify({ ok: true, results }) + '\n');
