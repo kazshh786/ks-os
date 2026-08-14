@@ -1,20 +1,29 @@
 import { Button, Text } from '@react-email/components';
-import { BaseEmailLayout } from '../components/BaseEmailLayout.js';
+import { BaseEmailLayout, type EmailBrandingProps } from '../components/BaseEmailLayout.js';
 
-export interface CustomerPortalClaimProps {
-  tenantName: string;
-  tenantPrimaryColor?: string;
+export interface CustomerPortalClaimProps extends EmailBrandingProps {
   customerName: string;
   claimUrl?: string;
   bookingManagementUrl?: string;
+  emailHeading?: string;
+  emailBody?: string;
 }
 
-export const CustomerPortalClaimEmail = ({ tenantName, tenantPrimaryColor, customerName, claimUrl, bookingManagementUrl }: CustomerPortalClaimProps) => (
-  <BaseEmailLayout tenantName={tenantName} tenantPrimaryColor={tenantPrimaryColor} previewText="View your customer portal">
-    <Text className="text-gray-800 text-base mb-4">Hi {customerName},</Text>
+export const CustomerPortalClaimEmail = ({
+  tenantName,
+  tenantPrimaryColor,
+  customerName,
+  claimUrl,
+  bookingManagementUrl,
+  emailHeading,
+  emailBody,
+  ...branding
+}: CustomerPortalClaimProps) => (
+  <BaseEmailLayout tenantName={tenantName} tenantPrimaryColor={tenantPrimaryColor} {...branding} previewText="View your customer portal">
+    {emailHeading && <Text className="text-gray-950 text-xl font-bold mb-4">{emailHeading}</Text>}
+    <Text className="text-gray-800 text-base mb-5" style={{ whiteSpace: 'pre-line' }}>{emailBody || <>Hi {customerName}, use the secure link below to view your appointments, forms and payment updates.</>}</Text>
     {claimUrl && <>
-      <Text className="text-gray-800 text-base mb-5">Use this secure, one-time link to sign in and view your appointments, forms, and payment updates.</Text>
-      <Button href={claimUrl} className="rounded bg-slate-900 px-5 py-3 text-white">View in customer portal</Button>
+      <Button href={claimUrl} style={{ backgroundColor: tenantPrimaryColor || '#0f172a' }} className="rounded px-5 py-3 text-white">View customer portal</Button>
       <Text className="text-gray-500 text-sm mt-5">The portal claim link expires in seven days and can only be used once.</Text>
     </>}
     {bookingManagementUrl && <>

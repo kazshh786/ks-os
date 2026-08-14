@@ -10,6 +10,13 @@ export const AutomatedEmailTemplateSchema = z.object({
 
 export const AutomatedEmailTemplatesSchema = z.object({
   customerBookingConfirmation: AutomatedEmailTemplateSchema,
+  customerBookingCancellation: AutomatedEmailTemplateSchema.optional(),
+  customerBookingReschedule: AutomatedEmailTemplateSchema.optional(),
+  customerPaymentConfirmation: AutomatedEmailTemplateSchema.optional(),
+  customerRefundUpdate: AutomatedEmailTemplateSchema.optional(),
+  formAssignment: AutomatedEmailTemplateSchema.optional(),
+  formReminder: AutomatedEmailTemplateSchema.optional(),
+  customerPortalAccess: AutomatedEmailTemplateSchema.optional(),
   businessBookingConfirmation: AutomatedEmailTemplateSchema,
   reminderThreeDays: AutomatedEmailTemplateSchema,
   reminderOneDay: AutomatedEmailTemplateSchema,
@@ -48,7 +55,8 @@ export const UpdateCommunicationsSettingsSchema = z.object({
   formDeliveryEnabled: z.boolean().optional(),
   formRemindersEnabled: z.boolean().optional(),
   paymentConfirmationEnabled: z.boolean().optional(),
-  formReminderTiming: z.enum(['no_reminder', '24_hours_after_assignment', '48_hours_before_appointment', '24_hours_before_appointment']).optional(),
+  formReminderTiming: z.enum(['no_reminder', 'none', '24_hours_after_assignment', '48_hours_before_appointment', '24_hours_before_appointment']).optional(),
+  mainBookingFormId: z.string().uuid().nullable().optional(),
   branding: EmailBrandingSchema.optional(),
   automations: EmailAutomationOptionsSchema.optional(),
   templates: AutomatedEmailTemplatesSchema.optional(),
@@ -67,6 +75,7 @@ export const CommunicationsSettingsSchema = z.object({
   formRemindersEnabled: z.boolean(),
   paymentConfirmationEnabled: z.boolean(),
   formReminderTiming: z.string(),
+  mainBookingFormId: z.string().uuid().nullable().optional(),
   branding: EmailBrandingSchema,
   automations: EmailAutomationOptionsSchema,
   templates: AutomatedEmailTemplatesSchema,
@@ -77,6 +86,7 @@ export type EmailBranding = z.infer<typeof EmailBrandingSchema>;
 export type EmailAutomationOptions = z.infer<typeof EmailAutomationOptionsSchema>;
 export type AutomatedEmailTemplate = z.infer<typeof AutomatedEmailTemplateSchema>;
 export type AutomatedEmailTemplates = z.infer<typeof AutomatedEmailTemplatesSchema>;
+export type CompleteAutomatedEmailTemplates = Required<AutomatedEmailTemplates>;
 
 export const EmailHistoryQuerySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(50),
