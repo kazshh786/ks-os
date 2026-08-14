@@ -25,6 +25,8 @@ WORKER_READY_URL="${WORKER_READY_URL:-http://127.0.0.1:8091/ready}"
 RENDERER_HEALTH_URL="${RENDERER_HEALTH_URL:-http://127.0.0.1:5001/health}"
 RENDERER_HEALTH_HOST="${RENDERER_HEALTH_HOST:-sites.kasimshah.com}"
 SERVICES=(ks-os-api ks-os-site-worker ks-os-sites)
+COMMUNICATIONS_SERVICE=ks-os-communications-worker.service
+COMMUNICATIONS_TIMER=ks-os-communications-worker.timer
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -94,6 +96,16 @@ restart_release_services() {
   done
 }
 
+ensure_communications_worker() {
+  run sudo install -m 0644 "scripts/deploy/systemd/$COMMUNICATIONS_SERVICE" "/etc/systemd/system/$COMMUNICATIONS_SERVICE"
+  run sudo install -m 0644 "scripts/deploy/systemd/$COMMUNICATIONS_TIMER" "/etc/systemd/system/$COMMUNICATIONS_TIMER"
+  run sudo systemctl daemon-reload
+  run sudo systemctl enable "$COMMUNICATIONS_TIMER"
+  run sudo systemctl restart "$COMMUNICATIONS_TIMER"
+  run sudo systemctl is-enabled --quiet "$COMMUNICATIONS_TIMER"
+  run sudo systemctl is-active --quiet "$COMMUNICATIONS_TIMER"
+}
+
 write_release_version() {
   local release_version release_file
   release_version="$(git rev-parse HEAD)"
@@ -115,6 +127,7 @@ rollback() {
   run pnpm run build
   write_release_version
   restart_release_services
+  ensure_communications_worker
 }
 
 on_error() {
@@ -151,6 +164,7 @@ fi
 
 write_release_version
 restart_release_services
+ensure_communications_worker
 check_http "API" "$API_HEALTH_URL"
 check_http "site worker health" "$WORKER_HEALTH_URL"
 check_http "site worker readiness" "$WORKER_READY_URL"
