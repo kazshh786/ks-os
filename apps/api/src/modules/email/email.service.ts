@@ -219,7 +219,10 @@ export class EmailService {
             startTime: appointments.startTime,
             status: appointments.status,
           }).from(appointments)
-            .where(eq(appointments.id, email.related_entity_id))
+            .where(and(
+              eq(appointments.id, email.related_entity_id),
+              email.tenant_id ? eq(appointments.tenantId, email.tenant_id) : undefined,
+            ))
             .limit(1);
           const cancellationCode = appointmentNotificationCancellationCode({
             exists: Boolean(appointment),
