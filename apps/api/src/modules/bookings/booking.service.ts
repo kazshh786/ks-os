@@ -283,7 +283,6 @@ export class BookingService {
       }
     }
 
-    const appointmentId = booking.appointment_id || booking.id;
     const bookingStatus = booking.appointment_status || booking.status;
     if (bookingStatus === 'CONFIRMED' && options.notifyCustomer !== false) {
       try {
