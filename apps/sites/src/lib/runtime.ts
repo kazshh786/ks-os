@@ -2,8 +2,13 @@ import {
   CampaignReferenceSchema,
   PublicReferenceSchema,
   resolveKsOsBookingUrl,
+  resolveKsOsWaitlistUrl,
 } from '@ks-os/contracts';
 import type { ComponentRenderContext } from '@ks-os/site-components';
+import {
+  liveSiteCacheControl,
+  type PublicLiveSiteData,
+} from '@ks-os/live-site-intelligence';
 import {
   RESERVED_PUBLIC_SITE_PATHS,
   type PublishedSiteSnapshot,
@@ -170,10 +175,14 @@ function canonicalRedirect(
 function renderContext(
   snapshot: PublishedSiteSnapshot,
   page: PublishedSiteSnapshot['pages'][number],
+  live?: PublicLiveSiteData,
+  recommendations?: ComponentRenderContext['recommendations'],
 ): ComponentRenderContext {
   return {
     snapshot,
     page,
+    ...(live ? { live } : {}),
+    ...(recommendations ? { recommendations } : {}),
     pagePathByReference: Object.fromEntries(
       snapshot.pages
         .filter((candidate) => candidate.active)
@@ -217,8 +226,34 @@ export async function handlePublicPageRequest(input: {
         && candidate.active
         && candidate.pageType !== 'BOOKING',
     );
-    if (!page) return notFound(resolved.snapshot.business.name);
-    const context = renderContext(resolved.snapshot, page);
+    if (!page) {
+      const pathRedirect = await input.repository.resolvePathRedirect?.({
+        siteReference: resolved.snapshot.siteReference,
+        sourcePath: path,
+      });
+      if (pathRedirect) {
+        return new Response(null, {
+          status: pathRedirect.statusCode,
+          headers: {
+            ...securityHeaders(
+              'public, max-age=300, s-maxage=3600',
+              'text/plain; charset=utf-8',
+            ),
+            location: pathRedirect.targetPath,
+          },
+        });
+      }
+      return notFound(resolved.snapshot.business.name);
+    }
+    const [live, recommendations] = await Promise.all([
+      input.repository.resolveLiveSiteData
+        ? input.repository.resolveLiveSiteData(resolved.snapshot).catch(() => undefined)
+        : undefined,
+      input.repository.resolvePublishedRecommendations
+        ? input.repository.resolvePublishedRecommendations(resolved.snapshot).catch(() => undefined)
+        : undefined,
+    ]);
+    const context = renderContext(resolved.snapshot, page, live, recommendations);
     const content = renderRegisteredSitePage(page, context);
     const structuredData = generateSiteStructuredData(resolved.snapshot, page);
     return applyHostRobotsPolicy(htmlResponse(
@@ -229,7 +264,7 @@ export async function handlePublicPageRequest(input: {
         structuredData,
       }),
       200,
-      PUBLIC_PAGE_CACHE,
+      live ? liveSiteCacheControl('LIVE_FAST') : PUBLIC_PAGE_CACHE,
     ), input.request, input.config);
   } catch (error) {
     if (error instanceof SiteRenderabilityError) return unavailable();
@@ -309,6 +344,53 @@ export async function handleBookingRequest(input: {
       tenantReference: resolved.snapshot.booking.tenantReference,
       tenantSubdomain: resolved.snapshot.booking.tenantSubdomain,
       routeMode: 'FALLBACK',
+      serviceReference: selection.service,
+      locationReference: selection.location,
+      staffReference: selection.staff,
+      campaignReference: selection.campaign
+        ?? resolved.snapshot.booking.campaignReference,
+    });
+    return new Response(null, {
+      status: 302,
+      headers: {
+        ...securityHeaders(NO_STORE, 'text/plain; charset=utf-8'),
+        Location: destination,
+      },
+    });
+  } catch {
+    return notFound();
+  }
+}
+
+export async function handleWaitlistRequest(input: {
+  request: Request;
+  repository: PublicSiteRepository;
+  config: SitesRuntimeConfig;
+}): Promise<Response> {
+  try {
+    const resolved = await resolveLiveSite(input);
+    if (resolved.kind === 'NOT_FOUND') return notFound();
+    if (resolved.kind === 'UNAVAILABLE') return unavailable(resolved.status);
+    if (!input.config.publicBookingOrigin || !input.repository.resolveLiveSiteData) return unavailable();
+    const selection = parseBookingSelection(new URL(input.request.url));
+    if (!selection.service) return notFound();
+    if (!resolved.snapshot.services.some(service => service.publicReference === selection.service)) {
+      return notFound();
+    }
+    if (selection.location && !resolved.snapshot.locations.some(
+      location => location.publicReference === selection.location,
+    )) return notFound();
+    if (selection.staff && !resolved.snapshot.staff.some(
+      staff => staff.publicReference === selection.staff,
+    )) return notFound();
+    const live = await input.repository.resolveLiveSiteData(resolved.snapshot);
+    const waitlistEligible = !live.telemetry.fallbackActivated
+      && live.services.some(service =>
+        service.publicReference === selection.service && service.waitlistEligible);
+    if (!waitlistEligible) return notFound();
+    const destination = resolveKsOsWaitlistUrl({
+      publicOrigin: input.config.publicBookingOrigin,
+      tenantSubdomain: resolved.snapshot.booking.tenantSubdomain,
       serviceReference: selection.service,
       locationReference: selection.location,
       staffReference: selection.staff,
@@ -414,7 +496,15 @@ export async function handlePreviewRequest(input: {
       (candidate) => candidate.path === path && candidate.pageType !== 'BOOKING',
     );
     if (!page) return notFound();
-    const context = renderContext(snapshot, page);
+    const [live, recommendations] = await Promise.all([
+      input.repository.resolveLiveSiteData
+        ? input.repository.resolveLiveSiteData(snapshot).catch(() => undefined)
+        : undefined,
+      input.repository.resolvePublishedRecommendations
+        ? input.repository.resolvePublishedRecommendations(snapshot).catch(() => undefined)
+        : undefined,
+    ]);
+    const context = renderContext(snapshot, page, live, recommendations);
     const content = renderRegisteredSitePage(page, context);
     const structuredData = generateSiteStructuredData(snapshot, page);
     const response = htmlResponse(

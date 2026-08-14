@@ -153,7 +153,9 @@ export const CreateProvisioningDraftSchema = z.object({
     requestedPageTypes: z.array(z.enum([
       'HOME', 'SERVICE_HUB', 'SERVICE_DETAIL', 'LOCATION_HUB', 'LOCATION_DETAIL',
       'ABOUT', 'TEAM_HUB', 'TEAM_DETAIL', 'CONTACT', 'FAQ', 'POLICIES', 'RESULTS',
-      'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE', 'BOOKING',
+      'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE',
+      'GUIDE', 'HOW_TO', 'ARTICLE', 'BLOG_POST', 'FAQ_RESOURCE', 'TUTORIAL',
+      'DEFINITION', 'TROUBLESHOOTING', 'COMPARISON', 'CASE_STUDY', 'BOOKING',
     ])).max(100),
     /**
      * The default launch selects the strongest ten marketing pages justified by
@@ -202,7 +204,7 @@ export const ProvisioningProgressSchema = z.object({
 }).strict();
 
 export const CombinedReadinessStatusSchema = z.enum([
-  'READY', 'ACTION_REQUIRED', 'WARNING', 'BLOCKING', 'NOT_STARTED', 'NOT_AVAILABLE_UNTIL_PHASE_15_9',
+  'READY', 'ACTION_REQUIRED', 'WARNING', 'BLOCKING', 'NOT_STARTED',
 ]);
 
 export const CombinedReadinessSchema = z.object({
@@ -211,7 +213,7 @@ export const CombinedReadinessSchema = z.object({
   website: CombinedReadinessStatusSchema,
   review: CombinedReadinessStatusSchema,
   payments: CombinedReadinessStatusSchema,
-  publication: z.literal('NOT_AVAILABLE_UNTIL_PHASE_15_9'),
+  publication: CombinedReadinessStatusSchema,
   blockingIssues: z.array(z.object({ code: z.string().max(100), area: z.enum(['WORKSPACE', 'BOOKING', 'WEBSITE', 'REVIEW', 'PAYMENTS']), message: z.string().max(500) }).strict()).max(200),
   warnings: z.array(z.object({ code: z.string().max(100), area: z.enum(['WORKSPACE', 'BOOKING', 'WEBSITE', 'REVIEW', 'PAYMENTS']), message: z.string().max(500) }).strict()).max(200),
   ready: z.boolean(),

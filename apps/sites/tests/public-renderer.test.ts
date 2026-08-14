@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import type { SiteStatus } from '@ks-os/contracts';
+import type { PublicLiveSiteData } from '@ks-os/live-site-intelligence';
 import {
   SiteActionSchema,
   SiteAssetReferenceSchema,
   PublishedPageSnapshotSchema,
   PublishedSiteSnapshotSchema,
+  validatePathRedirectGraph,
+  validateEmittedStructuredDataEligibility,
+  validateStructuredDataContentAgreement,
   validatePublishedSnapshot,
   type PublishedSiteSnapshot,
 } from '@ks-os/site-schema';
@@ -39,6 +43,7 @@ import {
   handlePublicPageRequest,
   handleRobotsRequest,
   handleSitemapRequest,
+  handleWaitlistRequest,
 } from '../src/lib/runtime.js';
 import {
   generateSiteStructuredData,
@@ -89,12 +94,15 @@ class MemoryPublicSiteRepository implements PublicSiteRepository {
   readonly published = new Map<string, PublishedSiteSnapshot>();
   readonly previews = new Map<string, PublishedSiteSnapshot>();
   readonly revoked = new Set<string>();
+  readonly redirects = new Map<string, string>();
   reviewSessionValidator?: (
     input: Parameters<NonNullable<PublicSiteRepository['isReviewPreviewSessionActive']>>[0],
   ) => boolean | Promise<boolean>;
   qualitySessionValidator?: (
     input: Parameters<NonNullable<PublicSiteRepository['isQualityAuditSessionActive']>>[0],
   ) => boolean | Promise<boolean>;
+  resolveLiveSiteData?: PublicSiteRepository['resolveLiveSiteData'];
+  resolvePublishedRecommendations?: PublicSiteRepository['resolvePublishedRecommendations'];
 
   constructor(snapshot?: PublishedSiteSnapshot, status: SiteStatus = 'LIVE') {
     if (!snapshot) return;
@@ -153,6 +161,11 @@ class MemoryPublicSiteRepository implements PublicSiteRepository {
     input: Parameters<NonNullable<PublicSiteRepository['isQualityAuditSessionActive']>>[0],
   ) {
     return this.qualitySessionValidator?.(input) ?? false;
+  }
+
+  async resolvePathRedirect(input: { siteReference: string; sourcePath: string }) {
+    const targetPath = this.redirects.get(`${input.siteReference}:${input.sourcePath}`);
+    return targetPath ? { targetPath, statusCode: 308 as const } : null;
   }
 }
 
@@ -323,6 +336,143 @@ test('a LIVE site renders its immutable published snapshot', async () => {
   const response = await publicPage(repoFor(baseSnapshot, 'LIVE'));
   assert.equal(response.status, 200);
   assert.match(await response.text(), /Northlight Studio/);
+});
+
+test('public SSR composes all live campaign placements and version-bound recommendations', async () => {
+  const repository = repoFor(baseSnapshot, 'LIVE');
+  const source = baseSnapshot.pages.find(page => page.path === '/')!;
+  const target = baseSnapshot.pages.find(page => page.path !== '/' && page.pageType !== 'BOOKING')!;
+  const placements = ['ANNOUNCEMENT', 'HERO', 'PAGE_BODY', 'PAGE_END'] as const;
+  repository.resolveLiveSiteData = async () => ({
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: baseSnapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: baseSnapshot.services.map(service => ({
+      publicReference: service.publicReference,
+      exists: true,
+      active: true,
+      bookingEligible: true,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: false,
+    })),
+    staff: [], locations: [], availability: [], warnings: [],
+    campaigns: placements.map((placement, index) => ({
+      publicReference: `30000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      active: true,
+      message: `${placement} live campaign`,
+      placement,
+      action: {
+        type: 'KS_OS_BOOKING',
+        label: 'Check availability',
+        campaignReference: `30000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      },
+      serviceReferences: [],
+      locationReferences: [],
+      startsAt: '2026-08-11T11:00:00.000Z',
+      endsAt: '2026-08-12T11:00:00.000Z',
+    })),
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 12, resolutionMs: 8 },
+  } satisfies PublicLiveSiteData);
+  repository.resolvePublishedRecommendations = async () => [{
+    sourcePageReference: source.publicReference,
+    targetPageReference: target.publicReference,
+    anchorText: 'Explore the approved next page',
+    relationship: 'USEFUL_GUIDE',
+    governedOrder: 0,
+    approved: true,
+  }];
+  const response = await publicPage(repository);
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  for (const placement of placements) assert.match(body, new RegExp(`${placement} live campaign`));
+  assert.match(body, /Explore the approved next page/);
+  assert.match(body, new RegExp(`href="${target.path}"`));
+});
+
+test('service CTA becomes a waitlist action without removing published service content', async () => {
+  const repository = repoFor(baseSnapshot, 'LIVE');
+  const page = baseSnapshot.pages.find(candidate => candidate.pageType === 'SERVICE_DETAIL')!;
+  const serviceSection = page.sections.find(section => section.type === 'SERVICE_DETAILS')!;
+  repository.resolveLiveSiteData = async () => ({
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: baseSnapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: serviceSection.serviceReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: true,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 12, resolutionMs: 8 },
+  } satisfies PublicLiveSiteData);
+  const response = await publicPage(repository, fallbackHostname, page.path);
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(body, new RegExp(`<h1>${serviceSection.heading}</h1>`));
+  assert.match(body, /Join waitlist/);
+  assert.match(body, /href="\/waitlist\?/);
+  assert.match(body, new RegExp(`service=${serviceSection.serviceReference}`));
+});
+
+test('/waitlist preserves only validated eligible published context', async () => {
+  const repository = repoFor(baseSnapshot, 'LIVE');
+  const service = baseSnapshot.services[0]!;
+  repository.resolveLiveSiteData = async () => ({
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: baseSnapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: service.publicReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: true,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  });
+  const response = await handleWaitlistRequest({
+    request: request(fallbackHostname, `/waitlist?service=${service.publicReference}&campaign=summer-2026`),
+    repository,
+    config,
+  });
+  assert.equal(response.status, 302);
+  assert.match(response.headers.get('cache-control') ?? '', /no-store/);
+  assert.match(response.headers.get('location') ?? '', new RegExp(`^https://book\\.kasimshah\\.com/waitlist/northlight\\?service=${service.publicReference}`));
+  assert.match(response.headers.get('location') ?? '', /campaign=summer-2026/);
+
+  repository.resolveLiveSiteData = async snapshot => ({
+    schemaVersion: 1,
+    dataClass: 'LIVE',
+    siteReference: snapshot.siteReference,
+    resolvedAt: '2026-08-11T12:00:00.000Z',
+    services: [{
+      publicReference: service.publicReference,
+      exists: true,
+      active: true,
+      bookingEligible: false,
+      staffReferences: [],
+      locationReferences: [],
+      waitlistEligible: false,
+    }],
+    staff: [], locations: [], availability: [], campaigns: [], warnings: [],
+    telemetry: { cacheClass: 'LIVE_FAST', cacheHit: false, fallbackActivated: false, queryCount: 5, resolutionMs: 10 },
+  });
+  assert.equal((await handleWaitlistRequest({
+    request: request(fallbackHostname, `/waitlist?service=${service.publicReference}`),
+    repository,
+    config,
+  })).status, 404);
 });
 
 // 17
@@ -922,6 +1072,161 @@ test('structured-data serialisation prevents script breakout', () => {
   assert.match(json, /\\u003c/);
 });
 
+test('eligible editorial content emits governed Person, Article, VideoObject and ImageObject data', () => {
+  const snapshot = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = structuredClone(draft.pages[0]!);
+    const asset = draft.assets[0]!;
+    const author = draft.staff[0]!;
+    const reviewer = {
+      ...structuredClone(author),
+      publicReference: '00000998-0000-4000-8000-000000000998',
+      displayName: 'Noor Reviewer',
+      role: 'Clinical reviewer',
+    };
+    draft.staff.push(reviewer);
+    page.publicReference = '00000999-0000-4000-8000-000000000999';
+    page.pageType = 'ARTICLE';
+    page.compatiblePageTypes = ['ARTICLE'];
+    page.path = '/editorial-guide';
+    page.title = 'Editorial guide';
+    page.seo.canonicalPath = '/editorial-guide';
+    page.seo.title = 'Editorial guide | Northlight Studio';
+    page.seo.description = 'A governed, evidence-backed editorial guide from Northlight Studio.';
+    page.publishedAt = '2026-08-01T09:00:00.000Z';
+    page.lastModifiedAt = '2026-08-10T09:00:00.000Z';
+    page.reviewedAt = '2026-08-10T10:00:00.000Z';
+    page.structuredDataEligibility = ['PERSON', 'ARTICLE', 'VIDEO_OBJECT', 'IMAGE_OBJECT'];
+    page.authorship = {
+      author: { staffReference: author.publicReference, name: author.displayName, role: author.role, bio: author.biography, credentials: ['Registered practitioner'] },
+      reviewer: { staffReference: reviewer.publicReference, name: reviewer.displayName, role: reviewer.role, bio: reviewer.biography, credentials: ['Clinical reviewer'] },
+    };
+    asset.purpose = 'INFORMATIVE';
+    asset.caption = 'A verified first-hand treatment image.';
+    asset.creditText = 'Northlight Studio';
+    page.seo.openGraphImageAssetReference = asset.publicReference;
+    page.video = {
+      name: 'What to expect',
+      description: 'A verified explanation of what to expect.',
+      thumbnailAssetReference: asset.publicReference,
+      uploadDate: '2026-08-01T09:00:00.000Z',
+      transcript: 'A complete, useful transcript.',
+    };
+    draft.pages.push(page);
+  });
+  const articlePage = snapshot.pages.find(page => page.pageType === 'ARTICLE')!;
+  const structuredData = generateSiteStructuredData(snapshot, articlePage);
+  const types = structuredData.map(entry => entry['@type']);
+  assert.ok(types.filter(type => type === 'Person').length >= 2);
+  assert.ok(types.includes('Article'));
+  assert.ok(types.includes('VideoObject'));
+  assert.ok(types.includes('ImageObject'));
+  const article = structuredData.find(entry => entry['@type'] === 'Article');
+  assert.equal(article && 'datePublished' in article ? article.datePublished : null, '2026-08-01T09:00:00.000Z');
+});
+
+test('LocalBusiness structured data is emitted once per canonical location', () => {
+  const entries = generateSiteStructuredData(baseSnapshot, baseSnapshot.pages[0]!);
+  assert.equal(entries.filter(entry => entry['@type'] === 'LocalBusiness').length, baseSnapshot.locations.length);
+});
+
+test('conditional schema requires both immutable eligibility and matching visible content', () => {
+  const faqEligible = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = draft.pages.find(candidate => candidate.sections.some(section => section.type === 'FAQ'))!;
+    page.structuredDataEligibility = ['FAQ_PAGE'];
+  });
+  const eligibleFaqPage = faqEligible.pages.find(candidate => candidate.sections.some(section => section.type === 'FAQ'))!;
+  assert.ok(generateSiteStructuredData(faqEligible, eligibleFaqPage)
+    .some(entry => entry['@type'] === 'FAQPage'));
+
+  const faqWithoutEligibility = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = draft.pages.find(candidate => candidate.sections.some(section => section.type === 'FAQ'))!;
+    page.structuredDataEligibility = ['WEB_PAGE'];
+  });
+  const faqPage = faqWithoutEligibility.pages.find(candidate => candidate.sections.some(section => section.type === 'FAQ'))!;
+  assert.equal(generateSiteStructuredData(faqWithoutEligibility, faqPage)
+    .some(entry => entry['@type'] === 'FAQPage'), false);
+
+  const invalid: PublishedSiteSnapshot = structuredClone(baseSnapshot);
+  invalid.pages[0]!.structuredDataEligibility = ['FAQ_PAGE'];
+  assert.equal(PublishedSiteSnapshotSchema.safeParse(invalid).success, true);
+  assert.deepEqual(
+    validateStructuredDataContentAgreement(invalid, invalid.pages[0]!).map(finding => finding.code),
+    ['STRUCTURED_DATA_CONTENT_MISMATCH'],
+  );
+  assert.throws(() => generateSiteStructuredData(invalid, invalid.pages[0]!), /STRUCTURED_DATA_CONTENT_MISMATCH:FAQ_PAGE/);
+
+  const mediaNotEligible = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = draft.pages[0]!;
+    const asset = draft.assets[0]!;
+    page.structuredDataEligibility = ['WEB_PAGE'];
+    page.video = {
+      name: 'Visible explainer',
+      description: 'A visible governed explainer video.',
+      thumbnailAssetReference: asset.publicReference,
+      uploadDate: '2026-08-01T09:00:00.000Z',
+    };
+  });
+  const mediaTypes = generateSiteStructuredData(mediaNotEligible, mediaNotEligible.pages[0]!)
+    .map(entry => entry['@type']);
+  assert.equal(mediaTypes.includes('VideoObject'), false);
+  assert.equal(mediaTypes.includes('ImageObject'), false);
+});
+
+test('emitted service and location entities must match visible canonical records', () => {
+  const serviceSnapshot = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = draft.pages.find(candidate => candidate.sections.some(section => section.type === 'SERVICE_DETAILS'))!;
+    page.structuredDataEligibility = ['SERVICE'];
+  });
+  const servicePage = serviceSnapshot.pages.find(candidate => candidate.sections.some(section => section.type === 'SERVICE_DETAILS'))!;
+  const serviceData = generateSiteStructuredData(serviceSnapshot, servicePage);
+  const alteredServiceData = structuredClone(serviceData);
+  const service = alteredServiceData.find(entry => entry['@type'] === 'Service');
+  if (service?.['@type'] === 'Service') service.name = 'A different service';
+  assert.ok(validateEmittedStructuredDataEligibility(serviceSnapshot, servicePage, alteredServiceData)
+    .some(finding => finding.code === 'STRUCTURED_DATA_CONTENT_MISMATCH'));
+
+  const locationSnapshot = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = draft.pages.find(candidate => candidate.sections.some(section =>
+      section.type === 'LOCATION' || section.type === 'OPENING_HOURS'))!;
+    page.structuredDataEligibility = ['LOCAL_BUSINESS'];
+  });
+  const locationPage = locationSnapshot.pages.find(candidate => candidate.sections.some(section =>
+    section.type === 'LOCATION' || section.type === 'OPENING_HOURS'))!;
+  const locationData = generateSiteStructuredData(locationSnapshot, locationPage);
+  const alteredLocationData = structuredClone(locationData);
+  const localBusiness = alteredLocationData.find(entry => entry['@type'] === 'LocalBusiness');
+  if (localBusiness?.['@type'] === 'LocalBusiness') localBusiness.address.postalCode = 'WRONG';
+  assert.ok(validateEmittedStructuredDataEligibility(locationSnapshot, locationPage, alteredLocationData)
+    .some(finding => finding.code === 'STRUCTURED_DATA_CONTENT_MISMATCH'));
+});
+
+test('TEAM_DETAIL staff profiles emit canonical Person data with image and worksFor', () => {
+  const snapshot = mutateSnapshot(baseSnapshot, (draft) => {
+    const page = structuredClone(draft.pages[0]!);
+    const staff = draft.staff[0]!;
+    page.publicReference = '00000997-0000-4000-8000-000000000997';
+    page.pageType = 'TEAM_DETAIL';
+    page.compatiblePageTypes = ['TEAM_DETAIL'];
+    page.path = '/team/morgan-reed';
+    page.title = staff.displayName;
+    page.seo.canonicalPath = page.path;
+    page.seo.title = `${staff.displayName} | Northlight Studio`;
+    page.structuredDataEligibility = ['PERSON'];
+    page.sections = [
+      page.sections.find(section => section.type === 'HEADER')!,
+      { reference: '00000996-0000-4000-8000-000000000996', type: 'STAFF_PROFILE', staffReference: staff.publicReference },
+      page.sections.find(section => section.type === 'FINAL_CTA' || section.type === 'BOOKING_CTA')!,
+      page.sections.find(section => section.type === 'FOOTER')!,
+    ];
+    draft.pages.push(page);
+  });
+  const page = snapshot.pages.find(candidate => candidate.pageType === 'TEAM_DETAIL')!;
+  const person = generateSiteStructuredData(snapshot, page).find(entry => entry['@type'] === 'Person');
+  assert.ok(person && 'worksFor' in person);
+  assert.equal(person && 'name' in person ? person.name : null, snapshot.staff[0]!.displayName);
+  assert.equal(person && 'image' in person ? person.image : null, snapshot.assets[1]!.url);
+});
+
 // 61
 test('sitemap contains only published indexable active pages', () => {
   const snapshot = mutateSnapshot(baseSnapshot, (draft) => {
@@ -949,6 +1254,86 @@ test('sitemap excludes internal and booking routes', () => {
   const xml = generateTenantSitemap(baseSnapshot);
   assert.doesNotMatch(xml, /\/book/);
   assert.doesNotMatch(xml, /\/api|\/site-preview|\/health/);
+});
+
+test('sitemap and documents emit lastmod plus reciprocal self-referencing hreflang', async () => {
+  const snapshot = mutateSnapshot(baseSnapshot, (draft) => {
+    const first = draft.pages[0]!;
+    const second = draft.pages[1]!;
+    first.languageCode = 'en-GB';
+    second.languageCode = 'fr-FR';
+    first.lastModifiedAt = '2026-08-10T12:00:00.000Z';
+    second.lastModifiedAt = '2026-08-09T12:00:00.000Z';
+    first.languageAlternates = [{ languageCode: 'fr-FR', path: second.path }];
+    second.languageAlternates = [{ languageCode: 'en-GB', path: first.path }];
+  });
+  const xml = generateTenantSitemap(snapshot);
+  assert.match(xml, /xmlns:xhtml=/);
+  assert.match(xml, /<lastmod>2026-08-10T12:00:00.000Z<\/lastmod>/);
+  assert.match(xml, /hreflang="en-GB"/);
+  assert.match(xml, /hreflang="fr-FR"/);
+  const html = await (await publicPage(repoFor(snapshot))).text();
+  assert.match(html, /rel="alternate" hreflang="en-GB"/);
+  assert.match(html, /rel="alternate" hreflang="fr-FR"/);
+  const secondHtml = await (await publicPage(repoFor(snapshot), fallbackHostname, snapshot.pages[1]!.path)).text();
+  assert.match(secondHtml, /rel="alternate" hreflang="en-GB"/);
+  assert.match(secondHtml, /rel="alternate" hreflang="fr-FR"/);
+});
+
+test('snapshot validation rejects non-reciprocal, inactive and language-mismatched alternates', () => {
+  const nonReciprocal = structuredClone(baseSnapshot);
+  nonReciprocal.pages[0]!.languageCode = 'en-GB';
+  nonReciprocal.pages[1]!.languageCode = 'fr-FR';
+  nonReciprocal.pages[0]!.languageAlternates = [{ languageCode: 'fr-FR', path: nonReciprocal.pages[1]!.path }];
+  assert.equal(PublishedSiteSnapshotSchema.safeParse(nonReciprocal).success, false);
+
+  const inactive = structuredClone(nonReciprocal);
+  inactive.pages[1]!.languageAlternates = [{ languageCode: 'en-GB', path: inactive.pages[0]!.path }];
+  inactive.pages[1]!.active = false;
+  assert.equal(PublishedSiteSnapshotSchema.safeParse(inactive).success, false);
+
+  const mismatched = structuredClone(nonReciprocal);
+  mismatched.pages[1]!.languageAlternates = [{ languageCode: 'en-GB', path: mismatched.pages[0]!.path }];
+  mismatched.pages[0]!.languageAlternates = [{ languageCode: 'de-DE', path: mismatched.pages[1]!.path }];
+  assert.equal(PublishedSiteSnapshotSchema.safeParse(mismatched).success, false);
+});
+
+test('pages without alternates emit no hreflang markup or sitemap namespace', async () => {
+  assert.doesNotMatch(generateTenantSitemap(baseSnapshot), /hreflang|xmlns:xhtml/);
+  assert.doesNotMatch(await (await publicPage()).text(), /hreflang=/);
+});
+
+test('governed path redirects return 308 only when no active page owns the source path', async () => {
+  const repository = repoFor();
+  repository.redirects.set(`${baseSnapshot.siteReference}:/old-guide`, '/services');
+  repository.redirects.set(`${baseSnapshot.siteReference}:/`, '/services');
+  const old = await publicPage(repository, fallbackHostname, '/old-guide');
+  assert.equal(old.status, 308);
+  assert.equal(old.headers.get('location'), '/services');
+  assert.equal(old.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(old.headers.get('x-frame-options'), 'DENY');
+  assert.match(old.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/);
+  const active = await publicPage(repository, fallbackHostname, '/');
+  assert.equal(active.status, 200);
+  assert.equal(active.headers.get('location'), null);
+});
+
+test('redirect graph validation rejects self references, chains and cycles', () => {
+  assert.deepEqual(validatePathRedirectGraph([
+    { sourcePath: '/old', targetPath: '/old', active: true },
+  ]).map(finding => finding.code), ['REDIRECT_SELF_REFERENCE']);
+  assert.ok(validatePathRedirectGraph([
+    { sourcePath: '/one', targetPath: '/two', active: true },
+    { sourcePath: '/two', targetPath: '/three', active: true },
+  ]).some(finding => finding.code === 'REDIRECT_CHAIN'));
+  assert.ok(validatePathRedirectGraph([
+    { sourcePath: '/one', targetPath: '/two', active: true },
+    { sourcePath: '/two', targetPath: '/one', active: true },
+  ]).every(finding => finding.code === 'REDIRECT_CYCLE'));
+  assert.deepEqual(validatePathRedirectGraph([
+    { sourcePath: '/old', targetPath: '/new', active: true },
+    { sourcePath: '/new', targetPath: '/final', active: false },
+  ]), []);
 });
 
 // 65

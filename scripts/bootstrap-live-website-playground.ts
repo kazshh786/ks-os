@@ -419,6 +419,7 @@ async function ensureLockedBrief(agencyActor: AgencyActor, tenant: typeof tenant
       publicUseEligible: question.publicUseAllowed,
       bookingUseEligible: question.bookingUseAllowed,
       generationUseEligible: question.generationUseAllowed,
+      verificationBasis: question.evidenceRequired ? 'VERIFIED' : 'AGENCY_CONFIRMED',
       note: 'Verified fictional playground content against the canonical Luma setup.',
     });
   }

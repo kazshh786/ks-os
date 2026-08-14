@@ -44,9 +44,49 @@ export const SitePageTypeSchema = z.enum([
   'NEW_CLIENT_GUIDE',
   'AFTERCARE_GUIDE',
   'CONSULTATION_GUIDE',
+  'GUIDE',
+  'HOW_TO',
+  'ARTICLE',
+  'BLOG_POST',
+  'FAQ_RESOURCE',
+  'TUTORIAL',
+  'DEFINITION',
+  'TROUBLESHOOTING',
+  'COMPARISON',
+  'CASE_STUDY',
   'BOOKING',
 ]);
 export type SitePageType = z.infer<typeof SitePageTypeSchema>;
+
+export const SiteSeoContentFormatSchema = z.enum([
+  'LANDING_PAGE',
+  'GUIDE',
+  'HOW_TO',
+  'ARTICLE',
+  'FAQ',
+  'TUTORIAL',
+  'DEFINITION',
+  'TROUBLESHOOTING',
+  'COMPARISON',
+  'CASE_STUDY',
+]);
+export type SiteSeoContentFormat = z.infer<typeof SiteSeoContentFormatSchema>;
+
+export const SiteStructuredDataEligibilitySchema = z.enum([
+  'WEB_SITE',
+  'ORGANIZATION',
+  'PERSON',
+  'LOCAL_BUSINESS',
+  'SERVICE',
+  'WEB_PAGE',
+  'ARTICLE',
+  'BLOG_POSTING',
+  'FAQ_PAGE',
+  'BREADCRUMB_LIST',
+  'VIDEO_OBJECT',
+  'IMAGE_OBJECT',
+]);
+export type SiteStructuredDataEligibility = z.infer<typeof SiteStructuredDataEligibilitySchema>;
 
 export const SiteConversionRoleSchema = z.enum([
   'PRIMARY_LANDING',
@@ -118,6 +158,49 @@ export const TemplateSourceTypeSchema = z.enum([
 export type TemplateSourceType = z.infer<typeof TemplateSourceTypeSchema>;
 
 export const PublicReferenceSchema = z.string().uuid();
+export const LiveConditionKeySchema = z.enum([
+  'SERVICE_EXISTS',
+  'SERVICE_BOOKABLE',
+  'STAFF_ACTIVE',
+  'STAFF_BOOKABLE',
+  'LOCATION_ACTIVE',
+  'LOCATION_OPEN',
+  'CAMPAIGN_ACTIVE',
+  'TESTIMONIAL_AVAILABLE',
+  'WAITLIST_AVAILABLE',
+  'AVAILABILITY_KNOWN',
+  'APPOINTMENTS_AVAILABLE',
+]);
+export type LiveConditionKey = z.infer<typeof LiveConditionKeySchema>;
+
+export const LiveConditionFactSchema = z.object({
+  key: LiveConditionKeySchema,
+  subjectReference: PublicReferenceSchema.optional(),
+}).strict();
+export type LiveConditionFact = z.infer<typeof LiveConditionFactSchema>;
+
+export const LiveConditionRuleV1Schema = z.object({
+  version: z.literal(1),
+  all: z.array(LiveConditionFactSchema).max(20).default([]),
+  any: z.array(LiveConditionFactSchema).max(20).default([]),
+  none: z.array(LiveConditionFactSchema).max(20).default([]),
+}).strict().superRefine((rule, context) => {
+  if (!rule.all.length && !rule.any.length && !rule.none.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'A live rule requires at least one controlled fact.',
+    });
+  }
+  const facts = [...rule.all, ...rule.any, ...rule.none];
+  const keys = facts.map(fact => `${fact.key}:${fact.subjectReference ?? '*'}`);
+  if (new Set(keys).size !== keys.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'A live rule cannot repeat a fact.',
+    });
+  }
+});
+export type LiveConditionRuleV1 = z.infer<typeof LiveConditionRuleV1Schema>;
 export const SiteSlugSchema = z
   .string()
   .min(1)
@@ -147,6 +230,21 @@ export const KsOsBookingActionSchema = z.object({
   staffReference: PublicReferenceSchema.optional(),
   campaignReference: CampaignReferenceSchema.optional(),
 }).strict();
+
+/**
+ * Runtime-governed waitlist actions are deliberately separate from generated
+ * snapshot actions. They can be emitted only after LIVE state confirms that
+ * the referenced service is currently waitlist-eligible.
+ */
+export const KsOsWaitlistActionSchema = z.object({
+  type: z.literal('KS_OS_WAITLIST'),
+  label: z.string().trim().min(1).max(80),
+  serviceReference: PublicReferenceSchema,
+  locationReference: PublicReferenceSchema.optional(),
+  staffReference: PublicReferenceSchema.optional(),
+  campaignReference: CampaignReferenceSchema.optional(),
+}).strict();
+export type KsOsWaitlistAction = z.infer<typeof KsOsWaitlistActionSchema>;
 
 export const InternalPageActionSchema = z.object({
   type: z.literal('INTERNAL_PAGE'),
@@ -431,6 +529,62 @@ export function resolveKsOsBookingUrl(input: ResolveKsOsBookingUrlInput): string
   if (parsed.campaignReference) url.searchParams.set('campaign', parsed.campaignReference);
   return url.toString();
 }
+
+export const ResolveKsOsWaitlistUrlSchema = z.object({
+  publicOrigin: z.string().url(),
+  tenantSubdomain: TenantSubdomainSchema,
+  serviceReference: PublicReferenceSchema,
+  locationReference: PublicReferenceSchema.optional(),
+  staffReference: PublicReferenceSchema.optional(),
+  campaignReference: CampaignReferenceSchema.optional(),
+}).strict();
+export type ResolveKsOsWaitlistUrlInput = z.input<typeof ResolveKsOsWaitlistUrlSchema>;
+
+export function resolveKsOsWaitlistUrl(input: ResolveKsOsWaitlistUrlInput): string {
+  const parsed = ResolveKsOsWaitlistUrlSchema.parse(input);
+  const url = new URL(parsed.publicOrigin);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error('The configured public waitlist origin is invalid.');
+  }
+  url.pathname = `/waitlist/${encodeURIComponent(parsed.tenantSubdomain)}`;
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('service', parsed.serviceReference);
+  if (parsed.locationReference) url.searchParams.set('location', parsed.locationReference);
+  if (parsed.staffReference) url.searchParams.set('staff', parsed.staffReference);
+  if (parsed.campaignReference) url.searchParams.set('campaign', parsed.campaignReference);
+  return url.toString();
+}
+
+export const PublicWaitlistContextSchema = z.object({
+  serviceReference: PublicReferenceSchema,
+  locationReference: PublicReferenceSchema.optional(),
+  staffReference: PublicReferenceSchema.optional(),
+  campaignReference: CampaignReferenceSchema.optional(),
+}).strict();
+export type PublicWaitlistContext = z.infer<typeof PublicWaitlistContextSchema>;
+
+export const PublicWaitlistEligibilityResponseSchema = z.object({
+  waitlistEligible: z.boolean(),
+}).strict();
+export type PublicWaitlistEligibilityResponse = z.infer<typeof PublicWaitlistEligibilityResponseSchema>;
+
+export const CreatePublicWaitlistRequestSchema = PublicWaitlistContextSchema.extend({
+  preferredDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  customer: z.object({
+    name: z.string().trim().min(2).max(120),
+    email: z.string().trim().email().max(255),
+    phone: z.string().trim().min(7).max(30).regex(/^\+?[0-9 ()-]+$/).optional(),
+  }).strict(),
+  idempotencyKey: z.string().uuid(),
+}).strict();
+export type CreatePublicWaitlistRequest = z.infer<typeof CreatePublicWaitlistRequestSchema>;
+
+export const PublicWaitlistResponseSchema = z.object({
+  status: z.literal('PENDING'),
+  message: z.literal("You're on the waitlist. We'll contact you if a suitable appointment becomes available."),
+}).strict();
+export type PublicWaitlistResponse = z.infer<typeof PublicWaitlistResponseSchema>;
 
 export const BookingConversionPlacementSchema = z.enum([
   'HEADER',

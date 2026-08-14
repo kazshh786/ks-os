@@ -4,6 +4,7 @@ import {
   type PublishedSiteSnapshot,
   type PublishedSnapshotInput,
 } from './contracts.js';
+import { assertStructuredDataContentAgreement } from './structured-data.js';
 
 function canonicalise(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalise);
@@ -34,6 +35,7 @@ export function prepareSiteRenderSnapshotForStorage(input: unknown): {
   schemaVersion: 1;
 } {
   const content = validatePublishedSnapshot(input);
+  for (const page of content.pages) assertStructuredDataContentAgreement(content, page);
   return {
     content,
     contentDigestSha256: calculatePublishedSnapshotDigest(content),

@@ -13,7 +13,6 @@ const tenants = [
 ];
 const agencyFetch = vi.fn(async (path: string) => {
   if (path === '/tenants') return tenants;
-  if (path.endsWith('/users')) return [];
   return {
     tenant: tenants.find(tenant => path.includes(tenant.id)) ?? tenants[0],
     onboarding: [],
@@ -22,17 +21,22 @@ const agencyFetch = vi.fn(async (path: string) => {
 });
 const session = {
   authenticated: true, context: 'AGENCY', user: { email: 'operator@example.com', displayName: 'Agency Operator', role: 'PLATFORM_OWNER' },
-  capabilities: ['agency.users.manage', 'tenants.read', 'tenants.manage', 'plans.read', 'plans.manage', 'billing.read', 'billing.manage', 'support.read', 'support.session.start', 'support.retry', 'fulfilment.read', 'fulfilment.manage', 'analytics.read', 'audit.read', 'sites.templates.read', 'sites.templates.manage'],
+  capabilities: ['agency.users.manage', 'tenants.read', 'tenants.manage', 'plans.read', 'plans.manage', 'billing.read', 'billing.manage', 'support.read', 'support.session.start', 'support.retry', 'fulfilment.read', 'fulfilment.manage', 'sites.studio.read', 'analytics.read', 'audit.read', 'sites.templates.read', 'sites.templates.manage'],
   mfa: { required: false, assuranceLevel: 'aal2' }, expiresAt: '2099-01-01T00:00:00.000Z',
 };
 vi.mock('../features/agency/AgencyAuth', () => ({ useAgencyAuth: () => ({ session, signOut: vi.fn() }), agencyFetch: (path: string) => agencyFetch(path) }));
 vi.mock('../features/agency/AgencyOperatingConsole', () => ({
   AgencyHomePage: () => <div>Agency home dashboard</div>,
   AgencyClientsPage: () => <div>Client portfolio</div>,
-  AgencyOnboardingPage: () => <div>Onboarding board</div>,
+  AgencyOnboardingPage: () => <div>Work queue board</div>,
 }));
-vi.mock('../features/agency/AgencyClientWorkspaceOverviewPage', () => ({ default: () => <div>Client performance overview</div> }));
-vi.mock('../features/agency/AgencyWorkspaceOnboardingPage', () => ({ default: () => <div>Editable onboarding workspace</div> }));
+vi.mock('../features/agency/AgencyClientWorkspaceOverviewPage', () => ({ default: () => <div>Client next action overview</div> }));
+vi.mock('../features/agency/AgencyWorkspaceOnboardingPage', () => ({ default: () => <div>Guided launch workspace</div> }));
+vi.mock('../features/agency/AgencyClientExperienceV3', () => ({
+  AgencyClientWebsiteWorkspacePage: () => <div>Website workspace</div>,
+  AgencyClientOperationsPage: () => <div>Operations workspace</div>,
+  AgencyClientAccountPage: () => <div>Account workspace</div>,
+}));
 vi.mock('../features/agency/SupportSessionDialog', () => ({ SupportSessionDialog: ({ open }: { open: boolean }) => open ? <div role="dialog">Support access</div> : null }));
 
 function LocationProbe() { const location = useLocation(); return <output aria-label="Current route">{location.pathname}</output>; }
@@ -40,48 +44,65 @@ function renderLayout(path: string) {
   return render(<MemoryRouter initialEntries={[path]}><LocationProbe /><Routes><Route path="/agency" element={<AgencyLayout />}><Route path="*" element={<div>Agency page</div>} /></Route></Routes></MemoryRouter>);
 }
 
-describe('AgencyLayout', () => {
+describe('AgencyLayout UX V3', () => {
   beforeEach(() => { localStorage.clear(); agencyFetch.mockClear(); });
 
-  it('renders task-led global agency navigation with approved labels', async () => {
+  it('uses a simplified agency information architecture', async () => {
     renderLayout('/agency/overview');
     expect(screen.getByRole('navigation', { name: 'Agency navigation' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Design Studio' })).toHaveAttribute('href', '/agency/design-studio');
-    expect(screen.getByRole('link', { name: 'Licensed imports' })).toHaveAttribute('href', '/agency/templates');
-    expect(screen.getByRole('link', { name: 'Managed services' })).toHaveAttribute('href', '/agency/fulfilment');
-    expect(screen.getByRole('link', { name: 'Audit trail' })).toHaveAttribute('href', '/agency/audit');
-    expect(screen.getByRole('link', { name: 'Agency team' })).toHaveAttribute('href', '/agency/users');
+    expect(screen.getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/agency/tenants');
+    expect(screen.getByRole('link', { name: 'Work queue' })).toHaveAttribute('href', '/agency/onboarding');
+    expect(screen.getByRole('link', { name: 'Design library' })).toHaveAttribute('href', '/agency/design-studio');
+    expect(screen.getByRole('link', { name: 'System issues' })).toHaveAttribute('href', '/agency/errors');
     expect(await screen.findByText('Agency home dashboard')).toBeInTheDocument();
   });
 
-  it('moves client management into the sidebar with identity, users, exit, switching, and support entry', async () => {
+  it('uses one consistent five-item client workspace navigation', async () => {
     const user = userEvent.setup();
     renderLayout(`/agency/tenants/${tenantOne}/billing`);
     expect(await screen.findByText('Managing business')).toBeInTheDocument();
     expect(screen.getAllByText('North Star Studio').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}`);
+    expect(screen.getByRole('link', { name: 'Launch' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/onboarding`);
+    expect(screen.getByRole('link', { name: 'Website' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/fulfilment`);
+    expect(screen.getByRole('link', { name: 'Operations' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/health`);
+    expect(screen.getByRole('link', { name: 'Account' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Back to all clients' })).toHaveAttribute('href', '/agency/tenants');
-    expect(screen.getByRole('link', { name: 'Users and access' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/users`);
-    expect(screen.getByRole('link', { name: 'Billing and subscription' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Package and features' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/entitlements`);
-    expect(screen.getByRole('link', { name: 'Technical health' })).toHaveAttribute('href', `/agency/tenants/${tenantOne}/health`);
-    expect(screen.queryByRole('navigation', { name: /tenant tabs/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Open support workspace' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Support access' }).length).toBeGreaterThan(0);
     await user.selectOptions(screen.getByRole('combobox', { name: 'Switch managed business' }), tenantTwo);
     await waitFor(() => expect(screen.getByRole('status', { name: 'Current route' })).toHaveTextContent(`/agency/tenants/${tenantTwo}`));
   });
 
-  it('renders a performance dashboard on the workspace overview route', async () => {
-    renderLayout(`/agency/tenants/${tenantOne}`);
-    expect(await screen.findByText('Client performance overview')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Workspace overview' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.queryByText('Editable onboarding workspace')).not.toBeInTheDocument();
+  it('routes client jobs through the consolidated workspace surfaces', async () => {
+    const { unmount } = renderLayout(`/agency/tenants/${tenantOne}`);
+    expect(await screen.findByText('Client next action overview')).toBeInTheDocument();
+    unmount();
+
+    const website = renderLayout(`/agency/tenants/${tenantOne}/fulfilment`);
+    expect(await screen.findByText('Website workspace')).toBeInTheDocument();
+    website.unmount();
+
+    const operations = renderLayout(`/agency/tenants/${tenantOne}/health`);
+    expect(await screen.findByText('Operations workspace')).toBeInTheDocument();
+    operations.unmount();
+
+    renderLayout(`/agency/tenants/${tenantOne}/billing`);
+    expect(await screen.findByText('Account workspace')).toBeInTheDocument();
   });
 
-  it('renders the editable setup and launch workspace only on the onboarding route', async () => {
+  it('preserves direct access to advanced technical and billing detail routes', async () => {
+    const technical = renderLayout(`/agency/tenants/${tenantOne}/health?technical=1`);
+    expect(await screen.findByText('Agency page')).toBeInTheDocument();
+    technical.unmount();
+
+    renderLayout(`/agency/tenants/${tenantOne}/billing?details=1`);
+    expect(await screen.findByText('Agency page')).toBeInTheDocument();
+  });
+
+  it('renders the guided launch workspace on onboarding', async () => {
     renderLayout(`/agency/tenants/${tenantOne}/onboarding`);
-    expect(await screen.findByText('Editable onboarding workspace')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Setup and launch' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.queryByText('Client performance overview')).not.toBeInTheDocument();
+    expect(await screen.findByText('Guided launch workspace')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Launch' })).toHaveAttribute('aria-current', 'page');
   });
 });

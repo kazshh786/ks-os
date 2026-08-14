@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
+  ReorderSiteStudioSectionsSchema,
+  UpdateSiteStudioSectionComponentSchema,
+  UpdateSiteStudioSectionContentSchema,
   UpdateSiteStudioSectionVariantSchema,
   UpdateSiteStudioThemeSchema,
   type AgencyCapability,
@@ -65,6 +68,57 @@ export async function agencySiteStudioRoutes(app: FastifyInstance) {
         input.variant,
       ),
     };
+  });
+  app.patch('/:siteReference/studio/design/pages/:pageReference/sections/:sectionReference/component', async request => {
+    const agencyActor = actor(request, 'sites.manage');
+    const { siteReference, pageReference, sectionReference } = SectionParams.parse(request.params);
+    const input = UpdateSiteStudioSectionComponentSchema.parse(request.body);
+    return {
+      data: await design.updateSectionComponent(
+        agencyActor,
+        siteReference,
+        pageReference,
+        sectionReference,
+        input.componentKey,
+      ),
+    };
+  });
+  app.patch('/:siteReference/studio/design/pages/:pageReference/sections/order', async request => {
+    const agencyActor = actor(request, 'sites.manage');
+    const { siteReference, pageReference } = SectionParams.pick({ siteReference: true, pageReference: true }).parse(request.params);
+    const input = ReorderSiteStudioSectionsSchema.parse(request.body);
+    return {
+      data: await design.reorderSections(
+        agencyActor,
+        siteReference,
+        pageReference,
+        input.sectionReferences,
+      ),
+    };
+  });
+  app.patch('/:siteReference/studio/design/pages/:pageReference/sections/:sectionReference/content', async request => {
+    const agencyActor = actor(request, 'sites.manage');
+    const { siteReference, pageReference, sectionReference } = SectionParams.parse(request.params);
+    const input = UpdateSiteStudioSectionContentSchema.parse(request.body);
+    return {
+      data: await design.updateSectionContent(
+        agencyActor,
+        siteReference,
+        pageReference,
+        sectionReference,
+        input.patch,
+      ),
+    };
+  });
+  app.post('/:siteReference/studio/design/pages/:pageReference/sections/:sectionReference/duplicate', async request => {
+    const agencyActor = actor(request, 'sites.manage');
+    const { siteReference, pageReference, sectionReference } = SectionParams.parse(request.params);
+    return { data: await design.duplicateSection(agencyActor, siteReference, pageReference, sectionReference) };
+  });
+  app.delete('/:siteReference/studio/design/pages/:pageReference/sections/:sectionReference', async request => {
+    const agencyActor = actor(request, 'sites.manage');
+    const { siteReference, pageReference, sectionReference } = SectionParams.parse(request.params);
+    return { data: await design.removeSection(agencyActor, siteReference, pageReference, sectionReference) };
   });
   app.get('/:siteReference/studio/service-pages', async request => {
     actor(request, 'sites.studio.read');

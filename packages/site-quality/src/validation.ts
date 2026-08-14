@@ -9,7 +9,7 @@ import {
   type SiteQualityCategory,
   type SiteQualityFindingInput,
 } from './contracts.js';
-import { qualityCheckById } from './policy.js';
+import { DEFAULT_SITE_QUALITY_POLICY, qualityCheckById } from './policy.js';
 import { isNonWaivableFinding } from './security.js';
 
 const digest = (value: unknown) => createHash('sha256')
@@ -816,6 +816,129 @@ export function findingsFromBrowserResult(
       evidenceSummary: `${result.imagesMissingDimensions} rendered image(s) affected.`,
       remediationGuidance: 'Add controlled intrinsic dimensions to reduce layout instability.',
       ruleIds: ['RUL_LAB_PERFORMANCE', 'RUL_PUBLIC_ASSET_READINESS'],
+      waivable: true,
+    }));
+  }
+  const blockingCoreWebVitals = result.performanceMetrics.filter((metric) =>
+    metric.result === 'BLOCK'
+    && [
+      'LARGEST_CONTENTFUL_PAINT_MS',
+      'INTERACTION_TO_NEXT_PAINT_MS',
+      'CUMULATIVE_LAYOUT_SHIFT',
+    ].includes(metric.name));
+  if (blockingCoreWebVitals.length > 0) {
+    findings.push(finding({
+      ...target,
+      checkId: 'KSQ_PERFORMANCE_RENDER',
+      category: 'PERFORMANCE',
+      severity: 'BLOCKING',
+      publicationEffect: 'BLOCK',
+      code: 'CORE_WEB_VITALS_FAILED',
+      message: 'One or more lab Core Web Vitals exceed the publication thresholds.',
+      evidenceSummary: blockingCoreWebVitals
+        .map(metric => `${metric.name} ${metric.value}/${metric.threshold} ${metric.unit} (${metric.measurementMode})`)
+        .join('; '),
+      remediationGuidance: 'Optimise the affected rendering path and rerun the same viewport audit. Field performance must still be monitored after publication.',
+      ruleIds: ['RUL_CORE_WEB_VITALS', 'RUL_LAB_PERFORMANCE'],
+    }));
+  }
+  if (result.lcpImageLoading === 'lazy') {
+    findings.push(finding({
+      ...target,
+      checkId: 'KSQ_PERFORMANCE_RENDER',
+      category: 'PERFORMANCE',
+      severity: 'BLOCKING',
+      publicationEffect: 'BLOCK',
+      code: 'LCP_ELEMENT_LAZY_LOADED',
+      message: 'The measured LCP image is unnecessarily lazy-loaded.',
+      evidenceSummary: `The ${result.lcpElementTag ?? 'image'} LCP candidate used loading=lazy in ${result.viewport}.`,
+      remediationGuidance: 'Load the likely LCP image eagerly and keep it discoverable in the initial server-rendered document.',
+      ruleIds: ['RUL_LCP_RESOURCE_PRIORITY'],
+    }));
+  }
+  if (result.lcpResourceFailed || !result.lcpResourceDiscoverable) {
+    findings.push(finding({
+      ...target,
+      checkId: 'KSQ_PERFORMANCE_RENDER',
+      category: 'PERFORMANCE',
+      severity: 'BLOCKING',
+      publicationEffect: 'BLOCK',
+      code: 'LCP_CRITICAL_RESOURCE_INVALID',
+      message: 'The measured LCP resource failed or is not discoverable from the rendered document.',
+      evidenceSummary: `Discoverable: ${result.lcpResourceDiscoverable}; failed: ${result.lcpResourceFailed}.`,
+      remediationGuidance: 'Expose a valid critical image URL in the initial markup and repair the failed resource.',
+      ruleIds: ['RUL_LCP_RESOURCE_PRIORITY', 'RUL_CRITICAL_RENDER_PERFORMANCE'],
+    }));
+  }
+  if (
+    result.lcpResourceTransferBytes !== null
+    && result.lcpResourceTransferBytes
+      > DEFAULT_SITE_QUALITY_POLICY.thresholds.maximumImageTransferBytes
+  ) {
+    findings.push(finding({
+      ...target,
+      checkId: 'KSQ_PERFORMANCE_ADVISORY',
+      category: 'PERFORMANCE',
+      severity: 'WARNING',
+      publicationEffect: 'WARNING',
+      code: 'LCP_ASSET_OVERSIZED',
+      message: 'The measured LCP asset exceeds the versioned image transfer threshold.',
+      evidenceSummary: `${result.lcpResourceTransferBytes} bytes were transferred for the LCP resource.`,
+      remediationGuidance: 'Resize and compress the LCP asset while preserving visual quality.',
+      ruleIds: ['RUL_LCP_RESOURCE_PRIORITY', 'RUL_PUBLIC_ASSET_READINESS'],
+      waivable: true,
+    }));
+  }
+  if (
+    result.lcpElementTag === 'img'
+    && (result.lcpImageHasResponsiveSource === false
+      || result.lcpImageHasIntrinsicDimensions === false)
+  ) {
+    findings.push(finding({
+      ...target,
+      checkId: 'KSQ_PERFORMANCE_ADVISORY',
+      category: 'PERFORMANCE',
+      severity: 'WARNING',
+      publicationEffect: 'WARNING',
+      code: 'LCP_IMAGE_METADATA_INCOMPLETE',
+      message: 'The LCP image lacks responsive source or intrinsic dimension metadata.',
+      evidenceSummary: `Responsive source: ${result.lcpImageHasResponsiveSource}; intrinsic dimensions: ${result.lcpImageHasIntrinsicDimensions}.`,
+      remediationGuidance: 'Provide responsive sources plus controlled width and height for the LCP image.',
+      ruleIds: ['RUL_LCP_RESOURCE_PRIORITY', 'RUL_PUBLIC_ASSET_READINESS'],
+      waivable: true,
+    }));
+  }
+  if (result.longMainThreadTaskCount > 0) {
+    findings.push(finding({
+      ...target,
+      checkId: 'KSQ_PERFORMANCE_ADVISORY',
+      category: 'PERFORMANCE',
+      severity: 'WARNING',
+      publicationEffect: 'WARNING',
+      code: 'MAIN_THREAD_LONG_TASK_RISK',
+      message: 'Long main-thread tasks may degrade interaction responsiveness.',
+      evidenceSummary: `${result.longMainThreadTaskCount} long task(s), totalling ${Math.round(result.longMainThreadTaskTotalMs)}ms, were observed in the lab run.`,
+      remediationGuidance: 'Reduce client-side work, split expensive tasks, and keep public pages primarily server-rendered.',
+      ruleIds: ['RUL_INP_INTERACTION_RESPONSIVENESS'],
+      waivable: true,
+    }));
+  }
+  if (
+    result.renderBlockingStylesheetCount > 2
+    || result.parserBlockingScriptCount > 0
+    || result.slowFontResourceCount > 0
+  ) {
+    findings.push(finding({
+      ...target,
+      checkId: 'KSQ_PERFORMANCE_ADVISORY',
+      category: 'PERFORMANCE',
+      severity: 'WARNING',
+      publicationEffect: 'WARNING',
+      code: 'RENDER_BLOCKING_RESOURCE_RISK',
+      message: 'Potential render-blocking styles, scripts, or slow fonts were observed.',
+      evidenceSummary: `${result.renderBlockingStylesheetCount} stylesheet(s); ${result.parserBlockingScriptCount} parser-blocking script(s); ${result.slowFontResourceCount} slow font(s).`,
+      remediationGuidance: 'Inline only critical CSS, defer non-critical scripts, and optimise font discovery and loading.',
+      ruleIds: ['RUL_LCP_RESOURCE_PRIORITY', 'RUL_LAB_PERFORMANCE'],
       waivable: true,
     }));
   }

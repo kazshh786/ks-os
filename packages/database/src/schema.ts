@@ -141,6 +141,9 @@ export const services = pgTable('services', {
   price: integer('price').notNull(),
   discount: integer('discount').default(0).notNull(),
   requiresDeposit: boolean('requires_deposit').default(false).notNull(),
+  publicPriceEnabled: boolean('public_price_enabled').default(false).notNull(),
+  waitlistEnabled: boolean('waitlist_enabled').default(false).notNull(),
+  temporaryUnavailableUntil: timestamp('temporary_unavailable_until', { withTimezone: true }),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -667,6 +670,37 @@ export const waitlist = pgTable('waitlist', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// PERSONAL operational requests from the governed public-site waitlist
+// journey. This table is deliberately separate from all public LIVE DTO and
+// immutable snapshot sources.
+export const siteWaitlistEntries = pgTable('site_waitlist_entries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references((): AnyPgColumn => sites.id, { onDelete: 'restrict' }),
+  serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'restrict' }),
+  locationId: uuid('location_id').references(() => locations.id, { onDelete: 'set null' }),
+  staffUserId: uuid('staff_user_id').references(() => users.id, { onDelete: 'set null' }),
+  campaignReference: varchar('campaign_reference', { length: 64 }),
+  clientName: varchar('client_name', { length: 120 }).notNull(),
+  clientEmail: varchar('client_email', { length: 255 }).notNull(),
+  clientPhone: varchar('client_phone', { length: 30 }),
+  preferredDate: date('preferred_date'),
+  status: varchar('status', { length: 20 }).default('PENDING').notNull(),
+  idempotencyKey: uuid('idempotency_key').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  tenantIdempotencyUnique: uniqueIndex('site_waitlist_entries_tenant_idempotency_unique')
+    .on(table.tenantId, table.idempotencyKey),
+  siteStatusCreatedIdx: index('site_waitlist_entries_site_status_created_idx')
+    .on(table.tenantId, table.siteId, table.status, table.createdAt),
+  serviceStatusIdx: index('site_waitlist_entries_service_status_idx')
+    .on(table.serviceId, table.status, table.createdAt),
+  locationIdx: index('site_waitlist_entries_location_idx').on(table.locationId),
+  staffIdx: index('site_waitlist_entries_staff_idx').on(table.staffUserId),
+}));
+
 export const clientWallets = pgTable('client_wallets', {
   id: uuid('id').defaultRandom().primaryKey(),
   clientId: uuid('client_id')
@@ -828,6 +862,7 @@ export const stripeConnections = pgTable('stripe_connections', {
     .unique()
     .references(() => tenants.id, { onDelete: 'cascade' }),
   stripeAccountId: varchar('stripe_account_id', { length: 255 }).notNull().unique(),
+  livemode: boolean('livemode'),
   accountType: varchar('account_type', { length: 50 }).notNull(),
   connectionStatus: varchar('connection_status', { length: 50 }).notNull(),
   detailsSubmitted: boolean('details_submitted').default(false).notNull(),
@@ -2716,6 +2751,150 @@ export const knowledgeRejectedRules = pgTable('knowledge_rejected_rules', {
     .on(table.knowledgePackId, table.ruleId),
 }));
 
+// Search Intelligence V2 artifacts are server-only, versioned planning inputs.
+// Strategy/brief JSON is schema-validated by the API before persistence; the
+// relational columns pin ownership, approval, immutable identity and digests.
+export const siteSearchStrategies = pgTable('site_search_strategies', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
+  blueprintId: uuid('blueprint_id').notNull().references(() => siteBlueprints.id, { onDelete: 'restrict' }),
+  blueprintRevision: integer('blueprint_revision').notNull(),
+  strategyVersion: integer('strategy_version').notNull(),
+  status: varchar('status', { length: 30 }).default('DRAFT').notNull(),
+  strategyJson: jsonb('strategy_json').notNull(),
+  inputDigestSha256: varchar('input_digest_sha256', { length: 64 }).notNull(),
+  researchDigestSha256: varchar('research_digest_sha256', { length: 64 }).notNull(),
+  outputDigestSha256: varchar('output_digest_sha256', { length: 64 }).notNull(),
+  providerKey: varchar('provider_key', { length: 80 }).notNull(),
+  modelKey: varchar('model_key', { length: 160 }).notNull(),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull(),
+  generatedByAgencyUserId: uuid('generated_by_agency_user_id').notNull().references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  approvedByAgencyUserId: uuid('approved_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  supersededAt: timestamp('superseded_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  versionUnique: uniqueIndex('site_search_strategies_version_unique').on(table.blueprintId, table.strategyVersion),
+  siteStatusIdx: index('site_search_strategies_site_status_idx').on(table.tenantId, table.siteId, table.status, table.createdAt),
+  blueprintIdx: index('site_search_strategies_blueprint_idx').on(table.blueprintId, table.blueprintRevision),
+}));
+
+export const siteSearchResearchEvidence = pgTable('site_search_research_evidence', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
+  strategyId: uuid('strategy_id').references(() => siteSearchStrategies.id, { onDelete: 'restrict' }),
+  providerKey: varchar('provider_key', { length: 80 }).notNull(),
+  query: varchar('query', { length: 240 }).notNull(),
+  market: varchar('market', { length: 80 }).notNull(),
+  locale: varchar('locale', { length: 35 }).notNull(),
+  searchLocation: varchar('search_location', { length: 160 }).notNull(),
+  language: varchar('language', { length: 35 }).notNull(),
+  device: varchar('device', { length: 20 }).notNull(),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  sourceUrl: varchar('source_url', { length: 2000 }),
+  sourceDigestSha256: varchar('source_digest_sha256', { length: 64 }).notNull(),
+  payloadDigestSha256: varchar('payload_digest_sha256', { length: 64 }).notNull(),
+  notesJson: jsonb('notes_json').default([]).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  strategyIdx: index('site_search_research_evidence_strategy_idx').on(table.strategyId, table.capturedAt),
+  siteFreshnessIdx: index('site_search_research_evidence_freshness_idx').on(table.tenantId, table.siteId, table.expiresAt),
+}));
+
+export const sitePageSeoBriefs = pgTable('site_page_seo_briefs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
+  blueprintId: uuid('blueprint_id').notNull().references(() => siteBlueprints.id, { onDelete: 'restrict' }),
+  blueprintPageId: uuid('blueprint_page_id').notNull().references(() => siteBlueprintPages.id, { onDelete: 'restrict' }),
+  strategyId: uuid('strategy_id').notNull().references(() => siteSearchStrategies.id, { onDelete: 'restrict' }),
+  pageReference: uuid('page_reference').notNull(),
+  briefVersion: integer('brief_version').notNull(),
+  status: varchar('status', { length: 30 }).default('DRAFT').notNull(),
+  briefJson: jsonb('brief_json').notNull(),
+  outputDigestSha256: varchar('output_digest_sha256', { length: 64 }).notNull(),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  approvedByAgencyUserId: uuid('approved_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  supersededAt: timestamp('superseded_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  versionUnique: uniqueIndex('site_page_seo_briefs_version_unique').on(table.strategyId, table.blueprintPageId, table.briefVersion),
+  pageStatusIdx: index('site_page_seo_briefs_page_status_idx').on(table.tenantId, table.siteId, table.pageReference, table.status),
+  strategyStatusIdx: index('site_page_seo_briefs_strategy_status_idx').on(table.strategyId, table.status),
+}));
+
+export const siteSearchTopicOwnership = pgTable('site_search_topic_ownership', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
+  strategyId: uuid('strategy_id').notNull().references(() => siteSearchStrategies.id, { onDelete: 'cascade' }),
+  topicClusterKey: varchar('topic_cluster_key', { length: 120 }).notNull(),
+  pageReference: uuid('page_reference').notNull(),
+  primaryKeyword: varchar('primary_keyword', { length: 240 }).notNull(),
+  intentionalOverlap: boolean('intentional_overlap').default(false).notNull(),
+  cannibalizationNotes: text('cannibalization_notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  ownerUnique: uniqueIndex('site_search_topic_ownership_unique').on(table.strategyId, table.topicClusterKey, table.pageReference),
+  keywordIdx: index('site_search_topic_ownership_keyword_idx').on(table.strategyId, table.primaryKeyword),
+}));
+
+export const siteSearchInternalLinks = pgTable('site_search_internal_links', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
+  strategyId: uuid('strategy_id').notNull().references(() => siteSearchStrategies.id, { onDelete: 'cascade' }),
+  sourcePageReference: uuid('source_page_reference').notNull(),
+  targetPageReference: uuid('target_page_reference').notNull(),
+  anchorText: varchar('anchor_text', { length: 120 }).notNull(),
+  purpose: varchar('purpose', { length: 500 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  linkUnique: uniqueIndex('site_search_internal_links_unique').on(table.strategyId, table.sourcePageReference, table.targetPageReference, table.anchorText),
+  targetIdx: index('site_search_internal_links_target_idx').on(table.strategyId, table.targetPageReference),
+}));
+
+export const sitePathRedirects = pgTable('site_path_redirects', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
+  sourcePath: varchar('source_path', { length: 120 }).notNull(),
+  targetPath: varchar('target_path', { length: 120 }).notNull(),
+  statusCode: integer('status_code').default(308).notNull(),
+  active: boolean('active').default(true).notNull(),
+  reason: varchar('reason', { length: 500 }).notNull(),
+  createdByAgencyUserId: uuid('created_by_agency_user_id').notNull().references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  retiredAt: timestamp('retired_at', { withTimezone: true }),
+}, table => ({
+  sourceUnique: uniqueIndex('site_path_redirects_source_unique').on(table.siteId, table.sourcePath),
+  activeIdx: index('site_path_redirects_active_idx').on(table.tenantId, table.siteId, table.active),
+}));
+
+export const sitePageLanguageAlternates = pgTable('site_page_language_alternates', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
+  pageReference: uuid('page_reference').notNull(),
+  languageCode: varchar('language_code', { length: 35 }).notNull(),
+  alternatePageReference: uuid('alternate_page_reference').notNull(),
+  alternatePath: varchar('alternate_path', { length: 120 }).notNull(),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  languageUnique: uniqueIndex('site_page_language_alternates_unique').on(table.siteId, table.pageReference, table.languageCode),
+  alternateIdx: index('site_page_language_alternates_alternate_idx').on(table.siteId, table.alternatePageReference),
+}));
+
 // Phase 15.6C generation records retain only controlled structured provenance,
 // safe findings and claim digests. Raw prompts, responses and credentials are
 // deliberately absent from the database model.
@@ -2730,6 +2909,9 @@ export const siteGenerationRuns = pgTable('site_generation_runs', {
   templateVersionId: uuid('template_version_id').notNull().references(() => templateVersions.id, { onDelete: 'restrict' }),
   knowledgePackId: uuid('knowledge_pack_id').notNull().references(() => knowledgePacks.id, { onDelete: 'restrict' }),
   knowledgePackSemanticVersion: text('knowledge_pack_semantic_version').notNull(),
+  searchStrategyId: uuid('search_strategy_id').references(() => siteSearchStrategies.id, { onDelete: 'restrict' }),
+  searchStrategyVersion: integer('search_strategy_version'),
+  searchStrategyDigestSha256: varchar('search_strategy_digest_sha256', { length: 64 }),
   siteJobId: uuid('site_job_id').references(() => siteJobs.id, { onDelete: 'restrict' }),
   provisioningRunId: uuid('provisioning_run_id'),
   generationReason: text('generation_reason').notNull(),
@@ -2762,6 +2944,7 @@ export const siteGenerationRuns = pgTable('site_generation_runs', {
   statusCreatedIdx: index('site_generation_runs_status_created_idx').on(table.status, table.createdAt),
   versionIdx: index('site_generation_runs_version_idx').on(table.siteVersionId),
   provisioningRunIdx: index('site_generation_runs_provisioning_run_idx').on(table.provisioningRunId),
+  searchStrategyIdx: index('site_generation_runs_search_strategy_idx').on(table.searchStrategyId),
 }));
 
 export const siteGenerationPageRuns = pgTable('site_generation_page_runs', {
@@ -3210,6 +3393,8 @@ export const factFindingTemplateQuestions = pgTable('fact_finding_template_quest
   bookingUseAllowed: boolean('booking_use_allowed').default(false).notNull(),
   generationUseAllowed: boolean('generation_use_allowed').default(false).notNull(),
   agencyVerificationRequired: boolean('agency_verification_required').default(false).notNull(),
+  dataClassification: varchar('data_classification', { length: 30 }).default('PUBLIC_FACT').notNull(),
+  consentType: varchar('consent_type', { length: 60 }),
   conditionsJson: jsonb('conditions_json').default([]).notNull(),
   validationJson: jsonb('validation_json').default({}).notNull(),
   optionsJson: jsonb('options_json').default([]).notNull(),
@@ -3268,6 +3453,8 @@ export const factFindingQuestionnaireQuestions = pgTable('fact_finding_questionn
   bookingUseAllowed: boolean('booking_use_allowed').default(false).notNull(),
   generationUseAllowed: boolean('generation_use_allowed').default(false).notNull(),
   agencyVerificationRequired: boolean('agency_verification_required').default(false).notNull(),
+  dataClassification: varchar('data_classification', { length: 30 }).default('PUBLIC_FACT').notNull(),
+  consentType: varchar('consent_type', { length: 60 }),
   conditionsJson: jsonb('conditions_json').default([]).notNull(),
   validationJson: jsonb('validation_json').default({}).notNull(),
   optionsJson: jsonb('options_json').default([]).notNull(),
@@ -3353,6 +3540,8 @@ export const factFindingResponses = pgTable('fact_finding_responses', {
   source: varchar('source', { length: 30 }).notNull(),
   valueDigestSha256: varchar('value_digest_sha256', { length: 64 }).notNull(),
   status: varchar('status', { length: 40 }).default('ANSWERED').notNull(),
+  dataClassification: varchar('data_classification', { length: 30 }).default('PUBLIC_FACT').notNull(),
+  verificationBasis: varchar('verification_basis', { length: 30 }).default('UNVERIFIED').notNull(),
   responseVersion: integer('response_version').default(1).notNull(),
   publicUseEligible: boolean('public_use_eligible').default(false).notNull(),
   bookingUseEligible: boolean('booking_use_eligible').default(false).notNull(),
@@ -3432,6 +3621,7 @@ export const factFindingUploads = pgTable('fact_finding_uploads', {
   uploadStatus: varchar('upload_status', { length: 30 }).default('PENDING_UPLOAD').notNull(),
   malwareScanStatus: varchar('malware_scan_status', { length: 30 }).default('NOT_AVAILABLE').notNull(),
   assetCategory: varchar('asset_category', { length: 50 }).notNull(),
+  provenance: varchar('provenance', { length: 40 }).default('CLIENT_SUPPLIED').notNull(),
   publicUsePermission: boolean('public_use_permission').default(false).notNull(),
   aiUsePermission: boolean('ai_use_permission').default(false).notNull(),
   copyrightConfirmed: boolean('copyright_confirmed').notNull(),
@@ -3445,6 +3635,26 @@ export const factFindingUploads = pgTable('fact_finding_uploads', {
   questionnaireReviewIdx: index('fact_finding_uploads_questionnaire_review_idx').on(table.questionnaireId, table.agencyReviewStatus, table.createdAt),
   tenantStatusIdx: index('fact_finding_uploads_tenant_status_idx').on(table.tenantId, table.uploadStatus, table.malwareScanStatus, table.createdAt),
   participantIdx: index('fact_finding_uploads_participant_idx').on(table.participantId, table.createdAt),
+}));
+
+export const factFindingConsentRecords = pgTable('fact_finding_consent_records', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  questionnaireId: uuid('questionnaire_id').notNull().references(() => factFindingQuestionnaires.id, { onDelete: 'restrict' }),
+  participantId: uuid('participant_id').references(() => factFindingParticipants.id, { onDelete: 'restrict' }),
+  responseId: uuid('response_id').notNull().references(() => factFindingResponses.id, { onDelete: 'restrict' }),
+  responseVersion: integer('response_version').notNull(),
+  consentType: varchar('consent_type', { length: 60 }).notNull(),
+  decision: varchar('decision', { length: 20 }).notNull(),
+  wordingVersion: varchar('wording_version', { length: 40 }).default('1.0.0').notNull(),
+  answerDigestSha256: varchar('answer_digest_sha256', { length: 64 }).notNull(),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, table => ({
+  responseVersionUnique: uniqueIndex('fact_finding_consent_records_response_version_unique').on(table.responseId, table.responseVersion),
+  tenantTypeIdx: index('fact_finding_consent_records_tenant_type_idx').on(table.tenantId, table.consentType, table.recordedAt),
+  questionnaireIdx: index('fact_finding_consent_records_questionnaire_idx').on(table.questionnaireId, table.recordedAt),
 }));
 
 export const productionBriefs = pgTable('production_briefs', {
@@ -4174,4 +4384,134 @@ export const siteDomainEvents = pgTable('site_domain_events', {
   domainIdx: index('site_domain_events_domain_idx').on(table.domainId, table.occurredAt),
   siteIdx: index('site_domain_events_site_idx').on(table.tenantId, table.siteId, table.occurredAt),
   agencyUserIdx: index('site_domain_events_agency_user_idx').on(table.agencyUserId),
+}));
+
+// Live Site Intelligence V1. These records are server-only operational facts;
+// immutable marketing/SEO content remains in published render snapshots.
+export const siteLocationOperatingHours = pgTable('site_location_operating_hours', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  locationId: uuid('location_id').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+  dayOfWeek: integer('day_of_week').notNull(),
+  intervalNumber: integer('interval_number').default(1).notNull(),
+  opensAt: time('opens_at').notNull(),
+  closesAt: time('closes_at').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  locationDayUnique: uniqueIndex('site_location_operating_hours_location_day_unique')
+    .on(table.locationId, table.dayOfWeek, table.intervalNumber),
+  tenantLocationIdx: index('site_location_operating_hours_tenant_location_idx')
+    .on(table.tenantId, table.locationId, table.dayOfWeek),
+}));
+
+export const siteLocationClosures = pgTable('site_location_closures', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  locationId: uuid('location_id').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+  startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+  endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+  publicLabel: varchar('public_label', { length: 120 }).default('Temporarily closed').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  activeIdx: index('site_location_closures_active_idx').on(table.tenantId, table.locationId, table.startsAt, table.endsAt),
+}));
+
+export const siteLiveAvailabilitySummaries = pgTable('site_live_availability_summaries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+  staffUserId: uuid('staff_user_id').references(() => users.id, { onDelete: 'cascade' }),
+  locationId: uuid('location_id').references(() => locations.id, { onDelete: 'cascade' }),
+  state: varchar('state', { length: 30 }).notNull(),
+  publicMessage: varchar('public_message', { length: 160 }).notNull(),
+  nextAvailableAt: timestamp('next_available_at', { withTimezone: true }),
+  computedAt: timestamp('computed_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  siteExpiryIdx: index('site_live_availability_summaries_site_expiry_idx').on(table.tenantId, table.siteId, table.expiresAt),
+  serviceIdx: index('site_live_availability_summaries_service_idx').on(table.serviceId, table.expiresAt),
+  staffIdx: index('site_live_availability_summaries_staff_idx').on(table.staffUserId),
+  locationIdx: index('site_live_availability_summaries_location_idx').on(table.locationId),
+}));
+
+export const siteLiveCampaigns = pgTable('site_live_campaigns', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  status: varchar('status', { length: 20 }).default('DRAFT').notNull(),
+  audience: varchar('audience', { length: 20 }).default('PUBLIC').notNull(),
+  message: varchar('message', { length: 240 }).notNull(),
+  placement: varchar('placement', { length: 30 }).notNull(),
+  actionLabel: varchar('action_label', { length: 80 }).notNull(),
+  serviceReference: uuid('service_reference'),
+  locationReference: uuid('location_reference'),
+  staffReference: uuid('staff_reference'),
+  startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+  endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+  createdByAgencyUserId: uuid('created_by_agency_user_id').notNull().references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  approvedByAgencyUserId: uuid('approved_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  activeIdx: index('site_live_campaigns_active_idx').on(table.tenantId, table.siteId, table.status, table.startsAt, table.endsAt),
+  createdByIdx: index('site_live_campaigns_created_by_idx').on(table.createdByAgencyUserId),
+  approvedByIdx: index('site_live_campaigns_approved_by_idx').on(table.approvedByAgencyUserId),
+}));
+
+export const siteOperationalChangeEvents = pgTable('site_operational_change_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  entityType: varchar('entity_type', { length: 30 }).notNull(),
+  entityReference: uuid('entity_reference').notNull(),
+  changeKind: varchar('change_kind', { length: 50 }).notNull(),
+  changedFields: text('changed_fields').array().notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+}, table => ({
+  pendingIdx: index('site_operational_change_events_pending_idx').on(table.tenantId, table.siteId, table.processedAt, table.occurredAt),
+}));
+
+export const siteImpactAssessments = pgTable('site_impact_assessments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  changeEventId: uuid('change_event_id').notNull().unique().references(() => siteOperationalChangeEvents.id, { onDelete: 'restrict' }),
+  classification: varchar('classification', { length: 30 }).notNull(),
+  assessmentJson: jsonb('assessment_json').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  siteIdx: index('site_impact_assessments_site_idx').on(table.tenantId, table.siteId, table.createdAt),
+}));
+
+export const siteChangeProposals = pgTable('site_change_proposals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  assessmentId: uuid('assessment_id').notNull().unique().references(() => siteImpactAssessments.id, { onDelete: 'restrict' }),
+  status: varchar('status', { length: 20 }).default('DRAFT').notNull(),
+  summary: varchar('summary', { length: 500 }).notNull(),
+  affectedPageReferencesJson: jsonb('affected_page_references_json').default([]).notNull(),
+  recommendationsJson: jsonb('recommendations_json').default([]).notNull(),
+  requiresHumanApproval: boolean('requires_human_approval').default(true).notNull(),
+  reviewedByAgencyUserId: uuid('reviewed_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  reviewQueueIdx: index('site_change_proposals_review_queue_idx').on(table.tenantId, table.siteId, table.status, table.createdAt),
+  reviewerIdx: index('site_change_proposals_reviewer_idx').on(table.reviewedByAgencyUserId),
 }));

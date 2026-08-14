@@ -64,12 +64,17 @@ test('business booking and payment notifications use dedicated branded templates
   assert.match(payments, /businessPaymentReceivedEnabled/);
 });
 
-test('worker cancels stale time-sensitive appointment emails before sending', () => {
+test('worker cancels stale or superseded appointment emails before sending', () => {
   const email = source('modules/email/email.service.ts');
-  assert.match(email, /TIME_SENSITIVE_APPOINTMENT_TEMPLATES/);
-  assert.match(email, /appointment\.startTime\.getTime\(\) <= Date\.now\(\)/);
-  assert.match(email, /appointment\.status === 'CANCELLED'/);
-  assert.match(email, /APPOINTMENT_NOTIFICATION_NO_LONGER_APPLICABLE/);
+  const safety = source('modules/email/email-safety.ts');
+  assert.match(email, /appointmentNotificationCancellationCode/);
+  assert.match(email, /appointments\.startTime/);
+  assert.match(email, /appointments\.status/);
+  assert.match(email, /status: 'CANCELLED'/);
+  assert.match(safety, /APPOINTMENT_NOTIFICATION_NO_LONGER_APPLICABLE/);
+  assert.match(safety, /APPOINTMENT_NOTIFICATION_SUPERSEDED/);
+  assert.match(safety, /currentStart <= now/);
+  assert.match(safety, /Math\.abs\(currentStart - intendedStart\)/);
 });
 
 test('email review routing uses Google first and Trustpilot for returning customers', () => {

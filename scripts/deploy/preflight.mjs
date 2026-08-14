@@ -31,6 +31,44 @@ function calculateSha256(filePath) {
   return calculateNormalizedSha256(filePath);
 }
 
+const stripeKeyMode = (value, kind) => {
+  const testPrefix = kind === 'secret' ? 'sk_test_' : 'pk_test_';
+  const livePrefix = kind === 'secret' ? 'sk_live_' : 'pk_live_';
+  if (value?.startsWith(testPrefix)) return 'test';
+  if (value?.startsWith(livePrefix)) return 'live';
+  return null;
+};
+
+export function inspectStripeEnvironment(env = process.env) {
+  const secretKey = env.STRIPE_SECRET_KEY?.trim();
+  const publishableKey = (env.STRIPE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)?.trim();
+  const connectWebhookSecret = env.STRIPE_CONNECT_WEBHOOK_SECRET?.trim();
+  const paymentsWebhookSecret = env.STRIPE_PAYMENTS_WEBHOOK_SECRET?.trim();
+  const configured = Boolean(secretKey || publishableKey || connectWebhookSecret || paymentsWebhookSecret);
+  if (!configured) return { configured: false, mode: null, errors: [] };
+
+  const errors = [];
+  const secretMode = stripeKeyMode(secretKey, 'secret');
+  const publishableMode = stripeKeyMode(publishableKey, 'publishable');
+  if (!secretMode) errors.push('STRIPE_SECRET_KEY is missing or invalid');
+  if (!publishableMode) errors.push('STRIPE_PUBLISHABLE_KEY is missing or invalid');
+  if (secretMode && publishableMode && secretMode !== publishableMode) {
+    errors.push('Stripe secret and publishable keys mix live and test modes');
+  }
+  if (!connectWebhookSecret?.startsWith('whsec_')) {
+    errors.push('STRIPE_CONNECT_WEBHOOK_SECRET is missing or invalid');
+  }
+  if (!paymentsWebhookSecret?.startsWith('whsec_')) {
+    errors.push('STRIPE_PAYMENTS_WEBHOOK_SECRET is missing or invalid');
+  }
+
+  return {
+    configured: true,
+    mode: secretMode && publishableMode && secretMode === publishableMode ? secretMode : null,
+    errors,
+  };
+}
+
 
 export async function runPreflight() {
   console.log('=== RUNNING KS OS DEPLOYMENT PREFLIGHT CHECKS ===\n');
@@ -85,6 +123,16 @@ export async function runPreflight() {
     console.log('✓ DATABASE_URL environment variable is set');
   } else {
     console.error('✗ DATABASE_URL environment variable is missing');
+    passed = false;
+  }
+
+  const stripeEnvironment = inspectStripeEnvironment();
+  if (!stripeEnvironment.configured) {
+    console.log('✓ Stripe is not configured for this deployment');
+  } else if (stripeEnvironment.errors.length === 0) {
+    console.log(`✓ Stripe ${stripeEnvironment.mode} keys and separate Connect/payment webhook secrets are configured`);
+  } else {
+    for (const error of stripeEnvironment.errors) console.error(`✗ ${error}`);
     passed = false;
   }
 

@@ -54,6 +54,16 @@ const conversionRoles: Record<SitePageType, SiteConversionRole> = {
   NEW_CLIENT_GUIDE: 'OBJECTION_HANDLING',
   AFTERCARE_GUIDE: 'OBJECTION_HANDLING',
   CONSULTATION_GUIDE: 'OBJECTION_HANDLING',
+  GUIDE: 'OBJECTION_HANDLING',
+  HOW_TO: 'OBJECTION_HANDLING',
+  ARTICLE: 'TRUST_BUILDING',
+  BLOG_POST: 'TRUST_BUILDING',
+  FAQ_RESOURCE: 'OBJECTION_HANDLING',
+  TUTORIAL: 'OBJECTION_HANDLING',
+  DEFINITION: 'OBJECTION_HANDLING',
+  TROUBLESHOOTING: 'OBJECTION_HANDLING',
+  COMPARISON: 'TRUST_BUILDING',
+  CASE_STUDY: 'TRUST_BUILDING',
   BOOKING: 'BOOKING',
 };
 
@@ -113,7 +123,7 @@ export function classifyHtmlLayout(
     ),
     candidate(
       'BLOG_ARTICLE',
-      null,
+      'BLOG_POST',
       /\b(blog[-_ ]?(single|article)|article[-_ ]?detail|published by)\b/.test(signal)
         ? 0.88
         : 0,
@@ -135,7 +145,7 @@ export function classifyHtmlLayout(
     ),
     candidate(
       'CASE_STUDY',
-      'RESULTS',
+      'CASE_STUDY',
       /\bcase[-_ ]?stud(?:y|ies)|client[-_ ]?success\b/.test(signal) ? 0.88 : 0,
       ['CASE_STUDY_SIGNALS', 'RESULTS_RECOMMENDATION_REQUIRES_REVIEW'],
     ),

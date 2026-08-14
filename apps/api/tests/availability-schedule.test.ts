@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveEffectiveAvailabilityWindows } from '../src/modules/availability/availability-schedule.js';
+import {
+  canOfferSlotWithinSchedule,
+  resolveEffectiveAvailabilityWindows,
+} from '../src/modules/availability/availability-schedule.js';
 
 const owner = { userId: 'owner-1', userName: 'Salon owner' };
 
@@ -26,4 +29,31 @@ test('mobile overrides can use out-of-hours times independently', () => {
     [{ userId: owner.userId, startTime: '10:00', endTime: '16:00' }],
     [{ userId: owner.userId, enabled: true, startTime: '18:30', endTime: '21:00' }],
   ), [{ ...owner, startTime: '18:30', endTime: '21:00', source: 'override' }]);
+});
+
+test('a long appointment remains blocked when it would finish after closing by default', () => {
+  assert.equal(canOfferSlotWithinSchedule({
+    startMinute: 18 * 60 + 30,
+    totalDurationMinutes: 90,
+    scheduleEndMinute: 19 * 60,
+    allowAppointmentsPastClosingTime: false,
+  }), false);
+});
+
+test('a long appointment can start before closing when the tenant setting is enabled', () => {
+  assert.equal(canOfferSlotWithinSchedule({
+    startMinute: 18 * 60 + 30,
+    totalDurationMinutes: 90,
+    scheduleEndMinute: 19 * 60,
+    allowAppointmentsPastClosingTime: true,
+  }), true);
+});
+
+test('the overrun setting never creates a slot that starts at or after closing', () => {
+  assert.equal(canOfferSlotWithinSchedule({
+    startMinute: 19 * 60,
+    totalDurationMinutes: 90,
+    scheduleEndMinute: 19 * 60,
+    allowAppointmentsPastClosingTime: true,
+  }), false);
 });

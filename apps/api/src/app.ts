@@ -3,6 +3,7 @@ import rateLimit from '@fastify/rate-limit';
 import registerSecurity from './plugins/security.js';
 import registerRequestContext from './plugins/request-context.js';
 import registerErrorHandler from './plugins/error-handler.js';
+import registerPublicServiceCatalogOrder from './plugins/public-service-catalog-order.js';
 import registerRoutes from './routes/health.js';
 import authPlugin from './plugins/auth.js';
 import sessionRoutes from './routes/session.js';
@@ -52,6 +53,8 @@ import { agencySiteBlueprintRoutes } from './modules/sites/site-blueprint.routes
 import { agencySiteJobRoutes } from './modules/sites/site-job.routes.js';
 import { agencyKnowledgePackRoutes } from './modules/sites/knowledge-pack.routes.js';
 import { agencySiteGenerationRoutes } from './modules/sites/site-generation.routes.js';
+import { agencySearchIntelligenceRoutes } from './modules/sites/search-intelligence.routes.js';
+import { agencyLiveSiteIntelligenceRoutes } from './modules/sites/live-site-intelligence.routes.js';
 import { agencySiteReviewRoutes } from './modules/sites/site-review.routes.js';
 import { publicSiteReviewRoutes } from './routes/public/site-review.js';
 import { publicFactFindingRoutes } from './routes/public/fact-finding.js';
@@ -62,6 +65,7 @@ import { agencySiteQualityRoutes } from './modules/sites/site-quality.routes.js'
 import { agencySitePublicationRoutes } from './modules/sites/site-publication.routes.js';
 import { agencyProductionBriefRoutes } from './modules/provisioning/production-brief.routes.js';
 import { platformErrorLogRoutes } from './modules/errors/platform-error-log.routes.js';
+import { agencyDeploymentRoutes } from './modules/deployments/deployment.routes.js';
 
 export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => void } = {}) {
   const fastify = Fastify({
@@ -136,6 +140,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   registerErrorHandler(fastify);
   fastify.register(registerSecurity);
   fastify.register(registerRequestContext);
+  registerPublicServiceCatalogOrder(fastify);
 
   fastify.register(publicBookingRoutes, { prefix: '/api/v1/public' });
   fastify.register(publicAvailabilitySummaryRoutes, { prefix: '/api/v1/public' });
@@ -152,6 +157,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(authenticationRoutes);
 
   fastify.register(agencyRoutes, { prefix: '/api/v1/agency' });
+  fastify.register(agencyDeploymentRoutes, { prefix: '/api/v1/agency' });
   fastify.register(platformErrorLogRoutes, { prefix: '/api/v1/agency/errors' });
   fastify.register(complianceRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencySiteRoutes, { prefix: '/api/v1/agency/sites' });
@@ -159,6 +165,8 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(agencySiteJobRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencyKnowledgePackRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencySiteGenerationRoutes, { prefix: '/api/v1/agency/sites' });
+  fastify.register(agencySearchIntelligenceRoutes, { prefix: '/api/v1/agency/sites' });
+  fastify.register(agencyLiveSiteIntelligenceRoutes, { prefix: '/api/v1/agency/sites' });
   fastify.register(agencySiteReviewRoutes, { prefix: '/api/v1/agency/sites' });
   fastify.register(agencyTemplateIntelligenceRoutes, { prefix: '/api/v1/agency' });
   fastify.register(agencyDesignLibraryRoutes, { prefix: '/api/v1/agency' });

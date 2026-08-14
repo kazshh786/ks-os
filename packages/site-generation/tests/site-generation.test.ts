@@ -5,10 +5,13 @@ import {
   DeterministicFakeSiteGenerationProvider,
   GeneratedPageSchema,
   GeminiSiteGenerationProvider,
+  VertexGeminiSiteGenerationProvider,
+  createSiteGenerationProvider,
   RegenerationInstructionSchema,
   SiteGenerationProviderError,
   assertGeneratedPageSetMatchesPlan,
   assertGenerationRunTransition,
+  assertGenerationRunTransitionForPipeline,
   availableBusinessDataKeys,
   buildVerifiedBusinessFacts,
   composeGenerationPrompt,
@@ -21,7 +24,10 @@ import {
   executeStructuredDataGeneration,
   generateWithControlledRepair,
   generationDigest,
+  generationCompletionStatus,
   generationIdempotencyKey,
+  isSiteGenerationProviderReady,
+  isQualityAuditableGenerationStatus,
   isReviewableGenerationStatus,
   parseSiteGenerationConfig,
   selectGenerationSafeFacts,
@@ -389,7 +395,10 @@ test('safe regeneration instructions reject external booking and fabrication ove
 
 test('lifecycle permits repair and review but never publication', () => {
   assert.doesNotThrow(() => assertGenerationRunTransition('VALIDATING', 'REPAIRING'));
+  assert.doesNotThrow(() => assertGenerationRunTransition('VALIDATING', 'DESIGN_COMPLETE'));
+  assert.doesNotThrow(() => assertGenerationRunTransition('DESIGN_COMPLETE', 'READY_FOR_REVIEW'));
   assert.doesNotThrow(() => assertGenerationRunTransition('VALIDATING', 'READY_FOR_REVIEW'));
+  assert.doesNotThrow(() => assertGenerationRunTransition('READY_FOR_REVIEW', 'DESIGN_COMPLETE'));
   assert.throws(() => assertGenerationRunTransition('READY_FOR_REVIEW', 'GENERATING'));
   assert.throws(() => assertGenerationRunTransition('READY_FOR_REVIEW', 'PENDING'));
 });
@@ -402,6 +411,7 @@ test('only the canonical READY_FOR_REVIEW generation state is quality-reviewable
     'GENERATING',
     'VALIDATING',
     'REPAIRING',
+    'DESIGN_COMPLETE',
     'FAILED',
     'CANCEL_REQUESTED',
     'CANCELLED',
@@ -416,6 +426,25 @@ test('only the canonical READY_FOR_REVIEW generation state is quality-reviewable
       `${String(status)} must not be quality-reviewable`,
     );
   }
+});
+
+test('V2 cannot bypass DESIGN_COMPLETE while V1 retains direct review readiness', () => {
+  assert.doesNotThrow(() => assertGenerationRunTransitionForPipeline('VALIDATING', 'READY_FOR_REVIEW', 1));
+  assert.throws(
+    () => assertGenerationRunTransitionForPipeline('VALIDATING', 'READY_FOR_REVIEW', 2),
+    /must stop at DESIGN_COMPLETE/,
+  );
+  assert.doesNotThrow(() => assertGenerationRunTransitionForPipeline('VALIDATING', 'DESIGN_COMPLETE', 2));
+  assert.doesNotThrow(() => assertGenerationRunTransitionForPipeline('DESIGN_COMPLETE', 'READY_FOR_REVIEW', 2));
+});
+
+test('design-complete V2 output is quality-auditable but not yet human-reviewable', () => {
+  assert.equal(generationCompletionStatus(1), 'READY_FOR_REVIEW');
+  assert.equal(generationCompletionStatus(2), 'DESIGN_COMPLETE');
+  assert.equal(isQualityAuditableGenerationStatus('DESIGN_COMPLETE'), true);
+  assert.equal(isQualityAuditableGenerationStatus('READY_FOR_REVIEW'), true);
+  assert.equal(isQualityAuditableGenerationStatus('VALIDATING'), false);
+  assert.equal(isReviewableGenerationStatus('DESIGN_COMPLETE'), false);
 });
 
 test('idempotency changes with source, blueprint and pack revisions', () => {
@@ -438,7 +467,9 @@ test('idempotency changes with source, blueprint and pack revisions', () => {
 });
 
 test('disabled environment builds without secrets; enabled environment fails safely when incomplete', () => {
-  assert.equal(parseSiteGenerationConfig({}).enabled, false);
+  const disabled = parseSiteGenerationConfig({});
+  assert.equal(disabled.enabled, false);
+  assert.equal(isSiteGenerationProviderReady(disabled), false);
   assert.throws(() => parseSiteGenerationConfig({ SITE_AI_GENERATION_ENABLED: 'true' }), /server-side/);
   const enabled = parseSiteGenerationConfig({
     SITE_AI_GENERATION_ENABLED: 'true',
@@ -446,6 +477,7 @@ test('disabled environment builds without secrets; enabled environment fails saf
     SITE_AI_API_KEY: 'test-only',
   });
   assert.equal(enabled.model, 'gemini-test-model');
+  assert.equal(isSiteGenerationProviderReady(enabled), true);
 });
 
 test('deterministic fake validates fixtures and makes no network request', async () => {
@@ -533,6 +565,288 @@ test('Gemini adapter uses structured JSON, server header, timeout signal and saf
   assert.equal((captured?.headers as Record<string, string>)['x-goog-api-key'], 'server-secret');
   assert.match(String(captured?.body), /responseMimeType/);
   assert.doesNotMatch(JSON.stringify(result), /server-secret/);
+});
+
+test('vertex-gemini configuration requires project, location and ADC, but no API key', () => {
+  assert.throws(
+    () => parseSiteGenerationConfig({
+      SITE_AI_GENERATION_ENABLED: 'true',
+      SITE_AI_PROVIDER: 'vertex-gemini',
+      SITE_AI_MODEL: 'gemini-1.5-flash',
+    }),
+    /GOOGLE_CLOUD_PROJECT is required/,
+  );
+
+  assert.throws(
+    () => parseSiteGenerationConfig({
+      SITE_AI_GENERATION_ENABLED: 'true',
+      SITE_AI_PROVIDER: 'vertex-gemini',
+      SITE_AI_MODEL: 'gemini-1.5-flash',
+      GOOGLE_CLOUD_PROJECT: 'test-project',
+    }),
+    /GOOGLE_CLOUD_LOCATION is required/,
+  );
+
+  assert.throws(
+    () => parseSiteGenerationConfig({
+      SITE_AI_GENERATION_ENABLED: 'true',
+      SITE_AI_PROVIDER: 'vertex-gemini',
+      SITE_AI_MODEL: 'gemini-1.5-flash',
+      GOOGLE_CLOUD_PROJECT: 'test-project',
+      GOOGLE_CLOUD_LOCATION: 'global',
+    }),
+    /GOOGLE_APPLICATION_CREDENTIALS is required/,
+  );
+
+  const config = parseSiteGenerationConfig({
+    SITE_AI_GENERATION_ENABLED: 'true',
+    SITE_AI_PROVIDER: 'vertex-gemini',
+    SITE_AI_MODEL: 'gemini-1.5-flash',
+    GOOGLE_CLOUD_PROJECT: 'test-project',
+    GOOGLE_CLOUD_LOCATION: 'us-central1',
+    GOOGLE_APPLICATION_CREDENTIALS: '/secure/adc.json',
+  });
+  assert.equal(config.enabled, true);
+  assert.equal(config.provider, 'vertex-gemini');
+  assert.equal(config.model, 'gemini-1.5-flash');
+  assert.equal(config.googleCloudProject, 'test-project');
+  assert.equal(config.googleCloudLocation, 'us-central1');
+  assert.equal(config.googleApplicationCredentials, '/secure/adc.json');
+  assert.equal(config.apiKey, undefined);
+  assert.equal(isSiteGenerationProviderReady(config), true);
+});
+
+test('Vertex Gemini adapter uses GoogleAuth request headers, the global endpoint, and safe response metadata', async () => {
+  let capturedUrl = '';
+  let capturedInit: RequestInit | undefined;
+  let authUrl = '';
+  let authOptions: { projectId: string; scopes: string[] } | undefined;
+
+  const provider = new VertexGeminiSiteGenerationProvider({
+    project: 'my-gcp-project',
+    location: 'global',
+    modelKey: 'gemini-1.5-flash',
+    requestTimeoutMs: 5_000,
+    googleAuthFactory: options => {
+      authOptions = options;
+      return {
+        getRequestHeaders: async url => {
+          authUrl = String(url);
+          return new Headers({ authorization: 'Bearer mock-adc-bearer-token' });
+        },
+      };
+    },
+    fetchImplementation: async (url, init) => {
+      capturedUrl = String(url);
+      capturedInit = init;
+      return new Response(JSON.stringify({
+        responseId: 'vertex-resp-100',
+        modelVersion: 'gemini-1.5-flash-002',
+        candidates: [{ content: { parts: [{ text: '{"title":"Hello Vertex"}' }] }, finishReason: 'STOP' }],
+        usageMetadata: { promptTokenCount: 15, candidatesTokenCount: 25, totalTokenCount: 40 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    },
+  });
+
+  const response = await provider.generateStructuredOutput({
+    prompt: 'Generate page',
+    outputSchema: z.object({ title: z.string() }).strict(),
+    responseJsonSchema: { type: 'object', properties: { title: { type: 'string' } } },
+    maxOutputCharacters: 5_000,
+  });
+
+  assert.deepEqual(authOptions, {
+    projectId: 'my-gcp-project',
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+  });
+  assert.equal(response.providerKey, 'vertex-gemini');
+  assert.equal(response.modelKey, 'gemini-1.5-flash');
+  assert.equal(response.responseReference, 'vertex-resp-100');
+  assert.equal(response.modelVersion, 'gemini-1.5-flash-002');
+  assert.deepEqual(response.value, { title: 'Hello Vertex' });
+  assert.deepEqual(response.usage, { inputTokens: 15, outputTokens: 25, totalTokens: 40 });
+  assert.equal(capturedUrl, 'https://aiplatform.googleapis.com/v1/projects/my-gcp-project/locations/global/publishers/google/models/gemini-1.5-flash:generateContent');
+  assert.equal(authUrl, capturedUrl);
+  assert.equal((capturedInit?.headers as Record<string, string>)['authorization'], 'Bearer mock-adc-bearer-token');
+});
+
+test('Vertex Gemini adapter respects custom endpoint override', async () => {
+  let capturedUrl = '';
+  const provider = new VertexGeminiSiteGenerationProvider({
+    project: 'my-project',
+    location: 'europe-west1',
+    modelKey: 'gemini-1.5-pro',
+    endpoint: 'https://custom-vertex.example.com',
+    requestTimeoutMs: 5_000,
+    googleAuthFactory: () => ({
+      getRequestHeaders: async () => new Headers({ authorization: 'Bearer test-token' }),
+    }),
+    fetchImplementation: async (url) => {
+      capturedUrl = String(url);
+      return new Response(JSON.stringify({
+        name: 'vertex-resp-custom',
+        candidates: [{ content: { parts: [{ text: '{"ok":true}' }] } }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    },
+  });
+
+  const res = await provider.generateStructuredOutput({
+    prompt: 'test',
+    outputSchema: z.object({ ok: z.boolean() }),
+    responseJsonSchema: { type: 'object' },
+    maxOutputCharacters: 1_000,
+  });
+  assert.equal(res.responseReference, 'vertex-resp-custom');
+  assert.equal(capturedUrl, 'https://custom-vertex.example.com/v1/projects/my-project/locations/europe-west1/publishers/google/models/gemini-1.5-pro:generateContent');
+});
+
+test('Vertex Gemini maps 429, 5xx, 401, 403 and invalid output to provider error categories', async () => {
+  const baseOptions = {
+    project: 'proj',
+    location: 'us-central1',
+    modelKey: 'model',
+    requestTimeoutMs: 5_000,
+    googleAuthFactory: () => ({
+      getRequestHeaders: async () => new Headers({ authorization: 'Bearer token' }),
+    }),
+  };
+  const request = {
+    prompt: 'test',
+    outputSchema: z.object({ ok: z.boolean() }),
+    responseJsonSchema: { type: 'object' },
+    maxOutputCharacters: 1_000,
+  };
+
+  const rateLimitProvider = new VertexGeminiSiteGenerationProvider({
+    ...baseOptions,
+    fetchImplementation: async () => new Response('Rate limited', { status: 429, headers: { 'retry-after': '3' } }),
+  });
+  await assert.rejects(
+    rateLimitProvider.generateStructuredOutput(request),
+    (err: unknown) => err instanceof SiteGenerationProviderError && err.kind === 'RETRYABLE_RATE_LIMIT' && err.retryAfterMs === 3000,
+  );
+
+  const serverErrorProvider = new VertexGeminiSiteGenerationProvider({
+    ...baseOptions,
+    fetchImplementation: async () => new Response('Unavailable', { status: 503 }),
+  });
+  await assert.rejects(
+    serverErrorProvider.generateStructuredOutput(request),
+    (err: unknown) => err instanceof SiteGenerationProviderError && err.kind === 'RETRYABLE_EXTERNAL_FAILURE',
+  );
+
+  const authFailureProvider = new VertexGeminiSiteGenerationProvider({
+    ...baseOptions,
+    fetchImplementation: async () => new Response('Unauthenticated', { status: 401 }),
+  });
+  await assert.rejects(
+    authFailureProvider.generateStructuredOutput(request),
+    (err: unknown) => err instanceof SiteGenerationProviderError && err.kind === 'TERMINAL_PROVIDER_FAILURE',
+  );
+
+  const permFailureProvider = new VertexGeminiSiteGenerationProvider({
+    ...baseOptions,
+    fetchImplementation: async () => new Response('Forbidden', { status: 403 }),
+  });
+  await assert.rejects(
+    permFailureProvider.generateStructuredOutput(request),
+    (err: unknown) => err instanceof SiteGenerationProviderError && err.kind === 'TERMINAL_PROVIDER_FAILURE',
+  );
+
+  const badCredentialProvider = new VertexGeminiSiteGenerationProvider({
+    ...baseOptions,
+    googleAuthFactory: () => ({
+      getRequestHeaders: async () => { throw new Error('ADC keyfile not found'); },
+    }),
+    fetchImplementation: async () => new Response('{}', { status: 200 }),
+  });
+  await assert.rejects(
+    badCredentialProvider.generateStructuredOutput(request),
+    (err: unknown) => err instanceof SiteGenerationProviderError
+      && err.kind === 'TERMINAL_PROVIDER_FAILURE'
+      && !err.message.includes('ADC keyfile not found'),
+  );
+
+  const giantOutputProvider = new VertexGeminiSiteGenerationProvider({
+    ...baseOptions,
+    fetchImplementation: async () => new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: '{"ok":' + 'true'.repeat(1000) + '}' }] } }],
+    }), { status: 200 }),
+  });
+  await assert.rejects(
+    giantOutputProvider.generateStructuredOutput({ ...request, maxOutputCharacters: 10 }),
+    (err: unknown) => err instanceof SiteGenerationProviderError && err.kind === 'TERMINAL_INVALID_OUTPUT',
+  );
+
+  const badJsonProvider = new VertexGeminiSiteGenerationProvider({
+    ...baseOptions,
+    fetchImplementation: async () => new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: 'NOT_JSON' }] } }],
+    }), { status: 200 }),
+  });
+  await assert.rejects(
+    badJsonProvider.generateStructuredOutput(request),
+    (err: unknown) => err instanceof SiteGenerationProviderError && err.kind === 'TERMINAL_INVALID_OUTPUT',
+  );
+});
+
+test('Vertex Gemini default authentication path invokes google-auth-library ADC', async () => {
+  const originalCredentialPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = '__missing-google-adc-test__.json';
+  let fetchCalled = false;
+  try {
+    const provider = new VertexGeminiSiteGenerationProvider({
+      project: 'test-project',
+      location: 'global',
+      modelKey: 'gemini-test-model',
+      requestTimeoutMs: 5_000,
+      fetchImplementation: async () => {
+        fetchCalled = true;
+        return new Response('{}', { status: 200 });
+      },
+    });
+    await assert.rejects(
+      provider.generateStructuredOutput({
+        prompt: 'test',
+        outputSchema: z.object({ ok: z.boolean() }),
+        responseJsonSchema: { type: 'object' },
+        maxOutputCharacters: 1_000,
+      }),
+      (err: unknown) => err instanceof SiteGenerationProviderError
+        && err.kind === 'TERMINAL_PROVIDER_FAILURE',
+    );
+    assert.equal(fetchCalled, false);
+  } finally {
+    if (originalCredentialPath === undefined) {
+      delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    } else {
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = originalCredentialPath;
+    }
+  }
+});
+
+test('createSiteGenerationProvider factory instantiates configured provider', () => {
+  const vertexConfig = parseSiteGenerationConfig({
+    SITE_AI_GENERATION_ENABLED: 'true',
+    SITE_AI_PROVIDER: 'vertex-gemini',
+    SITE_AI_MODEL: 'gemini-1.5-flash',
+    GOOGLE_CLOUD_PROJECT: 'proj-123',
+    GOOGLE_CLOUD_LOCATION: 'us-central1',
+    GOOGLE_APPLICATION_CREDENTIALS: '/secure/adc.json',
+  });
+  const vertexProvider = createSiteGenerationProvider(vertexConfig);
+  assert.equal(vertexProvider.providerKey, 'vertex-gemini');
+  assert.equal(vertexProvider.modelKey, 'gemini-1.5-flash');
+
+  const geminiConfig = parseSiteGenerationConfig({
+    SITE_AI_GENERATION_ENABLED: 'true',
+    SITE_AI_PROVIDER: 'gemini',
+    SITE_AI_MODEL: 'gemini-1.5-pro',
+    SITE_AI_API_KEY: 'secret-key',
+  });
+  const geminiProvider = createSiteGenerationProvider(geminiConfig);
+  assert.equal(geminiProvider.providerKey, 'gemini');
+  assert.equal(geminiProvider.modelKey, 'gemini-1.5-pro');
 });
 
 test('digest normalization is stable across object-key order', () => {

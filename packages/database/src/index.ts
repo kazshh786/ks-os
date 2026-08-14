@@ -3,6 +3,7 @@ export * from './error-schema.js';
 export * from './design-library-schema.js';
 export * from './booking-schedule-overrides.js';
 export * from './conversation-schema.js';
+export * from './search-research-schema.js';
 export * from './manifest.js';
 export * from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -12,13 +13,15 @@ import * as errorSchema from './error-schema.js';
 import * as designLibrarySchema from './design-library-schema.js';
 import * as bookingScheduleOverrideSchema from './booking-schedule-overrides.js';
 import * as conversationSchema from './conversation-schema.js';
+import * as searchResearchSchema from './search-research-schema.js';
 
-const schema: typeof coreSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema = {
+const schema: typeof coreSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema & typeof searchResearchSchema = {
   ...coreSchema,
   ...errorSchema,
   ...designLibrarySchema,
   ...bookingScheduleOverrideSchema,
   ...conversationSchema,
+  ...searchResearchSchema,
 };
 type Database = NodePgDatabase<typeof schema>;
 
@@ -33,14 +36,19 @@ export function getDatabase(connectionString?: string): Database {
     throw new Error('DATABASE_URL environment variable is missing.');
   }
 
-  // Prevent multiple pools in dev hot-reloads
+  // Prevent multiple pools in dev hot-reloads. Supavisor can occasionally take
+  // longer than two seconds to hand out/re-establish a connection during a brief
+  // infrastructure or network stall, so give the pool enough time to recover
+  // instead of turning a transient pause into platform-wide query failures.
   const globalRef = globalThis as any;
   if (!globalRef.pgPool) {
     globalRef.pgPool = new pg.Pool({
       connectionString: url,
       max: 10,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      connectionTimeoutMillis: 10000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
     });
   }
 

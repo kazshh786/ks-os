@@ -3,13 +3,24 @@
   "name": "ks-os-web",
   "main": "apps/web/worker/index.ts",
   "compatibility_date": "2026-08-03",
+  "routes": [
+    {
+      "pattern": "kasimshah.com/*",
+      "zone_name": "kasimshah.com"
+    },
+    {
+      "pattern": "www.kasimshah.com/*",
+      "zone_name": "kasimshah.com"
+    }
+  ],
   "assets": {
     "directory": "apps/web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     "run_worker_first": [
-      "/api",
-      "/api/*"
+      "/*",
+      "!/assets/*",
+      "!/brand/*"
     ]
   },
   "vars": {

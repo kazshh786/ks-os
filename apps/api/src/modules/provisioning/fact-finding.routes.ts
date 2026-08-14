@@ -10,6 +10,7 @@ import {
   FactAnswerValueSchema,
   FactFindingSessionExchangeSchema,
   FactFindingUploadSchema,
+  MarkFactNotApplicableSchema,
   PrequalifyQuestionnaireSchema,
   RejectFactResponseSchema,
   RequestClarificationSchema,
@@ -30,6 +31,7 @@ const UploadParams = z.object({ uploadReference: PublicReferenceSchema }).strict
 const InviteSchema = z.object({ participantReference: PublicReferenceSchema.optional() }).strict();
 const AssetDecisionSchema = z.object({ decision: z.enum(['APPROVED', 'REJECTED']) }).strict();
 const AgencyAnswerSchema = z.object({ answer: FactAnswerValueSchema }).strict();
+const QuestionnaireListQuery = z.object({ tenantReference: PublicReferenceSchema.optional() }).strict();
 
 function actor(request: FastifyRequest, capability: AgencyCapability): AgencyActor {
   const auth = request.requireAgency(capability);
@@ -79,6 +81,11 @@ export async function agencyFactFindingRoutes(app: FastifyInstance) {
       body.questionnaire,
     ) });
   });
+  app.get('/questionnaires', async request => {
+    const query = QuestionnaireListQuery.parse(request.query);
+    actor(request, 'fact_finding.read');
+    return { data: await service().listQuestionnaires(query.tenantReference) };
+  });
   app.get('/questionnaires/:questionnaireReference', async request => {
     const { questionnaireReference } = QuestionnaireParams.parse(request.params);
     actor(request, 'fact_finding.read');
@@ -116,6 +123,11 @@ export async function agencyFactFindingRoutes(app: FastifyInstance) {
       questionnaireReference,
       input.participantReference,
     ) };
+  });
+  app.post('/questionnaires/:questionnaireReference/revoke', async request => {
+    const { questionnaireReference } = QuestionnaireParams.parse(request.params);
+    z.object({}).strict().parse(request.body ?? {});
+    return { data: await service().revoke(actor(request, 'fact_finding.manage'), questionnaireReference) };
   });
   app.get('/questionnaires/:questionnaireReference/responses', async request => {
     const { questionnaireReference } = QuestionnaireParams.parse(request.params);
@@ -166,6 +178,14 @@ export async function agencyFactFindingRoutes(app: FastifyInstance) {
       actor(request, 'fact_finding.approve'),
       responseReference,
       RejectFactResponseSchema.parse(request.body),
+    ) };
+  });
+  app.post('/responses/:responseReference/not-applicable', async request => {
+    const { responseReference } = ResponseParams.parse(request.params);
+    return { data: await service().markNotApplicable(
+      actor(request, 'fact_finding.approve'),
+      responseReference,
+      MarkFactNotApplicableSchema.parse(request.body).reason,
     ) };
   });
   app.post('/responses/:responseReference/request-clarification', async request => {

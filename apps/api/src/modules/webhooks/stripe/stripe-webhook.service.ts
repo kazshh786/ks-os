@@ -1,4 +1,4 @@
-import { getStripeClient } from '../../../lib/stripe.js';
+import { getStripeClient, getStripeConfiguredMode } from '../../../lib/stripe.js';
 import { getDatabase, stripeWebhookEvents, stripeConnections, stripePaymentAttempts, appointments, checkoutTransactions, stripeRefunds, stripePayouts, stripePayoutItems, stripeDisputes } from '@ks-os/database';
 import { and, eq } from 'drizzle-orm';
 import Stripe from 'stripe';
@@ -11,9 +11,25 @@ import { BookingService } from '../../bookings/booking.service.js';
 export class StripeWebhookService {
   private businessEvents = new BusinessEventsService();
   private payments = new PaymentsService();
+
   async handleConnectWebhook(rawBody: string | Buffer, signature: string) {
+    return this.handleWebhook(
+      rawBody,
+      signature,
+      process.env.STRIPE_CONNECT_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET,
+    );
+  }
+
+  async handlePaymentsWebhook(rawBody: string | Buffer, signature: string) {
+    return this.handleWebhook(
+      rawBody,
+      signature,
+      process.env.STRIPE_PAYMENTS_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET,
+    );
+  }
+
+  private async handleWebhook(rawBody: string | Buffer, signature: string, webhookSecret?: string) {
     const stripe = getStripeClient();
-    const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
 
     if (!webhookSecret) {
       throw new Error('STRIPE_NOT_CONFIGURED');
@@ -24,6 +40,11 @@ export class StripeWebhookService {
       event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
     } catch (err: any) {
       throw new Error('STRIPE_WEBHOOK_SIGNATURE_INVALID');
+    }
+
+    const configuredMode = getStripeConfiguredMode();
+    if (typeof event.livemode === 'boolean' && event.livemode !== (configuredMode === 'live')) {
+      return { status: 'ignored_mode' };
     }
 
     const db = getDatabase();
@@ -50,6 +71,7 @@ export class StripeWebhookService {
           const tenantId = connections[0].tenantId;
 
           await db.update(stripeConnections).set({
+            livemode: event.livemode,
             connectionStatus: deriveStripeConnectionStatus(account),
             detailsSubmitted: account.details_submitted,
             chargesEnabled: account.charges_enabled,
@@ -61,6 +83,19 @@ export class StripeWebhookService {
             lastSyncedAt: new Date(),
             updatedAt: new Date(),
           }).where(eq(stripeConnections.tenantId, tenantId));
+        }
+      } else if (event.type === 'account.application.deauthorized') {
+        const stripeAccountId = event.account;
+        if (stripeAccountId) {
+          await db.update(stripeConnections).set({
+            connectionStatus: 'DISABLED',
+            detailsSubmitted: false,
+            chargesEnabled: false,
+            payoutsEnabled: false,
+            disabledReason: 'application_deauthorized',
+            lastSyncedAt: new Date(),
+            updatedAt: new Date(),
+          }).where(eq(stripeConnections.stripeAccountId, stripeAccountId));
         }
       } else if (
         event.type === 'checkout.session.completed' ||
@@ -93,6 +128,10 @@ export class StripeWebhookService {
           }
 
           const attempt = attemptQuery[0];
+
+          if (attempt.stripeAccountId !== stripeAccountId) {
+            throw new Error('STRIPE_ACCOUNT_MISMATCH');
+          }
 
           if (['SUCCEEDED', 'CANCELLED', 'EXPIRED'].includes(attempt.status)) {
             return;

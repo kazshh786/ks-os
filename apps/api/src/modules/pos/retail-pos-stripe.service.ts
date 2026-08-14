@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { getDatabase, stripeConnections, tenants } from '@ks-os/database';
-import { getStripeClient } from '../../lib/stripe.js';
+import { assertStripeCheckoutAmount, assertStripeConnectedAccountReady, getStripeClient } from '../../lib/stripe.js';
 
 const fail = (name: string, message: string) => {
   const error = new Error(message);
@@ -30,6 +30,7 @@ export class RetailPosStripeService {
     if (connection.connectionStatus !== 'READY' || !connection.chargesEnabled) {
       throw fail('STRIPE_ACCOUNT_NOT_READY', 'The connected Stripe account is not ready to take payments.');
     }
+    await assertStripeConnectedAccountReady(connection.stripeAccountId);
     return connection;
   }
 
@@ -49,6 +50,7 @@ export class RetailPosStripeService {
 
     if (!tenant) throw fail('TENANT_NOT_FOUND', 'Business account was not found.');
     if (input.amountInCents <= 0) throw fail('INVALID_PAYMENT_TOTAL', 'The payment total must be greater than zero.');
+    assertStripeCheckoutAmount(input.amountInCents, tenant.currency);
 
     const reader = await stripe.terminal.readers.retrieve(
       input.readerId,
@@ -66,7 +68,7 @@ export class RetailPosStripeService {
 
     const percentageBps = Number.parseInt(process.env.STRIPE_APPLICATION_FEE_BPS || '0', 10) || 0;
     const fixedFee = Number.parseInt(process.env.STRIPE_APPLICATION_FEE_FIXED || '0', 10) || 0;
-    const applicationFeeAmount = Math.max(0, Math.floor((input.amountInCents * percentageBps) / 10000) + fixedFee);
+    const applicationFeeAmount = Math.min(input.amountInCents, Math.max(0, Math.floor((input.amountInCents * percentageBps) / 10000) + fixedFee));
 
     const paymentIntent = await stripe.paymentIntents.create(
       {

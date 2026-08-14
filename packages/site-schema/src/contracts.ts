@@ -3,8 +3,10 @@ import {
   EmailActionSchema,
   InternalPageActionSchema,
   KsOsBookingActionSchema,
+  LiveConditionRuleV1Schema,
   PhoneActionSchema,
   PublicReferenceSchema,
+  SiteStructuredDataEligibilitySchema,
   SiteConversionRoleSchema,
   SitePageTypeSchema,
   SiteStatusSchema,
@@ -87,6 +89,70 @@ export const SiteRendererStatusSchema = z.enum([
 ]);
 export type SiteRendererStatus = z.infer<typeof SiteRendererStatusSchema>;
 
+export const SiteDesignTokensV2Schema = z.object({
+  designVersion: z.literal(2),
+  typography: z.object({
+    displayFont: z.enum(['SYSTEM_SANS', 'SYSTEM_SERIF', 'EDITORIAL_SERIF']),
+    headingFont: z.enum(['SYSTEM_SANS', 'SYSTEM_SERIF', 'EDITORIAL_SERIF']),
+    bodyFont: z.enum(['SYSTEM_SANS', 'SYSTEM_SERIF']),
+    displayScale: z.enum(['RESTRAINED', 'BALANCED', 'DRAMATIC']),
+    headingScale: z.enum(['COMPACT', 'BALANCED', 'EXPRESSIVE']),
+    bodyScale: z.enum(['COMPACT', 'STANDARD', 'GENEROUS']),
+    headingWeight: z.enum(['REGULAR', 'MEDIUM', 'SEMIBOLD', 'BOLD']),
+    bodyWeight: z.enum(['REGULAR', 'MEDIUM']),
+    displayTracking: z.enum(['TIGHT', 'NORMAL', 'WIDE']),
+    headingTracking: z.enum(['TIGHT', 'NORMAL', 'WIDE']),
+    headingLineHeight: z.enum(['TIGHT', 'STANDARD', 'RELAXED']),
+    bodyLineHeight: z.enum(['STANDARD', 'RELAXED', 'SPACIOUS']),
+  }).strict(),
+  layout: z.object({
+    containerWidths: z.enum(['COMPACT_RANGE', 'BALANCED_RANGE', 'EXPANSIVE_RANGE']),
+    pageGutter: z.enum(['COMPACT', 'STANDARD', 'GENEROUS']),
+    sectionSpacing: z.enum(['COMPACT', 'STANDARD', 'EXPANSIVE']),
+    contentSpacing: z.enum(['TIGHT', 'STANDARD', 'RELAXED']),
+    gridColumns: z.enum(['TEN', 'TWELVE', 'SIXTEEN']),
+    gridGap: z.enum(['TIGHT', 'STANDARD', 'GENEROUS']),
+    textMeasure: z.enum(['NARROW', 'READABLE', 'WIDE']),
+  }).strict(),
+  shape: z.object({
+    radiusScale: z.enum(['NONE', 'SUBTLE', 'SOFT', 'ROUNDED']),
+    cardRadius: z.enum(['NONE', 'SMALL', 'MEDIUM', 'LARGE']),
+    buttonRadius: z.enum(['SQUARE', 'SOFT', 'PILL']),
+    imageRadius: z.enum(['NONE', 'SMALL', 'MEDIUM', 'LARGE']),
+  }).strict(),
+  surface: z.object({
+    background: HexColourSchema,
+    surface: HexColourSchema,
+    surfaceAlt: HexColourSchema,
+    border: HexColourSchema,
+    mutedSurface: HexColourSchema,
+  }).strict(),
+  elevation: z.enum(['NONE', 'SUBTLE', 'MEDIUM', 'STRONG']),
+  buttons: z.object({
+    height: z.enum(['COMPACT', 'STANDARD', 'LARGE']),
+    padding: z.enum(['COMPACT', 'STANDARD', 'GENEROUS']),
+    weight: z.enum(['MEDIUM', 'SEMIBOLD', 'BOLD']),
+    primaryStyle: z.enum(['SOLID', 'OUTLINE', 'SOFT', 'HIGH_CONTRAST']),
+    secondaryStyle: z.enum(['TEXT', 'OUTLINE', 'SOFT']),
+  }).strict(),
+  imagery: z.object({
+    defaultAspectRatio: z.enum(['SQUARE', 'FOUR_THREE', 'THREE_TWO', 'SIXTEEN_NINE']),
+    portraitAspectRatio: z.enum(['THREE_FOUR', 'FOUR_FIVE', 'TWO_THREE']),
+    serviceAspectRatio: z.enum(['SQUARE', 'FOUR_THREE', 'THREE_TWO', 'SIXTEEN_NINE']),
+    cropMode: z.enum(['COVER', 'CONTAIN']),
+    focalBehaviour: z.enum(['ASSET_FOCAL_POINT', 'CENTRE', 'TOP']),
+    imageTreatment: z.enum(['NATURAL', 'EDITORIAL', 'SOFTENED', 'HIGH_CONTRAST', 'MONOCHROME']),
+  }).strict(),
+  sectionRhythm: z.enum([
+    'CONTINUOUS',
+    'ALTERNATING_SURFACES',
+    'EDITORIAL',
+    'HIGH_CONTRAST',
+    'SOFT_LUXURY',
+  ]),
+}).strict();
+export type SiteDesignTokensV2 = z.infer<typeof SiteDesignTokensV2Schema>;
+
 export const SiteThemeSchema = z.object({
   primaryColour: HexColourSchema,
   secondaryColour: HexColourSchema,
@@ -104,6 +170,7 @@ export const SiteThemeSchema = z.object({
   buttonStyle: z.enum(['SOLID', 'OUTLINE', 'SOFT']),
   imageStyle: z.enum(['SQUARE', 'ROUNDED', 'EDITORIAL']),
   motionPreference: z.enum(['NONE', 'REDUCED', 'STANDARD']),
+  designTokens: SiteDesignTokensV2Schema.optional(),
 }).strict();
 export type SiteTheme = z.infer<typeof SiteThemeSchema>;
 
@@ -134,6 +201,10 @@ const SiteAssetBaseShape = {
     width: z.number().int().positive().max(20_000),
     mimeType: z.enum(['image/avif', 'image/webp', 'image/jpeg', 'image/png']),
   }).strict()).max(10).default([]),
+  caption: z.string().trim().min(1).max(500).optional(),
+  creditText: z.string().trim().min(1).max(240).optional(),
+  licenseUrl: ApprovedAssetUrlSchema.optional(),
+  contentContext: z.string().trim().min(1).max(500).optional(),
 } as const;
 
 export const SiteAssetReferenceSchema = z.discriminatedUnion('purpose', [
@@ -218,6 +289,8 @@ export type SiteNavigationItem = z.infer<typeof SiteNavigationItemSchema>;
 export const SiteNavigationSchema = z.object({
   primary: z.array(SiteNavigationItemSchema).max(12),
   footer: z.array(SiteNavigationItemSchema).max(20),
+  utility: z.array(SiteNavigationItemSchema).max(8).default([]),
+  legal: z.array(SiteNavigationItemSchema).max(8).default([]),
 }).strict();
 export type SiteNavigation = z.infer<typeof SiteNavigationSchema>;
 
@@ -283,6 +356,10 @@ export type SiteAction = z.infer<typeof SiteActionSchema>;
 
 const SectionBaseShape = {
   reference: PublicReferenceSchema,
+  showIf: LiveConditionRuleV1Schema.optional(),
+  componentKey: z.string().trim().min(1).max(120)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$/)
+    .optional(),
   variant: z.enum([
     'editorial',
     'grid',
@@ -320,6 +397,8 @@ const HeroSectionSchema = z.object({
 const IntroductionSectionSchema = z.object({
   ...HeadingBodyShape,
   type: z.literal('INTRODUCTION'),
+  supportingPoints: z.array(ShortTextSchema).min(2).max(8).optional(),
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const FeaturedServicesSectionSchema = z.object({
   ...SectionBaseShape,
@@ -345,12 +424,14 @@ const BenefitsSectionSchema = z.object({
   type: z.literal('BENEFITS'),
   heading: ShortTextSchema,
   items: z.array(z.object({ heading: ShortTextSchema, body: BodyTextSchema }).strict()).min(1).max(20),
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const ProcessSectionSchema = z.object({
   ...SectionBaseShape,
   type: z.literal('PROCESS'),
   heading: ShortTextSchema,
   steps: z.array(z.object({ heading: ShortTextSchema, body: BodyTextSchema }).strict()).min(1).max(20),
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const PricingSectionSchema = z.object({
   ...SectionBaseShape,
@@ -422,12 +503,14 @@ const LocationSectionSchema = z.object({
   type: z.literal('LOCATION'),
   heading: ShortTextSchema,
   locationReference: PublicReferenceSchema,
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const OpeningHoursSectionSchema = z.object({
   ...SectionBaseShape,
   type: z.literal('OPENING_HOURS'),
   heading: ShortTextSchema,
   locationReference: PublicReferenceSchema,
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const ContactSectionSchema = z.object({
   ...SectionBaseShape,
@@ -436,16 +519,19 @@ const ContactSectionSchema = z.object({
   body: BodyTextSchema.optional(),
   locationReference: PublicReferenceSchema.optional(),
   secondaryActions: z.array(z.union([PhoneActionSchema, EmailActionSchema])).max(4).default([]),
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const BookingCtaSectionSchema = z.object({
   ...HeadingBodyShape,
   type: z.literal('BOOKING_CTA'),
   primaryAction: KsOsBookingActionSchema,
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const FinalCtaSectionSchema = z.object({
   ...HeadingBodyShape,
   type: z.literal('FINAL_CTA'),
   primaryAction: KsOsBookingActionSchema,
+  imageAssetReference: PublicReferenceSchema.optional(),
 }).strict();
 const FooterSectionSchema = z.object({
   ...SectionBaseShape,
@@ -519,6 +605,50 @@ export const PublishedPageSnapshotSchema = z.object({
   compatiblePageTypes: z.array(SitePageTypeSchema).min(1).max(30),
   seo: SiteSeoMetadataSchema,
   sections: z.array(SiteSectionSchema).min(1).max(100),
+  publishedAt: z.string().datetime().optional(),
+  lastModifiedAt: z.string().datetime().optional(),
+  reviewedAt: z.string().datetime().optional(),
+  languageCode: z.string().regex(/^[a-z]{2,8}(?:-[A-Z0-9]{2,8})?$/).optional(),
+  languageAlternates: z.array(z.object({
+    languageCode: z.string().regex(/^[a-z]{2,8}(?:-[A-Z0-9]{2,8})?$/),
+    path: SafePathSchema,
+  }).strict()).max(50).optional(),
+  /**
+   * Exact approved Search Intelligence allowlist. Undefined is accepted only
+   * for pre-V2 immutable snapshots; every V2 snapshot compiler sets it.
+   */
+  structuredDataEligibility: z.array(SiteStructuredDataEligibilitySchema).max(20)
+    .refine(items => new Set(items).size === items.length, 'Structured-data eligibility must be unique.')
+    .optional(),
+  authorship: z.object({
+    author: z.object({
+      staffReference: PublicReferenceSchema.optional(),
+      name: ShortTextSchema,
+      role: ShortTextSchema.optional(),
+      bio: z.string().trim().min(1).max(2_000).optional(),
+      credentials: z.array(ShortTextSchema).max(50).default([]),
+      profilePath: SafePathSchema.optional(),
+      imageAssetReference: PublicReferenceSchema.optional(),
+    }).strict(),
+    reviewer: z.object({
+      staffReference: PublicReferenceSchema.optional(),
+      name: ShortTextSchema,
+      role: ShortTextSchema.optional(),
+      bio: z.string().trim().min(1).max(2_000).optional(),
+      credentials: z.array(ShortTextSchema).max(50).default([]),
+      profilePath: SafePathSchema.optional(),
+      imageAssetReference: PublicReferenceSchema.optional(),
+    }).strict().optional(),
+  }).strict().optional(),
+  video: z.object({
+    name: ShortTextSchema,
+    description: z.string().trim().min(1).max(2_000),
+    thumbnailAssetReference: PublicReferenceSchema,
+    uploadDate: z.string().datetime(),
+    contentUrl: ApprovedAssetUrlSchema.optional(),
+    embedUrl: ApprovedAssetUrlSchema.optional(),
+    transcript: z.string().trim().min(1).max(20_000).optional(),
+  }).strict().optional(),
 }).strict().superRefine((page, ctx) => {
   if (page.path === '/book' && page.pageType !== 'BOOKING') {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['path'], message: '/book is reserved.' });
@@ -579,6 +709,16 @@ export const PublishedPageSnapshotSchema = z.object({
         message: 'Service details require a matching service-aware booking action.',
       });
     }
+  }
+  if (page.reviewedAt && !page.authorship?.reviewer) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['reviewedAt'], message: 'A review date requires a governed reviewer profile.' });
+  }
+  const alternateLanguages = new Set<string>();
+  for (const [index, alternate] of (page.languageAlternates ?? []).entries()) {
+    if (alternateLanguages.has(alternate.languageCode)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['languageAlternates', index], message: 'Language alternates must be unique per language.' });
+    }
+    alternateLanguages.add(alternate.languageCode);
   }
 });
 export type PublishedPageSnapshot = z.infer<typeof PublishedPageSnapshotSchema>;
@@ -647,11 +787,32 @@ export const PublishedSiteSnapshotSchema = z.object({
       });
     }
     seoTitles.add(normalizedSeoTitle);
+    const pageLanguage = page.languageCode ?? snapshot.language;
+    for (const [alternateIndex, alternate] of (page.languageAlternates ?? []).entries()) {
+      const target = snapshot.pages.find(candidate => candidate.path === alternate.path && candidate.active && candidate.canonical);
+      if (!target || (target.languageCode ?? snapshot.language) !== alternate.languageCode) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['pages', index, 'languageAlternates', alternateIndex],
+          message: 'A language alternate must resolve to an active canonical page with the declared language.',
+        });
+        continue;
+      }
+      const reciprocal = target.languageAlternates?.some(candidate =>
+        candidate.path === page.path && candidate.languageCode === pageLanguage);
+      if (!reciprocal) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['pages', index, 'languageAlternates', alternateIndex],
+          message: 'Language alternates must be reciprocal.',
+        });
+      }
+    }
   }
   if (!snapshot.pages.some((page) => page.pageType === 'HOME' && page.path === '/')) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['pages'], message: 'A HOME page at / is required.' });
   }
-  for (const group of ['primary', 'footer'] as const) {
+  for (const group of ['primary', 'footer', 'utility', 'legal'] as const) {
     for (const [index, item] of snapshot.navigation[group].entries()) {
       if (!pageReferences.has(item.pageReference)) {
         ctx.addIssue({
@@ -751,8 +912,22 @@ export const PublishedSiteSnapshotSchema = z.object({
       ['pages', pageIndex, 'seo', 'openGraphImageAssetReference'],
       'Open Graph asset',
     );
+    assertReference(
+      page.video?.thumbnailAssetReference,
+      assetReferences,
+      ['pages', pageIndex, 'video', 'thumbnailAssetReference'],
+      'Video thumbnail asset',
+    );
     for (const [sectionIndex, section] of page.sections.entries()) {
       const path = ['pages', pageIndex, 'sections', sectionIndex];
+      if ('imageAssetReference' in section) {
+        assertReference(
+          section.imageAssetReference,
+          assetReferences,
+          [...path, 'imageAssetReference'],
+          'Section asset',
+        );
+      }
       switch (section.type) {
         case 'HEADER':
         case 'BOOKING_CTA':
@@ -761,7 +936,6 @@ export const PublishedSiteSnapshotSchema = z.object({
           validateAction(section.primaryAction, [...path, 'primaryAction']);
           break;
         case 'HERO':
-          assertReference(section.imageAssetReference, assetReferences, [...path, 'imageAssetReference'], 'Hero asset');
           validateAction(section.primaryAction, [...path, 'primaryAction']);
           validateAction(section.secondaryAction, [...path, 'secondaryAction']);
           break;
@@ -773,7 +947,6 @@ export const PublishedSiteSnapshotSchema = z.object({
           break;
         case 'SERVICE_DETAILS':
           assertReference(section.serviceReference, serviceReferences, [...path, 'serviceReference'], 'Service');
-          assertReference(section.imageAssetReference, assetReferences, [...path, 'imageAssetReference'], 'Service asset');
           validateAction(section.primaryAction, [...path, 'primaryAction']);
           break;
         case 'TEAM':
@@ -840,11 +1013,70 @@ export const SiteStructuredDataSchema = z.array(z.union([
   }).strict(),
   z.object({
     '@context': z.literal('https://schema.org'),
+    '@type': z.literal('Person'),
+    name: ShortTextSchema,
+    url: z.string().url().optional(),
+    jobTitle: ShortTextSchema.optional(),
+    description: z.string().trim().min(1).max(2_000).optional(),
+    image: z.string().url().optional(),
+    worksFor: z.object({
+      '@type': z.literal('Organization'),
+      name: ShortTextSchema,
+      url: z.string().url(),
+    }).strict().optional(),
+    hasCredential: z.array(z.object({
+      '@type': z.literal('EducationalOccupationalCredential'),
+      credentialCategory: ShortTextSchema,
+    }).strict()).max(50).optional(),
+  }).strict(),
+  z.object({
+    '@context': z.literal('https://schema.org'),
     '@type': z.literal('Organization'),
     name: ShortTextSchema,
     url: z.string().url(),
     telephone: z.string().optional(),
     email: z.string().email().optional(),
+  }).strict(),
+  z.object({
+    '@context': z.literal('https://schema.org'),
+    '@type': z.union([z.literal('Article'), z.literal('BlogPosting')]),
+    headline: z.string().trim().min(1).max(160),
+    description: z.string().trim().min(1).max(500),
+    url: z.string().url(),
+    datePublished: z.string().datetime().optional(),
+    dateModified: z.string().datetime(),
+    lastReviewed: z.string().datetime().optional(),
+    author: z.object({
+      '@type': z.literal('Person'),
+      name: ShortTextSchema,
+      url: z.string().url().optional(),
+    }).strict(),
+    reviewedBy: z.object({
+      '@type': z.literal('Person'),
+      name: ShortTextSchema,
+      url: z.string().url().optional(),
+    }).strict().optional(),
+  }).strict(),
+  z.object({
+    '@context': z.literal('https://schema.org'),
+    '@type': z.literal('VideoObject'),
+    name: ShortTextSchema,
+    description: z.string().trim().min(1).max(2_000),
+    thumbnailUrl: z.string().url(),
+    uploadDate: z.string().datetime(),
+    contentUrl: z.string().url().optional(),
+    embedUrl: z.string().url().optional(),
+    transcript: z.string().trim().min(1).max(20_000).optional(),
+  }).strict(),
+  z.object({
+    '@context': z.literal('https://schema.org'),
+    '@type': z.literal('ImageObject'),
+    contentUrl: z.string().url(),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    caption: z.string().trim().min(1).max(500).optional(),
+    creditText: z.string().trim().min(1).max(240).optional(),
+    license: z.string().url().optional(),
   }).strict(),
   z.object({
     '@context': z.literal('https://schema.org'),
@@ -897,7 +1129,7 @@ export const SiteStructuredDataSchema = z.array(z.union([
       }).strict(),
     }).strict()).min(1),
   }).strict(),
-])).max(20);
+])).max(500);
 export type SiteStructuredData = z.infer<typeof SiteStructuredDataSchema>;
 
 export const SiteRenderContextSchema = z.object({

@@ -46,7 +46,7 @@ const DEFAULT_RULES = {
   allowGuestBooking: true,
   customerNotesEnabled: true,
 };
-const DEFAULT_PAYMENT = { mode: 'PAY_LATER', depositPercentage: 0, promotionCodesEnabled: false, giftCardsEnabled: false };
+const DEFAULT_PAYMENT = { mode: 'DEPOSIT', depositType: 'PERCENTAGE', depositPercentage: 20, depositFixedAmount: 1_000, promotionCodesEnabled: false, giftCardsEnabled: false };
 const DEFAULT_INTAKE = { requiredBeforeConfirmation: false, allowCompleteAfterBooking: true, showEstimatedTime: true };
 const DEFAULT_CANCELLATION = { customerCancellationEnabled: true, customerReschedulingEnabled: true, minimumNoticeMinutes: 1_440, policyText: '' };
 const DEFAULT_SEO = { title: '', description: '', socialTitle: '', socialDescription: '', socialImageUrl: null, allowIndexing: true, canonicalUrl: null };
@@ -182,7 +182,7 @@ export class BookingPageService {
       for (const [inputKey, columnKey] of direct) if (inputKey in update) values[columnKey] = update[inputKey];
       if (update.theme) values.themeJson = update.theme;
       if (update.bookingRules) values.bookingRules = update.bookingRules;
-      if (update.paymentSettings) values.paymentSettings = update.paymentSettings;
+      if (update.paymentSettings) values.paymentSettings = { ...mergeObject(page.paymentSettings, DEFAULT_PAYMENT), ...update.paymentSettings };
       if (update.intakeFormSettings) values.intakeFormSettings = update.intakeFormSettings;
       if (update.cancellationSettings) values.cancellationSettings = update.cancellationSettings;
       if (update.seoSettings) values.seoSettings = update.seoSettings;

@@ -201,6 +201,56 @@ test('client exceptions, oversized images and missing dimensions create explicit
   }
 });
 
+test('Core Web Vitals retain lab provenance and block threshold failures', () => {
+  const findings = findingsFromBrowserResult(browserResult({
+    performanceMetrics: [{
+      name: 'LARGEST_CONTENTFUL_PAINT_MS',
+      value: 2_501,
+      unit: 'MILLISECONDS',
+      viewport: 'STANDARD_MOBILE',
+      threshold: 2_500,
+      result: 'BLOCK',
+      measurementMode: 'LAB',
+      sampleCount: 1,
+      evidenceTimestamp: new Date('2026-07-27T00:00:00.000Z'),
+      toolVersion: 'FAKE_BROWSER_V1',
+    }, {
+      name: 'INTERACTION_TO_NEXT_PAINT_MS',
+      value: 0,
+      unit: 'MILLISECONDS',
+      viewport: 'STANDARD_MOBILE',
+      threshold: 200,
+      result: 'WARNING',
+      measurementMode: 'LAB',
+      sampleCount: 0,
+      evidenceTimestamp: new Date('2026-07-27T00:00:00.000Z'),
+      toolVersion: 'FAKE_BROWSER_V1',
+    }],
+  }), digest);
+  const vital = findings.find(value => value.code === 'CORE_WEB_VITALS_FAILED');
+  assert.ok(vital);
+  assert.equal(vital.publicationEffect, 'BLOCK');
+  assert.match(vital.evidenceSummary, /\(LAB\)/);
+  assert.ok(findings.some(value => value.code === 'LAB_PERFORMANCE_WARNING'));
+});
+
+test('lazy or malformed LCP images are explicit quality findings', () => {
+  const findings = findingsFromBrowserResult(browserResult({
+    lcpElementTag: 'img',
+    lcpResourceUrl: 'https://example.test/hero.webp',
+    lcpResourceTransferBytes: 600_000,
+    lcpImageLoading: 'lazy',
+    lcpImageHasResponsiveSource: false,
+    lcpImageHasIntrinsicDimensions: false,
+    lcpResourceDiscoverable: true,
+    lcpResourceFailed: false,
+  }), digest);
+  assert.ok(findings.some(value => value.code === 'LCP_ELEMENT_LAZY_LOADED'
+    && value.publicationEffect === 'BLOCK'));
+  assert.ok(findings.some(value => value.code === 'LCP_ASSET_OVERSIZED'));
+  assert.ok(findings.some(value => value.code === 'LCP_IMAGE_METADATA_INCOMPLETE'));
+});
+
 test('external booking destinations are non-waivable', () => {
   const [finding] = findingsFromBrowserResult(browserResult({
     externalBookingDestinationCount: 1,

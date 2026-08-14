@@ -1,0 +1,92 @@
+/*
+ * Accessible native select treatment for the KS OS application.
+ *
+ * Keep selects native so keyboard, screen-reader, touch, and platform
+ * behaviours remain intact, while guaranteeing readable foreground and
+ * background colours even when a surrounding screen applies text-white or
+ * other utility classes.
+ */
+select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  color-scheme: light;
+  min-height: 2.75rem;
+  border: 1px solid #64748b !important;
+  border-radius: 0.75rem !important;
+  background-color: #ffffff !important;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.875rem center !important;
+  background-size: 1rem !important;
+  padding-right: 2.5rem !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+select:hover:not(:disabled) {
+  border-color: #334155 !important;
+  background-color: #f8fafc !important;
+}
+
+select:focus {
+  border-color: #4f46e5 !important;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18) !important;
+}
+
+select:focus-visible {
+  outline: 3px solid #4f46e5 !important;
+  outline-offset: 2px;
+}
+
+select:disabled {
+  border-color: #94a3b8 !important;
+  background-color: #e2e8f0 !important;
+  color: #475569 !important;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+/* Native popup menus need their own explicit palette on several browsers. */
+select option,
+select optgroup {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+select option:disabled {
+  color: #64748b !important;
+}
+
+select option:checked {
+  background-color: #e0e7ff !important;
+  color: #312e81 !important;
+}
+
+/* List-box selects should not display a dropdown chevron. */
+select[multiple],
+select[size]:not([size='1']) {
+  background-image: none !important;
+  padding-right: 0.875rem !important;
+}
+
+/* Preserve a visible control boundary and focus indicator in high-contrast mode. */
+@media (forced-colors: active) {
+  select {
+    forced-color-adjust: auto;
+    border: 1px solid ButtonText !important;
+    background-image: none !important;
+  }
+
+  select:focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px;
+  }
+}

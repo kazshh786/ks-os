@@ -1,7 +1,62 @@
 const API_PREFIX = '/api';
+const HTML_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, max-age=0';
 
 function isApiRequest(pathname: string): boolean {
   return pathname === API_PREFIX || pathname.startsWith(`${API_PREFIX}/`);
+}
+
+function isHtmlNavigation(request: Request, pathname: string): boolean {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return false;
+  }
+
+  const accept = request.headers.get('accept')?.toLowerCase() ?? '';
+  const finalSegment = pathname.split('/').filter(Boolean).at(-1) ?? '';
+  const hasFileExtension = finalSegment.includes('.');
+
+  return accept.includes('text/html') || !hasFileExtension;
+}
+
+function createFreshShellRequest(request: Request): Request {
+  const headers = new Headers(request.headers);
+
+  headers.delete('if-none-match');
+  headers.delete('if-modified-since');
+  headers.set('cache-control', 'no-cache');
+  headers.set('pragma', 'no-cache');
+
+  return new Request(request, { headers });
+}
+
+function createFreshShellResponse(response: Response): Response {
+  const headers = new Headers(response.headers);
+
+  headers.set('cache-control', HTML_CACHE_CONTROL);
+  headers.set('cdn-cache-control', 'no-store');
+  headers.set('cloudflare-cdn-cache-control', 'no-store');
+  headers.set('expires', '0');
+  headers.set('pragma', 'no-cache');
+  headers.set('x-ks-os-shell', 'fresh');
+  headers.delete('etag');
+  headers.delete('last-modified');
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function fetchAsset(request: Request, env: Cloudflare.Env, pathname: string): Promise<Response> {
+  const expectsHtml = isHtmlNavigation(request, pathname);
+  const assetResponse = await env.ASSETS.fetch(expectsHtml ? createFreshShellRequest(request) : request);
+  const contentType = assetResponse.headers.get('content-type')?.toLowerCase() ?? '';
+
+  if (!expectsHtml || !contentType.includes('text/html')) {
+    return assetResponse;
+  }
+
+  return createFreshShellResponse(assetResponse);
 }
 
 function getApiOrigin(value: string): URL {
@@ -43,7 +98,7 @@ export default {
     const url = new URL(request.url);
 
     if (!isApiRequest(url.pathname)) {
-      return env.ASSETS.fetch(request);
+      return fetchAsset(request, env, url.pathname);
     }
 
     try {

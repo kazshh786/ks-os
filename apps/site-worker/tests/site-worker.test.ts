@@ -1275,6 +1275,22 @@ test('67a. enabled AI generation requires server-side provider configuration', (
   });
   assert.equal(config.generation.enabled, true);
   assert.equal(config.generation.model, 'test-model');
+
+  const vertexConfig = parseSiteWorkerConfig({
+    DATABASE_URL: 'postgresql://test.invalid/test',
+    SITE_AI_GENERATION_ENABLED: 'true',
+    SITE_AI_PROVIDER: 'vertex-gemini',
+    SITE_AI_MODEL: 'vertex-test-model',
+    GOOGLE_CLOUD_PROJECT: 'vertex-proj',
+    GOOGLE_CLOUD_LOCATION: 'us-central1',
+    GOOGLE_APPLICATION_CREDENTIALS: '/secure/adc.json',
+  });
+  assert.equal(vertexConfig.generation.enabled, true);
+  assert.equal(vertexConfig.generation.provider, 'vertex-gemini');
+  assert.equal(vertexConfig.generation.googleCloudProject, 'vertex-proj');
+  assert.equal(vertexConfig.generation.googleCloudLocation, 'us-central1');
+  assert.equal(vertexConfig.generation.googleApplicationCredentials, '/secure/adc.json');
+
   assert.match(compositionSource, /createConfiguredSiteGenerationExecutor/);
   assert.match(generationExecutorSource, /class PostgresSiteGenerationExecutor/);
   assert.match(generationExecutorSource, /executeStructuredSiteGeneration/);
@@ -1352,6 +1368,14 @@ test('67c. completed generation persists a validated digest-bound preview withou
     )?.[0] ?? '',
     /snapshotKind: 'PUBLISHED'|visibility: 'PUBLISHED'|publishedAt: new Date/,
   );
+});
+
+test('67d. template manifest pins V1 versus V2 generation behavior', () => {
+  assert.match(generationExecutorSource, /templateManifest: templateVersions\.manifestJson/);
+  assert.match(generationExecutorSource, /function generationPipelineVersion/);
+  assert.match(generationExecutorSource, /manifest\.componentRegistryVersion === 2/);
+  assert.match(generationExecutorSource, /pipelineVersion: runtime\.pipelineVersion/);
+  assert.match(generationExecutorSource, /pipelineVersion === 2[\s\S]*getNativeLayoutManifest/);
 });
 
 test('68. handler registry rejects duplicate registration', () => {

@@ -85,6 +85,7 @@ export const WorkspaceSchema = z.object({
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 
 export * from './booking.js';
+export * from './booking-payment-policy.js';
 export * from './errors.js';
 export * from './clients.js';
 export * from './pos.js';

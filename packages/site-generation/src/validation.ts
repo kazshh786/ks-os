@@ -1,3 +1,4 @@
+import { componentForSection } from '@ks-os/site-components';
 import type { SiteSection } from '@ks-os/site-schema';
 import {
   GeneratedPageSchema,
@@ -131,6 +132,23 @@ function validateTemplate(
   findings: GenerationFinding[],
 ) {
   const types = page.sections.map(section => section.type);
+  const availableComponentKeys = new Set(template.availableComponentKeys);
+  for (const section of page.sections) {
+    try {
+      const component = componentForSection(section, page);
+      if (availableComponentKeys.size && !availableComponentKeys.has(component.componentKey)) {
+        findings.push(finding('ERROR', 'TEMPLATE', 'COMPONENT_NOT_IN_LAYOUT_MANIFEST', `${component.componentKey} is not available to the approved layout.`, page.pageReference));
+      }
+    } catch (error) {
+      findings.push(finding(
+        'ERROR',
+        'DESIGN',
+        'UNKNOWN_COMPONENT_KEY',
+        error instanceof Error ? error.message : 'The generated componentKey is invalid.',
+        page.pageReference,
+      ));
+    }
+  }
   for (const required of template.requiredSectionTypes) {
     if (!types.includes(required)) {
       findings.push(finding('ERROR', 'TEMPLATE', 'REQUIRED_SECTION_MISSING', `The approved layout requires ${required}.`, page.pageReference));

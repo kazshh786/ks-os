@@ -1,17 +1,19 @@
 import {
   and,
   asc,
-  bookingChannelSchedules,
   eq,
   getDatabase,
-  locations,
-  services,
-  staffLocations,
-  staffServiceAssignments,
+  sitePages,
+  sites,
+  siteVersions,
   sql,
-  tenants,
-  users,
 } from '@ks-os/database';
+import {
+  LiveSiteDataResolver,
+  PublishedRecommendationLinksSchema,
+  type GovernedRecommendation,
+} from '@ks-os/live-site-intelligence';
+import { DrizzleLiveSiteDataSource } from '@ks-os/live-site-intelligence/database';
 import {
   validatePublishedSnapshot,
   type PublishedSiteSnapshot,
@@ -22,29 +24,6 @@ import {
   type ResolvedPublicSite,
 } from './repository.js';
 
-const days = [
-  'SUNDAY',
-  'MONDAY',
-  'TUESDAY',
-  'WEDNESDAY',
-  'THURSDAY',
-  'FRIDAY',
-  'SATURDAY',
-] as const;
-
-function clock(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const match = value.match(/^(\d{2}):(\d{2})/);
-  return match ? `${match[1]}:${match[2]}` : null;
-}
-
-function priceText(minor: number, currency: string): string {
-  return new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency,
-  }).format(Math.max(0, minor) / 100);
-}
-
 type ActiveDomain = {
   hostname: string;
   domain_type: 'FALLBACK' | 'CUSTOM';
@@ -54,17 +33,21 @@ type ActiveDomain = {
 
 /**
  * Published snapshots remain content-integrity checked and immutable. This
- * decorator overlays only operational booking and hostname data at request
- * time. Search indexing is enabled only after an active custom canonical
+ * decorator resolves hostname/indexation governance and exposes LIVE data as
+ * a separate public DTO. Search indexing is enabled only after an active custom canonical
  * hostname exists and the exact site version has been published after that
  * hostname was promoted. Preview content is never promoted or served here;
  * only the publication pointer can select a public snapshot.
  */
 export class OperationalPublicSiteRepository implements PublicSiteRepository {
+  private readonly liveResolver: LiveSiteDataResolver;
+
   constructor(
     private readonly base: PublicSiteRepository = new DrizzlePublicSiteRepository(),
     private readonly database = getDatabase(),
-  ) {}
+  ) {
+    this.liveResolver = new LiveSiteDataResolver(new DrizzleLiveSiteDataSource(database));
+  }
 
   async resolveHostname(hostname: string, fallbackDomain: string): Promise<ResolvedPublicSite | null> {
     return this.base.resolveHostname(hostname, fallbackDomain);
@@ -72,12 +55,68 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
 
   async loadPublishedSnapshot(siteReference: string) {
     const published = await this.base.loadPublishedSnapshot(siteReference);
-    return published ? this.hydrate(await this.applyDomains(published, false)) : null;
+    return published ? this.applyDomains(published, false) : null;
   }
 
   async loadPreviewSnapshot(siteReference: string, versionReference: string) {
     const snapshot = await this.base.loadPreviewSnapshot(siteReference, versionReference);
-    return snapshot ? this.hydrate(await this.applyDomains(snapshot, true)) : null;
+    return snapshot ? this.applyDomains(snapshot, true) : null;
+  }
+
+  resolveLiveSiteData(snapshot: PublishedSiteSnapshot) {
+    return this.liveResolver.resolve({
+      siteReference: snapshot.siteReference,
+      tenantReference: snapshot.booking.tenantReference,
+      serviceReferences: snapshot.services.map(service => service.publicReference),
+      staffReferences: snapshot.staff.map(staff => staff.publicReference),
+      locationReferences: snapshot.locations.map(location => location.publicReference),
+    });
+  }
+
+  async resolvePublishedRecommendations(
+    snapshot: PublishedSiteSnapshot,
+  ): Promise<readonly GovernedRecommendation[]> {
+    const rows = await this.database.select({
+      sourcePageReference: sitePages.publicReference,
+      links: sitePages.internalLinksJson,
+    }).from(sitePages)
+      .innerJoin(siteVersions, eq(sitePages.versionId, siteVersions.id))
+      .innerJoin(sites, eq(sitePages.siteId, sites.id))
+      .where(and(
+        eq(sites.publicReference, snapshot.siteReference),
+        eq(siteVersions.publicReference, snapshot.versionReference),
+      ))
+      .orderBy(asc(sitePages.sortOrder));
+    const publishedPages = new Map(snapshot.pages
+      .filter(page => page.active)
+      .map(page => [page.publicReference, page]));
+    return rows.flatMap(row => {
+      if (!publishedPages.has(row.sourcePageReference)) return [];
+      const links = PublishedRecommendationLinksSchema.parse(row.links);
+      return links.flatMap((link, governedOrder) => {
+        const target = publishedPages.get(link.targetPageReference);
+        if (!target || target.publicReference === row.sourcePageReference) return [];
+        const serviceSection = target.sections.find(section => section.type === 'SERVICE_DETAILS');
+        const relationship: GovernedRecommendation['relationship'] = target.pageType === 'SERVICE_DETAIL'
+          ? 'RELATED_SERVICE'
+          : target.pageType === 'TEAM_DETAIL'
+            ? 'RELEVANT_STAFF'
+            : target.pageType === 'LOCATION_DETAIL' || target.pageType === 'LOCATION_HUB'
+              ? 'LOCATION_SERVICE'
+              : 'USEFUL_GUIDE';
+        return [{
+          sourcePageReference: row.sourcePageReference,
+          targetPageReference: target.publicReference,
+          anchorText: link.anchorText,
+          ...(serviceSection?.type === 'SERVICE_DETAILS'
+            ? { targetServiceReference: serviceSection.serviceReference }
+            : {}),
+          relationship,
+          governedOrder,
+          approved: true as const,
+        }];
+      });
+    });
   }
 
   isPreviewTokenRevoked(input: {
@@ -110,6 +149,12 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
     return this.base.isQualityAuditSessionActive
       ? this.base.isQualityAuditSessionActive(input)
       : Promise.resolve(false);
+  }
+
+  resolvePathRedirect(input: { siteReference: string; sourcePath: string }) {
+    return this.base.resolvePathRedirect
+      ? this.base.resolvePathRedirect(input)
+      : Promise.resolve(null);
   }
 
   private supportsRawQueries() {
@@ -168,109 +213,4 @@ export class OperationalPublicSiteRepository implements PublicSiteRepository {
     });
   }
 
-  private async hydrate(snapshot: PublishedSiteSnapshot): Promise<PublishedSiteSnapshot> {
-    const [tenant] = await this.database.select({
-      id: tenants.id,
-      currency: tenants.currency,
-    }).from(tenants)
-      .where(eq(tenants.businessReference, snapshot.booking.tenantReference))
-      .limit(1);
-    if (!tenant) return snapshot;
-
-    const [serviceRows, eligibleRows, locationRows, scheduleRows, locationLinks] = await Promise.all([
-      this.database.select({
-        reference: services.publicReference,
-        name: services.name,
-        description: services.description,
-        duration: services.duration,
-        price: services.price,
-        discount: services.discount,
-        active: services.isActive,
-      }).from(services).where(eq(services.tenantId, tenant.id)),
-      this.database.select({ serviceReference: services.publicReference })
-        .from(staffServiceAssignments)
-        .innerJoin(services, eq(staffServiceAssignments.serviceId, services.id))
-        .innerJoin(users, eq(staffServiceAssignments.staffUserId, users.id))
-        .where(and(
-          eq(staffServiceAssignments.tenantId, tenant.id),
-          eq(staffServiceAssignments.isActive, true),
-          eq(services.isActive, true),
-          eq(users.accountStatus, 'ACTIVE'),
-          eq(users.bookingEnabled, true),
-        )),
-      this.database.select({
-        id: locations.id,
-        reference: locations.publicReference,
-      }).from(locations).where(and(
-        eq(locations.tenantId, tenant.id),
-        eq(locations.isActive, true),
-      )),
-      this.database.select({
-        staffId: bookingChannelSchedules.userId,
-        dayOfWeek: bookingChannelSchedules.dayOfWeek,
-        startTime: bookingChannelSchedules.startTime,
-        endTime: bookingChannelSchedules.endTime,
-      }).from(bookingChannelSchedules)
-        .innerJoin(users, eq(bookingChannelSchedules.userId, users.id))
-        .where(and(
-          eq(bookingChannelSchedules.tenantId, tenant.id),
-          eq(bookingChannelSchedules.bookingChannel, 'in_shop'),
-          eq(users.accountStatus, 'ACTIVE'),
-          eq(users.bookingEnabled, true),
-        ))
-        .orderBy(asc(bookingChannelSchedules.dayOfWeek), asc(bookingChannelSchedules.startTime)),
-      this.database.select({
-        locationId: staffLocations.locationId,
-        staffId: staffLocations.staffUserId,
-      }).from(staffLocations).where(eq(staffLocations.tenantId, tenant.id)),
-    ]);
-
-    const eligible = new Set(eligibleRows.map(row => row.serviceReference));
-    const liveServices = new Map(serviceRows.map(row => [row.reference, row]));
-    const staffByLocation = new Map<string, Set<string>>();
-    for (const link of locationLinks) {
-      const set = staffByLocation.get(link.locationId) ?? new Set<string>();
-      set.add(link.staffId);
-      staffByLocation.set(link.locationId, set);
-    }
-
-    const hoursByLocation = new Map<string, PublishedSiteSnapshot['locations'][number]['openingHours']>();
-    for (const location of locationRows) {
-      const assignedStaff = staffByLocation.get(location.id);
-      const relevant = scheduleRows.filter(row => !assignedStaff?.size || assignedStaff.has(row.staffId));
-      const openingHours = days.slice(1).concat(days[0]).map(day => {
-        const dayIndex = days.indexOf(day);
-        const ranges = relevant
-          .filter(row => row.dayOfWeek === dayIndex)
-          .map(row => ({ opens: clock(row.startTime), closes: clock(row.endTime) }))
-          .filter((range): range is { opens: string; closes: string } => Boolean(range.opens && range.closes));
-        return {
-          day,
-          opens: ranges.length ? ranges.map(range => range.opens).sort()[0]! : null,
-          closes: ranges.length ? ranges.map(range => range.closes).sort().at(-1)! : null,
-        };
-      });
-      hoursByLocation.set(location.reference, openingHours);
-    }
-
-    return validatePublishedSnapshot({
-      ...snapshot,
-      services: snapshot.services.map(service => {
-        const live = liveServices.get(service.publicReference);
-        if (!live) return { ...service, bookingEnabled: false };
-        return {
-          ...service,
-          name: live.name,
-          shortDescription: live.description?.trim() || service.shortDescription,
-          durationMinutes: live.duration > 0 ? live.duration : service.durationMinutes,
-          priceText: priceText(Math.max(0, live.price - live.discount), tenant.currency),
-          bookingEnabled: live.active && eligible.has(live.reference),
-        };
-      }),
-      locations: snapshot.locations.map(location => ({
-        ...location,
-        openingHours: hoursByLocation.get(location.publicReference) ?? location.openingHours,
-      })),
-    });
-  }
 }

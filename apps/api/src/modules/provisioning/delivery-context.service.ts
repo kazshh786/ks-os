@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, or } from 'drizzle-orm';
 import {
   designLibraryAssignments,
   designLibraryItems,
@@ -22,6 +22,7 @@ import {
   users,
 } from '@ks-os/database';
 import { SITE_DESIGN_PRESETS } from '@ks-os/contracts';
+import { isSiteGenerationProviderReady, parseSiteGenerationConfig } from '@ks-os/site-generation';
 import { ProvisioningService } from './provisioning.service.js';
 
 const fail = (statusCode: number, code: string, message: string) =>
@@ -60,6 +61,7 @@ const REQUIRED_NATIVE_PAGE_TYPES = [
   'POLICIES',
   'BOOKING',
 ] as const;
+const APPROVED_V3_NATIVE_TEMPLATE_REFERENCE = 'e054818e-c185-44fd-b453-010000000005';
 
 export class DeliveryContextService {
   private readonly provisioning: ProvisioningService;
@@ -69,6 +71,26 @@ export class DeliveryContextService {
   }
 
   async get(tenantReference: string) {
+    let generationProvider: { enabled: boolean; ready: boolean; providerKey: string | null; modelKey: string | null; blocker: string | null };
+    try {
+      const config = parseSiteGenerationConfig(process.env);
+      const ready = isSiteGenerationProviderReady(config);
+      generationProvider = {
+        enabled: config.enabled,
+        ready,
+        providerKey: config.provider,
+        modelKey: config.model || null,
+        blocker: ready ? null : 'Complete the selected server-side provider configuration.',
+      };
+    } catch {
+      generationProvider = {
+        enabled: process.env.SITE_AI_GENERATION_ENABLED === 'true',
+        ready: false,
+        providerKey: process.env.SITE_AI_PROVIDER || null,
+        modelKey: process.env.SITE_AI_MODEL || null,
+        blocker: 'The selected server-side generation provider configuration is incomplete.',
+      };
+    }
     const [tenant] = await this.db.select({
       id: tenants.id,
       agencyReference: tenants.agencyReference,
@@ -151,6 +173,7 @@ export class DeliveryContextService {
         .innerJoin(templateLayoutRenderers, eq(templateLayoutRenderers.templateLayoutId, templateLayouts.id))
         .where(and(
           eq(templateSources.sourceReference, 'ks-native-component-system'),
+          eq(templateVersions.publicReference, APPROVED_V3_NATIVE_TEMPLATE_REFERENCE),
           eq(templateSources.sourceType, 'INTERNAL'),
           eq(templateSources.status, 'APPROVED'),
           eq(templateVersions.status, 'APPROVED'),
@@ -218,9 +241,9 @@ export class DeliveryContextService {
       this.db.select({ reference: sites.publicReference, status: sites.status })
         .from(sites).where(eq(sites.tenantId, tenant.id)).orderBy(desc(sites.createdAt)).limit(1),
       Promise.all([
-        this.db.select({ count: sql<number>`count(*)::int` }).from(services).where(and(eq(services.tenantId, tenant.id), eq(services.isActive, true))),
-        this.db.select({ count: sql<number>`count(*)::int` }).from(locations).where(and(eq(locations.tenantId, tenant.id), eq(locations.isActive, true))),
-        this.db.select({ count: sql<number>`count(*)::int` }).from(users).where(and(eq(users.tenantId, tenant.id), eq(users.accountStatus, 'ACTIVE'))),
+        this.db.select({ reference: services.publicReference, name: services.name }).from(services).where(and(eq(services.tenantId, tenant.id), eq(services.isActive, true))),
+        this.db.select({ reference: locations.publicReference, name: locations.name }).from(locations).where(and(eq(locations.tenantId, tenant.id), eq(locations.isActive, true))),
+        this.db.select({ reference: users.publicReference, name: users.name }).from(users).where(and(eq(users.tenantId, tenant.id), eq(users.accountStatus, 'ACTIVE'))),
       ]),
     ]);
 
@@ -268,6 +291,7 @@ export class DeliveryContextService {
         pagePlaybookCount: 0,
         sectionPlaybookCount: 0,
       },
+      generationProvider,
       designLibrary: {
         defaultSource: 'KS_NATIVE',
         defaultPresetKey: 'NORTHLIGHT',
@@ -301,10 +325,23 @@ export class DeliveryContextService {
         ),
         hasBookingRules: Object.keys(verifiedFacts).some(key => key.startsWith('BOOKING.')),
       },
+      websiteRequirements: {
+        requestedPageTypes: labels(verifiedFacts['WEBSITE.REQUESTED_PAGE_TYPES']),
+        explicitPages: labels(verifiedFacts['WEBSITE.EXPLICIT_PAGES']),
+        commercialPriorities: labels(verifiedFacts['WEBSITE.COMMERCIAL_PRIORITIES']),
+        prioritisedServices: labels(verifiedFacts['WEBSITE.PRIORITIZED_SERVICES']),
+        prioritisedLocations: labels(verifiedFacts['WEBSITE.PRIORITIZED_LOCATIONS']),
+        requiredContent: labels(verifiedFacts['WEBSITE.REQUIRED_CONTENT']),
+        prohibitedContent: labels(verifiedFacts['WEBSITE.PROHIBITED_CONTENT']),
+        imageSourcePolicy: labels(verifiedFacts['CONTENT.IMAGE_SOURCE_POLICY'])[0] || null,
+      },
       canonical: {
-        serviceCount: Number(canonical[0][0]?.count || 0),
-        locationCount: Number(canonical[1][0]?.count || 0),
-        activeUserCount: Number(canonical[2][0]?.count || 0),
+        services: canonical[0],
+        locations: canonical[1],
+        staff: canonical[2],
+        serviceCount: canonical[0].length,
+        locationCount: canonical[1].length,
+        activeUserCount: canonical[2].length,
       },
     };
   }

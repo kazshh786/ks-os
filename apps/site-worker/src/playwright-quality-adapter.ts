@@ -27,13 +27,17 @@ function qualityPreviewUrl(baseUrl: string, path: string) {
 }
 
 function metric(input: {
-  name: 'PAGE_LOAD_MS' | 'MAIN_CONTENT_MS' | 'CUMULATIVE_LAYOUT_SHIFT'
+  name: 'PAGE_LOAD_MS' | 'MAIN_CONTENT_MS' | 'LARGEST_CONTENTFUL_PAINT_MS'
+    | 'INTERACTION_TO_NEXT_PAINT_MS' | 'CUMULATIVE_LAYOUT_SHIFT'
     | 'TRANSFER_BYTES' | 'FAILED_CRITICAL_RESOURCES';
   value: number;
   unit: 'MILLISECONDS' | 'SCORE' | 'BYTES' | 'COUNT';
   viewport: BrowserAuditPageResult['viewport'];
   threshold: number;
   block?: boolean;
+  exclusiveThreshold?: boolean;
+  forceResult?: 'PASS' | 'WARNING' | 'BLOCK';
+  sampleCount?: number;
   toolVersion: string;
   capturedAt: Date;
 }) {
@@ -43,11 +47,17 @@ function metric(input: {
     unit: input.unit,
     viewport: input.viewport,
     threshold: input.threshold,
-    result: input.value <= input.threshold
-      ? 'PASS' as const
-      : input.block
-        ? 'BLOCK' as const
-        : 'WARNING' as const,
+    result: input.forceResult ?? (
+      (input.exclusiveThreshold
+        ? input.value < input.threshold
+        : input.value <= input.threshold)
+        ? 'PASS' as const
+        : input.block
+          ? 'BLOCK' as const
+          : 'WARNING' as const
+    ),
+    measurementMode: 'LAB' as const,
+    sampleCount: input.sampleCount ?? 1,
     evidenceTimestamp: input.capturedAt,
     toolVersion: input.toolVersion,
   };
@@ -155,12 +165,35 @@ implements SiteQualityBrowserAdapter {
         // production JavaScript does not require it.
         globalThis.__name ??= (target) => target;
         window.__ksQualityLayoutShift = 0;
+        window.__ksQualityLayoutShiftSamples = 0;
+        window.__ksQualityLcp = null;
+        window.__ksQualityInp = 0;
+        window.__ksQualityInpSamples = 0;
         try {
           new PerformanceObserver((list) => {
             for (const entry of list.getEntries()) {
-              if (!entry.hadRecentInput) window.__ksQualityLayoutShift += entry.value;
+              if (!entry.hadRecentInput) {
+                window.__ksQualityLayoutShift += entry.value;
+                window.__ksQualityLayoutShiftSamples += 1;
+              }
             }
           }).observe({ type: 'layout-shift', buffered: true });
+        } catch {}
+        try {
+          new PerformanceObserver((list) => {
+            const entries = list.getEntries();
+            if (entries.length) window.__ksQualityLcp = entries[entries.length - 1];
+          }).observe({ type: 'largest-contentful-paint', buffered: true });
+        } catch {}
+        try {
+          new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              if (entry.interactionId > 0) {
+                window.__ksQualityInp = Math.max(window.__ksQualityInp, entry.duration);
+                window.__ksQualityInpSamples += 1;
+              }
+            }
+          }).observe({ type: 'event', buffered: true, durationThreshold: 16 });
         } catch {}
       `,
     });
@@ -168,10 +201,12 @@ implements SiteQualityBrowserAdapter {
 
     let consoleErrorCount = 0;
     let failedCriticalResourceCount = 0;
+    const failedResourceUrls = new Set<string>();
     page.on('console', message => {
       if (message.type() === 'error') consoleErrorCount += 1;
     });
     page.on('requestfailed', request => {
+      failedResourceUrls.add(request.url());
       if (['document', 'script', 'stylesheet', 'font'].includes(request.resourceType())) {
         failedCriticalResourceCount += 1;
       }
@@ -182,6 +217,7 @@ implements SiteQualityBrowserAdapter {
       qualityPreviewUrl(input.preview.previewBaseUrl, input.page.path),
       { waitUntil: 'domcontentloaded' },
     );
+    await page.waitForLoadState('load');
     const pageLoadMs = Date.now() - startedAt;
     const capturedAt = new Date();
     const keyboard = await inspectKeyboardJourney(page);
@@ -260,6 +296,25 @@ implements SiteQualityBrowserAdapter {
         const href = anchor.getAttribute('href') ?? '';
         return !href.startsWith('/book');
       }).length;
+      const qualityWindow = window as unknown as {
+        __ksQualityLayoutShift?: number;
+        __ksQualityLayoutShiftSamples?: number;
+        __ksQualityLcp?: PerformanceEntry & {
+          renderTime?: number;
+          loadTime?: number;
+          element?: Element | null;
+          url?: string;
+        };
+        __ksQualityInp?: number;
+        __ksQualityInpSamples?: number;
+      };
+      const lcpEntry = qualityWindow.__ksQualityLcp ?? null;
+      const lcpElement = lcpEntry?.element ?? null;
+      const lcpImage = lcpElement instanceof HTMLImageElement ? lcpElement : null;
+      const lcpResourceUrl = lcpImage?.currentSrc || lcpImage?.src || lcpEntry?.url || null;
+      const lcpResourceTiming = lcpResourceUrl
+        ? performance.getEntriesByName(lcpResourceUrl, 'resource')[0] as PerformanceResourceTiming | undefined
+        : undefined;
       return {
         title: document.title,
         metaDescription: document.querySelector<HTMLMetaElement>(
@@ -287,6 +342,43 @@ implements SiteQualityBrowserAdapter {
               && Math.max(resource.transferSize, resource.encodedBodySize)
                 > maximumImageTransferBytes;
           }).length,
+        largestContentfulPaintMs: Math.max(
+          0,
+          Number(lcpEntry?.renderTime || lcpEntry?.loadTime || lcpEntry?.startTime || 0),
+        ),
+        largestContentfulPaintSampleCount: lcpEntry ? 1 : 0,
+        interactionToNextPaintMs: Math.max(0, Number(qualityWindow.__ksQualityInp ?? 0)),
+        interactionToNextPaintSampleCount: Math.max(
+          0,
+          Number(qualityWindow.__ksQualityInpSamples ?? 0),
+        ),
+        lcpElementTag: lcpElement?.tagName?.toLowerCase() ?? null,
+        lcpResourceUrl,
+        lcpResourceTransferBytes: lcpResourceTiming
+          ? Math.max(lcpResourceTiming.transferSize, lcpResourceTiming.encodedBodySize, 0)
+          : null,
+        lcpImageLoading: lcpImage
+          ? (lcpImage.loading === 'lazy' || lcpImage.loading === 'eager'
+              ? lcpImage.loading
+              : 'auto')
+          : null,
+        lcpImageHasResponsiveSource: lcpImage
+          ? Boolean(lcpImage.srcset || lcpImage.sizes || lcpImage.closest('picture'))
+          : null,
+        lcpImageHasIntrinsicDimensions: lcpImage
+          ? lcpImage.hasAttribute('width') && lcpImage.hasAttribute('height')
+          : null,
+        lcpResourceDiscoverable: !lcpImage || Boolean(lcpResourceUrl),
+        longMainThreadTaskCount: performance.getEntriesByType('longtask').length,
+        longMainThreadTaskTotalMs: performance.getEntriesByType('longtask')
+          .reduce((total, entry) => total + entry.duration, 0),
+        renderBlockingStylesheetCount: [...document.querySelectorAll<HTMLLinkElement>('head link[rel="stylesheet"]')]
+          .filter(link => !link.disabled && (!link.media || link.media === 'all' || link.media === 'screen')).length,
+        parserBlockingScriptCount: document.querySelectorAll(
+          'head script[src]:not([async]):not([defer]):not([type="module"])',
+        ).length,
+        slowFontResourceCount: performance.getEntriesByType('resource')
+          .filter(entry => (entry as PerformanceResourceTiming).initiatorType === 'font' && entry.duration > 1_000).length,
         horizontalOverflowPixels: Math.max(
           0,
           Math.ceil(content.scrollWidth - content.clientWidth),
@@ -297,9 +389,9 @@ implements SiteQualityBrowserAdapter {
         primaryBookingVisible: bookingAnchors.some(anchor => visible(anchor)),
         externalBookingDestinationCount,
         mainContentMs: Math.max(0, performance.now()),
-        cumulativeLayoutShift: Number(
-          (window as unknown as { __ksQualityLayoutShift?: number })
-            .__ksQualityLayoutShift ?? 0,
+        cumulativeLayoutShift: Number(qualityWindow.__ksQualityLayoutShift ?? 0),
+        cumulativeLayoutShiftSampleCount: Number(
+          qualityWindow.__ksQualityLayoutShiftSamples ?? 0,
         ),
         transferBytes: performance.getEntriesByType('resource')
           .reduce((total, entry) => {
@@ -373,12 +465,46 @@ implements SiteQualityBrowserAdapter {
         capturedAt,
       }),
       metric({
+        name: 'LARGEST_CONTENTFUL_PAINT_MS',
+        value: documentResult.largestContentfulPaintMs,
+        unit: 'MILLISECONDS',
+        viewport: input.viewport.key,
+        threshold: DEFAULT_SITE_QUALITY_POLICY.thresholds
+          .largestContentfulPaintBlockingMs,
+        block: true,
+        forceResult: documentResult.largestContentfulPaintSampleCount === 0
+          ? 'BLOCK'
+          : undefined,
+        sampleCount: documentResult.largestContentfulPaintSampleCount,
+        toolVersion: this.toolVersion,
+        capturedAt,
+      }),
+      metric({
+        name: 'INTERACTION_TO_NEXT_PAINT_MS',
+        value: documentResult.interactionToNextPaintMs,
+        unit: 'MILLISECONDS',
+        viewport: input.viewport.key,
+        threshold: DEFAULT_SITE_QUALITY_POLICY.thresholds
+          .interactionToNextPaintBlockingMs,
+        block: true,
+        exclusiveThreshold: true,
+        forceResult: documentResult.interactionToNextPaintSampleCount === 0
+          ? 'WARNING'
+          : undefined,
+        sampleCount: documentResult.interactionToNextPaintSampleCount,
+        toolVersion: this.toolVersion,
+        capturedAt,
+      }),
+      metric({
         name: 'CUMULATIVE_LAYOUT_SHIFT',
         value: documentResult.cumulativeLayoutShift,
         unit: 'SCORE',
         viewport: input.viewport.key,
         threshold: DEFAULT_SITE_QUALITY_POLICY.thresholds
-          .cumulativeLayoutShiftWarning,
+          .cumulativeLayoutShiftBlocking,
+        block: true,
+        exclusiveThreshold: true,
+        sampleCount: documentResult.cumulativeLayoutShiftSampleCount,
         toolVersion: this.toolVersion,
         capturedAt,
       }),
@@ -434,6 +560,21 @@ implements SiteQualityBrowserAdapter {
       imagesMissingAlt: documentResult.imagesMissingAlt,
       imagesMissingDimensions: documentResult.imagesMissingDimensions,
       oversizedImageCount: documentResult.oversizedImageCount,
+      lcpElementTag: documentResult.lcpElementTag?.slice(0, 80) ?? null,
+      lcpResourceUrl: documentResult.lcpResourceUrl?.slice(0, 2_000) ?? null,
+      lcpResourceTransferBytes: documentResult.lcpResourceTransferBytes,
+      lcpImageLoading: documentResult.lcpImageLoading,
+      lcpImageHasResponsiveSource: documentResult.lcpImageHasResponsiveSource,
+      lcpImageHasIntrinsicDimensions: documentResult.lcpImageHasIntrinsicDimensions,
+      lcpResourceDiscoverable: documentResult.lcpResourceDiscoverable,
+      lcpResourceFailed: documentResult.lcpResourceUrl
+        ? failedResourceUrls.has(documentResult.lcpResourceUrl)
+        : false,
+      longMainThreadTaskCount: documentResult.longMainThreadTaskCount,
+      longMainThreadTaskTotalMs: documentResult.longMainThreadTaskTotalMs,
+      renderBlockingStylesheetCount: documentResult.renderBlockingStylesheetCount,
+      parserBlockingScriptCount: documentResult.parserBlockingScriptCount,
+      slowFontResourceCount: documentResult.slowFontResourceCount,
       horizontalOverflowPixels: documentResult.horizontalOverflowPixels,
       clippedInteractiveCount: documentResult.clippedInteractiveCount,
       obscuredInteractiveCount: documentResult.obscuredInteractiveCount,

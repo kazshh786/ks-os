@@ -1,5 +1,7 @@
 import {
   html,
+  renderGovernedRecommendations,
+  renderLiveCampaignPlacement,
   renderSection,
   type ComponentRenderContext,
   type SafeHtml,
@@ -8,6 +10,35 @@ import type {
   PublishedPageSnapshot,
   SitePageType,
 } from '@ks-os/site-schema';
+
+function renderPageSections(
+  page: PublishedPageSnapshot,
+  context: ComponentRenderContext,
+): SafeHtml {
+  const output: string[] = [];
+  const hasAnnouncementSection = page.sections.some(section => section.type === 'ANNOUNCEMENT_BAR');
+  const bodyAnchor = page.sections.findIndex(section =>
+    !['HEADER', 'ANNOUNCEMENT_BAR', 'HERO', 'FOOTER'].includes(section.type));
+  const footerIndex = page.sections.findIndex(section => section.type === 'FOOTER');
+  page.sections.forEach((section, index) => {
+    if (index === footerIndex) {
+      if (bodyAnchor < 0) output.push(renderLiveCampaignPlacement('PAGE_BODY', context));
+      output.push(renderGovernedRecommendations(context));
+      output.push(renderLiveCampaignPlacement('PAGE_END', context));
+    }
+    output.push(renderSection(section, context));
+    if (section.type === 'HEADER' && !hasAnnouncementSection) {
+      output.push(renderLiveCampaignPlacement('ANNOUNCEMENT', context));
+    }
+    if (index === bodyAnchor) output.push(renderLiveCampaignPlacement('PAGE_BODY', context));
+  });
+  if (footerIndex < 0) {
+    if (bodyAnchor < 0) output.push(renderLiveCampaignPlacement('PAGE_BODY', context));
+    output.push(renderGovernedRecommendations(context));
+    output.push(renderLiveCampaignPlacement('PAGE_END', context));
+  }
+  return output.join('') as SafeHtml;
+}
 
 export interface RegisteredSiteRenderer {
   key: string;
@@ -30,7 +61,7 @@ function renderEditorial(
   page: PublishedPageSnapshot,
   context: ComponentRenderContext,
 ): SafeHtml {
-  const sections = page.sections.map((section) => renderSection(section, context)).join('');
+  const sections = renderPageSections(page, context);
   return html`<div class="site-layout editorial-layout" data-renderer="${page.rendererKey}">${sections}</div>`;
 }
 
@@ -38,7 +69,7 @@ function renderGrid(
   page: PublishedPageSnapshot,
   context: ComponentRenderContext,
 ): SafeHtml {
-  const sections = page.sections.map((section) => renderSection(section, context)).join('');
+  const sections = renderPageSections(page, context);
   return html`<div class="site-layout grid-layout" data-renderer="${page.rendererKey}">${sections}</div>`;
 }
 
@@ -46,7 +77,7 @@ function renderDocument(
   page: PublishedPageSnapshot,
   context: ComponentRenderContext,
 ): SafeHtml {
-  const sections = page.sections.map((section) => renderSection(section, context)).join('');
+  const sections = renderPageSections(page, context);
   return html`<div class="site-layout document-layout" data-renderer="${page.rendererKey}">${sections}</div>`;
 }
 
@@ -90,7 +121,7 @@ const renderers = {
   'location-detail-v1': {
     key: 'location-detail-v1',
     version: 1,
-    pageTypes: ['LOCATION_DETAIL', 'CONTACT'],
+    pageTypes: ['LOCATION_HUB', 'LOCATION_DETAIL', 'CONTACT'],
     render: renderEditorial,
   },
   'contact-v1': {
@@ -114,7 +145,11 @@ const renderers = {
   'guide-editorial-v1': {
     key: 'guide-editorial-v1',
     version: 1,
-    pageTypes: ['NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE'],
+    pageTypes: [
+      'NEW_CLIENT_GUIDE', 'AFTERCARE_GUIDE', 'CONSULTATION_GUIDE', 'GUIDE',
+      'HOW_TO', 'ARTICLE', 'BLOG_POST', 'FAQ_RESOURCE', 'TUTORIAL', 'DEFINITION',
+      'TROUBLESHOOTING', 'COMPARISON', 'CASE_STUDY',
+    ],
     render: renderDocument,
   },
   'policies-v1': {

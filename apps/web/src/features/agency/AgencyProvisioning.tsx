@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Building2, Loader2, Plus, Rocket, X } from 'lucide-react';
 import { useSearchParams } from 'react-router';
 import { agencyFetch, useAgencyAuth } from './AgencyAuth';
-import { AgencyFocusedLaunchJourney } from './AgencyFocusedLaunchJourney';
+import { AgencyLaunchTenantResolver } from './AgencyLaunchTenantResolver';
 import { WorkspaceDataControls } from './WorkspaceDataControls';
 
 const isRemovedWorkspace = (tenant: any) => tenant.lifecycleStatus === 'OFFBOARDED'
@@ -11,51 +11,63 @@ const isRemovedWorkspace = (tenant: any) => tenant.lifecycleStatus === 'OFFBOARD
 
 export function AgencyProvisioningPage() {
   const [params, setParams] = useSearchParams();
-  const tenantId = params.get('tenant');
-  if (tenantId) {
+  const tenantReference = params.get('tenant');
+  const canonicalize = useCallback((reference: string) => {
+    setParams({ tenant: reference }, { replace: true });
+  }, [setParams]);
+  if (tenantReference) {
     return <SelectedClientLaunchWorkspace
-      tenantId={tenantId}
+      tenantIdentifier={tenantReference}
       onBack={() => setParams({})}
+      onCanonicalReference={canonicalize}
     />;
   }
   return <ClientLaunchDirectory onSelect={reference => setParams({ tenant: reference })} />;
 }
 
-function SelectedClientLaunchWorkspace({ tenantId, onBack }: { tenantId: string; onBack: () => void }) {
+function SelectedClientLaunchWorkspace({
+  tenantIdentifier,
+  onBack,
+  onCanonicalReference,
+}: {
+  tenantIdentifier: string;
+  onBack: () => void;
+  onCanonicalReference: (reference: string) => void;
+}) {
   const { session } = useAgencyAuth();
-  const [detail, setDetail] = useState<any>(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
-
-  const loadDetail = async () => {
-    const nextDetail = await agencyFetch(`/tenants/${tenantId}`);
-    setDetail(nextDetail);
-  };
-
-  useEffect(() => {
-    void loadDetail().catch((cause: Error) => setError(cause.message));
-  }, [tenantId]);
-
-  const tenant = detail?.tenant;
   const canManage = Boolean(session?.capabilities.includes('tenants.manage'));
   const isPlatformOwner = session?.user.role === 'PLATFORM_OWNER';
 
-  return <div className="space-y-6">
-    <AgencyFocusedLaunchJourney tenantIdOverride={tenantId} onBack={onBack} />
-    {error ? <p role="alert" className="rounded-xl border border-rose-800 bg-rose-950/35 p-4 text-sm text-rose-200">{error}</p> : null}
-    {notice ? <p role="status" className="rounded-xl border border-emerald-800 bg-emerald-950/35 p-4 text-sm text-emerald-200">{notice}</p> : null}
-    {tenant ? <WorkspaceDataControls
-      tenantId={tenantId}
-      tenantName={tenant.name}
-      lifecycleStatus={tenant.lifecycleStatus}
-      canManage={canManage}
-      isPlatformOwner={isPlatformOwner}
-      onDeleted={onBack}
-      onRefresh={loadDetail}
-      onNotice={setNotice}
-      onError={setError}
-    /> : null}
-  </div>;
+  return <AgencyLaunchTenantResolver
+    tenantIdentifier={tenantIdentifier}
+    onBack={onBack}
+    onCanonicalReference={onCanonicalReference}
+  >
+    {({ detail, reload }) => <>
+      {error ? <p role="alert" className="rounded-xl border border-rose-800 bg-rose-950/35 p-4 text-sm text-rose-200">{error}</p> : null}
+      {notice ? <p role="status" className="rounded-xl border border-emerald-800 bg-emerald-950/35 p-4 text-sm text-emerald-200">{notice}</p> : null}
+      <WorkspaceDataControls
+        tenantId={detail.tenant.id}
+        tenantName={detail.tenant.name}
+        lifecycleStatus={detail.tenant.lifecycleStatus}
+        canManage={canManage}
+        isPlatformOwner={isPlatformOwner}
+        onDeleted={onBack}
+        onRefresh={reload}
+        onNotice={setNotice}
+        onError={setError}
+      />
+    </>}
+  </AgencyLaunchTenantResolver>;
+}
+
+export function requireAgencyLaunchReference(tenant: { agencyReference?: unknown; id?: unknown }) {
+  if (typeof tenant.agencyReference !== 'string' || !tenant.agencyReference) {
+    throw new Error('The client was created but its agency reference was not returned.');
+  }
+  return tenant.agencyReference;
 }
 
 function ClientLaunchDirectory({ onSelect }: { onSelect: (reference: string) => void }) {
@@ -99,7 +111,7 @@ function ClientLaunchDirectory({ onSelect }: { onSelect: (reference: string) => 
           currency: 'GBP',
         }),
       });
-      onSelect(created.id || created.agencyReference);
+      onSelect(requireAgencyLaunchReference(created));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The client could not be created.');
     } finally { setCreating(false); }
@@ -109,9 +121,9 @@ function ClientLaunchDirectory({ onSelect }: { onSelect: (reference: string) => 
     <section className="rounded-3xl border border-violet-800/60 bg-gradient-to-br from-violet-950 via-slate-950 to-slate-900 p-6 shadow-2xl sm:p-8">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-3xl">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-300">One client launch path</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-white">Create booking and website together</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Create or open a client to complete fact finding, reuse or add booking services, choose the website design, build the ten-page launch site, review the staging subdomain and connect the production domain.</p>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-300">Governed client delivery</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-white">Launch command centre</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Move each client through explicit discovery, fact, booking, blueprint, Search Intelligence, generation, review, quality and publication gates. Human approvals stay visible and separate.</p>
         </div>
         <button type="button" onClick={() => setShowCreate(true)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 text-sm font-black text-slate-950 hover:bg-emerald-400">
           <Plus className="h-4 w-4" />Create new client
@@ -126,7 +138,7 @@ function ClientLaunchDirectory({ onSelect }: { onSelect: (reference: string) => 
         <Rocket className="h-5 w-5 text-violet-300" />
         <div><h2 className="text-base font-black text-white">Client launch workspaces</h2><p className="mt-1 text-xs text-slate-500">Every client continues in the same governed timeline.</p></div>
       </div>
-      {loading ? <p className="flex min-h-48 items-center justify-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Loading clients…</p> : tenants.length === 0 ? <div className="mt-5 rounded-2xl border border-dashed border-slate-700 bg-slate-950 p-8 text-center"><Building2 className="mx-auto h-8 w-8 text-slate-500" /><h3 className="mt-3 text-sm font-black text-white">Create the first client</h3><p className="mt-2 text-xs text-slate-500">Client details, fact finding, booking and website delivery all begin here.</p><button type="button" onClick={() => setShowCreate(true)} className="mt-4 min-h-11 rounded-xl bg-violet-600 px-4 text-xs font-black text-white">Create client</button></div> : <div className="mt-5 grid gap-3 lg:grid-cols-2">{tenants.map(tenant => <button key={tenant.id} type="button" onClick={() => onSelect(tenant.id)} className="group rounded-2xl border border-slate-800 bg-slate-950 p-5 text-left transition hover:border-violet-600 hover:bg-violet-950/20">
+      {loading ? <p className="flex min-h-48 items-center justify-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Loading clients…</p> : tenants.length === 0 ? <div className="mt-5 rounded-2xl border border-dashed border-slate-700 bg-slate-950 p-8 text-center"><Building2 className="mx-auto h-8 w-8 text-slate-500" /><h3 className="mt-3 text-sm font-black text-white">Create the first client</h3><p className="mt-2 text-xs text-slate-500">Client details, fact finding, booking and website delivery all begin here.</p><button type="button" onClick={() => setShowCreate(true)} className="mt-4 min-h-11 rounded-xl bg-violet-600 px-4 text-xs font-black text-white">Create client</button></div> : <div className="mt-5 grid gap-3 lg:grid-cols-2">{tenants.map(tenant => <button key={tenant.id} type="button" onClick={() => onSelect(requireAgencyLaunchReference(tenant))} className="group rounded-2xl border border-slate-800 bg-slate-950 p-5 text-left transition hover:border-violet-600 hover:bg-violet-950/20">
         <div className="flex items-start justify-between gap-4"><div><strong className="text-base text-white">{tenant.name}</strong><p className="mt-1 font-mono text-xs text-indigo-300">{tenant.subdomain}.sites.kasimshah.com</p></div><span className="rounded-full border border-slate-700 px-2 py-1 text-[10px] font-black text-slate-300">{String(tenant.lifecycleStatus).replaceAll('_', ' ')}</span></div>
         <div className="mt-5 flex items-center justify-between border-t border-slate-800 pt-4 text-xs text-slate-500"><span>{tenant.planKey || 'Plan pending'} · {tenant.primaryContactEmail || 'Contact pending'}</span><span className="font-black text-violet-300 group-hover:text-white">Continue launch →</span></div>
       </button>)}</div>}

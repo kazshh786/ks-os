@@ -12,6 +12,7 @@ import {
   siteQualityAuditSessions,
   siteQualityRuns,
   sitePages,
+  sitePathRedirects,
   sitePublicationPointers,
   siteRenderSnapshots,
   siteReviewCycles,
@@ -26,6 +27,10 @@ import {
   validatePublishedSnapshot,
   type PublishedSiteSnapshot,
 } from '@ks-os/site-schema';
+import type {
+  GovernedRecommendation,
+  PublicLiveSiteData,
+} from '@ks-os/live-site-intelligence';
 
 export interface ResolvedPublicSite {
   siteReference: string;
@@ -45,6 +50,10 @@ export interface PublicSiteRepository {
     siteReference: string,
     versionReference: string,
   ): Promise<PublishedSiteSnapshot | null>;
+  resolveLiveSiteData?(snapshot: PublishedSiteSnapshot): Promise<PublicLiveSiteData>;
+  resolvePublishedRecommendations?(
+    snapshot: PublishedSiteSnapshot,
+  ): Promise<readonly GovernedRecommendation[]>;
   isPreviewTokenRevoked(input: {
     jti: string;
     siteReference: string;
@@ -64,6 +73,10 @@ export interface PublicSiteRepository {
     versionReference: string;
     requestedPath: string;
   }): Promise<boolean>;
+  resolvePathRedirect?(input: {
+    siteReference: string;
+    sourcePath: string;
+  }): Promise<{ targetPath: string; statusCode: 308 } | null>;
 }
 
 export class PublicSnapshotIntegrityError extends Error {
@@ -134,6 +147,22 @@ export class DrizzlePublicSiteRepository implements PublicSiteRepository {
     }
 
     return null;
+  }
+
+  async resolvePathRedirect(input: { siteReference: string; sourcePath: string }) {
+    const [redirect] = await this.database.select({
+      targetPath: sitePathRedirects.targetPath,
+      statusCode: sitePathRedirects.statusCode,
+    }).from(sitePathRedirects)
+      .innerJoin(sites, eq(sitePathRedirects.siteId, sites.id))
+      .where(and(
+        eq(sites.publicReference, input.siteReference),
+        eq(sitePathRedirects.sourcePath, input.sourcePath),
+        eq(sitePathRedirects.active, true),
+      )).limit(1);
+    return redirect?.statusCode === 308
+      ? { targetPath: redirect.targetPath, statusCode: 308 as const }
+      : null;
   }
 
   async loadPublishedSnapshot(siteReference: string) {

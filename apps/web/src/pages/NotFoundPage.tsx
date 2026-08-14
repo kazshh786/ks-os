@@ -1,10 +1,11 @@
 import React from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { LockKeyhole } from 'lucide-react';
 import BookingWizardPage from './BookingWizardPage.js';
 import PaymentSuccess from './book/PaymentSuccess.js';
 import PaymentCancel from './book/PaymentCancel.js';
-import PublicWorkspaceFormPage, { PublicWorkspaceFormSuccessPage } from './PublicWorkspaceFormPage.js';
+import PublicWorkspaceFormPage, { PublicWorkspaceFormLegalPage } from './PublicWorkspaceFormPage.js';
+import { WorkspaceConsentFormSuccessPage } from './ConsentFormSuccessPage.js';
 
 function PublicBookingSurface({ children }: { children: React.ReactNode }) {
   return (
@@ -17,7 +18,8 @@ function PublicBookingSurface({ children }: { children: React.ReactNode }) {
 }
 
 export const NotFoundPage: React.FC = () => {
-  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  const location = useLocation();
+  const path = location.pathname.replace(/\/+$/, '') || '/';
   if (path === '/book' || /^\/book\/manage\/[0-9a-f-]+$/i.test(path)) {
     return <PublicBookingSurface><BookingWizardPage /></PublicBookingSurface>;
   }
@@ -27,7 +29,9 @@ export const NotFoundPage: React.FC = () => {
   if (path === '/book/payment/cancel') {
     return <PublicBookingSurface><PaymentCancel /></PublicBookingSurface>;
   }
-  if (/^\/form\/[^/]+\/success$/i.test(path)) return <PublicWorkspaceFormSuccessPage />;
+  if (/^\/form\/[^/]+\/acknowledgement$/i.test(path)) return <PublicWorkspaceFormLegalPage documentType="acknowledgement" />;
+  if (/^\/form\/[^/]+\/terms$/i.test(path)) return <PublicWorkspaceFormLegalPage documentType="terms" />;
+  if (/^\/form\/[^/]+\/success$/i.test(path)) return <WorkspaceConsentFormSuccessPage />;
   if (/^\/form\/[^/]+$/i.test(path)) return <PublicWorkspaceFormPage />;
 
   return (

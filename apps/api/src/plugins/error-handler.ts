@@ -106,6 +106,6 @@ export default function registerErrorHandler(fastify: FastifyInstance) {
       },
     };
 
-    reply.status(statusCode).send(apiErrorResponse);
+    return reply.status(statusCode).send(apiErrorResponse);
   });
 }

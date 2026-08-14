@@ -31,7 +31,7 @@ export default function CustomerBookingManagementSettings({ embedded = false }: 
   const update = <K extends keyof CustomerBookingPolicySettings>(key: K, value: CustomerBookingPolicySettings[K]) => setSettings({ ...settings, [key]: value });
   const save = async (event: React.FormEvent) => {
     event.preventDefault(); setSaving(true); setMessage(''); setError('');
-    try { setSettings(await request({ method: 'PATCH', body: JSON.stringify(settings) })); setMessage('Customer booking policies saved.'); }
+    try { setSettings(await request({ method: 'PATCH', body: JSON.stringify({ ...settings, allowAppointmentsPastClosingTime: undefined }) })); setMessage('Customer booking policies saved.'); }
     catch { setError('The policies could not be saved. Please try again.'); }
     finally { setSaving(false); }
   };

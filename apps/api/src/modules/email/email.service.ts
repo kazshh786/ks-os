@@ -17,6 +17,16 @@ import { OperationsIssueReporter } from '../operations/operations.issue-service.
 import { deriveReviewInvitationToken as deriveReputationReviewInvitationToken } from '../reputation/reputation.security.js';
 import { env } from '../../config/env.js';
 import { deriveReviewInvitationToken } from '@ks-os/site-review';
+import { deriveFactFindingInvitationToken } from '@ks-os/fact-finding';
+import {
+  appointmentNotificationCancellationCode,
+  isPermanentEmailFailure,
+  normalizeAndValidateEmailAddress,
+  normalizeEmailDisplayName,
+  prepareEmailTemplateData,
+  validateEmailIdempotencyKey,
+  validateEmailTemplateData,
+} from './email-safety.js';
 
 export type EnqueueEmailParams = {
   tenantId?: string;
@@ -79,28 +89,54 @@ const FROM_ENV: Record<string, string> = {
 export const EMAIL_SUBJECTS = SUBJECTS;
 export const EMAIL_FROM_ENV = FROM_ENV;
 
-const TIME_SENSITIVE_APPOINTMENT_TEMPLATES = new Set([
-  'appointment-reminder',
-  'booking-confirmed',
-  'booking-rescheduled',
-  'business-booking-confirmed',
-]);
+const productionEmailSafetyEnabled = () => env.NODE_ENV === 'production';
 
 export class EmailService {
-  private issues=new OperationsIssueReporter();
+  private issues = new OperationsIssueReporter();
+
   async enqueueEmail(params: EnqueueEmailParams, tx?: any) {
     const dbOrTx = tx || getDatabase();
-    const normalizedRecipient = params.recipientEmail.trim().toLowerCase();
+    const production = productionEmailSafetyEnabled();
+    const recipient = normalizeAndValidateEmailAddress(params.recipientEmail, production);
+    if (!recipient.valid) return { queued: false, reason: recipient.reason } as const;
+
+    let normalizedReplyTo: string | undefined;
+    if (params.replyToEmail) {
+      const replyTo = normalizeAndValidateEmailAddress(params.replyToEmail, production);
+      if (!replyTo.valid) return { queued: false, reason: 'INVALID_REPLY_TO' as const };
+      normalizedReplyTo = replyTo.email;
+    }
+    if (!validateEmailIdempotencyKey(params.idempotencyKey)) {
+      return { queued: false, reason: 'INVALID_IDEMPOTENCY_KEY' as const };
+    }
+
+    const templateDataJson = prepareEmailTemplateData(params.templateKey, params.templateDataJson);
+    if (production) {
+      const templateValidation = validateEmailTemplateData(params.templateKey, templateDataJson, true);
+      if (!templateValidation.valid) {
+        return {
+          queued: false,
+          reason: 'INVALID_TEMPLATE_DATA' as const,
+          invalidTokens: templateValidation.invalidTokens,
+        };
+      }
+    }
+
     const [suppression] = await dbOrTx.select({ id: emailSuppressions.id })
       .from(emailSuppressions)
-      .where(eq(emailSuppressions.recipientEmailNormalized, normalizedRecipient))
+      .where(eq(emailSuppressions.recipientEmailNormalized, recipient.email))
       .limit(1);
     if (suppression) return { queued: false, reason: 'SUPPRESSED' as const };
 
     const scheduledFor = params.scheduledFor ?? new Date();
+    if (!Number.isFinite(scheduledFor.getTime())) return { queued: false, reason: 'INVALID_SCHEDULE' as const };
+
     await dbOrTx.insert(emailOutbox).values({
       ...params,
-      recipientEmail: normalizedRecipient,
+      recipientEmail: recipient.email,
+      recipientName: normalizeEmailDisplayName(params.recipientName),
+      replyToEmail: normalizedReplyTo,
+      templateDataJson,
       templateVersion: params.templateVersion || '1.0.0',
       status: 'PENDING',
       scheduledFor,
@@ -111,17 +147,33 @@ export class EmailService {
 
   cancelAppointmentReminders(tenantId: string, appointmentId: string, tx?: any) {
     const dbOrTx = tx || getDatabase();
-    return dbOrTx.update(emailOutbox).set({ status: 'CANCELLED' }).where(sql`
+    return dbOrTx.update(emailOutbox).set({
+      status: 'CANCELLED',
+      lastErrorCode: 'APPOINTMENT_NOTIFICATION_SUPERSEDED',
+    }).where(sql`
       tenant_id = ${tenantId}::uuid
       AND related_entity_type = 'appointment'
       AND related_entity_id = ${appointmentId}::uuid
-      AND template_key = 'appointment-reminder'
+      AND (
+        template_key IN ('appointment-reminder','booking-confirmed','booking-rescheduled','business-booking-confirmed')
+        OR idempotency_key LIKE 'business-booking-rescheduled:%'
+      )
       AND status IN ('PENDING','DELAYED','PROCESSING')
     `);
   }
 
   async processOutbox(limit = 10, randomSource: number | (() => number) = Math.random) {
     const db = getDatabase();
+    const production = productionEmailSafetyEnabled();
+    const recovered = await db.execute(sql`
+      UPDATE email_outbox
+      SET status = 'PENDING',
+          next_attempt_at = NOW(),
+          last_error_code = 'PROCESSING_LEASE_EXPIRED'
+      WHERE status = 'PROCESSING'
+        AND next_attempt_at <= NOW()
+      RETURNING id
+    `);
     const claimed = await db.execute(sql`
       WITH candidates AS (
         SELECT id FROM email_outbox
@@ -129,10 +181,11 @@ export class EmailService {
           AND scheduled_for <= NOW() AND next_attempt_at <= NOW()
         ORDER BY next_attempt_at ASC
         FOR UPDATE SKIP LOCKED
-        LIMIT ${limit}
+        LIMIT ${Math.max(1, Math.min(limit, 100))}
       )
       UPDATE email_outbox AS outbox
-      SET status = 'PROCESSING'
+      SET status = 'PROCESSING',
+          next_attempt_at = NOW() + interval '10 minutes'
       FROM candidates
       WHERE outbox.id = candidates.id
       RETURNING outbox.*
@@ -142,25 +195,43 @@ export class EmailService {
     for (const email of claimed.rows as any[]) {
       const nextAttempt = Number(email.attempt_count ?? 0) + 1;
       try {
-        if (
-          email.related_entity_type === 'appointment'
-          && email.related_entity_id
-          && TIME_SENSITIVE_APPOINTMENT_TEMPLATES.has(email.template_key)
-        ) {
+        const recipient = normalizeAndValidateEmailAddress(email.recipient_email, production);
+        if (!recipient.valid) {
+          await db.update(emailOutbox).set({
+            status: 'CANCELLED',
+            lastErrorCode: `EMAIL_${recipient.reason}`,
+          }).where(eq(emailOutbox.id, email.id));
+          continue;
+        }
+        if (!validateEmailIdempotencyKey(email.idempotency_key)) throw new Error('EMAIL_INVALID_IDEMPOTENCY_KEY');
+
+        const templateData = prepareEmailTemplateData(
+          email.template_key,
+          email.template_data_json as Record<string, unknown>,
+        );
+        const templateValidation = validateEmailTemplateData(email.template_key, templateData, production);
+        if (!templateValidation.valid) throw new Error(templateValidation.errorCode);
+
+        if (email.related_entity_type === 'appointment' && email.related_entity_id) {
           const [appointment] = await db.select({
             startTime: appointments.startTime,
             status: appointments.status,
           }).from(appointments)
             .where(eq(appointments.id, email.related_entity_id))
             .limit(1);
-          if (
-            !appointment
-            || appointment.startTime.getTime() <= Date.now()
-            || appointment.status === 'CANCELLED'
-          ) {
+          const cancellationCode = appointmentNotificationCancellationCode({
+            exists: Boolean(appointment),
+            startTime: appointment?.startTime,
+            status: appointment?.status,
+          }, {
+            templateKey: email.template_key,
+            idempotencyKey: email.idempotency_key,
+            templateData,
+          });
+          if (cancellationCode) {
             await db.update(emailOutbox).set({
               status: 'CANCELLED',
-              lastErrorCode: 'APPOINTMENT_NOTIFICATION_NO_LONGER_APPLICABLE',
+              lastErrorCode: cancellationCode,
             }).where(eq(emailOutbox.id, email.id));
             continue;
           }
@@ -209,7 +280,6 @@ export class EmailService {
             continue;
           }
         }
-        const templateData = { ...(email.template_data_json as Record<string, unknown>) };
         if (email.template_key === 'review-invitation') {
           const invitationId = String(templateData.reviewInvitationId ?? '');
           if (!env.PUBLIC_APP_ORIGIN || !invitationId) throw new Error('REVIEW_INVITATION_LINK_NOT_CONFIGURED');
@@ -248,17 +318,32 @@ export class EmailService {
           email.template_key === 'fact-finding-invitation'
           || email.template_key === 'fact-finding-notification'
         ) {
-          const invitationToken = String(templateData.invitationToken ?? '');
+          const invitationReference = String(templateData.invitationReference ?? '');
+          const questionnaireReference = String(templateData.questionnaireReference ?? '');
+          const participantReference = String(templateData.participantReference ?? '');
+          const secret = process.env.FACT_FINDING_INVITATION_SECRET;
           const origin = process.env.FACT_FINDING_CLIENT_ORIGIN;
-          if (!origin || !invitationToken) {
+          if (!origin || !secret || secret.length < 32 || !invitationReference || !questionnaireReference || !participantReference) {
             throw new Error('FACT_FINDING_INVITATION_LINK_NOT_CONFIGURED');
           }
+          const invitationToken = deriveFactFindingInvitationToken({
+            invitationReference,
+            questionnaireReference,
+            participantReference,
+            secret,
+          });
           const clientRoute = origin.replace(/\/$/, '').endsWith('/fact-finding')
             ? origin.replace(/\/$/, '')
             : `${origin.replace(/\/$/, '')}/fact-finding`;
           templateData.questionnaireUrl = `${clientRoute}?invitation=${encodeURIComponent(invitationToken)}`;
-          delete templateData.invitationToken;
         }
+
+        const [current] = await db.select({ status: emailOutbox.status })
+          .from(emailOutbox)
+          .where(eq(emailOutbox.id, email.id))
+          .limit(1);
+        if (current?.status !== 'PROCESSING') continue;
+
         const rendered = await renderEmail(email.template_key, templateData);
         const tenantName = String(templateData.tenantName || 'Your business');
         const senderName = tenantName.replace(/[\r\n\"<>]/g, '').trim().slice(0, 120) || 'Your business';
@@ -266,10 +351,11 @@ export class EmailService {
         if (!fromAddress) throw new Error('EMAIL_FROM_NOT_CONFIGURED');
         const configuredSubject = String(templateData.emailSubject || SUBJECTS[email.template_key] || 'Update from KS OS')
           .replace(/[\r\n]/g, ' ').trim().slice(0, 160);
+        const recipientName = normalizeEmailDisplayName(email.recipient_name);
 
         const response = await resend.emails.send({
           from: senderName + ' <' + fromAddress + '>',
-          to: email.recipient_name ? `${email.recipient_name} <${email.recipient_email}>` : email.recipient_email,
+          to: recipientName ? `${recipientName} <${recipient.email}>` : recipient.email,
           replyTo: email.reply_to_email || process.env.EMAIL_SUPPORT_REPLY_TO,
           subject: configuredSubject,
           html: rendered.html,
@@ -277,8 +363,13 @@ export class EmailService {
         }, { idempotencyKey: email.idempotency_key });
         if (response.error || !response.data?.id) throw new Error(response.error?.name || 'PROVIDER_REJECTED');
 
-        await db.update(emailOutbox).set({ status: 'SENT', providerMessageId: response.data.id, attemptCount: nextAttempt, sentAt: new Date(), lastErrorCode: null })
-          .where(eq(emailOutbox.id, email.id));
+        await db.update(emailOutbox).set({
+          status: 'SENT',
+          providerMessageId: response.data.id,
+          attemptCount: nextAttempt,
+          sentAt: new Date(),
+          lastErrorCode: null,
+        }).where(eq(emailOutbox.id, email.id));
         if (email.related_entity_type === 'review_invitation' && email.related_entity_id) {
           await db.update(reviewInvitations).set({ status: 'SENT', sentAt: new Date(), updatedAt: new Date() }).where(eq(reviewInvitations.id, email.related_entity_id));
         }
@@ -291,9 +382,12 @@ export class EmailService {
         }
       } catch (error) {
         const code = error instanceof Error ? error.message.slice(0, 255) : 'UNKNOWN_ERROR';
-        const permanent = /INVALID|VALIDATION|SUPPRESSED|NOT_CONFIGURED/i.test(code);
         const randomVal = typeof randomSource === 'function' ? randomSource() : randomSource;
-        const decision = decideOutboxRetry({ attemptNumber: nextAttempt, isTerminalFailure: permanent, randomValue: randomVal });
+        const decision = decideOutboxRetry({
+          attemptNumber: nextAttempt,
+          isTerminalFailure: isPermanentEmailFailure(code),
+          randomValue: randomVal,
+        });
         const finalStatus = decision.deadLetter ? 'DEAD_LETTER' : 'PENDING';
         await db.update(emailOutbox).set({
           status: finalStatus,
@@ -321,7 +415,7 @@ export class EmailService {
         }
       }
     }
-    return { claimed: claimed.rows.length };
+    return { claimed: claimed.rows.length, recovered: recovered.rows.length };
   }
 
   async retryDeadLetter(tenantId: string, emailOutboxId: string, tx?: any) {

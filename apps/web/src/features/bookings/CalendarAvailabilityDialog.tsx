@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarClock, Clock3, MapPin, Smartphone, Trash2, X } from 'lucide-react';
-import type { BookingChannel } from '@ks-os/contracts';
+import type { BookingChannel, CustomerBookingPolicySettings } from '@ks-os/contracts';
 import { fetchWithAuth } from '../../api/client.js';
 import { getDataProvider } from '../../data/data-provider.js';
 
 const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const customerBookingPolicyEndpoint = '/api/v1/settings/booking/customer-management';
+
+async function requestCustomerBookingPolicy(init?: RequestInit) {
+  const response = await fetchWithAuth(customerBookingPolicyEndpoint, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error?.message || body.error?.code || 'Availability setting could not be saved.');
+  return body.data as CustomerBookingPolicySettings;
+}
 type ScheduleRow = { dayOfWeek: number; enabled: boolean; startTime: string; endTime: string };
 type BookingOverride = {
   id?: string;
@@ -52,6 +63,7 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
   const [tab, setTab] = useState<'weekly' | 'overrides'>('weekly');
   const [schedule, setSchedule] = useState<ScheduleRow[]>(defaultSchedule());
   const [enabledChannels, setEnabledChannels] = useState<BookingChannel[]>(['in_shop']);
+  const [allowAppointmentsPastClosingTime, setAllowAppointmentsPastClosingTime] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [weeklyState, setWeeklyState] = useState<SaveState>('idle');
@@ -69,13 +81,14 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
     setOverrideDraft(current => ({ ...current, date: initialDate }));
     setLoading(true);
     setError('');
-    Promise.all([getDataProvider().listTeam(), getDataProvider().getBookingPageSettings()])
-      .then(([team, settings]) => {
+    Promise.all([getDataProvider().listTeam(), getDataProvider().getBookingPageSettings(), requestCustomerBookingPolicy()])
+      .then(([team, settings, bookingPolicy]) => {
         const activeMembers = (team.members as MemberSummary[]).filter(row => row.accountStatus === 'ACTIVE');
         setMembers(activeMembers);
         const owner = activeMembers.find(row => row.role === 'owner');
         setMemberId(current => current && activeMembers.some(row => row.userId === current) ? current : owner?.userId || activeMembers[0]?.userId || '');
         setEnabledChannels(settings.bookingRules.enabledBookingChannels?.length ? settings.bookingRules.enabledBookingChannels : ['in_shop']);
+        setAllowAppointmentsPastClosingTime(bookingPolicy.allowAppointmentsPastClosingTime);
       })
       .catch(() => setError('Availability could not be loaded. Please try again.'))
       .finally(() => setLoading(false));
@@ -125,7 +138,12 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
     try {
       if (channel === 'in_shop') await getDataProvider().updateTeamMemberSchedule(member.id, schedule);
       const updated = await getDataProvider().updateTeamMemberBookingChannels(member.id, { channel, schedule });
+      const bookingPolicy = await requestCustomerBookingPolicy({
+        method: 'PATCH',
+        body: JSON.stringify({ allowAppointmentsPastClosingTime }),
+      });
       setMember(updated);
+      setAllowAppointmentsPastClosingTime(bookingPolicy.allowAppointmentsPastClosingTime);
       setWeeklyState('saved');
     } catch {
       setWeeklyState('error');
@@ -221,6 +239,10 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
 
         {loading && <p className="py-8 text-center text-sm text-slate-500">Loading availability…</p>}
         {!loading && member && tab === 'weekly' && <div className="mt-4">
+          <label className="mb-4 flex cursor-pointer items-start justify-between gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4">
+            <span><span className="block text-sm font-black text-slate-950">Allow appointments to finish after closing time</span><span className="mt-1 block max-w-2xl text-xs leading-5 text-slate-600">Appointments must still start before the closing time shown below, but their service duration and buffer may continue afterwards. This applies across the business.</span></span>
+            <input aria-label="Allow appointments to finish after closing time" type="checkbox" checked={allowAppointmentsPastClosingTime} onChange={event => { setAllowAppointmentsPastClosingTime(event.target.checked); setWeeklyState('idle'); }} className="mt-0.5 h-5 w-5 shrink-0" />
+          </label>
           <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 px-4">
             {schedule.map((row, index) => <div key={row.dayOfWeek} className="grid items-center gap-3 py-3 sm:grid-cols-[8rem_7rem_1fr_1fr]">
               <span className="text-sm font-black text-slate-900">{days[row.dayOfWeek]}</span>
@@ -230,7 +252,7 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
             </div>)}
           </div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div aria-live="polite" className="text-sm">{weeklyState === 'saved' && <span className="font-bold text-emerald-700">Weekly {channelLabel.toLowerCase()} hours saved.</span>}{weeklyState === 'error' && <span role="alert" className="font-bold text-rose-700">Check that every end time is after its start time.</span>}</div>
+            <div aria-live="polite" className="text-sm">{weeklyState === 'saved' && <span className="font-bold text-emerald-700">Weekly {channelLabel.toLowerCase()} hours saved.</span>}{weeklyState === 'error' && <span role="alert" className="font-bold text-rose-700">Availability could not be saved. Check the times and try again.</span>}</div>
             <button type="button" onClick={() => void saveWeekly()} disabled={weeklyState === 'saving'} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white hover:bg-indigo-700 disabled:opacity-50">{weeklyState === 'saving' ? 'Saving…' : 'Save weekly hours'}</button>
           </div>
         </div>}

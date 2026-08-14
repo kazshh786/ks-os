@@ -1,20 +1,46 @@
 import type { SiteGenerationKnowledgeContext } from '@ks-os/site-knowledge';
+import { getSiteComponent } from '@ks-os/site-components';
 import type { z } from 'zod';
 import {
   GeneratedPageSchema,
+  PageCompositionPlanSchema,
+  SiteCompositionStrategySchema,
   SITE_GENERATION_PROMPT_TEMPLATE_VERSION,
   type GeneratedPage,
   type GenerationFinding,
   type GenerationPlan,
+  type PageCompositionPlan,
+  type SiteCompositionStrategy,
   type TemplateGenerationConstraint,
   type VerifiedBusinessFacts,
 } from './contracts.js';
+import {
+  pageCompositionResponseJsonSchema,
+  SITE_STRATEGY_RESPONSE_JSON_SCHEMA,
+  composePageCompositionPrompt,
+  composeSiteStrategyPrompt,
+  validatePageCompositionPlan,
+} from './composition.js';
+import { createDeterministicAssetCoveragePlan, validateAssetCoveragePlan } from './assets.js';
+import { detectCompositionRepetition, validatePageCompleteness } from './completeness.js';
 import { composeGenerationPrompt } from './prompt.js';
 import type { SiteGenerationProvider } from './provider.js';
 import { generateWithControlledRepair } from './repair.js';
 import { assertGeneratedPageSetMatchesPlan, validateGenerationPlan } from './planning.js';
 import { detectDuplicateContent, validateGeneratedPage } from './validation.js';
 import { generationDigest } from './normalization.js';
+import { generatedPageResponseJsonSchema } from './response-schema.js';
+import {
+  assertSearchIntelligenceReady,
+  validateGeneratedPageAgainstSeoBrief,
+  type PageSeoBrief,
+  type SearchIntelligenceStrategyV2,
+} from './search-intelligence.js';
+
+export interface ApprovedSearchIntelligenceInput {
+  strategy: SearchIntelligenceStrategyV2;
+  briefs: readonly PageSeoBrief[];
+}
 
 export interface SiteGenerationPersistence {
   beginRun(input: {
@@ -36,10 +62,17 @@ export interface SiteGenerationPersistence {
     findings: readonly GenerationFinding[];
   }): Promise<void>;
   persistFindings(findings: readonly GenerationFinding[]): Promise<void>;
+  persistCompositionArtifacts?(input: {
+    strategy: SiteCompositionStrategy;
+    pagePlans: readonly PageCompositionPlan[];
+    assetCoveragePlan: NonNullable<ReturnType<typeof createDeterministicAssetCoveragePlan>>;
+  }): Promise<void>;
+  updatePlannedSectionCount?(sectionCountPlanned: number): Promise<void>;
   completeRun(input: {
     outputContentDigestSha256: string;
     pageCountCompleted: number;
     sectionCountCompleted: number;
+    readinessStatus: 'DESIGN_COMPLETE' | 'READY_FOR_REVIEW';
   }): Promise<void>;
   failRun(input: { failureCode: string; failureMessage: string }): Promise<void>;
 }
@@ -55,6 +88,8 @@ export interface ExecuteSiteGenerationInput {
   maxOutputCharacters: number;
   signal?: AbortSignal;
   updateProgress?: (input: { current: number; total: number; message: string }) => Promise<void>;
+  pipelineVersion?: 1 | 2;
+  searchIntelligence?: ApprovedSearchIntelligenceInput;
 }
 
 export const GENERATED_PAGE_RESPONSE_JSON_SCHEMA: Record<string, unknown> = {
@@ -84,9 +119,27 @@ export const GENERATED_PAGE_RESPONSE_JSON_SCHEMA: Record<string, unknown> = {
   },
 };
 
+export function generationCompletionStatus(pipelineVersion: 1 | 2 = 1) {
+  return pipelineVersion === 2
+    ? 'DESIGN_COMPLETE' as const
+    : 'READY_FOR_REVIEW' as const;
+}
+
 export async function executeStructuredSiteGeneration(
   input: ExecuteSiteGenerationInput,
 ) {
+  if ((input.pipelineVersion ?? 1) === 2) {
+    if (!input.searchIntelligence) throw new Error('SEARCH_INTELLIGENCE_NOT_READY:SEARCH_STRATEGY_MISSING');
+    assertSearchIntelligenceReady({
+      strategy: input.searchIntelligence.strategy,
+      briefs: input.searchIntelligence.briefs,
+      plannedPages: input.plan.pages.map(page => ({
+        blueprintPageReference: page.blueprintPageReference,
+        pageReference: page.pageReference,
+        pageType: page.pageType,
+      })),
+    });
+  }
   const planValidation = validateGenerationPlan(input.plan, input.constraints);
   if (!planValidation.valid) {
     await input.persistence.failRun({
@@ -111,6 +164,99 @@ export async function executeStructuredSiteGeneration(
   ]));
   const generated: GeneratedPage[] = [];
   try {
+    let siteStrategy: SiteCompositionStrategy | undefined;
+    const pageCompositionPlans = new Map<string, PageCompositionPlan>();
+    let assetCoveragePlan: ReturnType<typeof createDeterministicAssetCoveragePlan> | undefined;
+    if ((input.pipelineVersion ?? 1) === 2) {
+      await input.updateProgress?.({ current: 0, total: input.plan.pages.length + 2, message: 'Creating the governed site-wide composition strategy.' });
+      const strategyResponse = await input.provider.generateStructuredOutput({
+        prompt: composeSiteStrategyPrompt({
+          plan: input.plan,
+          facts: input.facts,
+          approvedSearchStrategy: input.searchIntelligence?.strategy,
+        }),
+        outputSchema: SiteCompositionStrategySchema,
+        responseJsonSchema: SITE_STRATEGY_RESPONSE_JSON_SCHEMA,
+        maxOutputCharacters: input.maxOutputCharacters,
+        signal: input.signal,
+      });
+      siteStrategy = strategyResponse.value;
+      for (const page of input.plan.pages) {
+        const template = input.constraints.find(item => item.layoutReference === page.layoutReference);
+        const knowledge = input.knowledgeContexts.get(page.pageReference);
+        if (!template || !knowledge) throw new Error('A pinned page composition context is missing.');
+        const composed = composePageCompositionPrompt({
+          page,
+          template,
+          strategy: strategyResponse.value,
+          facts: input.facts,
+          knowledge,
+          approvedPageReferences: input.plan.pages.map(item => item.pageReference),
+          approvedSearchStrategy: input.searchIntelligence?.strategy,
+          pageSeoBrief: input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference),
+        });
+        const planned = await generateWithControlledRepair<PageCompositionPlan>({
+          provider: input.provider,
+          maxRepairAttempts: input.maxRepairAttempts,
+          buildRequest: () => ({
+            prompt: composed,
+            outputSchema: PageCompositionPlanSchema,
+            responseJsonSchema: pageCompositionResponseJsonSchema({
+              page,
+              template,
+              approvedPageReferences: input.plan.pages.map(item => item.pageReference),
+            }),
+            maxOutputCharacters: input.maxOutputCharacters,
+            signal: input.signal,
+          }),
+          validate: value => {
+            const findings = validatePageCompositionPlan({
+              output: value,
+              page,
+              template,
+              approvedPageReferences: input.plan.pages.map(item => item.pageReference),
+              approvedAssetReferences: input.facts.approvedAssets?.length
+                ? input.facts.approvedAssets.map(asset => asset.publicReference)
+                : input.facts.assetReferences,
+            });
+            return { valid: !findings.some(item => item.severity === 'ERROR'), findings };
+          },
+        });
+        pageCompositionPlans.set(page.pageReference, planned.response.value);
+      }
+      const requiredSlotsByComponentKey = new Map(
+        [...pageCompositionPlans.values()].flatMap(page => page.selectedComponents)
+          .map(selection => [
+            selection.componentKey,
+            getSiteComponent(selection.componentKey)?.requiredAssetSlots ?? [],
+          ] as const),
+      );
+      assetCoveragePlan = createDeterministicAssetCoveragePlan({
+        facts: input.facts,
+        pages: [...pageCompositionPlans.values()],
+        requiredSlotsByComponentKey,
+      });
+      await input.persistence.updatePlannedSectionCount?.(
+        [...pageCompositionPlans.values()].reduce(
+          (total, pagePlan) => total + pagePlan.selectedComponents.length,
+          0,
+        ),
+      );
+      await input.persistence.persistCompositionArtifacts?.({
+        strategy: strategyResponse.value,
+        pagePlans: [...pageCompositionPlans.values()],
+        assetCoveragePlan,
+      });
+      const assetFindings = validateAssetCoveragePlan({
+        plan: assetCoveragePlan,
+        facts: input.facts,
+        approvedPageReferences: input.plan.pages.map(item => item.pageReference),
+      });
+      await input.persistence.persistFindings(assetFindings);
+      if (assetFindings.some(item => item.severity === 'ERROR')) {
+        throw new Error('The deterministic tenant-scoped asset coverage plan is invalid.');
+      }
+    }
     for (const [index, page] of input.plan.pages.entries()) {
       if (input.signal?.aborted) throw new Error('Generation was cancelled.');
       if (completed.has(page.pageReference)) continue;
@@ -129,12 +275,27 @@ export async function executeStructuredSiteGeneration(
         provider: input.provider,
         maxRepairAttempts: input.maxRepairAttempts,
         buildRequest: (repairAttempt, previousFindings) => {
+          const pageCompositionPlan = pageCompositionPlans.get(page.pageReference);
+          const responseJsonSchema = pageCompositionPlan
+            ? generatedPageResponseJsonSchema({
+              pageType: page.pageType,
+              conversionRole: page.conversionRole,
+              selectedComponents: pageCompositionPlan.selectedComponents,
+            })
+            : GENERATED_PAGE_RESPONSE_JSON_SCHEMA;
           const composed = composeGenerationPrompt({
             page,
             template,
             facts: input.facts,
             knowledge,
-            outputSchemaDescription: GENERATED_PAGE_RESPONSE_JSON_SCHEMA,
+            outputSchemaDescription: responseJsonSchema,
+            approvedSearchStrategy: input.searchIntelligence?.strategy,
+            pageSeoBrief: input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference),
+            ...(siteStrategy ? { siteStrategy } : {}),
+            ...(pageCompositionPlan
+              ? { pageCompositionPlan }
+              : {}),
+            ...(assetCoveragePlan ? { assetCoveragePlan } : {}),
             ...(repairAttempt > 0
               ? { repair: { attempt: repairAttempt, findings: previousFindings } }
               : {}),
@@ -142,26 +303,57 @@ export async function executeStructuredSiteGeneration(
           return {
             prompt: composed.prompt,
             outputSchema: GeneratedPageSchema as z.ZodType<GeneratedPage>,
-            responseJsonSchema: GENERATED_PAGE_RESPONSE_JSON_SCHEMA,
+            responseJsonSchema,
             maxOutputCharacters: input.maxOutputCharacters,
             signal: input.signal,
           };
         },
-        validate: value => validateGeneratedPage({
-          output: value,
-          expected: {
-            pageReference: page.pageReference,
-            pageType: page.pageType,
-            conversionRole: page.conversionRole,
-            slug: page.slug,
-            layoutReference: page.layoutReference,
-          },
-          template,
-          facts: input.facts,
-          approvedPageReferences: input.plan.pages.map(item => item.pageReference),
-        }),
+        validate: value => {
+          const validation = validateGeneratedPage({
+            output: value,
+            expected: {
+              pageReference: page.pageReference,
+              pageType: page.pageType,
+              conversionRole: page.conversionRole,
+              slug: page.slug,
+              layoutReference: page.layoutReference,
+            },
+            template,
+            facts: input.facts,
+            approvedPageReferences: input.plan.pages.map(item => item.pageReference),
+          });
+          const composition = pageCompositionPlans.get(page.pageReference);
+          if (validation.page && composition) {
+            const selected = composition.selectedComponents;
+            const componentsMatch = validation.page.sections.length === selected.length
+              && validation.page.sections.every((section, sectionIndex) =>
+                section.type === selected[sectionIndex]?.sectionType
+                && section.componentKey === selected[sectionIndex]?.componentKey);
+            if (!componentsMatch) {
+              validation.findings.push({
+                severity: 'ERROR',
+                category: 'DESIGN',
+                code: 'GENERATED_COMPONENT_PLAN_CHANGED',
+                message: 'Generated content changed or omitted an allow-listed component selection.',
+                targetReference: page.pageReference,
+              });
+            }
+          }
+          const seoBrief = input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference);
+          if (validation.page && seoBrief) {
+            validation.findings.push(...validateGeneratedPageAgainstSeoBrief({ brief: seoBrief, page: validation.page })
+              .map(item => ({
+                severity: 'ERROR' as const,
+                category: 'METADATA' as const,
+                code: item.code,
+                message: item.message,
+                targetReference: item.pageReference,
+              })));
+          }
+          return { ...validation, valid: !validation.findings.some(item => item.severity === 'ERROR') };
+        },
       });
-      const pageFindings = validateGeneratedPage({
+      const pageValidation = validateGeneratedPage({
         output: result.response.value,
         expected: {
           pageReference: page.pageReference,
@@ -173,7 +365,14 @@ export async function executeStructuredSiteGeneration(
         template,
         facts: input.facts,
         approvedPageReferences: input.plan.pages.map(item => item.pageReference),
-      }).findings;
+      });
+      const completeness = (input.pipelineVersion ?? 1) === 2
+        ? validatePageCompleteness({ page: result.response.value })
+        : null;
+      const pageFindings = [
+        ...pageValidation.findings,
+        ...(completeness?.findings ?? []),
+      ];
       await input.persistence.persistPage({
         page: result.response.value,
         knowledgeContext: knowledge,
@@ -195,23 +394,31 @@ export async function executeStructuredSiteGeneration(
     }
     assertGeneratedPageSetMatchesPlan(input.plan, [...completed]);
     const duplicateFindings = detectDuplicateContent(generated);
-    await input.persistence.persistFindings(duplicateFindings);
+    const compositionFindings = (input.pipelineVersion ?? 1) === 2
+      ? detectCompositionRepetition(generated)
+      : [];
+    await input.persistence.persistFindings([...duplicateFindings, ...compositionFindings]);
+    if ([...duplicateFindings, ...compositionFindings].some(item => item.severity === 'ERROR')) {
+      throw new Error('Blocking cross-page completeness findings prevent review readiness.');
+    }
     const outputContentDigestSha256 = generationDigest(
       [...pageDigests.entries()]
         .map(([reference, digest]) => ({ reference, digest }))
         .sort((left, right) => left.reference.localeCompare(right.reference)),
     );
+    const readinessStatus = generationCompletionStatus(input.pipelineVersion ?? 1);
     await input.persistence.completeRun({
       outputContentDigestSha256,
       pageCountCompleted: completed.size,
       sectionCountCompleted: generated.reduce((total, page) => total + page.sections.length, 0),
+      readinessStatus,
     });
     return {
-      status: 'READY_FOR_REVIEW' as const,
+      status: readinessStatus,
       pageReferences: [...completed].sort(),
       outputContentDigestSha256,
       promptTemplateVersion: SITE_GENERATION_PROMPT_TEMPLATE_VERSION,
-      findingCount: duplicateFindings.length,
+      findingCount: duplicateFindings.length + compositionFindings.length,
     };
   } catch (error) {
     const abortCode = input.signal?.aborted

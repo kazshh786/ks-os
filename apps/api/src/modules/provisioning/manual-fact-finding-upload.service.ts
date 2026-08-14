@@ -73,6 +73,7 @@ export class ManualFactFindingUploadService {
       byteSize: input.byteSize,
       digestSha256: input.digestSha256,
       assetCategory: input.category,
+      provenance: 'AGENCY_SUPPLIED',
       publicUsePermission: input.publicUsePermission,
       aiUsePermission: input.aiUsePermission,
       copyrightConfirmed: input.copyrightConfirmed,

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DepositTypeSchema } from './booking-payment-policy.js';
 
 export const OperationalBookingStatusSchema = z.enum([
   'PENDING',
@@ -68,7 +69,9 @@ const bookingRulesSchema = z.object({
 
 const paymentSettingsSchema = z.object({
   mode: z.enum(['NONE', 'DEPOSIT', 'FULL', 'PAY_LATER', 'CUSTOMER_CHOICE']).default('PAY_LATER'),
+  depositType: DepositTypeSchema.optional(),
   depositPercentage: z.number().min(0).max(100).default(0),
+  depositFixedAmount: z.number().int().min(1).max(100_000_000).optional(),
   promotionCodesEnabled: z.boolean().default(false),
   giftCardsEnabled: z.boolean().default(false),
 }).strict();

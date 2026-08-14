@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
+  factFindingConsentRecords,
   factFindingQuestionnaireQuestions,
   factFindingQuestionnaires,
   factFindingResponses,
   factFindingResponseVersions,
+  factFindingTemplateSections,
   getDatabase,
   tenants,
 } from '@ks-os/database';
@@ -53,6 +55,7 @@ export class ManualFactFindingService {
       reference: factFindingQuestionnaires.publicReference,
       tenantId: factFindingQuestionnaires.tenantId,
       tenantName: tenants.name,
+      templateId: factFindingQuestionnaires.templateId,
       version: factFindingQuestionnaires.questionnaireVersion,
       responseVersion: factFindingQuestionnaires.responseVersion,
       status: factFindingQuestionnaires.status,
@@ -66,7 +69,15 @@ export class ManualFactFindingService {
 
   async form(reference: string) {
     const questionnaire = await this.questionnaire(reference);
-    const [questions, responses] = await Promise.all([
+    const [sections, questions, responses] = await Promise.all([
+      this.db.select({
+        reference: factFindingTemplateSections.publicReference,
+        key: factFindingTemplateSections.sectionKey,
+        title: factFindingTemplateSections.title,
+        description: factFindingTemplateSections.description,
+        displayOrder: factFindingTemplateSections.displayOrder,
+        optional: factFindingTemplateSections.optional,
+      }).from(factFindingTemplateSections).where(eq(factFindingTemplateSections.templateId, questionnaire.templateId)).orderBy(asc(factFindingTemplateSections.displayOrder)),
       this.db.select({
         reference: factFindingQuestionnaireQuestions.publicReference,
         sectionReference: factFindingQuestionnaireQuestions.sectionReference,
@@ -82,6 +93,8 @@ export class ManualFactFindingService {
         bookingUseAllowed: factFindingQuestionnaireQuestions.bookingUseAllowed,
         generationUseAllowed: factFindingQuestionnaireQuestions.generationUseAllowed,
         agencyVerificationRequired: factFindingQuestionnaireQuestions.agencyVerificationRequired,
+        dataClassification: factFindingQuestionnaireQuestions.dataClassification,
+        consentType: factFindingQuestionnaireQuestions.consentType,
         conditions: factFindingQuestionnaireQuestions.conditionsJson,
         options: factFindingQuestionnaireQuestions.optionsJson,
         displayOrder: factFindingQuestionnaireQuestions.displayOrder,
@@ -102,7 +115,8 @@ export class ManualFactFindingService {
     ]);
     const responseMap = new Map(responses.map(response => [response.questionReference, { status: response.status as FactFindingResponseStatus, answer: response.answer }]));
     const completion = completionForQuestions(questions as never, responseMap);
-    return { ...questionnaire, questions, responses, completion };
+    const { templateId: _templateId, ...questionnaireDto } = questionnaire;
+    return { ...questionnaireDto, sections, questions, responses, completion };
   }
 
   async save(actor: AgencyActor, questionnaireReference: string, questionReference: string, rawAnswer: unknown) {
@@ -117,9 +131,29 @@ export class ManualFactFindingService {
     )).limit(1);
     if (!question) throw fail(404, 'FACT_FINDING_QUESTION_NOT_FOUND', 'Question is outside this intake form.');
     const answer = safeAnswer(rawAnswer);
+    if (question.dataClassification === 'CONSENT' && typeof answer !== 'boolean') {
+      throw fail(400, 'FACT_FINDING_CONSENT_BOOLEAN_REQUIRED', 'Consent must be recorded as an explicit yes or no decision.');
+    }
     const [existing] = await this.db.select().from(factFindingResponses).where(and(eq(factFindingResponses.questionnaireId, questionnaire.id), eq(factFindingResponses.questionId, question.id))).limit(1);
     const now = new Date();
     const response = await this.db.transaction(async tx => {
+      const recordConsent = async (row: typeof factFindingResponses.$inferSelect) => {
+        if (question.dataClassification !== 'CONSENT' || !question.consentType) return;
+        await tx.update(factFindingConsentRecords).set({ revokedAt: now }).where(and(
+          eq(factFindingConsentRecords.responseId, row.id),
+          isNull(factFindingConsentRecords.revokedAt),
+        ));
+        await tx.insert(factFindingConsentRecords).values({
+          tenantId: questionnaire.tenantId,
+          questionnaireId: questionnaire.id,
+          participantId: null,
+          responseId: row.id,
+          responseVersion: row.responseVersion,
+          consentType: question.consentType,
+          decision: answer === true ? 'GRANTED' : 'DENIED',
+          answerDigestSha256: digest(answer),
+        });
+      };
       if (existing) {
         const nextVersion = existing.responseVersion + 1;
         const [updated] = await tx.update(factFindingResponses).set({
@@ -129,6 +163,8 @@ export class ManualFactFindingService {
           source: 'AGENCY_PROVIDED',
           valueDigestSha256: digest(answer),
           status: 'AGENCY_REVIEW_REQUIRED',
+          dataClassification: question.dataClassification,
+          verificationBasis: 'UNVERIFIED',
           responseVersion: nextVersion,
           agencyReviewerId: null,
           approvedValueJson: null,
@@ -150,6 +186,7 @@ export class ManualFactFindingService {
           valueDigestSha256: updated.valueDigestSha256,
           status: updated.status,
         });
+        await recordConsent(updated);
         return updated;
       }
       const [created] = await tx.insert(factFindingResponses).values({
@@ -163,6 +200,8 @@ export class ManualFactFindingService {
         source: 'AGENCY_PROVIDED',
         valueDigestSha256: digest(answer),
         status: 'AGENCY_REVIEW_REQUIRED',
+        dataClassification: question.dataClassification,
+        verificationBasis: 'UNVERIFIED',
         evidenceRequired: question.evidenceRequired,
       }).returning();
       await tx.insert(factFindingResponseVersions).values({
@@ -176,6 +215,7 @@ export class ManualFactFindingService {
         valueDigestSha256: created.valueDigestSha256,
         status: created.status,
       });
+      await recordConsent(created);
       return created;
     });
     if (questionnaire.status === 'PREQUALIFIED') await this.db.update(factFindingQuestionnaires).set({ status: 'IN_PROGRESS', updatedAt: now }).where(eq(factFindingQuestionnaires.id, questionnaire.id));

@@ -31,9 +31,14 @@ export function validateGenerationPlan(
     if (template.templateSourceType === 'ENVATO_HTML' && template.licenceStatus !== 'ACTIVE') {
       findings.push({ code: 'TEMPLATE_LICENCE_REQUIRED', message: 'An active Envato licence is required.' });
     }
-    for (const required of template.requiredSectionTypes) {
-      if (!page.plannedSectionTypes.includes(required)) {
-        findings.push({ code: 'TEMPLATE_SECTION_REQUIRED', message: `The layout requires ${required}.` });
+    // V2 composition expands the legacy playbook seed into a complete page
+    // plan. Required layout capabilities are enforced on that page plan, while
+    // V1 retains its exact pre-composition requirement check.
+    if (template.componentRegistryVersion < 2) {
+      for (const required of template.requiredSectionTypes) {
+        if (!page.plannedSectionTypes.includes(required)) {
+          findings.push({ code: 'TEMPLATE_SECTION_REQUIRED', message: `The layout requires ${required}.` });
+        }
       }
     }
     for (const prohibited of template.prohibitedSectionTypes) {

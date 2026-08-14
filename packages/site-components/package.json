@@ -8,9 +8,12 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "node --import tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
+    "@ks-os/contracts": "workspace:*",
+    "@ks-os/live-site-intelligence": "workspace:*",
     "@ks-os/site-schema": "workspace:*"
   },
   "devDependencies": {

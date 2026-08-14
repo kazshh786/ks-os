@@ -12,11 +12,15 @@ import { env } from '../../config/env.js';
 import { BookingPageService } from '../../modules/bookings/booking-page.service.js';
 import { safeReferrerHost } from '../../modules/bookings/booking-page.utils.js';
 import { FormsService } from '../../modules/forms/forms.service.js';
+import { PublicWaitlistService } from '../../modules/sites/public-waitlist.service.js';
 
 import { 
+  calculateDepositAmount,
   CreateBookingRequestSchema, 
   AvailabilityQuerySchema,
   BookingPageSlugSchema,
+  CreatePublicWaitlistRequestSchema,
+  PublicWaitlistContextSchema,
   CreateBookingHoldSchema,
   PublicBookingAnalyticsEventSchema,
   ERROR_CODES 
@@ -28,6 +32,7 @@ const statusSchema = z.object({
 
 export default async function publicBookingRoutes(fastify: FastifyInstance) {
   const bookingPageService = new BookingPageService();
+  const publicWaitlistService = new PublicWaitlistService();
   
   // ============================================================================
   // 1. PUBLIC CATALOGUE
@@ -83,6 +88,39 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: { code: 'INVALID_ANALYTICS_EVENT', message: 'Invalid event.' } });
     await bookingPageService.recordAnalytics(subdomain, parsed.data, request.headers.host);
     return reply.code(202).send({ accepted: true });
+  });
+
+  fastify.get('/:subdomain/waitlist-eligibility', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { subdomain } = request.params as { subdomain: string };
+    if (!BookingPageSlugSchema.safeParse(subdomain).success) {
+      return reply.code(400).send({ error: { code: 'INVALID_SUBDOMAIN', message: 'Invalid booking-page address.' } });
+    }
+    const parsed = PublicWaitlistContextSchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: 'INVALID_WAITLIST_CONTEXT', message: 'Invalid waitlist context.' } });
+    }
+    const result = await publicWaitlistService.eligibility(subdomain, parsed.data, request.headers.host);
+    return reply.header('cache-control', 'no-store').send(result);
+  });
+
+  fastify.post('/:subdomain/waitlist', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { subdomain } = request.params as { subdomain: string };
+    if (!BookingPageSlugSchema.safeParse(subdomain).success) {
+      return reply.code(400).send({ error: { code: 'INVALID_SUBDOMAIN', message: 'Invalid booking-page address.' } });
+    }
+    const parsed = CreatePublicWaitlistRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: 'INVALID_WAITLIST_REQUEST', message: 'Check your waitlist details and try again.' } });
+    }
+    const result = await publicWaitlistService.join(subdomain, parsed.data, request.headers.host);
+    return reply
+      .header('cache-control', 'no-store')
+      .code(202)
+      .send(result);
   });
 
   // ============================================================================
@@ -233,16 +271,35 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         staffId: data.staffId,
         locationId: data.locationId,
       });
-      const [bookedService] = await db.select({ requiresDeposit: services.requiresDeposit }).from(services)
+      const [bookedService] = await db.select({
+        requiresDeposit: services.requiresDeposit,
+        price: services.price,
+        discount: services.discount,
+      }).from(services)
         .where(and(eq(services.id, data.serviceId), eq(services.tenantId, tenant.id), eq(services.isActive, true)))
         .limit(1);
       if (!bookedService) return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
-      const paymentSettings = page.paymentSettings as { mode?: string; depositPercentage?: number };
+      const paymentSettings = page.paymentSettings as {
+        mode?: string;
+        depositType?: string;
+        depositPercentage?: number;
+        depositFixedAmount?: number;
+      };
       const verifiedPaymentMode = bookedService.requiresDeposit ? 'deposit_required'
         : paymentSettings.mode === 'FULL' ? 'pay_now'
         : paymentSettings.mode === 'DEPOSIT' ? 'deposit_required'
           : paymentSettings.mode === 'CUSTOMER_CHOICE' ? data.paymentMode
             : 'pay_later';
+      const baseServiceAmount = Math.max(0, bookedService.price - bookedService.discount);
+      const expectedAmountDue = verifiedPaymentMode === 'deposit_required'
+        ? calculateDepositAmount(baseServiceAmount, paymentSettings)
+        : baseServiceAmount;
+      if (verifiedPaymentMode !== 'pay_later' && baseServiceAmount > 0) {
+        const { StripeService } = await import('../../modules/integrations/stripe/stripe.service.js');
+        const stripeService = new StripeService();
+        stripeService.assertBookingPaymentAmount(expectedAmountDue, tenant.currency || 'GBP');
+        await stripeService.assertBookingPaymentsReady(tenant.id);
+      }
       const booking = await db.transaction(async tx => {
         const hold = await bookingPageService.validateHoldForBooking(tx, page.id, data);
         const created = await bookingService.createPublicBooking(
@@ -363,9 +420,8 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       let paymentStatus = 'NOT_REQUIRED';
       let checkoutUrl = undefined;
       const quotedAmount = booking.quoted_amount || 0;
-      const depositPercentage = Math.min(100, Math.max(0, Number(paymentSettings.depositPercentage || 0)));
       const amountDue = verifiedPaymentMode === 'deposit_required'
-        ? Math.ceil(quotedAmount * (depositPercentage > 0 ? depositPercentage : 100) / 100)
+        ? calculateDepositAmount(quotedAmount, paymentSettings)
         : quotedAmount;
       
       if (amountDue > 0 && verifiedPaymentMode !== 'pay_later') {
@@ -409,7 +465,12 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         return reply.code(err.statusCode).send({ error: { code: err.code || 'BOOKING_CONFLICT', message: err.message } });
       }
       const message = err.message || '';
-      if (message === 'STRIPE_ACCOUNT_NOT_READY') {
+      const stripeErrorCode = err.code || err.name || message;
+      if (stripeErrorCode === 'STRIPE_PAYMENT_AMOUNT_INVALID') {
+        return reply.code(422).send({ error: { code: 'PAYMENT_AMOUNT_INVALID', message: 'The online payment amount is outside Stripe limits. No booking was created.' } });
+      }
+      if (['STRIPE_ACCOUNT_NOT_READY', 'STRIPE_NOT_CONFIGURED', 'STRIPE_KEY_MODE_MISMATCH'].includes(stripeErrorCode)
+        || ['STRIPE_ACCOUNT_NOT_READY', 'STRIPE_NOT_CONFIGURED', 'STRIPE_KEY_MODE_MISMATCH'].includes(message)) {
         return reply.code(402).send({ error: { code: 'PAYMENTS_NOT_AVAILABLE', message: 'Payments are not currently available for this shop.' } });
       }
       if (/no longer available|outside booking channel schedule/i.test(message)) {

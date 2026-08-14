@@ -103,7 +103,7 @@ export async function finalizeProvisionedWorkspace(database: Database, generatio
     .innerJoin(agencyUsers, eq(provisioningRuns.requestedByAgencyUserId, agencyUsers.id))
     .where(eq(siteGenerationRuns.id, generationRunId)).limit(1);
   if (!context || !context.versionId || !context.generationDigest) return null;
-  if (context.generationStatus !== 'READY_FOR_REVIEW') return null;
+  if (!['DESIGN_COMPLETE', 'READY_FOR_REVIEW'].includes(context.generationStatus)) return null;
   if (!context.siteId) return null;
   const versionId = context.versionId;
   const siteId = context.siteId;
@@ -114,6 +114,31 @@ export async function finalizeProvisionedWorkspace(database: Database, generatio
     const [alreadyReady] = await tx.select({ status: provisioningRuns.status })
       .from(provisioningRuns).where(eq(provisioningRuns.id, context.provisioningRunId)).limit(1);
     if (alreadyReady?.status === 'READY') return { ready: true, idempotentReplay: true };
+
+    // V2 generation deliberately stops at DESIGN_COMPLETE. Apply the selected
+    // governed design before browser quality so the evidence is pinned to the
+    // exact snapshot later presented for human review.
+    if (context.generationStatus === 'DESIGN_COMPLETE') {
+      const nativeDesign = await applyProvisionedNativeDesign(tx, {
+        tenantId: context.tenantId,
+        siteId,
+        siteReference: context.siteReference,
+        versionId,
+        agencyUserId: context.agencyUserId,
+        pagePlan: context.pagePlan,
+      });
+      const designDigest = nativeDesign?.contentDigest ?? generationDigest;
+      await tx.update(siteGenerationRuns).set({
+        outputContentDigestSha256: designDigest,
+        updatedAt: new Date(),
+      }).where(eq(siteGenerationRuns.id, context.generationRunId));
+      return {
+        ready: false,
+        designPrepared: true,
+        contentDigest: designDigest,
+        idempotentReplay: nativeDesign?.idempotentReplay ?? true,
+      };
+    }
 
     await completeStep(tx, context, 'GENERATE_SITE', [context.generationRunReference], 'The structured site draft was generated and validated.');
 

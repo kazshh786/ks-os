@@ -55,7 +55,7 @@ const fieldShape = {
   id,
   type: FieldTypeSchema,
   internalLabel: text(255).optional(),
-  description: text(1000).optional(),
+  description: text(200_000).optional(),
   helpText: text(1000).optional(),
   placeholder: text(255).optional(),
   required: z.boolean().default(false),
@@ -124,8 +124,10 @@ const ThemeSchema = z.object({
 const SettingsSchema = z.object({
   showIntroduction: z.boolean().default(true),
   showReview: z.boolean().default(true),
+  termsAndConditionsText: text(120_000).optional(),
   estimatedMinutes: z.number().int().min(1).max(180).optional(),
   completionMessage: text(2000).default('Thank you. Your response was received.'),
+  completionRedirectUrl: text(2048).url().regex(/^https?:\/\//i).optional(),
   autosave: z.boolean().default(true),
 }).strict().default({});
 

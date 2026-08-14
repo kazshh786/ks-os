@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { getDatabase, stripeConnections, tenants } from '@ks-os/database';
-import { getStripeClient } from '../../lib/stripe.js';
+import { assertStripeCheckoutAmount, assertStripeConnectedAccountReady, getStripeClient, getStripePublishableKey } from '../../lib/stripe.js';
 
 const fail = (name: string, message: string) => {
   const error = new Error(message);
@@ -39,6 +39,8 @@ export class PosStripeService {
       throw fail('STRIPE_ACCOUNT_NOT_READY', 'The connected Stripe account is not ready to take payments.');
     }
 
+    await assertStripeConnectedAccountReady(connection.stripeAccountId);
+
     return connection;
   }
 
@@ -49,11 +51,20 @@ export class PosStripeService {
       .where(eq(stripeConnections.tenantId, tenantId))
       .limit(1);
 
-    const ready = Boolean(connection && connection.connectionStatus === 'READY' && connection.chargesEnabled);
+    const databaseReady = Boolean(connection && connection.connectionStatus === 'READY' && connection.chargesEnabled);
+    let ready = false;
+    if (databaseReady && connection) {
+      try {
+        await assertStripeConnectedAccountReady(connection.stripeAccountId);
+        ready = true;
+      } catch {
+        ready = false;
+      }
+    }
     return {
       connected: Boolean(connection),
       ready,
-      onlinePaymentsReady: ready && Boolean(process.env.STRIPE_PUBLISHABLE_KEY),
+      onlinePaymentsReady: ready && Boolean(getStripePublishableKey()),
       accountIdMasked: maskStripeAccountId(connection?.stripeAccountId),
     };
   }
@@ -99,6 +110,7 @@ export class PosStripeService {
 
     if (!tenant) throw fail('TENANT_NOT_FOUND', 'Business account was not found.');
     if (input.amountInCents <= 0) throw fail('INVALID_PAYMENT_TOTAL', 'The payment total must be greater than zero.');
+    assertStripeCheckoutAmount(input.amountInCents, tenant.currency);
 
     const reader = await stripe.terminal.readers.retrieve(
       input.readerId,
@@ -125,7 +137,7 @@ export class PosStripeService {
 
     const percentageBps = Number.parseInt(process.env.STRIPE_APPLICATION_FEE_BPS || '0', 10) || 0;
     const fixedFee = Number.parseInt(process.env.STRIPE_APPLICATION_FEE_FIXED || '0', 10) || 0;
-    const applicationFeeAmount = Math.max(0, Math.floor((input.amountInCents * percentageBps) / 10000) + fixedFee);
+    const applicationFeeAmount = Math.min(input.amountInCents, Math.max(0, Math.floor((input.amountInCents * percentageBps) / 10000) + fixedFee));
 
     const paymentIntent = await stripe.paymentIntents.create(
       {

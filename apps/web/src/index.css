@@ -6,8 +6,314 @@
   --font-serif: "Lora", Georgia, Cambria, serif;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 h1, h2, h3, h4, h5, h6, .font-serif {
   font-family: "Lora", "Times New Roman", serif;
+}
+
+#comparison h2 {
+  color: #ffffff;
+}
+
+#comparison .text-slate-600 {
+  color: #cbd5e1;
+}
+
+#comparison .text-cyan-700 {
+  color: #a5f3fc;
+}
+
+/* Dense but readable real-cost matrix. */
+section.bg-slate-950 .mt-12.overflow-hidden,
+section.bg-slate-950 .mt-12 .overflow-x-auto {
+  overflow: visible;
+}
+
+section.bg-slate-950 table {
+  table-layout: fixed;
+  border-collapse: separate !important;
+  border-spacing: 0 0.5rem !important;
+}
+
+section.bg-slate-950 table thead {
+  position: sticky;
+  top: 4.75rem;
+  z-index: 30;
+}
+
+section.bg-slate-950 table thead tr {
+  background: #020617 !important;
+  filter: drop-shadow(0 12px 18px rgba(2, 6, 23, 0.3));
+}
+
+section.bg-slate-950 table thead th {
+  border: 0 !important;
+  background: #020617 !important;
+  padding: 1rem 1.25rem !important;
+  color: #e2e8f0 !important;
+  font-size: 0.8rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: none !important;
+}
+
+section.bg-slate-950 table thead th:first-child {
+  width: 31%;
+  border-radius: 0.9rem 0 0 0.9rem;
+}
+
+section.bg-slate-950 table thead th:nth-child(2) {
+  width: 29%;
+  color: #fecdd3 !important;
+  font-size: 0 !important;
+}
+
+section.bg-slate-950 table thead th:nth-child(2)::after {
+  content: 'Other tools';
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+section.bg-slate-950 table thead th:last-child {
+  width: 40%;
+  border-radius: 0 0.9rem 0.9rem 0;
+  color: #c7d2fe !important;
+}
+
+section.bg-slate-950 table tbody tr {
+  border: 0 !important;
+}
+
+section.bg-slate-950 table tbody td {
+  border-top: 1px solid #e2e8f0 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  background: #ffffff;
+  padding: 0.95rem 1.25rem !important;
+  color: #475569 !important;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  vertical-align: middle;
+}
+
+section.bg-slate-950 table tbody td:first-child {
+  border-left: 1px solid #e2e8f0 !important;
+  border-radius: 0.85rem 0 0 0.85rem;
+  color: #0f172a !important;
+  font-weight: 800 !important;
+}
+
+section.bg-slate-950 table tbody td:nth-child(2) {
+  color: #64748b !important;
+  font-weight: 700;
+}
+
+section.bg-slate-950 table tbody td:last-child {
+  position: relative;
+  border-right: 1px solid #c7d2fe !important;
+  border-top-color: #c7d2fe !important;
+  border-bottom-color: #c7d2fe !important;
+  border-radius: 0 0.85rem 0.85rem 0;
+  background: #eef2ff;
+  padding-left: 3.25rem !important;
+  color: #3730a3 !important;
+  font-weight: 800 !important;
+}
+
+section.bg-slate-950 table tbody td:last-child::before {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 1.2rem;
+  display: grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+  background: #4338ca;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+/* Category separators are represented by rows with empty comparison cells. */
+section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) td {
+  border: 0 !important;
+  background: transparent !important;
+  padding: 1.15rem 0.25rem 0.35rem !important;
+}
+
+section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) td:first-child {
+  width: 100%;
+  color: #a5b4fc !important;
+  font-size: 0.72rem;
+  font-weight: 900 !important;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) td:nth-child(2),
+section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) td:last-child {
+  display: none;
+}
+
+/* The final total row is intentionally high contrast and contains prices only. */
+section.bg-slate-950 table tbody tr:last-child td {
+  border-color: #818cf8 !important;
+  padding-top: 1.5rem !important;
+  padding-bottom: 1.5rem !important;
+}
+
+section.bg-slate-950 table tbody tr:last-child td:first-child {
+  background: #020617;
+  color: #ffffff !important;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+section.bg-slate-950 table tbody tr:last-child td:nth-child(2),
+section.bg-slate-950 table tbody tr:last-child td:last-child {
+  font-family: "Lora", "Times New Roman", serif;
+  font-size: clamp(2rem, 3.4vw, 3.35rem);
+  font-weight: 800 !important;
+  line-height: 1;
+  letter-spacing: -0.055em;
+  white-space: nowrap;
+}
+
+section.bg-slate-950 table tbody tr:last-child td:nth-child(2) {
+  border-color: #fda4af !important;
+  background: #fff1f2;
+  color: #9f1239 !important;
+}
+
+section.bg-slate-950 table tbody tr:last-child td:last-child {
+  border-color: #818cf8 !important;
+  background: #4f46e5;
+  padding-left: 1.25rem !important;
+  color: #ffffff !important;
+}
+
+section.bg-slate-950 table tbody tr:last-child td:last-child::before {
+  content: none;
+  display: none;
+}
+
+@media (max-width: 767px) {
+  section.bg-slate-950 .mt-12.overflow-hidden,
+  section.bg-slate-950 .mt-12 .overflow-x-auto {
+    overflow: visible;
+  }
+
+  section.bg-slate-950 table {
+    display: block;
+    min-width: 0 !important;
+    border-spacing: 0 !important;
+  }
+
+  section.bg-slate-950 table thead {
+    display: none;
+  }
+
+  section.bg-slate-950 table tbody {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  section.bg-slate-950 table tbody tr {
+    display: grid;
+    overflow: hidden;
+    border-radius: 1rem;
+    background: #ffffff;
+  }
+
+  section.bg-slate-950 table tbody td,
+  section.bg-slate-950 table tbody td:first-child,
+  section.bg-slate-950 table tbody td:nth-child(2),
+  section.bg-slate-950 table tbody td:last-child {
+    display: block;
+    width: auto;
+    border: 0 !important;
+    border-radius: 0;
+    padding: 0.9rem 1.1rem !important;
+  }
+
+  section.bg-slate-950 table tbody td:first-child {
+    background: #f8fafc;
+    font-size: 1rem;
+  }
+
+  section.bg-slate-950 table tbody td:nth-child(2)::before,
+  section.bg-slate-950 table tbody td:last-child::before {
+    position: static;
+    display: block;
+    width: auto;
+    height: auto;
+    margin-bottom: 0.3rem;
+    transform: none;
+    border-radius: 0;
+    background: transparent;
+    font-family: "Open Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  section.bg-slate-950 table tbody td:nth-child(2)::before {
+    content: 'Other tools';
+    color: #be123c;
+  }
+
+  section.bg-slate-950 table tbody td:last-child::before {
+    content: 'With KS OS';
+    color: #4f46e5;
+  }
+
+  section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) {
+    overflow: visible;
+    background: transparent;
+  }
+
+  section.bg-slate-950 table tbody tr:has(td:nth-child(2):empty) td:first-child {
+    display: block;
+    padding: 1.4rem 0.15rem 0.25rem !important;
+    background: transparent;
+    font-size: 0.7rem;
+  }
+
+  section.bg-slate-950 table tbody tr:last-child {
+    border: 2px solid #818cf8;
+  }
+
+  section.bg-slate-950 table tbody tr:last-child td:first-child {
+    background: #020617;
+  }
+
+  section.bg-slate-950 table tbody tr:last-child td:nth-child(2),
+  section.bg-slate-950 table tbody tr:last-child td:last-child {
+    padding: 1.4rem 1.1rem !important;
+    font-size: clamp(2.25rem, 12vw, 3.25rem);
+  }
+
+  section.bg-slate-950 table tbody tr:last-child td:nth-child(2) {
+    background: #fff1f2;
+  }
+
+  section.bg-slate-950 table tbody tr:last-child td:last-child {
+    background: #4f46e5;
+    color: #ffffff !important;
+  }
+
+  section.bg-slate-950 table tbody tr:last-child td:last-child::before {
+    content: 'With KS OS';
+    display: block;
+    color: #c7d2fe;
+  }
 }
 
 /* Modernized Dropdown Selectors Across the Board */
@@ -35,7 +341,6 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
   background-color: #ffffff;
 }
-
 body {
   overflow-wrap: anywhere;
 }
