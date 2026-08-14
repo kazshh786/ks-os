@@ -15,3 +15,14 @@ test('approved Search Intelligence exposes a governed full-site rebuild action',
   assert.match(source, /existing website version and version history are preserved/i);
   assert.match(source, /idempotentReplay/);
 });
+
+test('failed website generation can be retried from the Search Intelligence workspace', () => {
+  const source = web('features/agency/SearchIntelligencePanel.tsx');
+  assert.match(source, /Latest website build failed/);
+  assert.match(source, /Retry build/);
+  assert.match(source, /latestGeneration\.status !== 'FAILED'/);
+  assert.match(source, /generation\.idempotentReplay && generation\.status === 'FAILED'/);
+  assert.match(source, /generation-runs\/\$\{latestGeneration\.reference\}\/retry/);
+  assert.match(source, /generation-runs\/\$\{generation\.reference\}\/retry/);
+  assert.match(source, /re-queued using the same governed inputs/i);
+});
