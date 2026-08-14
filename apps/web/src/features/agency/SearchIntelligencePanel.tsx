@@ -50,6 +50,13 @@ interface SearchIntelligencePayload {
   researchFreshness: { staleCount: number; evidenceCount: number };
 }
 
+interface GenerationRunSummary {
+  reference: string;
+  status: string;
+  failureCode: string | null;
+  failureMessage: string | null;
+}
+
 const label = (value: string) => value.replaceAll('_', ' ').toLowerCase();
 
 function SerpCard({
@@ -97,6 +104,7 @@ export function SearchIntelligencePanel({
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [latestGeneration, setLatestGeneration] = useState<GenerationRunSummary | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,6 +116,12 @@ export function SearchIntelligencePanel({
       setSelectedBriefReference(current => current && result.briefs.some(brief => brief.reference === current)
         ? current
         : result.briefs[0]?.reference ?? '');
+      try {
+        const generations = await agencyFetch(`/sites/${siteReference}/generation-runs`) as GenerationRunSummary[];
+        setLatestGeneration(generations[0] ?? null);
+      } catch {
+        setLatestGeneration(null);
+      }
     } catch (caught) {
       const requestError = caught as AgencyRequestError;
       if (requestError.status === 404) {
@@ -190,6 +204,22 @@ export function SearchIntelligencePanel({
     } finally { setBusy(''); }
   };
 
+  const retryWebsiteBuild = async () => {
+    if (!latestGeneration || latestGeneration.status !== 'FAILED') return;
+    if (!window.confirm('Retry this failed website build using the same governed inputs?')) return;
+    setBusy('retry'); setError(''); setNotice('');
+    try {
+      await agencyFetch(`/sites/${siteReference}/generation-runs/${latestGeneration.reference}/retry`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Retry the failed governed website build from the agency workspace.' }),
+      });
+      setNotice('The failed website build has been re-queued using the same governed inputs.');
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The failed website build could not be retried.');
+    } finally { setBusy(''); }
+  };
+
   const rebuildWebsite = async () => {
     if (!data || data.status !== 'APPROVED' || !blueprint || blueprint.status !== 'APPROVED') return;
     const confirmed = window.confirm(
@@ -205,8 +235,17 @@ export function SearchIntelligencePanel({
           generationReason: 'BLUEPRINT_REVISION',
         }),
       });
+      if (generation.idempotentReplay && generation.status === 'FAILED') {
+        await agencyFetch(`/sites/${siteReference}/generation-runs/${generation.reference}/retry`, {
+          method: 'POST',
+          body: JSON.stringify({ reason: 'Retry the failed governed website build requested through Rebuild website.' }),
+        });
+        setNotice('The matching governed website build had previously failed, so KS OS re-queued that build instead of silently reusing the failed state.');
+        await load();
+        return;
+      }
       setNotice(generation.idempotentReplay
-        ? 'A website generation run already exists for these exact approved inputs. KS OS reused that governed run instead of creating a duplicate.'
+        ? 'A website generation run already exists for these exact approved inputs. KS OS reused that active or completed governed run instead of creating a duplicate.'
         : 'A new website version is queued from the current approved blueprint, Search Intelligence, verified business facts and generation context. The previous version remains preserved.');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The website rebuild could not be queued.');
@@ -242,6 +281,7 @@ export function SearchIntelligencePanel({
     {error ? <p role="alert" className="mt-4 rounded-xl border border-rose-900 bg-rose-950/30 p-3 text-xs text-rose-200">{error}</p> : null}
     {notice ? <p role="status" className="mt-4 rounded-xl border border-emerald-900 bg-emerald-950/30 p-3 text-xs text-emerald-200">{notice}</p> : null}
     {researchRequired ? <div className="mt-4 rounded-xl border border-amber-800 bg-amber-950/25 p-4"><p className="flex items-center gap-2 text-xs font-black text-amber-200"><AlertTriangle className="h-4 w-4" />Research required</p><p className="mt-2 text-xs leading-5 text-amber-100/80">This is a blueprint-context planning draft. It cannot be approved or used for website generation until a governed research bundle with referenced evidence and one complete brief per blueprint page is imported and reviewed.</p>{isDraft && canManage ? <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-amber-700 px-4 text-xs font-black text-amber-200"><Search className="h-4 w-4" />{busy === 'import' ? 'Importing governed research…' : 'Import governed research bundle'}<input type="file" accept="application/json,.json" disabled={Boolean(busy)} className="sr-only" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void importResearchBundle(file); }} /></label> : null}</div> : null}
+    {latestGeneration?.status === 'FAILED' ? <div className="mt-4 rounded-xl border border-rose-800 bg-rose-950/25 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="flex items-center gap-2 text-xs font-black text-rose-200"><AlertTriangle className="h-4 w-4" />Latest website build failed</p><p className="mt-1 max-w-3xl text-xs leading-5 text-rose-100/80">{latestGeneration.failureMessage || 'The latest governed website build failed before it became ready for review.'}</p>{latestGeneration.failureCode ? <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-rose-300">{latestGeneration.failureCode}</p> : null}</div><button type="button" disabled={!canManage || Boolean(busy)} onClick={() => void retryWebsiteBuild()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-black text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40">{busy === 'retry' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{busy === 'retry' ? 'Retrying build…' : 'Retry build'}</button></div></div> : null}
     {data.status === 'APPROVED' && blueprint?.status === 'APPROVED' ? <div className="mt-4 rounded-xl border border-violet-700/70 bg-violet-950/25 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-black text-violet-100">Approved inputs are ready for a full rebuild</p><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">Create a new governed website version from blueprint revision {blueprint.revision} and Search Intelligence version {data.strategy.strategyVersion}. The existing website version and version history are preserved.</p></div><button type="button" disabled={!canManage || Boolean(busy)} onClick={() => void rebuildWebsite()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-black text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40">{busy === 'rebuild' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{busy === 'rebuild' ? 'Queuing rebuild…' : 'Rebuild website'}</button></div></div> : null}
 
     <div className="mt-5 grid gap-3 md:grid-cols-4">
