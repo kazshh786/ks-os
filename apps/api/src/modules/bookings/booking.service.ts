@@ -89,7 +89,6 @@ export class BookingService {
       ...(settings.automations.reminderThreeDaysEnabled ? [72] : []),
       ...(settings.automations.reminderOneDayEnabled ? [24] : []),
     ];
-    const fmt = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: tenant.timezone });
     const parts = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: tenant.timezone }).format(startTime);
     const time = new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: tenant.timezone }).format(startTime);
     for (const h of hours) {
