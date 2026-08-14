@@ -36,6 +36,7 @@ import {
   siteJobs,
   sitePages,
   sitePageSeoBriefs,
+  siteSearchResearchEvidence,
   siteSearchStrategies,
   siteRenderSnapshots,
   siteReviewActivity,
@@ -74,6 +75,7 @@ import {
   searchStrategyDigest,
   assertSearchIntelligenceReady,
   PageSeoBriefSchema,
+  parseSearchResearchEvidenceDatabaseRow,
   SearchIntelligenceStrategyV2Schema,
   type GeneratedPage,
   type GeneratedSection,
@@ -184,6 +186,15 @@ interface PreparedRuntime {
   searchIntelligence?: ApprovedSearchIntelligenceInput;
 }
 
+type PinnedSearchIntelligenceRun = Pick<RunContext,
+  'tenantId' | 'siteId' | 'blueprintId' | 'searchStrategyId'
+  | 'searchStrategyVersion' | 'searchStrategyDigestSha256'>;
+
+interface PinnedSearchIntelligencePage {
+  reference: string;
+  pageType: string;
+}
+
 function generationPipelineVersion(run: Pick<RunContext, 'templateManifest'>): 1 | 2 {
   const manifest = run.templateManifest
     && typeof run.templateManifest === 'object'
@@ -194,6 +205,91 @@ function generationPipelineVersion(run: Pick<RunContext, 'templateManifest'>): 1
     && manifest.generationPipelineVersion === 2
     ? 2
     : 1;
+}
+
+export async function loadPinnedSearchIntelligence(
+  database: Database,
+  run: PinnedSearchIntelligenceRun,
+  pages: readonly PinnedSearchIntelligencePage[],
+): Promise<ApprovedSearchIntelligenceInput> {
+  if (!run.searchStrategyId || !run.searchStrategyVersion || !run.searchStrategyDigestSha256) {
+    throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'V2 generation has no pinned approved Search Intelligence strategy.');
+  }
+  const [row] = await database.select({
+    value: siteSearchStrategies.strategyJson,
+    status: siteSearchStrategies.status,
+    version: siteSearchStrategies.strategyVersion,
+    digestSha256: siteSearchStrategies.outputDigestSha256,
+  }).from(siteSearchStrategies).where(and(
+    eq(siteSearchStrategies.id, run.searchStrategyId),
+    eq(siteSearchStrategies.tenantId, run.tenantId),
+    eq(siteSearchStrategies.siteId, run.siteId),
+    eq(siteSearchStrategies.blueprintId, run.blueprintId),
+  )).limit(1);
+  if (!row || row.status !== 'APPROVED'
+    || row.version !== run.searchStrategyVersion
+    || row.digestSha256 !== run.searchStrategyDigestSha256) {
+    throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The pinned Search Intelligence approval or provenance changed.');
+  }
+  const strategy = SearchIntelligenceStrategyV2Schema.parse(row.value);
+  if (searchStrategyDigest(strategy) !== row.digestSha256) {
+    throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The pinned Search Intelligence digest is invalid.');
+  }
+  const [briefRows, evidenceRows] = await Promise.all([
+    database.select({ value: sitePageSeoBriefs.briefJson })
+      .from(sitePageSeoBriefs).where(and(
+        eq(sitePageSeoBriefs.strategyId, run.searchStrategyId),
+        eq(sitePageSeoBriefs.tenantId, run.tenantId),
+        eq(sitePageSeoBriefs.siteId, run.siteId),
+        eq(sitePageSeoBriefs.blueprintId, run.blueprintId),
+        eq(sitePageSeoBriefs.status, 'APPROVED'),
+      )),
+    database.select({
+      tenantId: siteSearchResearchEvidence.tenantId,
+      siteId: siteSearchResearchEvidence.siteId,
+      strategyId: siteSearchResearchEvidence.strategyId,
+      reference: siteSearchResearchEvidence.publicReference,
+      providerKey: siteSearchResearchEvidence.providerKey,
+      query: siteSearchResearchEvidence.query,
+      market: siteSearchResearchEvidence.market,
+      locale: siteSearchResearchEvidence.locale,
+      location: siteSearchResearchEvidence.searchLocation,
+      language: siteSearchResearchEvidence.language,
+      device: siteSearchResearchEvidence.device,
+      capturedAt: siteSearchResearchEvidence.capturedAt,
+      expiresAt: siteSearchResearchEvidence.expiresAt,
+      sourceUrl: siteSearchResearchEvidence.sourceUrl,
+      sourceDigestSha256: siteSearchResearchEvidence.sourceDigestSha256,
+      payloadDigestSha256: siteSearchResearchEvidence.payloadDigestSha256,
+      notes: siteSearchResearchEvidence.notesJson,
+    }).from(siteSearchResearchEvidence).where(and(
+      eq(siteSearchResearchEvidence.tenantId, run.tenantId),
+      eq(siteSearchResearchEvidence.siteId, run.siteId),
+      eq(siteSearchResearchEvidence.strategyId, run.searchStrategyId),
+    )),
+  ]);
+  const briefs = briefRows.map(item => PageSeoBriefSchema.parse(item.value));
+  const evidence = evidenceRows
+    .filter(item => item.tenantId === run.tenantId
+      && item.siteId === run.siteId
+      && item.strategyId === run.searchStrategyId)
+    .map(parseSearchResearchEvidenceDatabaseRow);
+  const byBlueprintPage = new Map(briefs.map(brief => [brief.blueprintPageReference, brief]));
+  try {
+    assertSearchIntelligenceReady({
+      strategy,
+      briefs,
+      evidence,
+      plannedPages: pages.map(page => ({
+        blueprintPageReference: page.reference,
+        pageReference: byBlueprintPage.get(page.reference)?.pageReference ?? '',
+        pageType: page.pageType,
+      })),
+    });
+  } catch {
+    throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The pinned Search Intelligence page/brief plan is incomplete or stale.');
+  }
+  return { strategy, briefs, evidence };
 }
 
 async function failGenerationRun(
@@ -1422,50 +1518,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
     run: RunContext,
     pages: ReadonlyArray<{ reference: string; pageType: string }>,
   ): Promise<ApprovedSearchIntelligenceInput> {
-    if (!run.searchStrategyId || !run.searchStrategyVersion || !run.searchStrategyDigestSha256) {
-      throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'V2 generation has no pinned approved Search Intelligence strategy.');
-    }
-    const [row] = await this.database.select({
-      value: siteSearchStrategies.strategyJson,
-      status: siteSearchStrategies.status,
-      version: siteSearchStrategies.strategyVersion,
-      digestSha256: siteSearchStrategies.outputDigestSha256,
-    }).from(siteSearchStrategies).where(and(
-      eq(siteSearchStrategies.id, run.searchStrategyId),
-      eq(siteSearchStrategies.tenantId, run.tenantId),
-      eq(siteSearchStrategies.siteId, run.siteId),
-      eq(siteSearchStrategies.blueprintId, run.blueprintId),
-    )).limit(1);
-    if (!row || row.status !== 'APPROVED'
-      || row.version !== run.searchStrategyVersion
-      || row.digestSha256 !== run.searchStrategyDigestSha256) {
-      throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The pinned Search Intelligence approval or provenance changed.');
-    }
-    const strategy = SearchIntelligenceStrategyV2Schema.parse(row.value);
-    if (searchStrategyDigest(strategy) !== row.digestSha256) {
-      throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The pinned Search Intelligence digest is invalid.');
-    }
-    const briefRows = await this.database.select({ value: sitePageSeoBriefs.briefJson })
-      .from(sitePageSeoBriefs).where(and(
-        eq(sitePageSeoBriefs.strategyId, run.searchStrategyId),
-        eq(sitePageSeoBriefs.status, 'APPROVED'),
-      ));
-    const briefs = briefRows.map(item => PageSeoBriefSchema.parse(item.value));
-    const byBlueprintPage = new Map(briefs.map(brief => [brief.blueprintPageReference, brief]));
-    try {
-      assertSearchIntelligenceReady({
-        strategy,
-        briefs,
-        plannedPages: pages.map(page => ({
-          blueprintPageReference: page.reference,
-          pageReference: byBlueprintPage.get(page.reference)?.pageReference ?? '',
-          pageType: page.pageType,
-        })),
-      });
-    } catch {
-      throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The pinned Search Intelligence page/brief plan is incomplete or stale.');
-    }
-    return { strategy, briefs };
+    return loadPinnedSearchIntelligence(this.database, run, pages);
   }
 
   private async assertLicence(run: RunContext) {

@@ -35,11 +35,13 @@ import {
   validateGeneratedPageAgainstSeoBrief,
   type PageSeoBrief,
   type SearchIntelligenceStrategyV2,
+  type SearchResearchEvidence,
 } from './search-intelligence.js';
 
 export interface ApprovedSearchIntelligenceInput {
   strategy: SearchIntelligenceStrategyV2;
   briefs: readonly PageSeoBrief[];
+  evidence: readonly SearchResearchEvidence[];
 }
 
 export interface SiteGenerationPersistence {
@@ -133,6 +135,7 @@ export async function executeStructuredSiteGeneration(
     assertSearchIntelligenceReady({
       strategy: input.searchIntelligence.strategy,
       briefs: input.searchIntelligence.briefs,
+      evidence: input.searchIntelligence.evidence,
       plannedPages: input.plan.pages.map(page => ({
         blueprintPageReference: page.blueprintPageReference,
         pageReference: page.pageReference,
