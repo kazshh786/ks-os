@@ -36,14 +36,19 @@ export function getDatabase(connectionString?: string): Database {
     throw new Error('DATABASE_URL environment variable is missing.');
   }
 
-  // Prevent multiple pools in dev hot-reloads
+  // Prevent multiple pools in dev hot-reloads. Supavisor can occasionally take
+  // longer than two seconds to hand out/re-establish a connection during a brief
+  // infrastructure or network stall, so give the pool enough time to recover
+  // instead of turning a transient pause into platform-wide query failures.
   const globalRef = globalThis as any;
   if (!globalRef.pgPool) {
     globalRef.pgPool = new pg.Pool({
       connectionString: url,
       max: 10,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      connectionTimeoutMillis: 10000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
     });
   }
 
