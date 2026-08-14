@@ -4,12 +4,13 @@ import { Mail } from 'lucide-react';
 const commonDomains = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com'];
 
 type EmailAddressInputProps = {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   className?: string;
 };
 
-export function EmailAddressInput({ value, onChange, className = '' }: EmailAddressInputProps) {
+export function EmailAddressInput({ id, value, onChange, className = '' }: EmailAddressInputProps) {
   const [focused, setFocused] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -36,6 +37,7 @@ export function EmailAddressInput({ value, onChange, className = '' }: EmailAddr
       <div className="email-suggestion-field__control">
         <Mail aria-hidden="true" />
         <input
+          id={id}
           required
           type="email"
           autoComplete="email"

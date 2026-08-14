@@ -63,7 +63,7 @@ export function StaffCalendarPage() {
       <BookingOperationsCalendar />
     </CalendarWorkspaceFrame>
     {role === 'owner' && <CalendarToolbarActionPortal>
-      <button type="button" aria-label="Availability" onClick={() => setAvailabilityOpen(true)} className="inline-flex min-h-9 min-w-9 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-bold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-800 sm:px-3"><Clock3 className="h-3.5 w-3.5" /><span className="hidden sm:inline">Availability</span></button>
+      <button type="button" aria-label="Availability" onClick={() => setAvailabilityOpen(true)} className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-bold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-800 sm:px-3"><Clock3 className="h-3.5 w-3.5" /><span className="hidden sm:inline">Availability</span></button>
     </CalendarToolbarActionPortal>}
     <CalendarAvailabilityDialog open={availabilityOpen} initialDate={selectedDate} onClose={() => setAvailabilityOpen(false)} />
     {activeTenant && <CreateBookingDialog

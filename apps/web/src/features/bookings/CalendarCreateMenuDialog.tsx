@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
 import { CalendarDays, Clock3, ConciergeBell, X } from 'lucide-react';
+import { useModalDialog } from '../../components/overlays/useModalDialog.js';
 
 export type CalendarCreateType = 'booking' | 'walk-in' | 'block';
 
@@ -36,30 +36,22 @@ const options: Array<{
 ];
 
 export function CalendarCreateMenuDialog({ open, onClose, onChoose }: CalendarCreateMenuDialogProps) {
-  const closeButton = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    closeButton.current?.focus();
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, open]);
+  const dialogRef = useModalDialog<HTMLElement>(open, onClose);
 
   if (!open) return null;
 
-  return <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-6" role="presentation" data-calendar-dialog-layer="true">
-    <section role="dialog" aria-modal="true" aria-labelledby="calendar-create-title" className="w-full max-w-2xl rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
-      <header className="flex items-start justify-between gap-4">
-        <div>
+  return <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-6" role="presentation" data-calendar-dialog-layer="true" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="calendar-create-title" tabIndex={-1} className="flex max-h-dvh w-full max-w-2xl flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[90dvh] sm:rounded-3xl">
+      <header className="flex shrink-0 items-start justify-between gap-4 border-b p-4 sm:p-6">
+        <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Calendar action</p>
           <h2 id="calendar-create-title" className="mt-1 text-2xl font-black text-slate-950">Add to calendar</h2>
           <p className="mt-1 text-sm text-slate-500">Choose what you want to add. Existing availability and conflict checks still apply.</p>
         </div>
-        <button ref={closeButton} type="button" onClick={onClose} aria-label="Close add to calendar" className="rounded-lg border p-2 text-slate-600 hover:bg-slate-50"><X className="h-5 w-5" /></button>
+        <button data-dialog-initial-focus type="button" onClick={onClose} aria-label="Close add to calendar" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border text-slate-600 hover:bg-slate-50"><X className="h-5 w-5" /></button>
       </header>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="grid min-h-0 gap-3 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:grid-cols-3 sm:p-6">
         {options.map(option => {
           const Icon = option.icon;
           return <button

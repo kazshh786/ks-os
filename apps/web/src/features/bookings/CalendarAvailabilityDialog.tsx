@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarClock, Clock3, MapPin, Smartphone, Trash2, X } from 'lucide-react';
 import type { BookingChannel, CustomerBookingPolicySettings } from '@ks-os/contracts';
 import { fetchWithAuth } from '../../api/client.js';
+import { useModalDialog } from '../../components/overlays/useModalDialog.js';
 import { getDataProvider } from '../../data/data-provider.js';
 
 const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -56,6 +57,7 @@ const normaliseSchedule = (member: Member, channel: BookingChannel): ScheduleRow
 };
 
 export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { open: boolean; initialDate: string; onClose: () => void }) {
+  const dialogRef = useModalDialog<HTMLElement>(open, onClose);
   const [members, setMembers] = useState<MemberSummary[]>([]);
   const [memberId, setMemberId] = useState('');
   const [member, setMember] = useState<Member | null>(null);
@@ -110,13 +112,6 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
     setWeeklyState('idle');
     setOverrideState('idle');
   }, [channel, member]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose, open]);
 
   const channelOverrides = useMemo(() => (member?.bookingOverrides || [])
     .filter(item => item.channel === channel)
@@ -210,16 +205,16 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
   const channelEnabled = enabledChannels.includes(channel);
 
   return <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/55 p-0 sm:items-center sm:p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section role="dialog" aria-modal="true" aria-labelledby="availability-dialog-title" className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+    <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="availability-dialog-title" tabIndex={-1} className="flex max-h-dvh w-full max-w-5xl flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[94dvh] sm:rounded-3xl">
       <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-        <div className="flex gap-3">
+        <div className="flex min-w-0 gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700"><CalendarClock className="h-5 w-5" /></span>
           <div><h2 id="availability-dialog-title" className="text-xl font-black text-slate-950">Availability and booking hours</h2><p className="mt-1 text-sm text-slate-500">Set the normal week, mobile hours and one-off changes without leaving the calendar.</p></div>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close availability" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        <button data-dialog-initial-focus type="button" onClick={onClose} aria-label="Close availability" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button>
       </header>
 
-      <div className="overflow-y-auto p-5 sm:p-6">
+      <div className="overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-6">
         {error && <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800">{error}</div>}
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <label className="text-xs font-black uppercase tracking-wide text-slate-500">Team member<select value={memberId} onChange={event => setMemberId(event.target.value)} className="mt-1 block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-950">{members.map(row => <option key={row.userId} value={row.userId}>{row.name} · {row.role === 'owner' ? 'Owner' : 'Staff'}</option>)}</select></label>
@@ -233,8 +228,8 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
         {channel === 'mobile' && <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900"><strong>Out-of-hours mobile visits are supported.</strong> These times are independent from the salon’s in-shop opening hours, so evening or occasional mobile appointments can be offered safely.</div>}
 
         <div className="mt-5 flex gap-2 border-b border-slate-200" role="tablist" aria-label="Availability settings">
-          <button type="button" role="tab" aria-selected={tab === 'weekly'} onClick={() => setTab('weekly')} className={`border-b-2 px-3 py-2 text-sm font-black ${tab === 'weekly' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500'}`}>Normal weekly hours</button>
-          <button type="button" role="tab" aria-selected={tab === 'overrides'} onClick={() => setTab('overrides')} className={`border-b-2 px-3 py-2 text-sm font-black ${tab === 'overrides' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500'}`}>Date overrides</button>
+          <button type="button" role="tab" aria-selected={tab === 'weekly'} onClick={() => setTab('weekly')} className={`min-h-11 border-b-2 px-3 py-2 text-sm font-black ${tab === 'weekly' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500'}`}>Normal weekly hours</button>
+          <button type="button" role="tab" aria-selected={tab === 'overrides'} onClick={() => setTab('overrides')} className={`min-h-11 border-b-2 px-3 py-2 text-sm font-black ${tab === 'overrides' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500'}`}>Date overrides</button>
         </div>
 
         {loading && <p className="py-8 text-center text-sm text-slate-500">Loading availability…</p>}
@@ -247,13 +242,13 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
             {schedule.map((row, index) => <div key={row.dayOfWeek} className="grid items-center gap-3 py-3 sm:grid-cols-[8rem_7rem_1fr_1fr]">
               <span className="text-sm font-black text-slate-900">{days[row.dayOfWeek]}</span>
               <label className="flex items-center gap-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={row.enabled} onChange={event => updateSchedule(index, { enabled: event.target.checked })} />{row.enabled ? 'Available' : 'Unavailable'}</label>
-              <label className="text-xs font-bold text-slate-500">From<input aria-label={`${days[row.dayOfWeek]} ${channelLabel.toLowerCase()} starts`} type="time" disabled={!row.enabled} value={row.startTime} onChange={event => updateSchedule(index, { startTime: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm text-slate-950 disabled:bg-slate-100" /></label>
-              <label className="text-xs font-bold text-slate-500">Until<input aria-label={`${days[row.dayOfWeek]} ${channelLabel.toLowerCase()} ends`} type="time" disabled={!row.enabled} value={row.endTime} onChange={event => updateSchedule(index, { endTime: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm text-slate-950 disabled:bg-slate-100" /></label>
+              <label className="text-xs font-bold text-slate-500">From<input aria-label={`${days[row.dayOfWeek]} ${channelLabel.toLowerCase()} starts`} type="time" disabled={!row.enabled} value={row.startTime} onChange={event => updateSchedule(index, { startTime: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 p-2 text-sm text-slate-950 disabled:bg-slate-100" /></label>
+              <label className="text-xs font-bold text-slate-500">Until<input aria-label={`${days[row.dayOfWeek]} ${channelLabel.toLowerCase()} ends`} type="time" disabled={!row.enabled} value={row.endTime} onChange={event => updateSchedule(index, { endTime: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 p-2 text-sm text-slate-950 disabled:bg-slate-100" /></label>
             </div>)}
           </div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div aria-live="polite" className="text-sm">{weeklyState === 'saved' && <span className="font-bold text-emerald-700">Weekly {channelLabel.toLowerCase()} hours saved.</span>}{weeklyState === 'error' && <span role="alert" className="font-bold text-rose-700">Availability could not be saved. Check the times and try again.</span>}</div>
-            <button type="button" onClick={() => void saveWeekly()} disabled={weeklyState === 'saving'} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white hover:bg-indigo-700 disabled:opacity-50">{weeklyState === 'saving' ? 'Saving…' : 'Save weekly hours'}</button>
+            <button type="button" onClick={() => void saveWeekly()} disabled={weeklyState === 'saving'} className="min-h-11 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white hover:bg-indigo-700 disabled:opacity-50">{weeklyState === 'saving' ? 'Saving…' : 'Save weekly hours'}</button>
           </div>
         </div>}
 
@@ -266,9 +261,9 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
                 <button type="button" aria-pressed={overrideDraft.enabled} onClick={() => setOverrideDraft(current => ({ ...current, enabled: true }))} className={`rounded-xl border px-3 py-3 text-sm font-black ${overrideDraft.enabled ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-200 text-slate-600'}`}>Work this date</button>
                 <button type="button" aria-pressed={!overrideDraft.enabled} onClick={() => setOverrideDraft(current => ({ ...current, enabled: false }))} className={`rounded-xl border px-3 py-3 text-sm font-black ${!overrideDraft.enabled ? 'border-rose-300 bg-rose-50 text-rose-800' : 'border-slate-200 text-slate-600'}`}>Take this date off</button>
               </div>
-              {overrideDraft.enabled && <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-slate-500">From<input type="time" value={overrideDraft.startTime} onChange={event => setOverrideDraft(current => ({ ...current, startTime: event.target.value }))} className="mt-1 block w-full rounded-xl border border-slate-300 p-2.5 text-sm text-slate-950" /></label><label className="text-xs font-bold text-slate-500">Until<input type="time" value={overrideDraft.endTime} onChange={event => setOverrideDraft(current => ({ ...current, endTime: event.target.value }))} className="mt-1 block w-full rounded-xl border border-slate-300 p-2.5 text-sm text-slate-950" /></label></div>}
+              {overrideDraft.enabled && <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-slate-500">From<input type="time" value={overrideDraft.startTime} onChange={event => setOverrideDraft(current => ({ ...current, startTime: event.target.value }))} className="mt-1 block min-h-11 w-full rounded-xl border border-slate-300 p-2.5 text-sm text-slate-950" /></label><label className="text-xs font-bold text-slate-500">Until<input type="time" value={overrideDraft.endTime} onChange={event => setOverrideDraft(current => ({ ...current, endTime: event.target.value }))} className="mt-1 block min-h-11 w-full rounded-xl border border-slate-300 p-2.5 text-sm text-slate-950" /></label></div>}
               <label className="block text-xs font-bold text-slate-500">Reason or note <span className="font-normal">(optional)</span><input value={overrideDraft.note} maxLength={160} onChange={event => setOverrideDraft(current => ({ ...current, note: event.target.value }))} placeholder="e.g. Working Monday instead of Thursday" className="mt-1 block min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-950" /></label>
-              <button type="button" onClick={() => void saveOverride()} disabled={overrideState === 'saving'} className="w-full rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">{overrideState === 'saving' ? 'Saving…' : 'Save date override'}</button>
+              <button type="button" onClick={() => void saveOverride()} disabled={overrideState === 'saving'} className="min-h-11 w-full rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">{overrideState === 'saving' ? 'Saving…' : 'Save date override'}</button>
               <div aria-live="polite" className="min-h-5 text-sm">{overrideState === 'saved' && <span className="font-bold text-emerald-700">Date overrides updated.</span>}{overrideState === 'error' && <span role="alert" className="font-bold text-rose-700">Check the date and times, then try again.</span>}</div>
             </div>
           </section>
@@ -278,7 +273,7 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
             <div className="mt-4 space-y-2">
               {channelOverrides.map(item => <article key={`${item.channel}-${item.date}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
                 <div><p className="text-sm font-black text-slate-950">{new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${item.date}T12:00:00Z`))}</p><p className={`mt-1 text-xs font-bold ${item.enabled ? 'text-emerald-700' : 'text-rose-700'}`}>{item.enabled ? `${item.startTime?.slice(0, 5)}–${item.endTime?.slice(0, 5)} · Available` : 'Unavailable all day'}</p>{item.note && <p className="mt-1 text-xs text-slate-500">{item.note}</p>}</div>
-                <button type="button" onClick={() => void removeOverride(item)} aria-label={`Remove override for ${item.date}`} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>
+                <button type="button" onClick={() => void removeOverride(item)} aria-label={`Remove override for ${item.date}`} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>
               </article>)}
               {!channelOverrides.length && <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">No one-off changes for {channelLabel.toLowerCase()} yet.</div>}
             </div>
@@ -290,5 +285,5 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
 }
 
 function ChannelButton({ selected, icon, label, onClick }: { selected: boolean; icon: ReactNode; label: string; onClick: () => void }) {
-  return <button type="button" aria-pressed={selected} onClick={onClick} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-xs font-black ${selected ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-950'}`}>{icon}{label}</button>;
+  return <button type="button" aria-pressed={selected} onClick={onClick} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-xs font-black ${selected ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-950'}`}>{icon}{label}</button>;
 }

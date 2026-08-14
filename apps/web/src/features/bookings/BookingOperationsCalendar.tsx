@@ -217,7 +217,7 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
     setSelected(booking);
   };
 
-  return <main className="relative flex min-h-full flex-col bg-slate-50 pb-24" aria-busy={loading}>
+  return <main className="relative flex min-h-full min-w-0 flex-col bg-slate-50 pb-44 sm:pb-32 lg:pb-24" aria-busy={loading}>
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur sm:px-4">
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
@@ -232,45 +232,45 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
               <span className="sr-only">Search bookings</span>
               <input value={searchValue} onChange={event => setSearchValue(event.target.value)} placeholder="Search customer, email, phone or booking reference" className="min-h-11 w-full border-0 bg-transparent px-3 text-sm outline-none" />
             </label>
-            {searchValue && <button type="button" onClick={() => { setSearchValue(''); updateParams({ search: null }); }} aria-label="Clear booking search" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>}
-            <button type="submit" className="m-1 min-h-9 rounded-lg bg-slate-900 px-4 text-xs font-black text-white">Search</button>
+            {searchValue && <button type="button" onClick={() => { setSearchValue(''); updateParams({ search: null }); }} aria-label="Clear booking search" className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>}
+            <button type="submit" className="m-1 min-h-11 rounded-lg bg-slate-900 px-4 text-xs font-black text-white">Search</button>
           </form>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <button type="button" onClick={() => setFiltersOpen(value => !value)} aria-expanded={filtersOpen} className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-black ${filtersOpen || filterCount ? 'border-indigo-200 bg-indigo-50 text-indigo-800' : 'border-slate-300 bg-white text-slate-800'}`}>
               <Filter className="h-4 w-4" />Filters
               {filterCount > 0 && <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] text-white">{filterCount}</span>}
             </button>
 
-            <div className="relative">
+            <div className="relative min-w-0">
               <button type="button" onClick={() => { setViewMenuOpen(value => !value); setActionsOpen(false); }} aria-expanded={viewMenuOpen} aria-label="Change calendar view" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-800">
                 <CalendarDays className="h-4 w-4" />{currentViewLabel}<ChevronDown className="h-4 w-4" />
               </button>
-              {viewMenuOpen && <div className="absolute right-0 z-50 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+              {viewMenuOpen && <div className="absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
                 <p className="px-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Calendar view</p>
                 <div role="group" aria-label="Calendar date views" className="mt-2 grid grid-cols-3 gap-2">
                   {primaryCalendarViews.map(option => <button key={option.value} type="button" aria-pressed={view === option.value} onClick={() => changeView(option.value)} className={`rounded-xl border px-3 py-3 text-sm font-black ${view === option.value ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-slate-200 hover:border-indigo-200 hover:bg-slate-50'}`}>{option.label}</button>)}
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  {calendarViews.filter(option => !primaryCalendarViews.some(primary => primary.value === option.value)).map(option => <button key={option.value} type="button" aria-pressed={view === option.value} onClick={() => changeView(option.value)} className={`rounded-xl px-3 py-2 text-left text-xs font-bold ${view === option.value ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}>{option.label}</button>)}
+                  {calendarViews.filter(option => !primaryCalendarViews.some(primary => primary.value === option.value)).map(option => <button key={option.value} type="button" aria-pressed={view === option.value} onClick={() => changeView(option.value)} className={`min-h-11 rounded-xl px-3 py-2 text-left text-xs font-bold ${view === option.value ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}>{option.label}</button>)}
                 </div>
                 <div className="mt-3 border-t border-slate-200 pt-3">
                   <p className="px-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Display density</p>
-                  <div className="mt-2 flex gap-2">{(['compact', 'comfortable', 'detailed'] as const).map(option => <button key={option} type="button" aria-pressed={density === option} onClick={() => changeDensity(option)} className={`flex-1 rounded-lg px-2 py-2 text-xs font-bold capitalize ${density === option ? 'bg-indigo-50 text-indigo-800' : 'bg-slate-50 text-slate-600'}`}>{option}</button>)}</div>
+                  <div className="mt-2 flex gap-2">{(['compact', 'comfortable', 'detailed'] as const).map(option => <button key={option} type="button" aria-pressed={density === option} onClick={() => changeDensity(option)} className={`min-h-11 flex-1 rounded-lg px-2 py-2 text-xs font-bold capitalize ${density === option ? 'bg-indigo-50 text-indigo-800' : 'bg-slate-50 text-slate-600'}`}>{option}</button>)}</div>
                 </div>
-                <Link to={view === 'agenda' ? '/app/calendar' : '/app/bookings'} onClick={() => setViewMenuOpen(false)} className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold hover:bg-slate-50"><CalendarDays className="h-4 w-4" />{view === 'agenda' ? 'Return to calendar' : 'Open list view'}</Link>
+                <Link to={view === 'agenda' ? '/app/calendar' : '/app/bookings'} onClick={() => setViewMenuOpen(false)} className="mt-3 flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold hover:bg-slate-50"><CalendarDays className="h-4 w-4" />{view === 'agenda' ? 'Return to calendar' : 'Open list view'}</Link>
               </div>}
             </div>
 
-            <button type="button" onClick={() => setCreateMenuOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white shadow-sm hover:bg-indigo-700"><Plus className="h-4 w-4" />New booking</button>
+            <button type="button" onClick={() => setCreateMenuOpen(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white shadow-sm hover:bg-indigo-700"><Plus className="h-4 w-4" />New booking</button>
 
-            <div className="relative">
+            <div className="relative justify-self-start sm:justify-self-auto">
               <button type="button" onClick={() => { setActionsOpen(value => !value); setViewMenuOpen(false); }} aria-expanded={actionsOpen} aria-label="More calendar actions" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700"><MoreHorizontal className="h-5 w-5" /></button>
               {actionsOpen && <div className="absolute right-0 z-50 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
-                <button type="button" onClick={() => void publicPage('open')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold hover:bg-slate-50"><ExternalLink className="h-4 w-4" />Open booking page</button>
-                <button type="button" onClick={() => void publicPage('copy')} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold hover:bg-slate-50"><Copy className="h-4 w-4" />Copy booking link</button>
-                <Link to="/app/settings/booking-page" onClick={() => setActionsOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold hover:bg-slate-50"><Settings2 className="h-4 w-4" />Booking page settings</Link>
-                <button type="button" onClick={() => void exportCsv()} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold hover:bg-slate-50"><Download className="h-4 w-4" />Export calendar</button>
+                <button type="button" onClick={() => void publicPage('open')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold hover:bg-slate-50"><ExternalLink className="h-4 w-4" />Open booking page</button>
+                <button type="button" onClick={() => void publicPage('copy')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold hover:bg-slate-50"><Copy className="h-4 w-4" />Copy booking link</button>
+                <Link to="/app/settings/booking-page" onClick={() => setActionsOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold hover:bg-slate-50"><Settings2 className="h-4 w-4" />Booking page settings</Link>
+                <button type="button" onClick={() => void exportCsv()} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold hover:bg-slate-50"><Download className="h-4 w-4" />Export calendar</button>
               </div>}
             </div>
           </div>
@@ -278,24 +278,24 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
 
         <div className="flex flex-col gap-3 border-t border-slate-200 pt-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-1.5">
-            <button onClick={() => setAnchor(moveCalendarAnchor(anchor, view, -1))} aria-label="Previous calendar period" className="rounded-lg border border-slate-300 bg-white p-2"><ChevronLeft className="h-4 w-4" /></button>
-            <button onClick={() => setAnchor(new Date())} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black">Today</button>
-            <button onClick={() => setAnchor(moveCalendarAnchor(anchor, view, 1))} aria-label="Next calendar period" className="rounded-lg border border-slate-300 bg-white p-2"><ChevronRight className="h-4 w-4" /></button>
-            <label className="ml-1 flex min-w-0 rounded-lg border border-slate-300 bg-white px-2 py-1.5"><span className="sr-only">Calendar date</span><input type="date" aria-label="Calendar date" value={dateValue} onChange={event => updateParams({ date: event.target.value })} className="block min-w-0 border-0 bg-transparent p-0 text-xs font-bold" /></label>
+            <button onClick={() => setAnchor(moveCalendarAnchor(anchor, view, -1))} aria-label="Previous calendar period" className="grid h-11 w-11 place-items-center rounded-lg border border-slate-300 bg-white"><ChevronLeft className="h-4 w-4" /></button>
+            <button onClick={() => setAnchor(new Date())} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black">Today</button>
+            <button onClick={() => setAnchor(moveCalendarAnchor(anchor, view, 1))} aria-label="Next calendar period" className="grid h-11 w-11 place-items-center rounded-lg border border-slate-300 bg-white"><ChevronRight className="h-4 w-4" /></button>
+            <label className="flex min-h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 sm:ml-1 sm:flex-none"><span className="sr-only">Calendar date</span><input type="date" aria-label="Calendar date" value={dateValue} onChange={event => updateParams({ date: event.target.value })} className="block min-w-0 flex-1 border-0 bg-transparent p-0 text-xs font-bold" /></label>
           </div>
-          <button onClick={() => void load()} className="inline-flex items-center gap-2 self-start rounded-lg px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 lg:self-auto"><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
+          <button onClick={() => void load()} className="inline-flex min-h-11 items-center gap-2 self-start rounded-lg px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 lg:self-auto"><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
         </div>
 
         {filtersOpen && <section aria-label="Booking filters" className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <select aria-label="Filter by staff" value={params.get('staff') || ''} onChange={event => updateParams({ staff: event.target.value || null })} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All staff</option>{staff.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
-            <select aria-label="Filter by service" value={params.get('service') || ''} onChange={event => updateParams({ service: event.target.value || null })} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All services</option>{services.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select>
-            <select aria-label="Filter by location" value={params.get('location') || ''} onChange={event => updateParams({ location: event.target.value || null })} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All locations</option>{locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
-            <select aria-label="Filter by booking status" value={params.get('status') || ''} onChange={event => updateParams({ status: event.target.value || null })} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All statuses</option>{Object.entries(bookingStatusDisplay).map(([status, display]) => <option key={status} value={status}>{display.label}</option>)}</select>
-            <select aria-label="Filter by payment status" value={params.get('payment') || ''} onChange={event => updateParams({ payment: event.target.value || null })} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All payments</option><option value="NOT_REQUIRED">Not required</option><option value="PENDING">Pending</option><option value="PARTIALLY_PAID">Partially paid</option><option value="COMPLETED">Paid</option><option value="FAILED">Failed</option></select>
-            <select aria-label="Filter by intake status" value={params.get('intake') || ''} onChange={event => updateParams({ intake: event.target.value || null })} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All form statuses</option><option value="NOT_REQUIRED">Not required</option><option value="PENDING">Pending</option><option value="IN_PROGRESS">In progress</option><option value="COMPLETED">Completed</option><option value="OVERDUE">Overdue</option></select>
-            <button type="button" onClick={() => updateParams({ attention: params.get('attention') === 'true' ? null : 'true' })} aria-pressed={params.get('attention') === 'true'} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold ${params.get('attention') === 'true' ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-slate-300 bg-white text-slate-700'}`}><AlertTriangle className="h-4 w-4" />Requires attention</button>
-            <button type="button" onClick={clearAdvancedFilters} disabled={filterCount === 0} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm font-bold text-indigo-700 disabled:text-slate-400"><SlidersHorizontal className="h-4 w-4" />Clear filters</button>
+            <select aria-label="Filter by staff" value={params.get('staff') || ''} onChange={event => updateParams({ staff: event.target.value || null })} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All staff</option>{staff.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
+            <select aria-label="Filter by service" value={params.get('service') || ''} onChange={event => updateParams({ service: event.target.value || null })} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All services</option>{services.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select>
+            <select aria-label="Filter by location" value={params.get('location') || ''} onChange={event => updateParams({ location: event.target.value || null })} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All locations</option>{locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
+            <select aria-label="Filter by booking status" value={params.get('status') || ''} onChange={event => updateParams({ status: event.target.value || null })} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All statuses</option>{Object.entries(bookingStatusDisplay).map(([status, display]) => <option key={status} value={status}>{display.label}</option>)}</select>
+            <select aria-label="Filter by payment status" value={params.get('payment') || ''} onChange={event => updateParams({ payment: event.target.value || null })} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All payments</option><option value="NOT_REQUIRED">Not required</option><option value="PENDING">Pending</option><option value="PARTIALLY_PAID">Partially paid</option><option value="COMPLETED">Paid</option><option value="FAILED">Failed</option></select>
+            <select aria-label="Filter by intake status" value={params.get('intake') || ''} onChange={event => updateParams({ intake: event.target.value || null })} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold"><option value="">All form statuses</option><option value="NOT_REQUIRED">Not required</option><option value="PENDING">Pending</option><option value="IN_PROGRESS">In progress</option><option value="COMPLETED">Completed</option><option value="OVERDUE">Overdue</option></select>
+            <button type="button" onClick={() => updateParams({ attention: params.get('attention') === 'true' ? null : 'true' })} aria-pressed={params.get('attention') === 'true'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold ${params.get('attention') === 'true' ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-slate-300 bg-white text-slate-700'}`}><AlertTriangle className="h-4 w-4" />Requires attention</button>
+            <button type="button" onClick={clearAdvancedFilters} disabled={filterCount === 0} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-bold text-indigo-700 disabled:text-slate-400"><SlidersHorizontal className="h-4 w-4" />Clear filters</button>
           </div>
         </section>}
       </div>
@@ -303,7 +303,7 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
 
     <div className="space-y-3 px-3 pt-3 sm:px-4">
       {notice && <p role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm font-semibold text-indigo-900">{notice}</p>}
-      {error && <div role="alert" className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"><span><strong>Bookings could not be refreshed.</strong> The calendar remains available with {response.items.length ? 'the last loaded schedule' : 'an empty schedule'}. <span className="text-amber-800">{error}</span></span><button onClick={() => void load()} className="shrink-0 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white">Try again</button></div>}
+      {error && <div role="alert" className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"><span><strong>Bookings could not be refreshed.</strong> The calendar remains available with {response.items.length ? 'the last loaded schedule' : 'an empty schedule'}. <span className="text-amber-800">{error}</span></span><button onClick={() => void load()} className="min-h-11 shrink-0 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white">Try again</button></div>}
       {loading && <p role="status" className="sr-only">Refreshing booking calendar</p>}
 
       <section aria-label="Calendar workspace">
@@ -327,7 +327,7 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
       </section>
     </div>
 
-    <footer className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 px-3 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.10)] backdrop-blur lg:left-[var(--workspace-sidebar-width)]" data-anchored="viewport-bottom">
+    <footer className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.10)] backdrop-blur lg:left-[var(--workspace-sidebar-width)]" data-anchored="viewport-bottom">
       <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
         <section aria-label="Calendar summary" className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           {summaryItems.map(([label, value]) => <article key={label} className="flex items-baseline gap-1.5"><span className="text-base font-black text-slate-950">{value}</span><span className="text-[9px] font-black uppercase tracking-wide text-slate-500">{label}</span></article>)}

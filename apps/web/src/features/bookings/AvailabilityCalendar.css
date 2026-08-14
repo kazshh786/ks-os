@@ -335,7 +335,7 @@
 .booking-date-picker__change-date {
   display: inline-flex;
   width: fit-content;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;

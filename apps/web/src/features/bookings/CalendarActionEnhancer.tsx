@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, ExternalLink, X } from 'lucide-react';
+import { useModalDialog } from '../../components/overlays/useModalDialog.js';
 import {
   buildCalendarProviderUrl,
   calendarProviderLabel,
@@ -65,6 +66,7 @@ function openProvider(event: CalendarEventDetails, provider: CalendarProvider) {
 
 export function CalendarActionEnhancer() {
   const [pendingEvent, setPendingEvent] = useState<CalendarEventDetails | null>(null);
+  const dialogRef = useModalDialog<HTMLElement>(Boolean(pendingEvent), () => setPendingEvent(null));
 
   useEffect(() => {
     const enhanceAll = () => {
@@ -105,15 +107,6 @@ export function CalendarActionEnhancer() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!pendingEvent) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setPendingEvent(null);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [pendingEvent]);
-
   if (!pendingEvent) return null;
 
   return (
@@ -124,10 +117,12 @@ export function CalendarActionEnhancer() {
       }}
     >
       <section
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="calendar-provider-title"
-        className="w-full max-w-md rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-2xl sm:p-6"
+        tabIndex={-1}
+        className="max-h-dvh w-full max-w-md overflow-y-auto rounded-[1.75rem] border border-slate-200 bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-h-[90dvh] sm:p-6"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="flex gap-3">
@@ -143,7 +138,7 @@ export function CalendarActionEnhancer() {
             type="button"
             aria-label="Close calendar options"
             onClick={() => setPendingEvent(null)}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
           >
             <X className="h-5 w-5" />
           </button>
@@ -154,7 +149,7 @@ export function CalendarActionEnhancer() {
             <button
               key={provider}
               type="button"
-              autoFocus={index === 0}
+              data-dialog-initial-focus={index === 0 ? true : undefined}
               onClick={() => {
                 openProvider(pendingEvent, provider);
                 setPendingEvent(null);
