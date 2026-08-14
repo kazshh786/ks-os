@@ -15,6 +15,7 @@ import { EmailService } from '../email/email.service.js';
 import { SmsService } from '../sms/sms.service.js';
 import { BusinessEventsService, stableEventId } from '../automations/business-events.service.js';
 import { FormsService } from '../forms/forms.service.js';
+import { OperationsIssueReporter } from '../operations/operations.issue-service.js';
 import { env } from '../../config/env.js';
 import {
   EmailSettingsService,
@@ -73,6 +74,7 @@ export class BookingService {
   private smsService: SmsService;
   private emailSettings = new EmailSettingsService();
   private businessEvents = new BusinessEventsService();
+  private issues = new OperationsIssueReporter();
 
   constructor() {
     this.repository = new BookingRepository();
@@ -114,7 +116,7 @@ export class BookingService {
           bookingDate: parts,
           bookingTime: time,
           serviceName: replacements.serviceName,
-          appointmentDateTime: fmt.format(startTime),
+          appointmentDateTime: startTime.toISOString(),
           reminderHours: h,
           ...renderAutomatedEmailCopy(template, replacements),
         },
@@ -278,6 +280,35 @@ export class BookingService {
             // The booking remains valid and the form can be assigned again from its detail page.
           }
         }
+      }
+    }
+
+    const appointmentId = booking.appointment_id || booking.id;
+    const bookingStatus = booking.appointment_status || booking.status;
+    if (bookingStatus === 'CONFIRMED' && options.notifyCustomer !== false) {
+      try {
+        await this.notifyPublicBookingConfirmed(
+          auth.tenantId,
+          appointmentId,
+          `manual:${appointmentId}`,
+        );
+      } catch (error) {
+        await this.issues.report({
+          tenantId: auth.tenantId,
+          category: 'EMAIL',
+          issueType: 'EMAIL_FAILED',
+          severity: 'WARNING',
+          title: 'Booking notifications could not be queued',
+          message: 'A confirmed staff-created booking was saved, but its transactional emails could not be queued.',
+          sourceType: 'APPOINTMENT',
+          sourceId: appointmentId,
+          deduplicationKey: `EMAIL_FAILED:BOOKING_CONFIRMATION:${appointmentId}`,
+          relatedAppointmentId: appointmentId,
+          metadata: {
+            stage: 'ENQUEUE',
+            errorCode: error instanceof Error ? error.message.slice(0, 255) : 'UNKNOWN_ERROR',
+          },
+        }).catch(() => undefined);
       }
     }
 
