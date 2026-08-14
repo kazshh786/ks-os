@@ -130,6 +130,18 @@ test('appointment messages are cancelled when stale, superseded or inconsistent'
     templateData: { startTime: '2026-08-09T10:00:00.000Z' },
   }, Date.parse('2026-08-05T10:00:00.000Z')), 'APPOINTMENT_NOTIFICATION_SUPERSEDED');
 
+  assert.equal(appointmentNotificationCancellationCode(confirmed, {
+    templateKey: 'appointment-reminder',
+    idempotencyKey: 'reminder:legacy-display-time',
+    templateData: { appointmentDateTime: '10 Aug 2026, 11:00' },
+  }, Date.parse('2026-08-05T10:00:00.000Z')), null);
+
+  assert.equal(appointmentNotificationCancellationCode(confirmed, {
+    templateKey: 'appointment-reminder',
+    idempotencyKey: 'reminder:authoritative-time',
+    templateData: { appointmentDateTime: '2026-08-09T10:00:00.000Z' },
+  }, Date.parse('2026-08-05T10:00:00.000Z')), 'APPOINTMENT_NOTIFICATION_SUPERSEDED');
+
   assert.equal(appointmentNotificationCancellationCode({ exists: true, status: 'CANCELLED', startTime: futureIso }, {
     templateKey: 'appointment-reminder',
     templateData: {},
