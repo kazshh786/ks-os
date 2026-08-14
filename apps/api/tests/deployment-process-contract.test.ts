@@ -16,6 +16,10 @@ test('VPS deployment treats API, worker and renderer as one health-checked rollb
   assert.match(script, /CI="\$\{CI:-true\}"/);
   assert.match(script, /install_workspace_dependencies\(\)/);
   assert.equal((script.match(/install_workspace_dependencies/g) || []).length, 3);
+  assert.match(script, /ensure_communications_worker\(\)/);
+  assert.match(script, /ks-os-communications-worker\.timer/);
+  assert.match(script, /systemctl enable/);
+  assert.match(script, /systemctl is-active --quiet "\$COMMUNICATIONS_TIMER"/);
   assert.match(script, /pnpm install --frozen-lockfile --prod=false/);
   assert.match(script, /pnpm install --frozen-lockfile --prod=false --force/);
   assert.match(script, /pnpm --filter @ks-os\/email exec tsc --version/);
@@ -42,4 +46,20 @@ test('systemd units run as ksdeploy with production environment files and gracef
   }
   assert.match(worker, /TimeoutStopSec=45/);
   assert.match(sites, /PORT=5001/);
+});
+
+test('communications timer executes the complete transactional worker cycle', async () => {
+  const [service, timer, runner] = await Promise.all([
+    read('scripts/deploy/systemd/ks-os-communications-worker.service'),
+    read('scripts/deploy/systemd/ks-os-communications-worker.timer'),
+    read('scripts/workers/run-communications-cycle.mjs'),
+  ]);
+
+  assert.match(service, /User=ksdeploy/);
+  assert.match(service, /run-communications-cycle\.mjs/);
+  assert.match(timer, /OnUnitActiveSec=1min/);
+  assert.match(runner, /automation-worker\/actions/);
+  assert.match(runner, /report-worker\/schedules/);
+  assert.match(runner, /report-worker\/exports/);
+  assert.match(runner, /communications\/worker\/run/);
 });
