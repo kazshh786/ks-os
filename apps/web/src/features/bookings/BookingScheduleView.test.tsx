@@ -148,10 +148,13 @@ describe('BookingScheduleView time grid', () => {
       onReschedule={vi.fn()}
     />);
 
+    const timeGridWrapper = (name: RegExp) => screen.getAllByRole('button', { name })
+      .map(button => button.parentElement)
+      .find(wrapper => Boolean(wrapper?.style.width));
     const wrappers = [
-      screen.getByRole('button', { name: /Alice Jones/i }).parentElement,
-      screen.getByRole('button', { name: /Bilal Khan/i }).parentElement,
-      screen.getByRole('button', { name: /Chloe Smith/i }).parentElement,
+      timeGridWrapper(/Alice Jones/i),
+      timeGridWrapper(/Bilal Khan/i),
+      timeGridWrapper(/Chloe Smith/i),
     ];
 
     expect(wrappers.every(wrapper => wrapper?.style.width === 'calc(50% - 6px)')).toBe(true);

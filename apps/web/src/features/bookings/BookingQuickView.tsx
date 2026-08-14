@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarClock, CheckCircle2, CircleUserRound, CreditCard, FileText, HeartPulse,
   History, Mail, MapPin, Megaphone, Phone, Repeat2, Sparkles, UserRound, X,
@@ -8,6 +8,7 @@ import { fromZonedTime } from 'date-fns-tz';
 import type { Staff } from '../../data/types.js';
 import { fetchWithAuth } from '../../api/client.js';
 import { getDataProvider } from '../../data/data-provider.js';
+import { useModalDialog } from '../../components/overlays/useModalDialog.js';
 import { BookingStatusBadge } from './BookingStatusBadge.js';
 
 export interface ProposedBookingReschedule {
@@ -64,7 +65,7 @@ function addressText(value: Record<string, unknown> | null | undefined) {
 }
 
 export function BookingQuickView({ booking, staff, initialReschedule = null, onClose, onChanged, onCheckout }: BookingQuickViewProps) {
-  const closeButton = useRef<HTMLButtonElement>(null);
+  const dialogRef = useModalDialog<HTMLElement>(Boolean(booking), onClose);
   const [detail, setDetail] = useState<BookingDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
@@ -84,15 +85,6 @@ export function BookingQuickView({ booking, staff, initialReschedule = null, onC
     setStaffId(initialReschedule?.staffId || booking.staff.id);
     setRescheduling(Boolean(initialReschedule));
     setError('');
-    closeButton.current?.focus();
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', onKey);
-    };
   }, [booking, initialReschedule, onClose]);
 
   useEffect(() => {
@@ -156,8 +148,8 @@ export function BookingQuickView({ booking, staff, initialReschedule = null, onC
     finally { setSaving(false); }
   };
 
-  return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-2 backdrop-blur-sm sm:p-5" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) onClose(); }}>
-    <section role="dialog" aria-modal="true" aria-labelledby="booking-quick-view-title" className="flex max-h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/20 bg-slate-50 shadow-2xl sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-3xl">
+  return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 backdrop-blur-sm sm:p-5" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) onClose(); }}>
+    <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="booking-quick-view-title" tabIndex={-1} className="flex max-h-dvh w-full max-w-6xl flex-col overflow-hidden border border-white/20 bg-slate-50 shadow-2xl sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-3xl">
       <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
         <div className="flex min-w-0 items-start gap-3 sm:gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-100 text-base font-black text-indigo-800 sm:h-14 sm:w-14">{initials(record.customer.name)}</div>
@@ -167,11 +159,11 @@ export function BookingQuickView({ booking, staff, initialReschedule = null, onC
               <BookingStatusBadge status={record.status} />
               {breakdown && <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${breakdown.repeatCustomer ? 'bg-violet-100 text-violet-800' : 'bg-emerald-100 text-emerald-800'}`}>{breakdown.repeatCustomer ? <Repeat2 className="h-3 w-3" /> : <Sparkles className="h-3 w-3" />}{breakdown.repeatCustomer ? 'Repeat customer' : 'New customer'}</span>}
             </div>
-            <h2 id="booking-quick-view-title" className="mt-1 truncate text-xl font-black text-slate-950 sm:text-2xl">{record.customer.name}</h2>
-            <p className="mt-1 truncate text-sm font-semibold text-slate-600">{record.service.name} with {record.staff.name}</p>
+            <h2 id="booking-quick-view-title" className="mt-1 line-clamp-2 break-words text-xl font-black text-slate-950 sm:text-2xl">{record.customer.name}</h2>
+            <p className="mt-1 line-clamp-2 break-words text-sm font-semibold text-slate-600">{record.service.name} with {record.staff.name}</p>
           </div>
         </div>
-        <button ref={closeButton} onClick={onClose} aria-label="Close appointment details" className="shrink-0 rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        <button data-dialog-initial-focus onClick={onClose} aria-label="Close appointment details" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"><X className="h-5 w-5" /></button>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-5">
@@ -181,14 +173,14 @@ export function BookingQuickView({ booking, staff, initialReschedule = null, onC
         {rescheduling && <form onSubmit={saveReschedule} className="mb-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-4 shadow-sm">
           <div className="flex items-start gap-3"><CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" /><div><h3 className="font-black text-indigo-950">Are you sure you want to reschedule?</h3><p className="mt-1 text-sm text-indigo-900">The customer will be notified after you confirm the new date and time.</p>{initialReschedule && <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-bold text-indigo-950">Dragged to {initialReschedule.targetLabel}. Review the exact details before confirming.</p>}</div></div>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <label className="text-sm font-bold text-slate-800">New date<input required type="date" value={date} onChange={event => setDate(event.target.value)} className="mt-1 w-full rounded-xl border border-indigo-200 bg-white p-2.5" /></label>
-            <label className="text-sm font-bold text-slate-800">New time<input required type="time" value={time} onChange={event => setTime(event.target.value)} className="mt-1 w-full rounded-xl border border-indigo-200 bg-white p-2.5" /></label>
-            <label className="text-sm font-bold text-slate-800">Team member<select value={staffId} onChange={event => setStaffId(event.target.value)} className="mt-1 w-full rounded-xl border border-indigo-200 bg-white p-2.5">{staff.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+            <label className="text-sm font-bold text-slate-800">New date<input required type="date" value={date} onChange={event => setDate(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-indigo-200 bg-white p-2.5" /></label>
+            <label className="text-sm font-bold text-slate-800">New time<input required type="time" value={time} onChange={event => setTime(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-indigo-200 bg-white p-2.5" /></label>
+            <label className="text-sm font-bold text-slate-800">Team member<select value={staffId} onChange={event => setStaffId(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-indigo-200 bg-white p-2.5">{staff.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
           </div>
           <div className="mt-4 grid gap-2 rounded-xl border border-indigo-200 bg-white p-3 text-sm sm:grid-cols-[1fr_auto_1fr] sm:items-center">
             <div><span className="block text-[10px] font-black uppercase tracking-wide text-slate-400">Current</span><strong>{formatDateTime(booking.startTime)}</strong><span className="block text-xs text-slate-500">{booking.staff.name}</span></div><span className="hidden text-indigo-500 sm:block">→</span><div><span className="block text-[10px] font-black uppercase tracking-wide text-indigo-500">Proposed</span><strong className="text-indigo-950">{formatDateTime(proposedStart)}</strong><span className="block text-xs text-indigo-700">{selectedStaffName}</span></div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2"><button disabled={saving} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Yes, reschedule appointment</button><button type="button" onClick={() => setRescheduling(false)} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-black text-slate-700">Keep current appointment</button></div>
+          <div className="mt-4 grid gap-2 min-[380px]:grid-cols-2 sm:flex sm:flex-wrap"><button disabled={saving} className="min-h-11 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Yes, reschedule appointment</button><button type="button" onClick={() => setRescheduling(false)} className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-black text-slate-700">Keep current appointment</button></div>
         </form>}
 
         <div className="grid gap-4 lg:grid-cols-3">
@@ -213,7 +205,7 @@ export function BookingQuickView({ booking, staff, initialReschedule = null, onC
           </div>
 
           <aside className="space-y-4">
-            <Card title="Customer contact"><div className="space-y-3 text-sm"><p className="flex items-center gap-2"><CircleUserRound className="h-4 w-4 text-indigo-600" /><strong>{record.customer.name}</strong></p>{record.customer.email ? <a href={`mailto:${record.customer.email}`} className="flex items-center gap-2 break-all font-semibold text-indigo-700 hover:underline"><Mail className="h-4 w-4 shrink-0" />{record.customer.email}</a> : <p className="flex items-center gap-2 text-slate-500"><Mail className="h-4 w-4" />No email</p>}{record.customer.phone ? <a href={`tel:${record.customer.phone}`} className="flex items-center gap-2 font-semibold text-indigo-700 hover:underline"><Phone className="h-4 w-4" />{record.customer.phone}</a> : <p className="flex items-center gap-2 text-slate-500"><Phone className="h-4 w-4" />No phone</p>}{breakdown && <p className="flex items-center gap-2 text-slate-600"><History className="h-4 w-4" />Customer since {formatDate(breakdown.memberSince)}</p>}{breakdown?.patchTestDate && <p className="flex items-center gap-2 text-slate-600"><CheckCircle2 className="h-4 w-4 text-emerald-600" />Patch test {formatDate(breakdown.patchTestDate)}</p>}</div></Card>
+            <Card title="Customer contact"><div className="space-y-3 text-sm"><p className="flex items-center gap-2"><CircleUserRound className="h-4 w-4 text-indigo-600" /><strong>{record.customer.name}</strong></p>{record.customer.email ? <a href={`mailto:${record.customer.email}`} className="flex min-h-11 items-center gap-2 break-all font-semibold text-indigo-700 hover:underline"><Mail className="h-4 w-4 shrink-0" />{record.customer.email}</a> : <p className="flex items-center gap-2 text-slate-500"><Mail className="h-4 w-4" />No email</p>}{record.customer.phone ? <a href={`tel:${record.customer.phone}`} className="flex min-h-11 items-center gap-2 font-semibold text-indigo-700 hover:underline"><Phone className="h-4 w-4" />{record.customer.phone}</a> : <p className="flex items-center gap-2 text-slate-500"><Phone className="h-4 w-4" />No phone</p>}{breakdown && <p className="flex items-center gap-2 text-slate-600"><History className="h-4 w-4" />Customer since {formatDate(breakdown.memberSince)}</p>}{breakdown?.patchTestDate && <p className="flex items-center gap-2 text-slate-600"><CheckCircle2 className="h-4 w-4 text-emerald-600" />Patch test {formatDate(breakdown.patchTestDate)}</p>}</div></Card>
             <Card title="Source and attribution"><div className="space-y-3 text-sm"><p className="flex items-start gap-2"><Megaphone className="mt-0.5 h-4 w-4 text-indigo-600" /><span><strong className="block text-slate-950">{sourceLabels[acquisition?.source || record.source] || humanize(acquisition?.source || record.source)}</strong><span className="text-slate-500">Booked {formatDateTime(acquisition?.bookedAt || record.createdAt)}</span></span></p>{acquisition?.medium && <p><span className="block text-[10px] font-black uppercase tracking-wide text-slate-400">Medium</span><strong>{acquisition.medium}</strong></p>}{acquisition?.campaign && <p><span className="block text-[10px] font-black uppercase tracking-wide text-slate-400">Campaign</span><strong>{acquisition.campaign}</strong></p>}{acquisition?.referrerHost && <p><span className="block text-[10px] font-black uppercase tracking-wide text-slate-400">Referrer</span><strong className="break-all">{acquisition.referrerHost}</strong></p>}</div></Card>
             <Card title="Operational status"><div className="space-y-2 text-sm"><p className="flex items-center justify-between gap-3"><span className="text-slate-500">Payment</span><strong>{humanize(record.paymentStatus)}</strong></p><p className="flex items-center justify-between gap-3"><span className="text-slate-500">Forms</span><strong>{humanize(record.intakeStatus)}</strong></p><p className="flex items-center justify-between gap-3"><span className="text-slate-500">Channel</span><strong>{humanize(record.bookingChannel)}</strong></p></div></Card>
             {record.attentionReasons.length > 0 && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h3 className="font-black text-amber-950">Requires attention</h3><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">{record.attentionReasons.map(reason => <li key={reason}>{reason}</li>)}</ul></section>}
@@ -222,11 +214,11 @@ export function BookingQuickView({ booking, staff, initialReschedule = null, onC
         {error && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
       </div>
 
-      <footer className="flex shrink-0 flex-wrap gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
-        {booking.status !== 'BLOCKED' && <button onClick={() => setRescheduling(true)} disabled={saving || ['COMPLETED','CANCELLED','NO_SHOW'].includes(booking.status)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-black disabled:opacity-40">Reschedule</button>}
-        {booking.status === 'BLOCKED' && <button onClick={() => void removeBlock()} disabled={saving} className="rounded-xl border border-rose-200 px-3 py-2 text-sm font-black text-rose-700">Remove block</button>}
-        {nextActions[booking.status]?.map(action => <button key={action.status} onClick={() => void updateStatus(action.status)} disabled={saving} className={`rounded-xl px-3 py-2 text-sm font-black ${action.status === 'CANCELLED' ? 'border border-rose-200 text-rose-700' : 'bg-slate-900 text-white'}`}>{action.label}</button>)}
-        {booking.status === 'AWAITING_PAYMENT' && <button onClick={() => onCheckout(booking)} className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-black text-white">Open checkout</button>}
+      <footer className="grid shrink-0 grid-cols-2 gap-2 border-t border-slate-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex sm:flex-wrap sm:px-6">
+        {booking.status !== 'BLOCKED' && <button onClick={() => setRescheduling(true)} disabled={saving || ['COMPLETED','CANCELLED','NO_SHOW'].includes(booking.status)} className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-sm font-black disabled:opacity-40">Reschedule</button>}
+        {booking.status === 'BLOCKED' && <button onClick={() => void removeBlock()} disabled={saving} className="min-h-11 rounded-xl border border-rose-200 px-3 py-2 text-sm font-black text-rose-700">Remove block</button>}
+        {nextActions[booking.status]?.map(action => <button key={action.status} onClick={() => void updateStatus(action.status)} disabled={saving} className={`min-h-11 rounded-xl px-3 py-2 text-sm font-black ${action.status === 'CANCELLED' ? 'border border-rose-200 text-rose-700' : 'bg-slate-900 text-white'}`}>{action.label}</button>)}
+        {booking.status === 'AWAITING_PAYMENT' && <button onClick={() => onCheckout(booking)} className="min-h-11 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-black text-white">Open checkout</button>}
       </footer>
     </section>
   </div>;

@@ -341,3 +341,14 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
   background-color: #ffffff;
 }
+body {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

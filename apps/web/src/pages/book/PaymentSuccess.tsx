@@ -69,12 +69,12 @@ export default function PaymentSuccess() {
   }, [bookingIdentifier, reference, retryKey]);
 
   return (
-    <main className="mx-auto mt-6 w-full max-w-3xl overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl shadow-slate-300/40" aria-live="polite" aria-busy={status === 'LOADING'}>
+    <main className="mx-auto mt-4 w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-300/40 sm:mt-6 sm:rounded-[2rem]" aria-live="polite" aria-busy={status === 'LOADING'}>
       {status === 'LOADING' ? (
         <div className="px-6 py-14 text-center sm:px-10">
           <Loader2 className="mx-auto h-14 w-14 animate-spin text-slate-700" aria-hidden="true" />
           <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-slate-500">Secure verification</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Confirming your payment</h1>
+          <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Confirming your payment</h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">
             The payment provider and booking system are being reconciled. Keep this page open until the confirmation appears.
           </p>
@@ -88,7 +88,7 @@ export default function PaymentSuccess() {
             <CheckCircle2 className="h-11 w-11" aria-hidden="true" />
           </div>
           <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Payment received</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Your booking is confirmed</h1>
+          <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Your booking is confirmed</h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">
             Payment has been verified and the appointment is secured. Keep the reference below for any future changes.
           </p>
@@ -100,7 +100,7 @@ export default function PaymentSuccess() {
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
             <p className="text-xs leading-5">A confirmation and secure booking-management link will be sent using the contact details supplied during booking.</p>
           </div>
-          <Link to={bookingPath} className="mt-8 inline-flex min-h-12 items-center justify-center rounded-2xl bg-slate-950 px-6 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2">
+          <Link to={bookingPath} className="mt-8 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-slate-950 px-6 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 sm:w-auto">
             Book another appointment
           </Link>
         </div>
@@ -112,7 +112,7 @@ export default function PaymentSuccess() {
             <AlertTriangle className="h-11 w-11" aria-hidden="true" />
           </div>
           <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-rose-700">Verification delayed</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Payment could not be confirmed yet</h1>
+          <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Payment could not be confirmed yet</h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">
             Keep your booking reference. Do not submit a second booking solely because verification is delayed; check the payment status again first.
           </p>

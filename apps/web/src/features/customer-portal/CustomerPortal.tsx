@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, Outlet, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, Navigate, NavLink, Outlet, useNavigate, useParams, useSearchParams } from 'react-router';
 import { supabase } from '../../lib/supabase.js';
 import { fetchWithAuth } from '../../api/client.js';
 import { customerPortalProvider } from './customer-portal-provider.js';
@@ -158,7 +158,7 @@ export function CustomerLoginPage() {
                 </p>
               </div>
               <button
-                className="text-sm text-slate-400 underline hover:text-white"
+                className="inline-flex min-h-11 items-center text-sm text-slate-400 underline hover:text-white"
                 onClick={() => setSent(false)}
               >
                 Try another email
@@ -352,11 +352,11 @@ export function CustomerPortalLayout() {
 
   return (
     <CustomerContext.Provider value={session}>
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-dvh bg-slate-50">
         {/* Top nav */}
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white shadow-sm">
           <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
-            <Link to="/customer" className="mr-auto flex items-center gap-2 font-black text-slate-900">
+            <Link to="/customer" className="mr-auto flex min-h-11 items-center gap-2 font-black text-slate-900">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-emerald-500 text-xs text-white">✨</span>
               My Portal
             </Link>
@@ -364,17 +364,17 @@ export function CustomerPortalLayout() {
             {/* Desktop nav */}
             <nav className="hidden items-center gap-1 sm:flex" aria-label="Customer portal navigation">
               {navLinks.map((link) => (
-                <Link
+                <NavLink
                   key={link.to}
                   to={link.to}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                  className={({ isActive }) => `inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium transition ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
                 >
                   {link.label}
-                </Link>
+                </NavLink>
               ))}
               <button
                 onClick={signOut}
-                className="ml-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+                className="ml-2 min-h-11 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
               >
                 Sign out
               </button>
@@ -382,9 +382,11 @@ export function CustomerPortalLayout() {
 
             {/* Mobile hamburger */}
             <button
-              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 sm:hidden"
+              className="grid h-11 w-11 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:hidden"
               onClick={() => setMenuOpen(!menuOpen)}
-              aria-label="Open navigation"
+              aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
+              aria-expanded={menuOpen}
+              aria-controls="customer-mobile-navigation"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 {menuOpen
@@ -396,21 +398,21 @@ export function CustomerPortalLayout() {
 
           {/* Mobile menu */}
           {menuOpen && (
-            <div className="border-t border-slate-100 bg-white px-4 pb-4 sm:hidden">
-              <nav className="flex flex-col gap-1 pt-2">
+            <div id="customer-mobile-navigation" className="border-t border-slate-100 bg-white px-4 pb-4 sm:hidden">
+              <nav className="flex flex-col gap-1 pt-2" aria-label="Customer mobile navigation">
                 {navLinks.map((link) => (
-                  <Link
+                  <NavLink
                     key={link.to}
                     to={link.to}
                     onClick={() => setMenuOpen(false)}
-                    className="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                    className={({ isActive }) => `flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium ${isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
                   >
                     {link.label}
-                  </Link>
+                  </NavLink>
                 ))}
                 <button
                   onClick={signOut}
-                  className="mt-1 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+                  className="mt-1 min-h-11 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50"
                 >
                   Sign out
                 </button>
@@ -419,7 +421,7 @@ export function CustomerPortalLayout() {
           )}
         </header>
 
-        <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+        <main className="mx-auto max-w-5xl px-3 py-5 sm:px-6 sm:py-6">
           <Outlet />
         </main>
       </div>
@@ -458,7 +460,7 @@ export function CustomerHomePage() {
       {/* Welcome */}
       <div>
         <p className="text-sm text-slate-500">Welcome back</p>
-        <h1 className="text-3xl font-black text-slate-900">{customer.customer.displayName}</h1>
+        <h1 className="break-words text-2xl font-black text-slate-900 sm:text-3xl">{customer.customer.displayName}</h1>
       </div>
 
       {error && (
@@ -470,7 +472,7 @@ export function CustomerHomePage() {
       {reviewInvitations.map((invitation) => (
         <AlertBanner key={invitation.id} kind="info">
           <span className="font-semibold">{invitation.salonName} would value your honest feedback.</span>{' '}
-          <Link to={invitation.reviewPath} className="underline">Choose a review provider →</Link>
+          <Link to={invitation.reviewPath} className="inline-flex min-h-11 items-center underline">Choose a review provider →</Link>
           <span className="ml-2 text-xs">There is no obligation to leave a review.</span>
         </AlertBanner>
       ))}
@@ -481,7 +483,7 @@ export function CustomerHomePage() {
           <span className="font-semibold">
             {outstanding.length} form{outstanding.length > 1 ? 's' : ''} need{outstanding.length === 1 ? 's' : ''} your attention.
           </span>{' '}
-          <Link to="/customer/forms" className="underline">View forms →</Link>
+          <Link to="/customer/forms" className="inline-flex min-h-11 items-center underline">View forms →</Link>
         </AlertBanner>
       )}
 
@@ -530,7 +532,7 @@ export function CustomerHomePage() {
             </p>
           )}
           {customer.linkedBusinesses.length > 1 && (
-            <Link to="/customer/businesses" className="mt-4 block text-sm font-medium text-violet-600 hover:underline">
+            <Link to="/customer/businesses" className="mt-4 flex min-h-11 items-center text-sm font-medium text-violet-600 hover:underline">
               View all salons →
             </Link>
           )}
@@ -540,7 +542,7 @@ export function CustomerHomePage() {
         <article className="rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Outstanding forms</h2>
           <p className="mt-3 text-5xl font-black text-slate-900">{outstanding.length}</p>
-          <Link to="/customer/forms" className="mt-3 inline-block text-sm font-medium text-violet-600 hover:underline">
+          <Link to="/customer/forms" className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-violet-600 hover:underline">
             View forms →
           </Link>
         </article>
@@ -550,7 +552,7 @@ export function CustomerHomePage() {
       <section className="rounded-2xl bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-slate-800">Upcoming appointments</h2>
-          <Link to="/customer/appointments" className="text-sm font-medium text-violet-600 hover:underline">
+          <Link to="/customer/appointments" className="inline-flex min-h-11 items-center text-sm font-medium text-violet-600 hover:underline">
             View all
           </Link>
         </div>
@@ -560,10 +562,10 @@ export function CustomerHomePage() {
           <ul className="mt-4 divide-y divide-slate-100">
             {appointments.map((appt) => (
               <li key={appt.bookingReference} className="py-3">
-                <Link className="flex items-start justify-between gap-4" to={`/customer/appointments/${appt.bookingReference}`}>
-                  <div>
-                    <p className="font-semibold text-slate-900">{appt.serviceName}</p>
-                    <p className="mt-0.5 text-sm text-slate-500">{appt.salonName} · {appt.staffName}</p>
+                <Link className="flex min-h-11 flex-col items-start gap-3 min-[360px]:flex-row min-[360px]:justify-between" to={`/customer/appointments/${appt.bookingReference}`}>
+                  <div className="min-w-0">
+                    <p className="break-words font-semibold text-slate-900">{appt.serviceName}</p>
+                    <p className="mt-0.5 break-words text-sm text-slate-500">{appt.salonName} · {appt.staffName}</p>
                     <p className="mt-1 text-sm text-slate-700">{formatWhen(appt.startTime, appt.timezone)}</p>
                   </div>
                   <Badge label={appt.status} />
@@ -609,7 +611,7 @@ export function CustomerBusinessesPage() {
                 </div>
               </div>
               <Link
-                className="mt-4 inline-block text-sm font-medium text-violet-600 hover:underline"
+                className="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-violet-600 hover:underline"
                 to={`/customer/appointments?business=${business.businessSlug}`}
               >
                 View appointments →
@@ -656,7 +658,7 @@ export function CustomerAppointmentsPage() {
 
   return (
     <section className="space-y-5">
-      <h1 className="text-3xl font-black text-slate-900">Appointments</h1>
+      <h1 className="text-2xl font-black text-slate-900 sm:text-3xl">Appointments</h1>
 
       {/* Tab bar */}
       <div role="tablist" className="flex gap-2">
@@ -667,7 +669,7 @@ export function CustomerAppointmentsPage() {
             role="tab"
             aria-selected={status === key}
             onClick={() => setStatus(key)}
-            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+            className={`min-h-11 rounded-full px-4 py-2 text-sm font-medium transition ${
               status === key
                 ? 'bg-slate-900 text-white shadow-sm'
                 : 'bg-white text-slate-600 hover:bg-slate-100'
@@ -691,12 +693,12 @@ export function CustomerAppointmentsPage() {
               <li key={appt.bookingReference}>
                 <Link
                   id={`appt-card-${appt.bookingReference}`}
-                  className="flex items-start justify-between gap-4 rounded-2xl bg-white p-5 shadow-sm transition hover:shadow-md"
+                  className="flex min-h-11 flex-col items-start gap-3 rounded-2xl bg-white p-4 shadow-sm transition hover:shadow-md min-[360px]:flex-row min-[360px]:justify-between sm:p-5"
                   to={`/customer/appointments/${appt.bookingReference}`}
                 >
                   <div className="min-w-0">
-                    <h2 className="font-semibold text-slate-900">{appt.serviceName}</h2>
-                    <p className="mt-0.5 text-sm text-slate-500">{appt.salonName} · {appt.staffName}</p>
+                    <h2 className="break-words font-semibold text-slate-900">{appt.serviceName}</h2>
+                    <p className="mt-0.5 break-words text-sm text-slate-500">{appt.salonName} · {appt.staffName}</p>
                     <p className="mt-2 text-sm text-slate-700">{formatWhen(appt.startTime, appt.timezone)}</p>
                     <p className={`mt-1 text-sm font-medium ${paymentColour(appt.payment.status)}`}>
                       {appt.payment.status}
@@ -751,7 +753,7 @@ export function CustomerAppointmentDetailPage() {
       {/* Header */}
       <div>
         <p className="text-sm text-slate-500">{appointment.salon.displayName}</p>
-        <h1 className="mt-1 text-3xl font-black text-slate-900">{appointment.serviceName}</h1>
+        <h1 className="mt-1 break-words text-2xl font-black text-slate-900 sm:text-3xl">{appointment.serviceName}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge label={appointment.status} />
           <span className="text-sm text-slate-500">{appointment.location}</span>
@@ -766,7 +768,7 @@ export function CustomerAppointmentDetailPage() {
           <span className="font-semibold">
             {outstandingForms.length} form{outstandingForms.length > 1 ? 's' : ''} outstanding.
           </span>{' '}
-          <Link to="/customer/forms" className="underline">Complete now →</Link>
+          <Link to="/customer/forms" className="inline-flex min-h-11 items-center underline">Complete now →</Link>
         </AlertBanner>
       )}
 
@@ -796,15 +798,15 @@ export function CustomerAppointmentDetailPage() {
           <h2 className="font-semibold text-slate-800">Forms</h2>
           <ul className="mt-3 space-y-2">
             {appointment.forms.map((form: any) => (
-              <li key={form.assignmentReference} className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-slate-800">{form.title}</p>
+              <li key={form.assignmentReference} className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-medium text-slate-800">{form.title}</p>
                   <p className="text-xs text-slate-500">Version {form.version}</p>
                 </div>
                 {['PENDING', 'OPENED'].includes(form.status) ? (
                   <Link
                     to={`/customer/forms/${form.assignmentReference}`}
-                    className="shrink-0 rounded-full bg-violet-600 px-3 py-1 text-xs font-bold text-white hover:bg-violet-700"
+                    className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-violet-600 px-3 py-1 text-xs font-bold text-white hover:bg-violet-700"
                   >
                     Complete
                   </Link>
@@ -827,7 +829,7 @@ export function CustomerAppointmentDetailPage() {
       {appointment.salon.contactPhone && (
         <p className="text-sm text-slate-500">
           Need help? Contact {appointment.salon.displayName} on{' '}
-          <a href={`tel:${appointment.salon.contactPhone}`} className="font-medium text-slate-800 hover:underline">
+          <a href={`tel:${appointment.salon.contactPhone}`} className="inline-flex min-h-11 items-center align-middle font-medium text-slate-800 hover:underline">
             {appointment.salon.contactPhone}
           </a>
         </p>
@@ -925,7 +927,7 @@ function FormCard({ form }: { form: any }) {
         {outstanding && (
           <Link
             to={`/customer/forms/${form.assignmentReference}`}
-            className="shrink-0 rounded-full bg-violet-600 px-4 py-2 text-sm font-bold text-white hover:bg-violet-700"
+            className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-violet-600 px-4 py-2 text-sm font-bold text-white hover:bg-violet-700"
           >
             Complete
           </Link>
@@ -966,7 +968,7 @@ export function CustomerFormPage() {
         <h1 className="mt-3 text-xl font-bold text-emerald-900">Form completed</h1>
         <p className="mt-1 text-sm text-emerald-700">This form has already been submitted.</p>
       </div>
-      <Link to="/customer/forms" className="inline-block text-sm font-medium text-violet-600 hover:underline">
+      <Link to="/customer/forms" className="inline-flex min-h-11 items-center text-sm font-medium text-violet-600 hover:underline">
         ← Back to forms
       </Link>
     </div>
@@ -1014,7 +1016,7 @@ export function CustomerFormPage() {
         <div className="rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="font-semibold text-slate-800">Acknowledgement</h2>
           <p className="mt-2 text-sm text-slate-600">{data.form.acknowledgementText}</p>
-          <label className="mt-4 flex items-start gap-3 text-sm">
+          <label className="mt-4 flex min-h-11 items-start gap-3 text-sm">
             <input
               required
               type="checkbox"
@@ -1082,7 +1084,7 @@ function FormField({ field, setAnswers }: { field: any; setAnswers: React.Dispat
         <textarea required={field.required} className={`${inputClass} min-h-[100px] resize-y`} onChange={(e) => set(e.target.value)} />
       )}
       {['YES_NO', 'CONSENT_CHECKBOX'].includes(field.type) && (
-        <label className="mt-2 flex items-center gap-3 text-sm">
+        <label className="mt-2 flex min-h-11 items-center gap-3 text-sm">
           <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-violet-600" onChange={(e) => set(e.target.checked)} />
           <span>Yes</span>
         </label>
@@ -1098,7 +1100,7 @@ function FormField({ field, setAnswers }: { field: any; setAnswers: React.Dispat
       {field.type === 'MULTIPLE_CHOICE' && (
         <div className="mt-2 space-y-2">
           {field.options.map((opt: any) => (
-            <label key={opt.id} className="flex items-center gap-3 text-sm">
+            <label key={opt.id} className="flex min-h-11 items-center gap-3 text-sm">
               <input
                 type="checkbox"
                 className="h-4 w-4 rounded border-slate-300 text-violet-600"

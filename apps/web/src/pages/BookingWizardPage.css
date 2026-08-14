@@ -531,6 +531,7 @@
 
 .email-suggestion-field__menu button {
   width: 100%;
+  min-height: 2.75rem;
   padding: 0.7rem 0.85rem;
   text-align: left;
   color: rgb(15 23 42);
