@@ -715,6 +715,7 @@ export class CustomerBookingManagementService {
           serviceName: row.serviceName || 'Service',
           oldDateTime: oldLocal,
           newDateTime: local,
+          startTime: newStart.toISOString(),
           staffName,
           location: row.locationName || (row.bookingChannel === 'mobile' ? 'Mobile service' : 'At the salon'),
           managementUrl,
