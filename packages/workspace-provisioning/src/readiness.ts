@@ -54,15 +54,20 @@ export function combinedReadiness(input: {
   blockingIssues: Array<{ code: string; area: 'WORKSPACE' | 'BOOKING' | 'WEBSITE' | 'REVIEW' | 'PAYMENTS'; message: string }>;
   warnings: Array<{ code: string; area: 'WORKSPACE' | 'BOOKING' | 'WEBSITE' | 'REVIEW' | 'PAYMENTS'; message: string }>;
 }) {
+  // Booking readiness can only be true after the canonical tenant workspace,
+  // services, locations, staff, schedules and booking configuration all exist.
+  // Treat that stronger live evidence as proof the base workspace is ready even
+  // if a legacy provisioning run was not finalised to READY.
+  const effectiveWorkspaceReady = input.workspaceReady || input.bookingReady;
   return {
-    workspace: input.workspaceReady ? 'READY' : 'BLOCKING',
+    workspace: effectiveWorkspaceReady ? 'READY' : 'BLOCKING',
     booking: input.bookingReady ? 'READY' : 'BLOCKING',
     website: input.websiteReady ? 'READY' : 'ACTION_REQUIRED',
     review: input.reviewReady ? 'READY' : 'NOT_STARTED',
     payments: input.paymentStatus === 'READY' ? 'READY' : 'ACTION_REQUIRED',
-    publication: 'NOT_AVAILABLE_UNTIL_PHASE_15_9' as const,
+    publication: 'NOT_STARTED' as const,
     blockingIssues: input.blockingIssues,
     warnings: input.warnings,
-    ready: input.workspaceReady && input.bookingReady && input.websiteReady && input.reviewReady,
+    ready: effectiveWorkspaceReady && input.bookingReady && input.websiteReady && input.reviewReady,
   };
 }
