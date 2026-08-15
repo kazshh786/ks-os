@@ -37,7 +37,11 @@ test('template tokens interpolate known values and preserve unknown placeholders
     }),
     'Hi Amelia from Glow Studio {{unknown}}',
   );
-  const rendered = renderAutomatedEmailCopy(DEFAULT_AUTOMATED_EMAIL_TEMPLATES.reminderThreeDays, {
+  const rendered = renderAutomatedEmailCopy({
+    ...DEFAULT_AUTOMATED_EMAIL_TEMPLATES.reminderThreeDays,
+    subject: '{{businessName}} reminder',
+    body: 'Hi {{customerName}}, your {{serviceName}} is coming up.',
+  }, {
     customerName: 'Amelia',
     businessName: 'Glow Studio',
     serviceName: 'Facial',
