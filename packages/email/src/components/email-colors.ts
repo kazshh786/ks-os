@@ -59,6 +59,7 @@ export function getReadableTextColor(
   lightColor = '#ffffff',
   darkColor = '#111827',
 ): string {
+  if (!rgb(backgroundColor) || !rgb(lightColor) || !rgb(darkColor)) return darkColor;
   const lightContrast = getContrastRatio(backgroundColor, lightColor);
   const darkContrast = getContrastRatio(backgroundColor, darkColor);
   return lightContrast >= darkContrast ? lightColor : darkColor;
