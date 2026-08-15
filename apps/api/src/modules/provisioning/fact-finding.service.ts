@@ -27,6 +27,7 @@ import {
   getDatabase,
   productionBriefFacts,
   productionBriefs,
+  siteAssets,
   tenants,
 } from '@ks-os/database';
 import {
@@ -52,6 +53,7 @@ import {
   toClientSafeFactFindingDto,
   verifyFactFindingInvitationToken,
 } from '@ks-os/fact-finding';
+import { isGovernedSiteAssetEligible } from '@ks-os/site-generation';
 import type { z } from 'zod';
 import { AgencyAuditService, type AgencyActor } from '../agency/agency.service.js';
 import { getSupabaseAdmin } from '../../lib/supabase-admin.js';
@@ -929,18 +931,33 @@ export class FactFindingService {
   }
 
   async reviewUpload(actor: AgencyActor, uploadReference: string, decision: 'APPROVED' | 'REJECTED') {
-    const [upload] = await this.db.update(factFindingUploads).set({
-      agencyReviewStatus: decision,
-      reviewedByAgencyUserId: actor.agencyUserId,
-      reviewedAt: new Date(),
-      updatedAt: new Date(),
-    }).where(and(
-      eq(factFindingUploads.publicReference, uploadReference),
-      eq(factFindingUploads.uploadStatus, 'UPLOADED'),
-      inArray(factFindingUploads.malwareScanStatus, ['NOT_AVAILABLE', 'CLEAN']),
-    )).returning();
-    if (!upload) throw fail(409, 'FACT_FINDING_UPLOAD_NOT_REVIEWABLE', 'Only a safe completed upload can be reviewed.');
-    await this.audit.write(actor, decision === 'APPROVED' ? 'FACT_FINDING_ASSET_APPROVED' : 'FACT_FINDING_ASSET_REJECTED', 'FACT_FINDING_UPLOAD', upload.publicReference, { tenantId: upload.tenantId, metadata: { category: upload.assetCategory } });
+    const upload = await this.db.transaction(async transaction => {
+      const [record] = await transaction.update(factFindingUploads).set({
+        agencyReviewStatus: decision,
+        reviewedByAgencyUserId: actor.agencyUserId,
+        reviewedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(and(
+        eq(factFindingUploads.publicReference, uploadReference),
+        eq(factFindingUploads.uploadStatus, 'UPLOADED'),
+        inArray(factFindingUploads.malwareScanStatus, ['NOT_AVAILABLE', 'CLEAN']),
+      )).returning();
+      if (!record) throw fail(409, 'FACT_FINDING_UPLOAD_NOT_REVIEWABLE', 'Only a safe completed upload can be reviewed.');
+      const siteAssetStatus = isGovernedSiteAssetEligible(record) ? 'READY' : 'REJECTED';
+      await transaction.update(siteAssets).set({
+        status: siteAssetStatus,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(siteAssets.sourceFactFindingUploadId, record.id),
+        eq(siteAssets.tenantId, record.tenantId),
+      ));
+      await this.audit.write(actor, decision === 'APPROVED' ? 'FACT_FINDING_ASSET_APPROVED' : 'FACT_FINDING_ASSET_REJECTED', 'FACT_FINDING_UPLOAD', record.publicReference, {
+        tenantId: record.tenantId,
+        metadata: { category: record.assetCategory, siteAssetStatus },
+        tx: transaction,
+      });
+      return record;
+    });
     return { reference: upload.publicReference, reviewStatus: upload.agencyReviewStatus };
   }
 

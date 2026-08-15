@@ -1,5 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { getDatabase, sql } from '@ks-os/database';
+import {
+  SiteGenerationRunStatusSchema,
+  terminalGenerationRunFailure,
+} from '@ks-os/site-generation';
 import type { SiteJobProgress, SiteJobResult } from '@ks-os/site-jobs';
 import {
   type LeasedSiteJob,
@@ -500,6 +504,7 @@ export class PostgresSiteJobRepository implements SiteJobRepository {
         update.failureCode,
         update.failureMessage,
       );
+      await this.reconcileTerminalGenerationRun(transaction, job.id);
       if (update.targetStatus === 'DEAD_LETTER') {
         await transaction.execute(sql`
           INSERT INTO platform_audit_events (
@@ -764,6 +769,7 @@ export class PostgresSiteJobRepository implements SiteJobRepository {
             'site-worker'
           )
         `);
+        await this.reconcileTerminalGenerationRun(transaction, row.id);
       }
       return recoveredRows.length;
     });
@@ -789,6 +795,127 @@ export class PostgresSiteJobRepository implements SiteJobRepository {
     } catch {
       return { databaseAvailable: false, schemaCompatible: false };
     }
+  }
+
+  private async reconcileTerminalGenerationRun(
+    transaction: DatabaseExecutor,
+    jobId: string,
+  ) {
+    const result = await transaction.execute(sql`
+      SELECT
+        run.id,
+        run.public_reference,
+        run.tenant_id,
+        run.site_version_id,
+        run.provisioning_run_id,
+        run.status AS run_status,
+        job.status AS job_status,
+        job.failure_code,
+        job.failure_message
+      FROM site_generation_runs run
+      INNER JOIN site_jobs job
+        ON job.id = run.site_job_id
+        AND job.tenant_id = run.tenant_id
+      WHERE job.id = ${jobId}::uuid
+      FOR UPDATE OF run
+    `);
+    const [run] = rowsOf<{
+      id: string;
+      public_reference: string;
+      tenant_id: string;
+      site_version_id: string | null;
+      provisioning_run_id: string | null;
+      run_status: string;
+      job_status: string;
+      failure_code: string | null;
+      failure_message: string | null;
+    }>(result);
+    if (!run) return;
+    const parsedStatus = SiteGenerationRunStatusSchema.safeParse(run.run_status);
+    if (!parsedStatus.success) return;
+    const failure = terminalGenerationRunFailure(parsedStatus.data, {
+      status: run.job_status,
+      failureCode: run.failure_code,
+      failureMessage: run.failure_message,
+    });
+    if (!failure) return;
+    await transaction.execute(sql`
+      UPDATE site_generation_runs
+      SET
+        status = 'FAILED',
+        failure_code = ${failure.failureCode},
+        failure_message = ${failure.failureMessage},
+        updated_at = now()
+      WHERE id = ${run.id}::uuid
+        AND tenant_id = ${run.tenant_id}::uuid
+    `);
+    if (run.site_version_id) {
+      await transaction.execute(sql`
+        UPDATE site_versions
+        SET generation_status = 'FAILED', updated_at = now()
+        WHERE id = ${run.site_version_id}::uuid
+          AND tenant_id = ${run.tenant_id}::uuid
+      `);
+    }
+    if (run.provisioning_run_id) {
+      await transaction.execute(sql`
+        UPDATE provisioning_run_steps
+        SET
+          status = 'FAILED',
+          failure_code = ${failure.failureCode},
+          safe_message = ${failure.failureMessage},
+          completed_at = now(),
+          updated_at = now()
+        WHERE provisioning_run_id = ${run.provisioning_run_id}::uuid
+          AND step_key = 'GENERATE_SITE'
+      `);
+      await transaction.execute(sql`
+        UPDATE provisioning_runs
+        SET
+          status = 'PARTIALLY_FAILED',
+          current_step = 'GENERATE_SITE',
+          failure_code = ${failure.failureCode},
+          failure_message = ${failure.failureMessage},
+          retryable = false,
+          failed_at = now(),
+          updated_at = now()
+        WHERE id = ${run.provisioning_run_id}::uuid
+          AND tenant_id = ${run.tenant_id}::uuid
+      `);
+      await transaction.execute(sql`
+        INSERT INTO provisioning_activity (
+          provisioning_run_id, tenant_id, event_type, status_to,
+          step_key, safe_message
+        ) VALUES (
+          ${run.provisioning_run_id}::uuid,
+          ${run.tenant_id}::uuid,
+          'SITE_GENERATION_STATE_RECONCILED',
+          'PARTIALLY_FAILED',
+          'GENERATE_SITE',
+          'The worker reconciled a terminal durable job with its generation run.'
+        )
+      `);
+    }
+    await transaction.execute(sql`
+      INSERT INTO platform_audit_events (
+        tenant_id, action, target_type, target_id, outcome, metadata,
+        event_category, description, environment, source_component
+      ) VALUES (
+        ${run.tenant_id}::uuid,
+        'SITE_GENERATION_STATE_RECONCILED',
+        'SITE_GENERATION_RUN',
+        ${run.public_reference},
+        'FAILED',
+        jsonb_build_object(
+          'jobStatus', ${run.job_status}::text,
+          'failureCode', ${failure.failureCode}::text
+        ),
+        'WEBSITE',
+        'The durable job terminal state was propagated to its generation run.',
+        ${process.env.NODE_ENV || 'development'},
+        'site-worker'
+      )
+    `);
   }
 
   private async finishAttempt(

@@ -1432,3 +1432,36 @@ test('72. dead-letter audit metadata binds concrete PostgreSQL types', () => {
     /'jobType', \$\{row\.job_type\}::text,[\s\S]*'attemptNumber', \$\{row\.attempt_count\}::integer/,
   );
 });
+
+test('73. terminal durable job transitions reconcile the linked generation lifecycle atomically', () => {
+  assert.match(postgresRepositorySource, /terminalGenerationRunFailure/);
+  assert.match(
+    postgresRepositorySource,
+    /await this\.addEvent\([\s\S]*await this\.reconcileTerminalGenerationRun\(transaction, job\.id\)/,
+  );
+  assert.match(
+    postgresRepositorySource,
+    /status = 'FAILED',[\s\S]*failure_code = \$\{failure\.failureCode\},[\s\S]*failure_message = \$\{failure\.failureMessage\}/,
+  );
+  assert.match(
+    postgresRepositorySource,
+    /UPDATE site_versions[\s\S]*generation_status = 'FAILED'/,
+  );
+  assert.match(
+    postgresRepositorySource,
+    /recoverExpiredTerminalLeases[\s\S]*reconcileTerminalGenerationRun\(transaction, row\.id\)/,
+  );
+});
+
+test('74. generation and render snapshots recheck governed Asset Library eligibility', () => {
+  assert.match(generationExecutorSource, /sourceFactFindingUploadId/);
+  for (const guard of [
+    /factFindingUploads\.uploadStatus, 'UPLOADED'/,
+    /factFindingUploads\.agencyReviewStatus, 'APPROVED'/,
+    /factFindingUploads\.publicUsePermission, true/,
+    /factFindingUploads\.aiUsePermission, true/,
+    /factFindingUploads\.copyrightConfirmed, true/,
+    /GOVERNED_SITE_ASSET_CONSENT_STATUSES/,
+    /GOVERNED_SITE_ASSET_SCAN_STATUSES/,
+  ]) assert.match(generationExecutorSource, guard);
+});

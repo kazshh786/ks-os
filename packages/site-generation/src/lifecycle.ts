@@ -17,6 +17,59 @@ const TRANSITIONS: Record<SiteGenerationRunStatus, readonly SiteGenerationRunSta
   SUPERSEDED: [],
 };
 
+export const TERMINAL_FAILED_SITE_JOB_STATUSES = ['FAILED', 'DEAD_LETTER'] as const;
+
+const RECONCILABLE_GENERATION_STATUSES = new Set<SiteGenerationRunStatus>([
+  'PENDING',
+  'PREPARING_CONTEXT',
+  'GENERATING',
+  'VALIDATING',
+  'REPAIRING',
+  'CANCEL_REQUESTED',
+]);
+
+export interface TerminalGenerationJobState {
+  status: string;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+}
+
+export interface TerminalGenerationRunFailure {
+  failureCode: string;
+  failureMessage: string;
+}
+
+/**
+ * The durable job is authoritative for infrastructure execution. This pure
+ * policy is shared by API repair paths and worker terminal transitions so the
+ * observable generation lifecycle cannot develop a second interpretation of
+ * terminal failure.
+ */
+export function terminalGenerationRunFailure(
+  runStatus: SiteGenerationRunStatus,
+  job: TerminalGenerationJobState,
+): TerminalGenerationRunFailure | null {
+  if (!RECONCILABLE_GENERATION_STATUSES.has(runStatus)
+    || !TERMINAL_FAILED_SITE_JOB_STATUSES.includes(
+      job.status as typeof TERMINAL_FAILED_SITE_JOB_STATUSES[number],
+    )) return null;
+  return {
+    failureCode: (job.failureCode || 'TERMINAL_JOB_STATE_RECONCILED').slice(0, 100),
+    failureMessage: (
+      job.failureMessage
+      || 'The durable generation job failed before its run lifecycle was persisted.'
+    ).slice(0, 500),
+  };
+}
+
+export function isTerminalFailedSiteJobStatus(
+  status: string,
+): status is typeof TERMINAL_FAILED_SITE_JOB_STATUSES[number] {
+  return TERMINAL_FAILED_SITE_JOB_STATUSES.includes(
+    status as typeof TERMINAL_FAILED_SITE_JOB_STATUSES[number],
+  );
+}
+
 export function assertGenerationRunTransition(
   from: SiteGenerationRunStatus,
   to: SiteGenerationRunStatus,

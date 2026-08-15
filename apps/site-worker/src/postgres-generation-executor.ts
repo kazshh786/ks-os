@@ -14,6 +14,7 @@ import {
   agencyUsers,
   emailOutbox,
   emailSuppressions,
+  factFindingUploads,
   getDatabase,
   locations,
   knowledgePacks,
@@ -60,6 +61,10 @@ import {
 } from '@ks-os/database';
 import {
   createSiteGenerationProvider,
+  GOVERNED_SITE_ASSET_CATEGORIES,
+  GOVERNED_SITE_ASSET_CONSENT_STATUSES,
+  GOVERNED_SITE_ASSET_MIME_TYPES,
+  GOVERNED_SITE_ASSET_SCAN_STATUSES,
   GeneratedPageSchema,
   GenerationPlanSchema,
   SiteGenerationProviderError,
@@ -535,11 +540,29 @@ async function persistValidatedPreviewSnapshot(
         altText: siteAssets.altText,
         width: siteAssets.width,
         height: siteAssets.height,
-      }).from(siteAssets).where(and(
+      }).from(siteAssets)
+      .leftJoin(factFindingUploads, and(
+        eq(siteAssets.sourceFactFindingUploadId, factFindingUploads.id),
+        eq(siteAssets.tenantId, factFindingUploads.tenantId),
+      ))
+      .where(and(
         eq(siteAssets.tenantId, run.tenantId),
         eq(siteAssets.siteId, run.siteId),
-        eq(siteAssets.versionId, run.versionId),
         eq(siteAssets.status, 'READY'),
+        or(
+          isNull(siteAssets.sourceFactFindingUploadId),
+          and(
+            eq(factFindingUploads.uploadStatus, 'UPLOADED'),
+            eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
+            eq(factFindingUploads.publicUsePermission, true),
+            eq(factFindingUploads.aiUsePermission, true),
+            eq(factFindingUploads.copyrightConfirmed, true),
+            inArray(factFindingUploads.consentStatus, GOVERNED_SITE_ASSET_CONSENT_STATUSES),
+            inArray(factFindingUploads.malwareScanStatus, GOVERNED_SITE_ASSET_SCAN_STATUSES),
+            inArray(factFindingUploads.assetCategory, GOVERNED_SITE_ASSET_CATEGORIES),
+            inArray(factFindingUploads.mimeType, GOVERNED_SITE_ASSET_MIME_TYPES),
+          ),
+        ),
       )),
     ]);
 
@@ -1575,7 +1598,30 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         width: siteAssets.width,
         height: siteAssets.height,
       })
-        .from(siteAssets).where(and(eq(siteAssets.tenantId, run.tenantId), eq(siteAssets.siteId, run.siteId), eq(siteAssets.status, 'READY'))),
+        .from(siteAssets)
+        .leftJoin(factFindingUploads, and(
+          eq(siteAssets.sourceFactFindingUploadId, factFindingUploads.id),
+          eq(siteAssets.tenantId, factFindingUploads.tenantId),
+        ))
+        .where(and(
+          eq(siteAssets.tenantId, run.tenantId),
+          eq(siteAssets.siteId, run.siteId),
+          eq(siteAssets.status, 'READY'),
+          or(
+            isNull(siteAssets.sourceFactFindingUploadId),
+            and(
+              eq(factFindingUploads.uploadStatus, 'UPLOADED'),
+              eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
+              eq(factFindingUploads.publicUsePermission, true),
+              eq(factFindingUploads.aiUsePermission, true),
+              eq(factFindingUploads.copyrightConfirmed, true),
+              inArray(factFindingUploads.consentStatus, GOVERNED_SITE_ASSET_CONSENT_STATUSES),
+              inArray(factFindingUploads.malwareScanStatus, GOVERNED_SITE_ASSET_SCAN_STATUSES),
+              inArray(factFindingUploads.assetCategory, GOVERNED_SITE_ASSET_CATEGORIES),
+              inArray(factFindingUploads.mimeType, GOVERNED_SITE_ASSET_MIME_TYPES),
+            ),
+          ),
+        )),
     ]);
     const row = business[0];
     if (!row) throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'Verified business data is unavailable.');

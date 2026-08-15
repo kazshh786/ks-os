@@ -261,6 +261,25 @@ boundary for sections, context, claims, findings and progress. A complete run
 requires every blueprint page; partial failure cannot mark a version
 reviewable or replace a valid/published version.
 
+The durable job is authoritative for execution failure. A worker transition to
+`FAILED` or `DEAD_LETTER` atomically carries the safe failure code/message to
+its active generation run and marks the pinned draft version failed. Generation
+reads run the same shared terminal-state policy to repair historical drift
+before returning status. Manual retry first reconciles legacy drift, then
+requeues the existing job and resets the same run/version in one transaction;
+it does not create a replacement version or relax any pinned validation.
+
+Approved Asset Library imagery is projected into `site_assets` through an
+explicit source-upload foreign key. Projection requires approved review,
+public and AI use permission, confirmed copyright, suitable consent, a safe
+scan state, an image category and exact tenant ownership. The original private
+object is retained; snapshots contain a stable HTTPS asset route rather than a
+signed storage URL. The public route and both worker asset reads recheck the
+source governance state, so permission or approval withdrawal immediately
+removes the asset from generation and delivery. Deterministic per-site asset
+references allow the same approved tenant upload to be governed independently
+for each site without duplicating storage bytes.
+
 Regeneration is draft-only. Instructions are length-limited and reject external
 booking, fabrication, executable content and instruction-override language.
 Published versions cannot be edited in place. The prior structured section

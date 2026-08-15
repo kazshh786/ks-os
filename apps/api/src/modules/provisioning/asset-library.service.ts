@@ -4,6 +4,7 @@ import {
   factFindingQuestionnaires,
   factFindingUploads,
   getDatabase,
+  siteAssets,
   tenants,
 } from '@ks-os/database';
 import { FactFindingUploadSchema } from '@ks-os/fact-finding';
@@ -196,26 +197,37 @@ export class AssetLibraryService {
     consentStatus: 'NOT_APPLICABLE' | 'CONFIRMED' | 'REQUIRED';
   }) {
     const tenant = await this.tenant(tenantReference);
-    const [updated] = await this.db.update(factFindingUploads).set({
-      publicUsePermission: input.publicUsePermission,
-      aiUsePermission: input.aiUsePermission,
-      copyrightConfirmed: input.copyrightConfirmed,
-      consentStatus: input.consentStatus,
-      agencyReviewStatus: 'PENDING',
-      reviewedByAgencyUserId: null,
-      reviewedAt: null,
-      updatedAt: new Date(),
-    }).where(and(
-      eq(factFindingUploads.publicReference, uploadReference),
-      eq(factFindingUploads.tenantId, tenant.id),
-      eq(factFindingUploads.uploadStatus, 'UPLOADED'),
-      not(eq(factFindingUploads.assetCategory, 'SEARCH_RESEARCH_SOURCE')),
-    )).returning();
-    if (!updated) throw fail(404, 'ASSET_LIBRARY_ASSET_NOT_FOUND', 'Asset was not found.');
-    await this.audit.write(actor, 'CLIENT_ASSET_PERMISSIONS_UPDATED', 'FACT_FINDING_UPLOAD', updated.publicReference, {
-      tenantId: tenant.id,
-      category: 'WEBSITE',
-      metadata: { publicUsePermission: input.publicUsePermission, aiUsePermission: input.aiUsePermission, consentStatus: input.consentStatus },
+    const updated = await this.db.transaction(async transaction => {
+      const [record] = await transaction.update(factFindingUploads).set({
+        publicUsePermission: input.publicUsePermission,
+        aiUsePermission: input.aiUsePermission,
+        copyrightConfirmed: input.copyrightConfirmed,
+        consentStatus: input.consentStatus,
+        agencyReviewStatus: 'PENDING',
+        reviewedByAgencyUserId: null,
+        reviewedAt: null,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(factFindingUploads.publicReference, uploadReference),
+        eq(factFindingUploads.tenantId, tenant.id),
+        eq(factFindingUploads.uploadStatus, 'UPLOADED'),
+        not(eq(factFindingUploads.assetCategory, 'SEARCH_RESEARCH_SOURCE')),
+      )).returning();
+      if (!record) throw fail(404, 'ASSET_LIBRARY_ASSET_NOT_FOUND', 'Asset was not found.');
+      await transaction.update(siteAssets).set({
+        status: 'REJECTED',
+        updatedAt: new Date(),
+      }).where(and(
+        eq(siteAssets.sourceFactFindingUploadId, record.id),
+        eq(siteAssets.tenantId, tenant.id),
+      ));
+      await this.audit.write(actor, 'CLIENT_ASSET_PERMISSIONS_UPDATED', 'FACT_FINDING_UPLOAD', record.publicReference, {
+        tenantId: tenant.id,
+        category: 'WEBSITE',
+        metadata: { publicUsePermission: input.publicUsePermission, aiUsePermission: input.aiUsePermission, consentStatus: input.consentStatus },
+        tx: transaction,
+      });
+      return record;
     });
     return { reference: updated.publicReference, reviewStatus: updated.agencyReviewStatus };
   }

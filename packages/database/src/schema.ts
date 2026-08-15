@@ -1973,6 +1973,9 @@ export const siteAssets = pgTable('site_assets', {
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
   siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
   versionId: uuid('version_id').notNull().references(() => siteVersions.id, { onDelete: 'restrict' }),
+  // The migration owns the FK because factFindingUploads is declared later in
+  // this generated schema module.
+  sourceFactFindingUploadId: uuid('source_fact_finding_upload_id'),
   kind: varchar('kind', { length: 40 }).notNull(),
   storagePath: varchar('storage_path', { length: 1000 }).notNull(),
   mimeType: varchar('mime_type', { length: 100 }).notNull(),
@@ -1985,6 +1988,8 @@ export const siteAssets = pgTable('site_assets', {
 }, table => ({
   tenantSiteVersionIdx: index('site_assets_tenant_site_version_idx').on(table.tenantId, table.siteId, table.versionId),
   storagePathUnique: uniqueIndex('site_assets_storage_path_unique').on(table.storagePath),
+  siteSourceUploadUnique: uniqueIndex('site_assets_site_source_upload_unique').on(table.siteId, table.sourceFactFindingUploadId),
+  sourceUploadIdx: index('site_assets_source_upload_idx').on(table.sourceFactFindingUploadId),
 }));
 
 export const siteApprovals = pgTable('site_approvals', {
