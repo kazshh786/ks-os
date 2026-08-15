@@ -29,6 +29,8 @@ import {
   UpdateCommunicationsSettingsRequest,
   EmailHistoryQuery,
   EmailHistoryItem,
+  EmailPreviewRequest,
+  EmailPreviewResponse,
   DashboardOverviewQuery,
   DashboardOverviewResponse
 } from '@ks-os/contracts';
@@ -864,6 +866,14 @@ export class MockDataProvider implements DataProvider {
   async updateCommunicationsSettings(settings: UpdateCommunicationsSettingsRequest): Promise<void> {
     const current = await this.getCommunicationsSettings();
     saveStorageData('ks_os_comm_settings', { ...current, ...settings });
+  }
+
+  async renderAutomatedEmailPreview(input: EmailPreviewRequest): Promise<EmailPreviewResponse> {
+    return {
+      subject: input.template.subject,
+      html: '<!doctype html><html lang="en"><body><p>Email preview requires the live API renderer.</p></body></html>',
+      text: 'Email preview requires the live API renderer.',
+    };
   }
 
   async getEmailHistory(query: EmailHistoryQuery): Promise<{ data: EmailHistoryItem[], nextCursor?: string }> {
