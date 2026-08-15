@@ -51,7 +51,6 @@ export default async function publicSiteAssetRoutes(app: FastifyInstance) {
         eq(factFindingUploads.uploadStatus, 'UPLOADED'),
         eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
         eq(factFindingUploads.publicUsePermission, true),
-        eq(factFindingUploads.aiUsePermission, true),
         eq(factFindingUploads.copyrightConfirmed, true),
         inArray(factFindingUploads.consentStatus, GOVERNED_SITE_ASSET_CONSENT_STATUSES),
         inArray(factFindingUploads.malwareScanStatus, GOVERNED_SITE_ASSET_SCAN_STATUSES),

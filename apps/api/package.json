@@ -8,7 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "NODE_ENV=test node --import tsx --test tests/**/*.test.ts",
+    "test": "node --import ./tests/test-environment.mjs --import tsx --test tests/**/*.test.ts",
     "lint": "echo 'api lint passed'",
     "knowledge:import": "node --env-file-if-exists=../../.env --import tsx src/cli/import-knowledge-pack.ts",
     "knowledge:seed-actor:dev": "node --env-file-if-exists=../../.env --import tsx src/cli/seed-knowledge-development-actor.ts",

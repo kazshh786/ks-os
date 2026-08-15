@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
+import { applyGovernedEntityAssetBindings } from '@ks-os/site-generation';
 import {
+  buildGovernedSiteAssetProjection,
   governedImageDimensions,
   governedSiteAssetKind,
   governedSiteAssetReference,
   governedSiteAssetUrl,
-  isGovernedSiteAssetEligible,
+  isGovernedSiteAssetAiEligible,
+  isGovernedSiteAssetPubliclyDeliverable,
 } from '../src/modules/sites/governed-site-asset-policy.js';
 
 const serviceSource = await readFile(new URL(
@@ -50,19 +54,24 @@ const eligible = {
   mimeType: 'image/webp',
 };
 
-test('only fully governed approved public image uploads are website eligible', () => {
-  assert.equal(isGovernedSiteAssetEligible(eligible), true);
+test('AI selection and public delivery are distinct governed policies', () => {
+  assert.equal(isGovernedSiteAssetAiEligible(eligible), true);
+  assert.equal(isGovernedSiteAssetPubliclyDeliverable(eligible), true);
+  assert.equal(isGovernedSiteAssetAiEligible({ ...eligible, aiUsePermission: false }), false);
+  assert.equal(isGovernedSiteAssetPubliclyDeliverable({ ...eligible, aiUsePermission: false }), true);
   for (const change of [
     { uploadStatus: 'PENDING_UPLOAD' },
     { agencyReviewStatus: 'PENDING' },
     { publicUsePermission: false },
-    { aiUsePermission: false },
     { copyrightConfirmed: false },
     { consentStatus: 'REQUIRED' },
     { malwareScanStatus: 'INFECTED' },
     { assetCategory: 'POLICY_DOCUMENT' },
     { mimeType: 'application/pdf' },
-  ]) assert.equal(isGovernedSiteAssetEligible({ ...eligible, ...change }), false);
+  ]) {
+    assert.equal(isGovernedSiteAssetAiEligible({ ...eligible, ...change }), false);
+    assert.equal(isGovernedSiteAssetPubliclyDeliverable({ ...eligible, ...change }), false);
+  }
 });
 
 test('logo, team, location, service and result categories map to generator asset classes', () => {
@@ -110,6 +119,104 @@ test('governed image dimensions are read from verified bytes', () => {
   assert.equal(governedImageDimensions(Buffer.from('%PDF-1.7'), 'application/pdf'), null);
 });
 
+function png(width = 1200, height = 800) {
+  const bytes = Buffer.alloc(24);
+  Buffer.from('89504e470d0a1a0a', 'hex').copy(bytes);
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return bytes;
+}
+
+test('approved uploads materialize deterministically and preserve explicit entity bindings', () => {
+  const bytes = png();
+  const upload = {
+    ...eligible,
+    id: '10000000-0000-4000-8000-000000000001',
+    tenantId: '10000000-0000-4000-8000-000000000002',
+    publicReference: '10000000-0000-4000-8000-000000000003',
+    safeFilename: 'team.png',
+    mimeType: 'image/png',
+    byteSize: bytes.byteLength,
+    digestSha256: createHash('sha256').update(bytes).digest('hex'),
+    boundStaffUserId: '10000000-0000-4000-8000-000000000004',
+    boundStaffReference: '10000000-0000-4000-8000-000000000005',
+  };
+  const projected = buildGovernedSiteAssetProjection({
+    tenantId: upload.tenantId,
+    siteId: '10000000-0000-4000-8000-000000000006',
+    siteReference: '10000000-0000-4000-8000-000000000007',
+    businessName: 'Luma Beauty Studio',
+    publicOrigin: 'https://app.example.com',
+    bytes,
+    upload,
+  });
+  assert.equal(projected.ok, true);
+  if (!projected.ok) return;
+  assert.equal(projected.value.kind, 'STAFF');
+  assert.equal(projected.value.entityReference, upload.boundStaffReference);
+  assert.equal(projected.value.width, 1200);
+  assert.equal(projected.value.height, 800);
+  assert.match(projected.value.storagePath, /\/api\/v1\/public\/site-assets\//);
+});
+
+test('cross-tenant or unresolved entity bindings cannot materialize', () => {
+  const bytes = png();
+  const upload = {
+    ...eligible,
+    id: '10000000-0000-4000-8000-000000000001',
+    tenantId: '10000000-0000-4000-8000-000000000002',
+    publicReference: '10000000-0000-4000-8000-000000000003',
+    safeFilename: 'team.png',
+    mimeType: 'image/png',
+    byteSize: bytes.byteLength,
+    digestSha256: createHash('sha256').update(bytes).digest('hex'),
+    boundStaffUserId: '10000000-0000-4000-8000-000000000004',
+    boundStaffReference: null,
+  };
+  const context = {
+    siteId: '10000000-0000-4000-8000-000000000006',
+    siteReference: '10000000-0000-4000-8000-000000000007',
+    businessName: 'Luma Beauty Studio',
+    publicOrigin: 'https://app.example.com',
+    bytes,
+  };
+  assert.deepEqual(buildGovernedSiteAssetProjection({
+    ...context,
+    tenantId: '20000000-0000-4000-8000-000000000002',
+    upload,
+  }), { ok: false, reason: 'TENANT_MISMATCH' });
+  assert.deepEqual(buildGovernedSiteAssetProjection({
+    ...context,
+    tenantId: upload.tenantId,
+    upload,
+  }), { ok: false, reason: 'ENTITY_BINDING_INVALID' });
+});
+
+test('logo, staff and service bindings enter entity fields without guessing unbound imagery', () => {
+  const logo = '10000000-0000-4000-8000-000000000010';
+  const staffImage = '10000000-0000-4000-8000-000000000011';
+  const genericTeam = '10000000-0000-4000-8000-000000000012';
+  const serviceImage = '10000000-0000-4000-8000-000000000013';
+  const staffReference = '10000000-0000-4000-8000-000000000020';
+  const serviceReference = '10000000-0000-4000-8000-000000000021';
+  const bound = applyGovernedEntityAssetBindings({
+    assets: [
+      { publicReference: logo, assetClass: 'LOGO' },
+      { publicReference: staffImage, assetClass: 'STAFF', entityReference: staffReference },
+      { publicReference: genericTeam, assetClass: 'STAFF' },
+      { publicReference: serviceImage, assetClass: 'SERVICE', entityReference: serviceReference },
+    ],
+    availableAssetReferences: new Set([logo, staffImage, genericTeam, serviceImage]),
+    business: { name: 'Luma' },
+    staff: [{ publicReference: staffReference, name: 'Maya' }],
+    services: [{ publicReference: serviceReference, name: 'Facial' }],
+  });
+  assert.equal(bound.business.logoAssetReference, logo);
+  assert.equal(bound.staff[0]!.imageAssetReference, staffImage);
+  assert.equal(bound.services[0]!.imageAssetReference, serviceImage);
+  assert.notEqual(bound.staff[0]!.imageAssetReference, genericTeam);
+});
+
 test('materialisation enforces tenant ownership and every governance predicate in SQL', () => {
   for (const binding of [
     /eq\(factFindingUploads\.tenantId, input\.tenantId\)/,
@@ -140,6 +247,7 @@ test('generation consumes materialized assets and public delivery rechecks gover
     /factFindingUploads\.publicUsePermission/,
     /factFindingUploads\.copyrightConfirmed/,
   ]) assert.match(publicRouteSource, guard);
+  assert.doesNotMatch(publicRouteSource, /aiUsePermission/);
 });
 
 test('the site asset projection has one governed source identity and generator-safe kinds', () => {
@@ -148,6 +256,9 @@ test('the site asset projection has one governed source identity and generator-s
   assert.match(migration, /REFERENCES fact_finding_uploads\(id\)/);
   assert.match(migration, /site_assets_site_source_upload_unique/);
   assert.match(migration, /site_assets_source_upload_idx/);
+  assert.match(migration, /bound_staff_user_id/);
+  assert.match(migration, /bound_service_id/);
+  assert.match(migration, /asset_input_json/);
   for (const kind of ['STAFF', 'LOCATION', 'SERVICE', 'RESULT']) {
     assert.match(migration, new RegExp(`'${kind}'`));
   }
@@ -155,11 +266,10 @@ test('the site asset projection has one governed source identity and generator-s
 });
 
 test('permission and review changes update the same projected asset lifecycle', () => {
-  assert.match(
-    assetLibrarySource,
-    /status: 'REJECTED'[\s\S]*sourceFactFindingUploadId, record\.id/,
-  );
-  assert.match(factFindingSource, /isGovernedSiteAssetEligible\(record\)/);
+  assert.match(assetLibrarySource, /isGovernedSiteAssetPubliclyDeliverable\(record\)/);
+  assert.match(assetLibrarySource, /status: siteAssetStatus/);
+  assert.match(assetLibrarySource, /ASSET_ENTITY_BINDING_IMMUTABLE/);
+  assert.match(factFindingSource, /isGovernedSiteAssetPubliclyDeliverable\(record\)/);
   assert.match(factFindingSource, /status: siteAssetStatus/);
   assert.match(factFindingSource, /sourceFactFindingUploadId, record\.id/);
 });

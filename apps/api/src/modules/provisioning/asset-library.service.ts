@@ -4,15 +4,19 @@ import {
   factFindingQuestionnaires,
   factFindingUploads,
   getDatabase,
+  services,
   siteAssets,
   tenants,
+  users,
 } from '@ks-os/database';
-import { FactFindingUploadSchema } from '@ks-os/fact-finding';
+import { AssetEntityBindingSchema, FactFindingUploadSchema } from '@ks-os/fact-finding';
 import type { z } from 'zod';
+import { isGovernedSiteAssetPubliclyDeliverable } from '@ks-os/site-generation';
 import { getSupabaseAdmin } from '../../lib/supabase-admin.js';
 import { AgencyAuditService, type AgencyActor } from '../agency/agency.service.js';
 
 type AssetUploadInput = z.infer<typeof FactFindingUploadSchema>;
+type AssetEntityBindingInput = z.infer<typeof AssetEntityBindingSchema>;
 const fail = (statusCode: number, code: string, message: string) => Object.assign(new Error(message), { statusCode, code });
 
 function uploadedFileMatchesMime(bytes: Buffer, mimeType: string) {
@@ -82,6 +86,8 @@ export class AssetLibraryService {
       storagePath: factFindingUploads.storagePath,
       createdAt: factFindingUploads.createdAt,
       reviewedAt: factFindingUploads.reviewedAt,
+      boundStaffUserId: factFindingUploads.boundStaffUserId,
+      boundServiceId: factFindingUploads.boundServiceId,
     }).from(factFindingUploads)
       .where(and(
         eq(factFindingUploads.tenantId, tenant.id),
@@ -90,7 +96,35 @@ export class AssetLibraryService {
       .orderBy(desc(factFindingUploads.createdAt))
       .limit(250);
 
+    const boundStaffIds = rows.flatMap(row => row.boundStaffUserId ? [row.boundStaffUserId] : []);
+    const boundServiceIds = rows.flatMap(row => row.boundServiceId ? [row.boundServiceId] : []);
+    const [boundStaff, boundServices] = await Promise.all([
+      boundStaffIds.length
+        ? this.db.select({ id: users.id, reference: users.publicReference })
+          .from(users).where(and(
+            eq(users.tenantId, tenant.id),
+            inArray(users.id, boundStaffIds),
+          ))
+        : Promise.resolve([]),
+      boundServiceIds.length
+        ? this.db.select({ id: services.id, reference: services.publicReference })
+          .from(services).where(and(
+            eq(services.tenantId, tenant.id),
+            inArray(services.id, boundServiceIds),
+          ))
+        : Promise.resolve([]),
+    ]);
+    const staffReferences = new Map(boundStaff.map(row => [row.id, row.reference]));
+    const serviceReferences = new Map(boundServices.map(row => [row.id, row.reference]));
     const assets = await Promise.all(rows.map(async row => {
+      if ((row.boundStaffUserId && !staffReferences.has(row.boundStaffUserId))
+        || (row.boundServiceId && !serviceReferences.has(row.boundServiceId))) {
+        throw fail(
+          409,
+          'ASSET_ENTITY_BINDING_INVALID',
+          'An asset has an invalid cross-business entity binding.',
+        );
+      }
       let signedViewUrl: string | null = null;
       if (row.uploadStatus === 'UPLOADED' && !['INFECTED', 'FAILED'].includes(row.scanStatus)) {
         const { data } = await getSupabaseAdmin().storage.from(row.storageBucket).createSignedUrl(row.storagePath, 900);
@@ -102,6 +136,13 @@ export class AssetLibraryService {
         storagePath: undefined,
         createdAt: row.createdAt.toISOString(),
         reviewedAt: row.reviewedAt?.toISOString() ?? null,
+        entityBinding: row.boundStaffUserId
+          ? { entityType: 'STAFF' as const, entityReference: staffReferences.get(row.boundStaffUserId)! }
+          : row.boundServiceId
+            ? { entityType: 'SERVICE' as const, entityReference: serviceReferences.get(row.boundServiceId)! }
+            : { entityType: 'NONE' as const },
+        boundStaffUserId: undefined,
+        boundServiceId: undefined,
         signedViewUrl,
         usage: { pageReferences: [], note: 'Page usage is recorded after a generated website version references this asset.' },
       };
@@ -198,24 +239,34 @@ export class AssetLibraryService {
   }) {
     const tenant = await this.tenant(tenantReference);
     const updated = await this.db.transaction(async transaction => {
+      const [current] = await transaction.select().from(factFindingUploads).where(and(
+        eq(factFindingUploads.publicReference, uploadReference),
+        eq(factFindingUploads.tenantId, tenant.id),
+        eq(factFindingUploads.uploadStatus, 'UPLOADED'),
+        not(eq(factFindingUploads.assetCategory, 'SEARCH_RESEARCH_SOURCE')),
+      )).limit(1).for('update');
+      if (!current) throw fail(404, 'ASSET_LIBRARY_ASSET_NOT_FOUND', 'Asset was not found.');
+      const publicPolicyChanged = current.publicUsePermission !== input.publicUsePermission
+        || current.copyrightConfirmed !== input.copyrightConfirmed
+        || current.consentStatus !== input.consentStatus;
+      const nextReviewStatus = publicPolicyChanged ? 'PENDING' : current.agencyReviewStatus;
       const [record] = await transaction.update(factFindingUploads).set({
         publicUsePermission: input.publicUsePermission,
         aiUsePermission: input.aiUsePermission,
         copyrightConfirmed: input.copyrightConfirmed,
         consentStatus: input.consentStatus,
-        agencyReviewStatus: 'PENDING',
-        reviewedByAgencyUserId: null,
-        reviewedAt: null,
+        agencyReviewStatus: nextReviewStatus,
+        ...(publicPolicyChanged ? {
+          reviewedByAgencyUserId: null,
+          reviewedAt: null,
+        } : {}),
         updatedAt: new Date(),
-      }).where(and(
-        eq(factFindingUploads.publicReference, uploadReference),
-        eq(factFindingUploads.tenantId, tenant.id),
-        eq(factFindingUploads.uploadStatus, 'UPLOADED'),
-        not(eq(factFindingUploads.assetCategory, 'SEARCH_RESEARCH_SOURCE')),
-      )).returning();
-      if (!record) throw fail(404, 'ASSET_LIBRARY_ASSET_NOT_FOUND', 'Asset was not found.');
+      }).where(eq(factFindingUploads.id, current.id)).returning();
+      const siteAssetStatus = isGovernedSiteAssetPubliclyDeliverable(record)
+        ? 'READY'
+        : 'REJECTED';
       await transaction.update(siteAssets).set({
-        status: 'REJECTED',
+        status: siteAssetStatus,
         updatedAt: new Date(),
       }).where(and(
         eq(siteAssets.sourceFactFindingUploadId, record.id),
@@ -224,11 +275,90 @@ export class AssetLibraryService {
       await this.audit.write(actor, 'CLIENT_ASSET_PERMISSIONS_UPDATED', 'FACT_FINDING_UPLOAD', record.publicReference, {
         tenantId: tenant.id,
         category: 'WEBSITE',
-        metadata: { publicUsePermission: input.publicUsePermission, aiUsePermission: input.aiUsePermission, consentStatus: input.consentStatus },
+        metadata: {
+          publicUsePermission: input.publicUsePermission,
+          aiUsePermission: input.aiUsePermission,
+          consentStatus: input.consentStatus,
+          publicPolicyChanged,
+          siteAssetStatus,
+        },
         tx: transaction,
       });
       return record;
     });
     return { reference: updated.publicReference, reviewStatus: updated.agencyReviewStatus };
+  }
+
+  async updateEntityBinding(
+    actor: AgencyActor,
+    tenantReference: string,
+    uploadReference: string,
+    input: AssetEntityBindingInput,
+  ) {
+    const tenant = await this.tenant(tenantReference);
+    return this.db.transaction(async transaction => {
+      const [upload] = await transaction.select().from(factFindingUploads).where(and(
+        eq(factFindingUploads.publicReference, uploadReference),
+        eq(factFindingUploads.tenantId, tenant.id),
+        eq(factFindingUploads.uploadStatus, 'UPLOADED'),
+        not(eq(factFindingUploads.assetCategory, 'SEARCH_RESEARCH_SOURCE')),
+      )).limit(1).for('update');
+      if (!upload) throw fail(404, 'ASSET_LIBRARY_ASSET_NOT_FOUND', 'Asset was not found.');
+      const [materialized] = await transaction.select({ id: siteAssets.id })
+        .from(siteAssets).where(and(
+          eq(siteAssets.sourceFactFindingUploadId, upload.id),
+          eq(siteAssets.tenantId, tenant.id),
+        )).limit(1);
+      if (materialized) {
+        throw fail(
+          409,
+          'ASSET_ENTITY_BINDING_IMMUTABLE',
+          'An asset binding cannot change after the asset has entered a governed website input.',
+        );
+      }
+      let boundStaffUserId: string | null = null;
+      let boundServiceId: string | null = null;
+      if (input.entityType === 'STAFF') {
+        if (upload.assetCategory !== 'TEAM_PHOTO') {
+          throw fail(409, 'ASSET_ENTITY_BINDING_INVALID', 'Only a team photo can bind to a staff member.');
+        }
+        const [staff] = await transaction.select({ id: users.id }).from(users).where(and(
+          eq(users.publicReference, input.entityReference),
+          eq(users.tenantId, tenant.id),
+          eq(users.accountStatus, 'ACTIVE'),
+        )).limit(1);
+        if (!staff) throw fail(404, 'ASSET_ENTITY_NOT_FOUND', 'The staff member was not found for this business.');
+        boundStaffUserId = staff.id;
+      } else if (input.entityType === 'SERVICE') {
+        if (upload.assetCategory !== 'SERVICE_PHOTO') {
+          throw fail(409, 'ASSET_ENTITY_BINDING_INVALID', 'Only a service photo can bind to a service.');
+        }
+        const [service] = await transaction.select({ id: services.id }).from(services).where(and(
+          eq(services.publicReference, input.entityReference),
+          eq(services.tenantId, tenant.id),
+          eq(services.isActive, true),
+        )).limit(1);
+        if (!service) throw fail(404, 'ASSET_ENTITY_NOT_FOUND', 'The service was not found for this business.');
+        boundServiceId = service.id;
+      }
+      const [updated] = await transaction.update(factFindingUploads).set({
+        boundStaffUserId,
+        boundServiceId,
+        agencyReviewStatus: 'PENDING',
+        reviewedByAgencyUserId: null,
+        reviewedAt: null,
+        updatedAt: new Date(),
+      }).where(eq(factFindingUploads.id, upload.id)).returning();
+      await this.audit.write(actor, 'CLIENT_ASSET_ENTITY_BINDING_UPDATED', 'FACT_FINDING_UPLOAD', uploadReference, {
+        tenantId: tenant.id,
+        category: 'WEBSITE',
+        metadata: {
+          entityType: input.entityType,
+          entityReference: input.entityType === 'NONE' ? null : input.entityReference,
+        },
+        tx: transaction,
+      });
+      return { reference: updated!.publicReference, reviewStatus: updated!.agencyReviewStatus, entityBinding: input };
+    });
   }
 }

@@ -3,6 +3,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   max,
   or,
@@ -48,9 +49,11 @@ import {
   GOVERNED_SITE_ASSET_CONSENT_STATUSES,
   GOVERNED_SITE_ASSET_MIME_TYPES,
   GOVERNED_SITE_ASSET_SCAN_STATUSES,
+  ApprovedGenerationAssetSchema,
   buildVerifiedBusinessFacts,
   generationDigest,
   generationIdempotencyKey,
+  generationRetryProjection,
   searchStrategyDigest,
   validateSearchIntelligencePlan,
   PageSeoBriefSchema,
@@ -60,6 +63,7 @@ import {
   isSiteGenerationProviderReady,
   terminalGenerationRunFailure,
   parseSiteGenerationConfig,
+  type ApprovedGenerationAsset,
   type GenerationRunRequestSchema,
 } from '@ks-os/site-generation';
 import {
@@ -190,7 +194,7 @@ export class AgencySiteGenerationService {
     const facts = await this.verifiedFactSnapshot(
       context.tenantId,
       context.siteId,
-      assetCandidates,
+      { assetCandidates },
     );
     const sourceDataDigestSha256 = generationDigest(facts);
     const idempotencyKey = generationIdempotencyKey({
@@ -267,6 +271,7 @@ export class AgencySiteGenerationService {
         modelKey,
         idempotencyKey,
         sourceDataDigestSha256,
+        assetInputJson: facts.approvedAssets,
         promptTemplateVersion: SITE_GENERATION_PROMPT_TEMPLATE_VERSION,
         pageCountPlanned: blueprintPages.length,
         requestedByAgencyUserId: actor.agencyUserId,
@@ -459,13 +464,29 @@ export class AgencySiteGenerationService {
       reason: `Automatic reconciliation before retry: ${reason}`,
     });
     const run = await this.runContext(siteReference, runReference);
-    if (run.status !== 'FAILED' || !run.jobReference || !run.versionId
-      || !['FAILED', 'DEAD_LETTER'].includes(run.jobStatus || '')) {
+    if (!run.jobReference || !run.versionId || !run.versionReference) {
       throw fail(409, 'SITE_GENERATION_NOT_RETRYABLE', 'Only failed generation runs can be retried.');
     }
-    const jobReference = run.jobReference;
+    const retry = generationRetryProjection({
+      runReference,
+      versionReference: run.versionReference,
+      jobReference: run.jobReference,
+      idempotencyKey: run.idempotencyKey,
+      sourceDataDigestSha256: run.sourceDataDigestSha256,
+      runStatus: SiteGenerationRunStatusSchema.parse(run.status),
+      jobStatus: run.jobStatus || '',
+    });
+    if (!retry) {
+      throw fail(409, 'SITE_GENERATION_NOT_RETRYABLE', 'Only failed generation runs can be retried.');
+    }
+    const jobReference = retry.jobReference;
     const versionId = run.versionId;
-    const currentFacts = await this.verifiedFactSnapshot(run.tenantId, run.siteId);
+    const pinnedAssets = run.assetInputJson === null
+      ? null
+      : ApprovedGenerationAssetSchema.array().parse(run.assetInputJson);
+    const currentFacts = await this.verifiedFactSnapshot(run.tenantId, run.siteId, {
+      pinnedAssets,
+    });
     if (generationDigest(currentFacts) !== run.sourceDataDigestSha256) {
       throw fail(
         409,
@@ -473,37 +494,13 @@ export class AgencySiteGenerationService {
         'Verified business data changed after this generation run was pinned.',
       );
     }
-    const assetCandidates = await this.governedAssets.prepare({
-      tenantId: run.tenantId,
-      siteId: run.siteId,
-      siteReference,
-      businessName: run.businessName,
-    });
-    const nextFacts = await this.verifiedFactSnapshot(
-      run.tenantId,
-      run.siteId,
-      assetCandidates,
-    );
-    const nextSourceDataDigestSha256 = generationDigest(nextFacts);
     await this.jobOperations.retry(
       actor,
       jobReference,
       reason,
       async transaction => {
-        await this.governedAssets.materialize(transaction, {
-          tenantId: run.tenantId,
-          siteId: run.siteId,
-          versionId,
-        }, assetCandidates);
-        await transaction.update(siteJobs).set({
-          sourceDigestSha256: nextSourceDataDigestSha256,
-        }).where(and(
-          eq(siteJobs.publicReference, jobReference),
-          eq(siteJobs.tenantId, run.tenantId),
-        ));
         await transaction.update(siteGenerationRuns).set({
           status: 'PENDING',
-          sourceDataDigestSha256: nextSourceDataDigestSha256,
           failureCode: null,
           failureMessage: null,
           updatedAt: new Date(),
@@ -519,28 +516,16 @@ export class AgencySiteGenerationService {
           eq(siteVersions.tenantId, run.tenantId),
           eq(siteVersions.siteId, run.siteId),
         ));
-        if (assetCandidates.length) {
-          await this.audit.write(actor, 'SITE_GENERATION_ASSETS_MATERIALIZED', 'SITE_GENERATION_RUN', runReference, {
-            tenantId: run.tenantId,
-            reason: 'Projected already-approved Asset Library imagery into the governed site asset set.',
-            category: 'WEBSITE',
-            metadata: {
-              siteReference,
-              assetCount: assetCandidates.length,
-              assetReferences: assetCandidates.map(candidate => candidate.publicReference),
-              previousSourceDataDigestSha256: run.sourceDataDigestSha256,
-              sourceDataDigestSha256: nextSourceDataDigestSha256,
-            },
-            tx: transaction,
-          });
-        }
         await this.audit.write(actor, 'SITE_GENERATION_RETRIED', 'SITE_GENERATION_RUN', runReference, {
           tenantId: run.tenantId,
           reason,
           category: 'WEBSITE',
           metadata: {
             siteReference,
-            versionId,
+            versionReference: retry.versionReference,
+            idempotencyKey: retry.idempotencyKey,
+            sourceDataDigestSha256: retry.sourceDataDigestSha256,
+            assetInputCount: pinnedAssets?.length ?? 0,
             reusedDurableJob: true,
           },
           tx: transaction,
@@ -994,8 +979,66 @@ export class AgencySiteGenerationService {
   private async verifiedFactSnapshot(
     tenantId: string,
     siteId: string,
-    assetCandidates: readonly GovernedSiteAssetCandidate[] = [],
+    options: {
+      assetCandidates?: readonly GovernedSiteAssetCandidate[];
+      pinnedAssets?: readonly ApprovedGenerationAsset[] | null;
+    } = {},
   ) {
+    const assetConditions = [
+      eq(siteAssets.tenantId, tenantId),
+      eq(siteAssets.siteId, siteId),
+      eq(siteAssets.status, 'READY'),
+      or(
+        isNull(siteAssets.sourceFactFindingUploadId),
+        and(
+          eq(factFindingUploads.uploadStatus, 'UPLOADED'),
+          eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
+          eq(factFindingUploads.publicUsePermission, true),
+          eq(factFindingUploads.aiUsePermission, true),
+          eq(factFindingUploads.copyrightConfirmed, true),
+          inArray(factFindingUploads.consentStatus, GOVERNED_SITE_ASSET_CONSENT_STATUSES),
+          inArray(factFindingUploads.malwareScanStatus, GOVERNED_SITE_ASSET_SCAN_STATUSES),
+          inArray(factFindingUploads.assetCategory, GOVERNED_SITE_ASSET_CATEGORIES),
+          inArray(factFindingUploads.mimeType, GOVERNED_SITE_ASSET_MIME_TYPES),
+          or(isNull(factFindingUploads.boundStaffUserId), isNotNull(users.id)),
+          or(isNull(factFindingUploads.boundServiceId), isNotNull(services.id)),
+        ),
+      ),
+    ];
+    if (Array.isArray(options.pinnedAssets) && options.pinnedAssets.length) {
+      assetConditions.push(inArray(
+        siteAssets.publicReference,
+        options.pinnedAssets.map(asset => asset.publicReference),
+      ));
+    }
+    const assetRowsPromise = Array.isArray(options.pinnedAssets)
+      && options.pinnedAssets.length === 0
+      ? Promise.resolve([])
+      : this.database.select({
+        reference: siteAssets.publicReference,
+        kind: siteAssets.kind,
+        alt: siteAssets.altText,
+        width: siteAssets.width,
+        height: siteAssets.height,
+        boundStaffUserId: factFindingUploads.boundStaffUserId,
+        boundStaffReference: users.publicReference,
+        boundServiceId: factFindingUploads.boundServiceId,
+        boundServiceReference: services.publicReference,
+      })
+        .from(siteAssets)
+        .leftJoin(factFindingUploads, and(
+          eq(siteAssets.sourceFactFindingUploadId, factFindingUploads.id),
+          eq(siteAssets.tenantId, factFindingUploads.tenantId),
+        ))
+        .leftJoin(users, and(
+          eq(factFindingUploads.boundStaffUserId, users.id),
+          eq(factFindingUploads.tenantId, users.tenantId),
+        ))
+        .leftJoin(services, and(
+          eq(factFindingUploads.boundServiceId, services.id),
+          eq(factFindingUploads.tenantId, services.tenantId),
+        ))
+        .where(and(...assetConditions));
     const [business, serviceRows, locationRows, staffRows, assetRows] = await Promise.all([
       this.database.select({
         reference: tenants.businessReference,
@@ -1031,44 +1074,31 @@ export class AgencySiteGenerationService {
         biography: users.bio,
         bookingEnabled: users.bookingEnabled,
       }).from(users).where(and(eq(users.tenantId, tenantId), eq(users.accountStatus, 'ACTIVE'))),
-      this.database.select({
-        reference: siteAssets.publicReference,
-        kind: siteAssets.kind,
-        alt: siteAssets.altText,
-        width: siteAssets.width,
-        height: siteAssets.height,
-      })
-        .from(siteAssets)
-        .leftJoin(factFindingUploads, and(
-          eq(siteAssets.sourceFactFindingUploadId, factFindingUploads.id),
-          eq(siteAssets.tenantId, factFindingUploads.tenantId),
-        ))
-        .where(and(
-          eq(siteAssets.tenantId, tenantId),
-          eq(siteAssets.siteId, siteId),
-          eq(siteAssets.status, 'READY'),
-          or(
-            isNull(siteAssets.sourceFactFindingUploadId),
-            and(
-              eq(factFindingUploads.uploadStatus, 'UPLOADED'),
-              eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
-              eq(factFindingUploads.publicUsePermission, true),
-              eq(factFindingUploads.aiUsePermission, true),
-              eq(factFindingUploads.copyrightConfirmed, true),
-              inArray(factFindingUploads.consentStatus, GOVERNED_SITE_ASSET_CONSENT_STATUSES),
-              inArray(factFindingUploads.malwareScanStatus, GOVERNED_SITE_ASSET_SCAN_STATUSES),
-              inArray(factFindingUploads.assetCategory, GOVERNED_SITE_ASSET_CATEGORIES),
-              inArray(factFindingUploads.mimeType, GOVERNED_SITE_ASSET_MIME_TYPES),
-            ),
-          ),
-        )),
+      assetRowsPromise,
     ]);
     if (!business[0]) throw fail(409, 'GENERATION_BUSINESS_DATA_MISSING', 'Verified business data is unavailable.');
-    const governedAssets = new Map(assetRows.map(asset => [asset.reference, asset]));
-    for (const candidate of assetCandidates) {
+    const pinnedByReference = new Map(
+      (options.pinnedAssets ?? []).map(asset => [asset.publicReference, asset]),
+    );
+    const governedAssets = new Map(assetRows.map(asset => {
+      const pinned = pinnedByReference.get(asset.reference);
+      const entityReference = pinned?.entityReference
+        ?? (asset.boundStaffUserId ? asset.boundStaffReference : asset.boundServiceId
+          ? asset.boundServiceReference : undefined);
+      return [asset.reference, {
+        reference: asset.reference,
+        kind: asset.kind,
+        ...(entityReference ? { entityReference } : {}),
+        alt: asset.alt,
+        width: asset.width,
+        height: asset.height,
+      }] as const;
+    }));
+    for (const candidate of options.assetCandidates ?? []) {
       governedAssets.set(candidate.publicReference, {
         reference: candidate.publicReference,
         kind: candidate.kind,
+        ...(candidate.entityReference ? { entityReference: candidate.entityReference } : {}),
         alt: candidate.altText,
         width: candidate.width,
         height: candidate.height,
@@ -1091,14 +1121,18 @@ export class AgencySiteGenerationService {
       tenantId: siteGenerationRuns.tenantId,
       siteId: siteGenerationRuns.siteId,
       versionId: siteGenerationRuns.siteVersionId,
+      versionReference: siteVersions.publicReference,
       status: siteGenerationRuns.status,
+      idempotencyKey: siteGenerationRuns.idempotencyKey,
       sourceDataDigestSha256: siteGenerationRuns.sourceDataDigestSha256,
+      assetInputJson: siteGenerationRuns.assetInputJson,
       jobReference: siteJobs.publicReference,
       jobStatus: siteJobs.status,
       businessName: tenants.name,
     }).from(siteGenerationRuns)
       .innerJoin(sites, eq(siteGenerationRuns.siteId, sites.id))
       .innerJoin(tenants, eq(siteGenerationRuns.tenantId, tenants.id))
+      .leftJoin(siteVersions, eq(siteGenerationRuns.siteVersionId, siteVersions.id))
       .leftJoin(siteJobs, eq(siteGenerationRuns.siteJobId, siteJobs.id))
       .where(and(
         eq(sites.publicReference, siteReference),

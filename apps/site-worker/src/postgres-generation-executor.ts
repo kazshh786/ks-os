@@ -5,6 +5,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   max,
   or,
@@ -65,10 +66,12 @@ import {
   GOVERNED_SITE_ASSET_CONSENT_STATUSES,
   GOVERNED_SITE_ASSET_MIME_TYPES,
   GOVERNED_SITE_ASSET_SCAN_STATUSES,
+  ApprovedGenerationAssetSchema,
   GeneratedPageSchema,
   GenerationPlanSchema,
   SiteGenerationProviderError,
   TemplateGenerationConstraintSchema,
+  applyGovernedEntityAssetBindings,
   availableBusinessDataKeys,
   buildVerifiedBusinessFacts,
   executeStructuredDataGeneration,
@@ -94,6 +97,7 @@ import {
   type TemplateGenerationConstraint,
   type VerifiedBusinessFacts,
   type ApprovedSearchIntelligenceInput,
+  type ApprovedGenerationAsset,
 } from '@ks-os/site-generation';
 import { getNativeLayoutManifest } from '@ks-os/site-templates';
 import {
@@ -174,6 +178,7 @@ interface RunContext {
   providerKey: string;
   modelKey: string;
   sourceDataDigestSha256: string;
+  assetInputJson: unknown | null;
   promptTemplateVersion: string;
   provisioningRunId: string | null;
   searchStrategyId: string | null;
@@ -396,6 +401,12 @@ function approvedAssetUrl(value: string) {
   }
 }
 
+function pinnedGenerationAssets(run: RunContext): ApprovedGenerationAsset[] | null {
+  return run.assetInputJson === null
+    ? null
+    : ApprovedGenerationAssetSchema.array().parse(run.assetInputJson);
+}
+
 async function persistValidatedPreviewSnapshot(
   transaction: DatabaseTransaction,
   run: RunContext,
@@ -444,6 +455,59 @@ async function persistValidatedPreviewSnapshot(
       'A preview snapshot requires the pinned approved template.',
     );
   }
+
+  const pinnedAssets = pinnedGenerationAssets(run);
+  const assetConditions = [
+    eq(siteAssets.tenantId, run.tenantId),
+    eq(siteAssets.siteId, run.siteId),
+    eq(siteAssets.status, 'READY'),
+    or(
+      isNull(siteAssets.sourceFactFindingUploadId),
+      and(
+        eq(factFindingUploads.uploadStatus, 'UPLOADED'),
+        eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
+        eq(factFindingUploads.publicUsePermission, true),
+        eq(factFindingUploads.copyrightConfirmed, true),
+        inArray(factFindingUploads.consentStatus, GOVERNED_SITE_ASSET_CONSENT_STATUSES),
+        inArray(factFindingUploads.malwareScanStatus, GOVERNED_SITE_ASSET_SCAN_STATUSES),
+        inArray(factFindingUploads.assetCategory, GOVERNED_SITE_ASSET_CATEGORIES),
+        inArray(factFindingUploads.mimeType, GOVERNED_SITE_ASSET_MIME_TYPES),
+        or(isNull(factFindingUploads.boundStaffUserId), isNotNull(users.id)),
+        or(isNull(factFindingUploads.boundServiceId), isNotNull(services.id)),
+      ),
+    ),
+  ];
+  if (pinnedAssets?.length) {
+    assetConditions.push(inArray(
+      siteAssets.publicReference,
+      pinnedAssets.map(asset => asset.publicReference),
+    ));
+  }
+  const assetRowsPromise = pinnedAssets?.length === 0
+    ? Promise.resolve([])
+    : transaction.select({
+      reference: siteAssets.publicReference,
+      kind: siteAssets.kind,
+      storagePath: siteAssets.storagePath,
+      mimeType: siteAssets.mimeType,
+      altText: siteAssets.altText,
+      width: siteAssets.width,
+      height: siteAssets.height,
+    }).from(siteAssets)
+      .leftJoin(factFindingUploads, and(
+        eq(siteAssets.sourceFactFindingUploadId, factFindingUploads.id),
+        eq(siteAssets.tenantId, factFindingUploads.tenantId),
+      ))
+      .leftJoin(users, and(
+        eq(factFindingUploads.boundStaffUserId, users.id),
+        eq(factFindingUploads.tenantId, users.tenantId),
+      ))
+      .leftJoin(services, and(
+        eq(factFindingUploads.boundServiceId, services.id),
+        eq(factFindingUploads.tenantId, services.tenantId),
+      ))
+      .where(and(...assetConditions))
+      .orderBy(asc(siteAssets.publicReference));
 
   const [pageRows, sectionRows, compatibilityRows, serviceRows, locationRows, staffRows, assignmentRows, assetRows] =
     await Promise.all([
@@ -532,38 +596,7 @@ async function persistValidatedPreviewSnapshot(
           eq(staffServiceAssignments.isActive, true),
           eq(services.isActive, true),
         )),
-      transaction.select({
-        reference: siteAssets.publicReference,
-        kind: siteAssets.kind,
-        storagePath: siteAssets.storagePath,
-        mimeType: siteAssets.mimeType,
-        altText: siteAssets.altText,
-        width: siteAssets.width,
-        height: siteAssets.height,
-      }).from(siteAssets)
-      .leftJoin(factFindingUploads, and(
-        eq(siteAssets.sourceFactFindingUploadId, factFindingUploads.id),
-        eq(siteAssets.tenantId, factFindingUploads.tenantId),
-      ))
-      .where(and(
-        eq(siteAssets.tenantId, run.tenantId),
-        eq(siteAssets.siteId, run.siteId),
-        eq(siteAssets.status, 'READY'),
-        or(
-          isNull(siteAssets.sourceFactFindingUploadId),
-          and(
-            eq(factFindingUploads.uploadStatus, 'UPLOADED'),
-            eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
-            eq(factFindingUploads.publicUsePermission, true),
-            eq(factFindingUploads.aiUsePermission, true),
-            eq(factFindingUploads.copyrightConfirmed, true),
-            inArray(factFindingUploads.consentStatus, GOVERNED_SITE_ASSET_CONSENT_STATUSES),
-            inArray(factFindingUploads.malwareScanStatus, GOVERNED_SITE_ASSET_SCAN_STATUSES),
-            inArray(factFindingUploads.assetCategory, GOVERNED_SITE_ASSET_CATEGORIES),
-            inArray(factFindingUploads.mimeType, GOVERNED_SITE_ASSET_MIME_TYPES),
-          ),
-        ),
-      )),
+      assetRowsPromise,
     ]);
 
   const [approvedStrategyRow] = run.searchStrategyId
@@ -818,6 +851,45 @@ async function persistValidatedPreviewSnapshot(
   ).trim().toLowerCase().replace(/^\.+|\.+$/g, '');
   const canonicalHostname = `${context.tenantSubdomain}.${fallbackDomain}`;
   const snapshotReference = randomUUID();
+  const entityBindings = applyGovernedEntityAssetBindings({
+    assets: pinnedAssets ?? [],
+    availableAssetReferences: new Set(assets.map(asset => asset.publicReference)),
+    business: {
+      name: context.tenantName,
+      ...(context.tenantLegalName ? { legalName: context.tenantLegalName } : {}),
+      description: context.tenantBusinessType
+        ? `${context.tenantName} provides ${context.tenantBusinessType.toLowerCase()} services.`
+        : `${context.tenantName} services and secure online booking.`,
+      ...(optionalPublicPhone(context.tenantPhone)
+        ? { publicTelephone: optionalPublicPhone(context.tenantPhone) }
+        : {}),
+      ...(optionalPublicEmail(context.tenantEmail)
+        ? { publicEmail: optionalPublicEmail(context.tenantEmail) }
+        : {}),
+      socialLinks: [],
+    },
+    services: serviceRows.map((service) => ({
+      publicReference: service.reference,
+      name: service.name,
+      shortDescription: (
+        service.description?.trim()
+        || `${service.name} is available to book through KS OS.`
+      ).slice(0, 500),
+      durationMinutes: service.duration,
+      priceText: `£${(service.price / 100).toFixed(2)}`,
+      bookingEnabled: true,
+    })),
+    staff: staffRows.map((staff) => ({
+      publicReference: staff.reference,
+      displayName: staff.name,
+      role: staff.jobTitle?.trim() || 'Team member',
+      ...(staff.biography?.trim()
+        ? { biography: staff.biography.trim().slice(0, 2_000) }
+        : {}),
+      bookingEnabled: staff.bookingEnabled,
+      serviceReferences: staffServices.get(staff.id) ?? [],
+    })),
+  });
   const snapshot = {
     schemaVersion: 1,
     publicReference: snapshotReference,
@@ -855,20 +927,7 @@ async function persistValidatedPreviewSnapshot(
       utility: utilityNavigation.map(({ pageType: _pageType, ...item }) => item),
       legal: legalNavigation.map(({ pageType: _pageType, ...item }) => item),
     },
-    business: {
-      name: context.tenantName,
-      ...(context.tenantLegalName ? { legalName: context.tenantLegalName } : {}),
-      description: context.tenantBusinessType
-        ? `${context.tenantName} provides ${context.tenantBusinessType.toLowerCase()} services.`
-        : `${context.tenantName} services and secure online booking.`,
-      ...(optionalPublicPhone(context.tenantPhone)
-        ? { publicTelephone: optionalPublicPhone(context.tenantPhone) }
-        : {}),
-      ...(optionalPublicEmail(context.tenantEmail)
-        ? { publicEmail: optionalPublicEmail(context.tenantEmail) }
-        : {}),
-      socialLinks: [],
-    },
+    business: entityBindings.business,
     locations: locationRows.map((location) => ({
       publicReference: location.reference,
       name: location.name,
@@ -885,27 +944,8 @@ async function persistValidatedPreviewSnapshot(
         : {}),
       openingHours: [],
     })),
-    services: serviceRows.map((service) => ({
-      publicReference: service.reference,
-      name: service.name,
-      shortDescription: (
-        service.description?.trim()
-        || `${service.name} is available to book through KS OS.`
-      ).slice(0, 500),
-      durationMinutes: service.duration,
-      priceText: `£${(service.price / 100).toFixed(2)}`,
-      bookingEnabled: true,
-    })),
-    staff: staffRows.map((staff) => ({
-      publicReference: staff.reference,
-      displayName: staff.name,
-      role: staff.jobTitle?.trim() || 'Team member',
-      ...(staff.biography?.trim()
-        ? { biography: staff.biography.trim().slice(0, 2_000) }
-        : {}),
-      bookingEnabled: staff.bookingEnabled,
-      serviceReferences: staffServices.get(staff.id) ?? [],
-    })),
+    services: entityBindings.services,
+    staff: entityBindings.staff,
     assets,
     domains: [{
       hostname: canonicalHostname,
@@ -1322,6 +1362,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       providerKey: siteGenerationRuns.providerKey,
       modelKey: siteGenerationRuns.modelKey,
       sourceDataDigestSha256: siteGenerationRuns.sourceDataDigestSha256,
+      assetInputJson: siteGenerationRuns.assetInputJson,
       promptTemplateVersion: siteGenerationRuns.promptTemplateVersion,
       provisioningRunId: siteGenerationRuns.provisioningRunId,
       searchStrategyId: siteGenerationRuns.searchStrategyId,
@@ -1558,6 +1599,57 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
   }
 
   private async loadFacts(run: RunContext): Promise<VerifiedBusinessFacts> {
+    const pinnedAssets = pinnedGenerationAssets(run);
+    const assetConditions = [
+      eq(siteAssets.tenantId, run.tenantId),
+      eq(siteAssets.siteId, run.siteId),
+      eq(siteAssets.status, 'READY'),
+      or(
+        isNull(siteAssets.sourceFactFindingUploadId),
+        and(
+          eq(factFindingUploads.uploadStatus, 'UPLOADED'),
+          eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
+          eq(factFindingUploads.publicUsePermission, true),
+          eq(factFindingUploads.aiUsePermission, true),
+          eq(factFindingUploads.copyrightConfirmed, true),
+          inArray(factFindingUploads.consentStatus, GOVERNED_SITE_ASSET_CONSENT_STATUSES),
+          inArray(factFindingUploads.malwareScanStatus, GOVERNED_SITE_ASSET_SCAN_STATUSES),
+          inArray(factFindingUploads.assetCategory, GOVERNED_SITE_ASSET_CATEGORIES),
+          inArray(factFindingUploads.mimeType, GOVERNED_SITE_ASSET_MIME_TYPES),
+          or(isNull(factFindingUploads.boundStaffUserId), isNotNull(users.id)),
+          or(isNull(factFindingUploads.boundServiceId), isNotNull(services.id)),
+        ),
+      ),
+    ];
+  if (pinnedAssets?.length) {
+      assetConditions.push(inArray(
+        siteAssets.publicReference,
+        pinnedAssets.map(asset => asset.publicReference),
+      ));
+  }
+    const assetRowsPromise = pinnedAssets?.length === 0
+      ? Promise.resolve([])
+      : this.database.select({
+        reference: siteAssets.publicReference,
+        kind: siteAssets.kind,
+        alt: siteAssets.altText,
+        width: siteAssets.width,
+        height: siteAssets.height,
+      })
+        .from(siteAssets)
+        .leftJoin(factFindingUploads, and(
+          eq(siteAssets.sourceFactFindingUploadId, factFindingUploads.id),
+          eq(siteAssets.tenantId, factFindingUploads.tenantId),
+        ))
+        .leftJoin(users, and(
+          eq(factFindingUploads.boundStaffUserId, users.id),
+          eq(factFindingUploads.tenantId, users.tenantId),
+        ))
+        .leftJoin(services, and(
+          eq(factFindingUploads.boundServiceId, services.id),
+          eq(factFindingUploads.tenantId, services.tenantId),
+        ))
+        .where(and(...assetConditions));
     const [business, serviceRows, locationRows, staffRows, assetRows] = await Promise.all([
       this.database.select({
         reference: tenants.businessReference,
@@ -1591,47 +1683,23 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         biography: users.bio,
         bookingEnabled: users.bookingEnabled,
       }).from(users).where(and(eq(users.tenantId, run.tenantId), eq(users.accountStatus, 'ACTIVE'))),
-      this.database.select({
-        reference: siteAssets.publicReference,
-        kind: siteAssets.kind,
-        alt: siteAssets.altText,
-        width: siteAssets.width,
-        height: siteAssets.height,
-      })
-        .from(siteAssets)
-        .leftJoin(factFindingUploads, and(
-          eq(siteAssets.sourceFactFindingUploadId, factFindingUploads.id),
-          eq(siteAssets.tenantId, factFindingUploads.tenantId),
-        ))
-        .where(and(
-          eq(siteAssets.tenantId, run.tenantId),
-          eq(siteAssets.siteId, run.siteId),
-          eq(siteAssets.status, 'READY'),
-          or(
-            isNull(siteAssets.sourceFactFindingUploadId),
-            and(
-              eq(factFindingUploads.uploadStatus, 'UPLOADED'),
-              eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
-              eq(factFindingUploads.publicUsePermission, true),
-              eq(factFindingUploads.aiUsePermission, true),
-              eq(factFindingUploads.copyrightConfirmed, true),
-              inArray(factFindingUploads.consentStatus, GOVERNED_SITE_ASSET_CONSENT_STATUSES),
-              inArray(factFindingUploads.malwareScanStatus, GOVERNED_SITE_ASSET_SCAN_STATUSES),
-              inArray(factFindingUploads.assetCategory, GOVERNED_SITE_ASSET_CATEGORIES),
-              inArray(factFindingUploads.mimeType, GOVERNED_SITE_ASSET_MIME_TYPES),
-            ),
-          ),
-        )),
+      assetRowsPromise,
     ]);
     const row = business[0];
     if (!row) throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'Verified business data is unavailable.');
+    const pinnedByReference = new Map(
+      (pinnedAssets ?? []).map(asset => [asset.publicReference, asset]),
+    );
     return buildVerifiedBusinessFacts({
       business: row,
       services: serviceRows,
       locations: locationRows,
       staff: staffRows,
       assetReferences: assetRows.map(asset => asset.reference),
-      assets: assetRows,
+      assets: assetRows.map(asset => ({
+        ...asset,
+        entityReference: pinnedByReference.get(asset.reference)?.entityReference,
+      })),
     });
   }
 

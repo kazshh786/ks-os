@@ -4,6 +4,7 @@ import test from 'node:test';
 import type { SiteStatus } from '@ks-os/contracts';
 import type { PublicLiveSiteData } from '@ks-os/live-site-intelligence';
 import {
+  applyGovernedEntityAssetBindings,
   SiteActionSchema,
   SiteAssetReferenceSchema,
   PublishedPageSnapshotSchema,
@@ -990,6 +991,115 @@ test('preview banner and safe version reference are rendered', async () => {
   const body = await (await validPreviewResponse()).text();
   assert.match(body, /preview-banner/);
   assert.match(body, new RegExp(baseSnapshot.versionReference));
+});
+
+test('preview HTML renders governed logo, staff and service entity assets', async () => {
+  const logoReference = '30000000-0000-4000-8000-000000000071';
+  const staffReference = '30000000-0000-4000-8000-000000000072';
+  const serviceReference = '30000000-0000-4000-8000-000000000073';
+  const logoUrl = 'https://app.example.com/api/v1/public/site-assets/site/logo/upload';
+  const staffUrl = 'https://app.example.com/api/v1/public/site-assets/site/staff/upload';
+  const serviceUrl = 'https://app.example.com/api/v1/public/site-assets/site/service/upload';
+  const snapshot = mutateSnapshot(previewSnapshot(), draft => {
+    draft.assets.push(
+      {
+        publicReference: logoReference,
+        type: 'LOGO',
+        publicationStatus: 'PUBLISHED',
+        mimeType: 'image/webp',
+        url: logoUrl,
+        width: 800,
+        height: 400,
+        purpose: 'INFORMATIVE',
+        alt: 'Northlight Studio logo',
+        variants: [],
+      },
+      {
+        publicReference: staffReference,
+        type: 'IMAGE',
+        publicationStatus: 'PUBLISHED',
+        mimeType: 'image/webp',
+        url: staffUrl,
+        width: 800,
+        height: 1000,
+        purpose: 'INFORMATIVE',
+        alt: 'Northlight Studio team member',
+        variants: [],
+      },
+      {
+        publicReference: serviceReference,
+        type: 'IMAGE',
+        publicationStatus: 'PUBLISHED',
+        mimeType: 'image/webp',
+        url: serviceUrl,
+        width: 1200,
+        height: 800,
+        purpose: 'INFORMATIVE',
+        alt: 'Northlight Studio service',
+        variants: [],
+      },
+    );
+    const bindings = applyGovernedEntityAssetBindings({
+      assets: [
+        { publicReference: logoReference, assetClass: 'LOGO' },
+        {
+          publicReference: staffReference,
+          assetClass: 'STAFF',
+          entityReference: draft.staff[0]!.publicReference,
+        },
+        {
+          publicReference: serviceReference,
+          assetClass: 'SERVICE',
+          entityReference: draft.services[0]!.publicReference,
+        },
+      ],
+      availableAssetReferences: new Set([logoReference, staffReference, serviceReference]),
+      business: draft.business,
+      staff: draft.staff,
+      services: draft.services,
+    });
+    draft.business = bindings.business;
+    draft.staff = bindings.staff;
+    draft.services = bindings.services;
+  });
+  const repository = repoFor();
+  repository.addPreview(snapshot);
+  const now = new Date('2026-07-24T18:00:00.000Z');
+  const token = signSitePreviewToken({
+    siteReference: snapshot.siteReference,
+    versionReference: snapshot.versionReference,
+    purpose: 'AGENCY_REVIEW',
+    secret: previewSecret,
+    now,
+  });
+  const response = await handlePreviewRequest({
+    request: request(fallbackHostname, `/site-preview/a/b?token=${token}`),
+    repository,
+    config,
+    siteReference: snapshot.siteReference,
+    versionReference: snapshot.versionReference,
+    now,
+  });
+  const body = await response.text();
+  const teamResponse = await handlePreviewRequest({
+    request: request(fallbackHostname, `/site-preview/a/b?token=${token}&path=%2Fteam`),
+    repository,
+    config,
+    siteReference: snapshot.siteReference,
+    versionReference: snapshot.versionReference,
+    now,
+  });
+  const teamBody = await teamResponse.text();
+  const renderedImageSources = (html: string) => new Set(
+    [...html.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/g)].map(match => match[1]),
+  );
+  const homeImages = renderedImageSources(body);
+  const teamImages = renderedImageSources(teamBody);
+  assert.equal(response.status, 200);
+  assert.equal(teamResponse.status, 200);
+  assert.equal(homeImages.has(logoUrl), true);
+  assert.equal(homeImages.has(serviceUrl), true);
+  assert.equal(teamImages.has(staffUrl), true);
 });
 
 // 52

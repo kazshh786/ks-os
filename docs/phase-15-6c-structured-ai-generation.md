@@ -267,18 +267,29 @@ its active generation run and marks the pinned draft version failed. Generation
 reads run the same shared terminal-state policy to repair historical drift
 before returning status. Manual retry first reconciles legacy drift, then
 requeues the existing job and resets the same run/version in one transaction;
-it does not create a replacement version or relax any pinned validation.
+it does not create a replacement version or relax any pinned validation. Each
+new run stores its exact governed asset input beside the source digest. Retry
+replays that immutable input and retains the original idempotency key and
+source digest. Newly approved or rebound assets therefore require an explicit
+new generation request/run rather than mutating failed-run provenance.
 
 Approved Asset Library imagery is projected into `site_assets` through an
 explicit source-upload foreign key. Projection requires approved review,
 public and AI use permission, confirmed copyright, suitable consent, a safe
-scan state, an image category and exact tenant ownership. The original private
-object is retained; snapshots contain a stable HTTPS asset route rather than a
-signed storage URL. The public route and both worker asset reads recheck the
-source governance state, so permission or approval withdrawal immediately
-removes the asset from generation and delivery. Deterministic per-site asset
-references allow the same approved tenant upload to be governed independently
-for each site without duplicating storage bytes.
+scan state, an image category and exact tenant ownership. AI permission gates
+future generator selection; delivery independently rechecks approval, public
+use, copyright, consent and scan policy. Revoking AI permission alone does not
+break a legitimately published image. The original private object is retained;
+snapshots contain a stable HTTPS asset route rather than a signed storage URL.
+Deterministic per-site asset references allow the same approved tenant upload
+to be governed independently for each site without duplicating storage bytes.
+
+Logo assets bind deterministically to the public business model. Team and
+service photographs bind to public staff/service image fields only when the
+Asset Library stores an explicit same-tenant entity reference; unbound images
+remain eligible only for generic section imagery. Bindings become immutable
+once materialised into a governed site input, preventing older run/snapshot
+meaning from drifting.
 
 Regeneration is draft-only. Instructions are length-limited and reject external
 booking, fabrication, executable content and instruction-override language.

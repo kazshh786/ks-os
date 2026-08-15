@@ -70,6 +70,36 @@ export function isTerminalFailedSiteJobStatus(
   );
 }
 
+export interface GenerationRetryIdentity {
+  runReference: string;
+  versionReference: string;
+  jobReference: string;
+  idempotencyKey: string;
+  sourceDataDigestSha256: string;
+  runStatus: SiteGenerationRunStatus;
+  jobStatus: string;
+}
+
+/**
+ * A manual infrastructure retry changes execution state only. The identity of
+ * the durable job, governed run and pinned version is preserved.
+ */
+export function generationRetryProjection(input: GenerationRetryIdentity) {
+  if (input.runStatus !== 'FAILED' || !isTerminalFailedSiteJobStatus(input.jobStatus)) {
+    return null;
+  }
+  return {
+    runReference: input.runReference,
+    versionReference: input.versionReference,
+    jobReference: input.jobReference,
+    idempotencyKey: input.idempotencyKey,
+    sourceDataDigestSha256: input.sourceDataDigestSha256,
+    runStatus: 'PENDING' as const,
+    versionGenerationStatus: 'INCOMPLETE' as const,
+    jobStatus: 'PENDING' as const,
+  };
+}
+
 export function assertGenerationRunTransition(
   from: SiteGenerationRunStatus,
   to: SiteGenerationRunStatus,

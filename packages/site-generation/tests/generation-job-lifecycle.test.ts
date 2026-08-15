@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  generationRetryProjection,
   isTerminalFailedSiteJobStatus,
   terminalGenerationRunFailure,
 } from '../src/lifecycle.js';
@@ -60,4 +61,23 @@ test('terminal reconciliation supplies bounded safe fallback failure details', (
     terminalGenerationRunFailure('GENERATING', { status: 'DEAD_LETTER' })!.failureCode,
     /TERMINAL_JOB_STATE_RECONCILED/,
   );
+});
+
+test('manual retry requeues the same durable identity and rejects active jobs', () => {
+  const identity = {
+    runReference: '10000000-0000-4000-8000-000000000001',
+    versionReference: '10000000-0000-4000-8000-000000000002',
+    jobReference: '10000000-0000-4000-8000-000000000003',
+    idempotencyKey: 'test',
+    sourceDataDigestSha256: 'a'.repeat(64),
+    runStatus: 'FAILED' as const,
+  };
+  const retry = generationRetryProjection({ ...identity, jobStatus: 'DEAD_LETTER' });
+  assert.equal(retry?.runReference, identity.runReference);
+  assert.equal(retry?.versionReference, identity.versionReference);
+  assert.equal(retry?.jobReference, identity.jobReference);
+  assert.equal(retry?.idempotencyKey, identity.idempotencyKey);
+  assert.equal(retry?.sourceDataDigestSha256, identity.sourceDataDigestSha256);
+  assert.equal(retry?.jobStatus, 'PENDING');
+  assert.equal(generationRetryProjection({ ...identity, jobStatus: 'PROCESSING' }), null);
 });

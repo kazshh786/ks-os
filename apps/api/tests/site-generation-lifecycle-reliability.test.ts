@@ -1,46 +1,70 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import {
+  generationRetryProjection,
+  terminalGenerationRunFailure,
+} from '@ks-os/site-generation';
 
-const [generationSource, jobSource, workerRepositorySource] = await Promise.all([
-  readFile(new URL('../src/modules/sites/site-generation.service.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../src/modules/sites/site-job.service.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../../site-worker/src/postgres-repository.ts', import.meta.url), 'utf8'),
-]);
-
-test('generation reads reconcile terminal job drift before returning status', () => {
-  assert.match(
-    generationSource,
-    /async list\(siteReference: string\) \{[\s\S]*await this\.reconcileTerminalGenerationRuns\(siteReference/,
-  );
-  assert.match(generationSource, /terminalGenerationRunFailure/);
-  assert.match(generationSource, /failureCode: failure\.failureCode/);
-  assert.match(generationSource, /failureMessage: failure\.failureMessage/);
-  assert.match(generationSource, /generationStatus: 'FAILED'/);
+test('stale PENDING run with DEAD_LETTER job becomes FAILED with job details', () => {
+  assert.deepEqual(terminalGenerationRunFailure('PENDING', {
+    status: 'DEAD_LETTER',
+    failureCode: 'UNEXPECTED_HANDLER_FAILURE',
+    failureMessage: 'The knowledge lookup failed after the final attempt.',
+  }), {
+    failureCode: 'UNEXPECTED_HANDLER_FAILURE',
+    failureMessage: 'The knowledge lookup failed after the final attempt.',
+  });
 });
 
-test('stale active generation runs reconcile before retrying the same durable job and version', () => {
-  const retry = generationSource.match(
-    /async retry\(actor:[\s\S]*?return \{ reference: runReference, status: 'PENDING' as const \};\n  \}/,
-  )?.[0] ?? '';
-  assert.match(retry, /reconcileTerminalGenerationRuns/);
-  assert.match(retry, /this\.jobOperations\.retry/);
-  assert.match(retry, /const versionId = run\.versionId;[\s\S]*versionId,/);
-  assert.match(retry, /reusedDurableJob: true/);
-  assert.doesNotMatch(retry, /insert\(siteVersions\)|insert\(siteGenerationRuns\)|insert\(siteJobs\)/);
+test('stale running generation stage with FAILED job becomes FAILED', () => {
+  assert.deepEqual(terminalGenerationRunFailure('GENERATING', {
+    status: 'FAILED',
+    failureCode: 'PROVIDER_FAILURE',
+    failureMessage: 'The provider failed terminally.',
+  }), {
+    failureCode: 'PROVIDER_FAILURE',
+    failureMessage: 'The provider failed terminally.',
+  });
 });
 
-test('retry rejects active jobs and atomically resets job, run and version lifecycle', () => {
-  assert.match(jobSource, /if \(!\['FAILED', 'DEAD_LETTER'\]\.includes\(job\.status\)\)/);
-  assert.match(generationSource, /!\['FAILED', 'DEAD_LETTER'\]\.includes\(run\.jobStatus \|\| ''\)/);
-  assert.match(jobSource, /afterRequeue\?\.\(transaction/);
-  assert.match(generationSource, /status: 'PENDING'/);
-  assert.match(generationSource, /generationStatus: 'INCOMPLETE'/);
+test('retry preserves the same durable job, generation run and site version', () => {
+  assert.deepEqual(generationRetryProjection({
+    runReference: '10000000-0000-4000-8000-000000000001',
+    versionReference: '10000000-0000-4000-8000-000000000002',
+    jobReference: '10000000-0000-4000-8000-000000000003',
+    idempotencyKey: 'test',
+    sourceDataDigestSha256: 'a'.repeat(64),
+    runStatus: 'FAILED',
+    jobStatus: 'DEAD_LETTER',
+  }), {
+    runReference: '10000000-0000-4000-8000-000000000001',
+    versionReference: '10000000-0000-4000-8000-000000000002',
+    jobReference: '10000000-0000-4000-8000-000000000003',
+    idempotencyKey: 'test',
+    sourceDataDigestSha256: 'a'.repeat(64),
+    runStatus: 'PENDING',
+    versionGenerationStatus: 'INCOMPLETE',
+    jobStatus: 'PENDING',
+  });
 });
 
-test('worker failure persistence is the authoritative future terminal transition boundary', () => {
-  assert.match(workerRepositorySource, /reconcileTerminalGenerationRun\(transaction, job\.id\)/);
-  assert.match(workerRepositorySource, /terminalGenerationRunFailure/);
-  assert.match(workerRepositorySource, /SITE_GENERATION_STATE_RECONCILED/);
-  assert.match(workerRepositorySource, /source_component[\s\S]*'site-worker'/);
+test('retry rejects a non-terminal active durable job', () => {
+  assert.equal(generationRetryProjection({
+    runReference: '10000000-0000-4000-8000-000000000001',
+    versionReference: '10000000-0000-4000-8000-000000000002',
+    jobReference: '10000000-0000-4000-8000-000000000003',
+    idempotencyKey: 'test',
+    sourceDataDigestSha256: 'a'.repeat(64),
+    runStatus: 'FAILED',
+    jobStatus: 'PROCESSING',
+  }), null);
+});
+
+test('completed runs never reconcile backwards', () => {
+  for (const status of ['DESIGN_COMPLETE', 'READY_FOR_REVIEW'] as const) {
+    assert.equal(terminalGenerationRunFailure(status, {
+      status: 'DEAD_LETTER',
+      failureCode: 'STALE_JOB_STATE',
+    }), null);
+  }
 });

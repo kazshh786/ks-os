@@ -25,6 +25,7 @@ import {
   AgencyAuditService,
   type AgencyActor,
 } from '../agency/agency.service.js';
+import { isTerminalFailedSiteJobStatus } from '@ks-os/site-generation';
 
 type Database = ReturnType<typeof getDatabase>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -291,7 +292,7 @@ export class AgencySiteJobService {
       if (!job) {
         throw fail(404, 'SITE_JOB_NOT_FOUND', 'Site job not found.');
       }
-      if (!['FAILED', 'DEAD_LETTER'].includes(job.status)) {
+      if (!isTerminalFailedSiteJobStatus(job.status)) {
         throw fail(
           409,
           'SITE_JOB_NOT_RETRYABLE',

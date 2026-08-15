@@ -53,7 +53,7 @@ import {
   toClientSafeFactFindingDto,
   verifyFactFindingInvitationToken,
 } from '@ks-os/fact-finding';
-import { isGovernedSiteAssetEligible } from '@ks-os/site-generation';
+import { isGovernedSiteAssetPubliclyDeliverable } from '@ks-os/site-generation';
 import type { z } from 'zod';
 import { AgencyAuditService, type AgencyActor } from '../agency/agency.service.js';
 import { getSupabaseAdmin } from '../../lib/supabase-admin.js';
@@ -943,7 +943,7 @@ export class FactFindingService {
         inArray(factFindingUploads.malwareScanStatus, ['NOT_AVAILABLE', 'CLEAN']),
       )).returning();
       if (!record) throw fail(409, 'FACT_FINDING_UPLOAD_NOT_REVIEWABLE', 'Only a safe completed upload can be reviewed.');
-      const siteAssetStatus = isGovernedSiteAssetEligible(record) ? 'READY' : 'REJECTED';
+      const siteAssetStatus = isGovernedSiteAssetPubliclyDeliverable(record) ? 'READY' : 'REJECTED';
       await transaction.update(siteAssets).set({
         status: siteAssetStatus,
         updatedAt: new Date(),

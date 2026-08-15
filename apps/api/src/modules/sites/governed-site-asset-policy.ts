@@ -5,7 +5,14 @@ export {
   GOVERNED_SITE_ASSET_MIME_TYPES,
   GOVERNED_SITE_ASSET_SCAN_STATUSES,
   governedSiteAssetKind,
+  isGovernedSiteAssetAiEligible,
   isGovernedSiteAssetEligible,
+  isGovernedSiteAssetPubliclyDeliverable,
+} from '@ks-os/site-generation';
+import {
+  governedSiteAssetKind,
+  isGovernedSiteAssetAiEligible,
+  type GovernedAssetEligibilityInput,
 } from '@ks-os/site-generation';
 
 /** A stable UUID-shaped reference scoped to one site and one governed upload. */
@@ -139,4 +146,95 @@ export function governedImageDimensions(bytes: Buffer, mimeType: string) {
     return avifDimensions(bytes);
   }
   return null;
+}
+
+export interface GovernedSiteAssetProjection {
+  publicReference: string;
+  uploadId: string;
+  uploadReference: string;
+  kind: string;
+  entityReference?: string;
+  storagePath: string;
+  mimeType: string;
+  altText: string;
+  width: number;
+  height: number;
+}
+
+export type GovernedSiteAssetProjectionResult =
+  | { ok: true; value: GovernedSiteAssetProjection }
+  | { ok: false; reason: 'INELIGIBLE' | 'TENANT_MISMATCH' | 'ENTITY_BINDING_INVALID' | 'BYTES_INVALID' };
+
+export function buildGovernedSiteAssetProjection(input: {
+  tenantId: string;
+  siteId: string;
+  siteReference: string;
+  businessName: string;
+  publicOrigin: string;
+  bytes: Buffer;
+  upload: GovernedAssetEligibilityInput & {
+    id: string;
+    tenantId: string;
+    publicReference: string;
+    safeFilename: string;
+    byteSize: number;
+    digestSha256: string;
+    boundStaffUserId?: string | null;
+    boundStaffReference?: string | null;
+    boundServiceId?: string | null;
+    boundServiceReference?: string | null;
+  };
+}): GovernedSiteAssetProjectionResult {
+  const { upload } = input;
+  if (upload.tenantId !== input.tenantId) return { ok: false, reason: 'TENANT_MISMATCH' };
+  if (!isGovernedSiteAssetAiEligible(upload)) return { ok: false, reason: 'INELIGIBLE' };
+  if (upload.boundStaffUserId && upload.boundServiceId) {
+    return { ok: false, reason: 'ENTITY_BINDING_INVALID' };
+  }
+  let entityReference: string | undefined;
+  if (upload.boundStaffUserId) {
+    if (upload.assetCategory !== 'TEAM_PHOTO' || !upload.boundStaffReference) {
+      return { ok: false, reason: 'ENTITY_BINDING_INVALID' };
+    }
+    entityReference = upload.boundStaffReference;
+  }
+  if (upload.boundServiceId) {
+    if (upload.assetCategory !== 'SERVICE_PHOTO' || !upload.boundServiceReference) {
+      return { ok: false, reason: 'ENTITY_BINDING_INVALID' };
+    }
+    entityReference = upload.boundServiceReference;
+  }
+  const kind = governedSiteAssetKind(upload.assetCategory);
+  const dimensions = governedImageDimensions(input.bytes, upload.mimeType);
+  if (!kind
+    || !dimensions
+    || input.bytes.byteLength !== upload.byteSize
+    || createHash('sha256').update(input.bytes).digest('hex') !== upload.digestSha256) {
+    return { ok: false, reason: 'BYTES_INVALID' };
+  }
+  const publicReference = governedSiteAssetReference(input.siteId, upload.publicReference);
+  return {
+    ok: true,
+    value: {
+      publicReference,
+      uploadId: upload.id,
+      uploadReference: upload.publicReference,
+      kind,
+      ...(entityReference ? { entityReference } : {}),
+      storagePath: governedSiteAssetUrl({
+        publicOrigin: input.publicOrigin,
+        siteReference: input.siteReference,
+        assetReference: publicReference,
+        uploadReference: upload.publicReference,
+      }),
+      mimeType: upload.mimeType,
+      altText: governedSiteAssetAlt({
+        businessName: input.businessName,
+        category: upload.assetCategory,
+        safeFilename: upload.safeFilename,
+      }),
+      width: dimensions.width,
+      height: dimensions.height,
+    },
+  };
 }

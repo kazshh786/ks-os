@@ -1,9 +1,10 @@
-import { createHash } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
   factFindingUploads,
   getDatabase,
+  services,
   siteAssets,
+  users,
 } from '@ks-os/database';
 import { getSupabaseAdmin } from '../../lib/supabase-admin.js';
 import {
@@ -11,11 +12,9 @@ import {
   GOVERNED_SITE_ASSET_CONSENT_STATUSES,
   GOVERNED_SITE_ASSET_MIME_TYPES,
   GOVERNED_SITE_ASSET_SCAN_STATUSES,
-  governedImageDimensions,
-  governedSiteAssetAlt,
-  governedSiteAssetKind,
+  buildGovernedSiteAssetProjection,
   governedSiteAssetReference,
-  governedSiteAssetUrl,
+  type GovernedSiteAssetProjection,
 } from './governed-site-asset-policy.js';
 
 type Database = ReturnType<typeof getDatabase>;
@@ -24,17 +23,7 @@ type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 const fail = (statusCode: number, code: string, message: string) =>
   Object.assign(new Error(message), { statusCode, code });
 
-export interface GovernedSiteAssetCandidate {
-  publicReference: string;
-  uploadId: string;
-  uploadReference: string;
-  kind: string;
-  storagePath: string;
-  mimeType: string;
-  altText: string;
-  width: number;
-  height: number;
-}
+export type GovernedSiteAssetCandidate = GovernedSiteAssetProjection;
 
 export class GovernedSiteAssetService {
   constructor(
@@ -50,6 +39,7 @@ export class GovernedSiteAssetService {
   }): Promise<GovernedSiteAssetCandidate[]> {
     const rows = await this.database.select({
       id: factFindingUploads.id,
+      tenantId: factFindingUploads.tenantId,
       publicReference: factFindingUploads.publicReference,
       storageBucket: factFindingUploads.storageBucket,
       storagePath: factFindingUploads.storagePath,
@@ -58,7 +48,27 @@ export class GovernedSiteAssetService {
       byteSize: factFindingUploads.byteSize,
       digestSha256: factFindingUploads.digestSha256,
       assetCategory: factFindingUploads.assetCategory,
-    }).from(factFindingUploads).where(and(
+      uploadStatus: factFindingUploads.uploadStatus,
+      agencyReviewStatus: factFindingUploads.agencyReviewStatus,
+      publicUsePermission: factFindingUploads.publicUsePermission,
+      aiUsePermission: factFindingUploads.aiUsePermission,
+      copyrightConfirmed: factFindingUploads.copyrightConfirmed,
+      consentStatus: factFindingUploads.consentStatus,
+      malwareScanStatus: factFindingUploads.malwareScanStatus,
+      boundStaffUserId: factFindingUploads.boundStaffUserId,
+      boundStaffReference: users.publicReference,
+      boundServiceId: factFindingUploads.boundServiceId,
+      boundServiceReference: services.publicReference,
+    }).from(factFindingUploads)
+      .leftJoin(users, and(
+        eq(factFindingUploads.boundStaffUserId, users.id),
+        eq(factFindingUploads.tenantId, users.tenantId),
+      ))
+      .leftJoin(services, and(
+        eq(factFindingUploads.boundServiceId, services.id),
+        eq(factFindingUploads.tenantId, services.tenantId),
+      ))
+      .where(and(
       eq(factFindingUploads.tenantId, input.tenantId),
       eq(factFindingUploads.uploadStatus, 'UPLOADED'),
       eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
@@ -69,7 +79,7 @@ export class GovernedSiteAssetService {
       inArray(factFindingUploads.malwareScanStatus, GOVERNED_SITE_ASSET_SCAN_STATUSES),
       inArray(factFindingUploads.assetCategory, GOVERNED_SITE_ASSET_CATEGORIES),
       inArray(factFindingUploads.mimeType, GOVERNED_SITE_ASSET_MIME_TYPES),
-    ));
+      ));
     if (!rows.length) return [];
 
     const references = rows.map(row =>
@@ -96,9 +106,6 @@ export class GovernedSiteAssetService {
     const candidates: GovernedSiteAssetCandidate[] = [];
 
     for (const row of missingRows) {
-      const publicReference = governedSiteAssetReference(input.siteId, row.publicReference);
-      const kind = governedSiteAssetKind(row.assetCategory);
-      if (!kind) continue;
       const { data, error } = await getSupabaseAdmin().storage
         .from(row.storageBucket)
         .download(row.storagePath);
@@ -110,35 +117,27 @@ export class GovernedSiteAssetService {
         );
       }
       const bytes = Buffer.from(await data.arrayBuffer());
-      const dimensions = governedImageDimensions(bytes, row.mimeType);
-      const digestMatches = createHash('sha256').update(bytes).digest('hex') === row.digestSha256;
-      if (bytes.byteLength !== row.byteSize || !digestMatches || !dimensions) {
+      const projection = buildGovernedSiteAssetProjection({
+        tenantId: input.tenantId,
+        siteId: input.siteId,
+        siteReference: input.siteReference,
+        businessName: input.businessName,
+        publicOrigin,
+        bytes,
+        upload: row,
+      });
+      if (!projection.ok) {
         throw fail(
           409,
-          'GOVERNED_SITE_ASSET_INVALID',
-          'An approved website asset no longer matches its governed upload evidence.',
+          projection.reason === 'ENTITY_BINDING_INVALID'
+            ? 'GOVERNED_SITE_ASSET_BINDING_INVALID'
+            : 'GOVERNED_SITE_ASSET_INVALID',
+          projection.reason === 'ENTITY_BINDING_INVALID'
+            ? 'An approved website asset has an invalid or cross-tenant entity binding.'
+            : 'An approved website asset no longer matches its governed upload evidence.',
         );
       }
-      candidates.push({
-        publicReference,
-        uploadId: row.id,
-        uploadReference: row.publicReference,
-        kind,
-        storagePath: governedSiteAssetUrl({
-          publicOrigin,
-          siteReference: input.siteReference,
-          assetReference: publicReference,
-          uploadReference: row.publicReference,
-        }),
-        mimeType: row.mimeType,
-        altText: governedSiteAssetAlt({
-          businessName: input.businessName,
-          category: row.assetCategory,
-          safeFilename: row.safeFilename,
-        }),
-        width: dimensions.width,
-        height: dimensions.height,
-      });
+      candidates.push(projection.value);
     }
     return candidates;
   }

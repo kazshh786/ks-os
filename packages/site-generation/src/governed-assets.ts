@@ -28,11 +28,10 @@ export interface GovernedAssetEligibilityInput {
   mimeType: string;
 }
 
-export function isGovernedSiteAssetEligible(input: GovernedAssetEligibilityInput) {
+export function isGovernedSiteAssetPubliclyDeliverable(input: GovernedAssetEligibilityInput) {
   return input.uploadStatus === 'UPLOADED'
     && input.agencyReviewStatus === 'APPROVED'
     && input.publicUsePermission
-    && input.aiUsePermission
     && input.copyrightConfirmed
     && GOVERNED_SITE_ASSET_CONSENT_STATUSES.includes(
       input.consentStatus as typeof GOVERNED_SITE_ASSET_CONSENT_STATUSES[number],
@@ -48,6 +47,13 @@ export function isGovernedSiteAssetEligible(input: GovernedAssetEligibilityInput
     );
 }
 
+export function isGovernedSiteAssetAiEligible(input: GovernedAssetEligibilityInput) {
+  return isGovernedSiteAssetPubliclyDeliverable(input) && input.aiUsePermission;
+}
+
+/** @deprecated Use the explicit AI or public-delivery policy. */
+export const isGovernedSiteAssetEligible = isGovernedSiteAssetAiEligible;
+
 export function governedSiteAssetKind(category: string) {
   switch (category) {
     case 'LOGO': return 'LOGO';
@@ -58,3 +64,8 @@ export function governedSiteAssetKind(category: string) {
     default: return null;
   }
 }
+
+export {
+  applyGovernedEntityAssetBindings,
+  type GovernedEntityAssetBinding,
+} from '@ks-os/site-schema';

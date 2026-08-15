@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AgencyCapability } from '@ks-os/contracts';
-import { FactFindingUploadSchema } from '@ks-os/fact-finding';
+import { AssetEntityBindingSchema, FactFindingUploadSchema } from '@ks-os/fact-finding';
 import {
   CreateProvisioningDraftSchema,
   ProvisioningActionReasonSchema,
@@ -179,6 +179,15 @@ export async function agencyProvisioningRoutes(app: FastifyInstance) {
       tenantReference,
       uploadReference,
       AssetPermissionsBody.parse(request.body),
+    ) };
+  });
+  app.patch('/tenants/:tenantReference/assets/:uploadReference/entity-binding', async request => {
+    const { tenantReference, uploadReference } = TenantAssetParams.parse(request.params);
+    return { data: await assetLibrary().updateEntityBinding(
+      actor(request, 'fact_finding.manage'),
+      tenantReference,
+      uploadReference,
+      AssetEntityBindingSchema.parse(request.body),
     ) };
   });
 
