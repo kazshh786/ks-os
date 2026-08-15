@@ -80,7 +80,7 @@ describe('AutomatedEmailsPage', () => {
     render(<MemoryRouter initialEntries={['/app/email-marketing/automated-emails']}><AutomatedEmailsPage /></MemoryRouter>);
     expect(await screen.findByRole('heading', { name: 'Automated emails' })).toBeInTheDocument();
     expect(screen.getByLabelText('Business name')).toHaveValue('Glow Studio');
-    expect(screen.getByText('Instagram')).toBeInTheDocument();
+    expect(screen.getByLabelText('Instagram URL')).toHaveValue('https://instagram.com/glow');
     expect(screen.getByRole('checkbox', { name: /Send a 3-day reminder/ })).toBeChecked();
     expect(await screen.findByTitle('Rendered transactional email')).toBeInTheDocument();
     await waitFor(() => expect(renderAutomatedEmailPreview).toHaveBeenCalled());
