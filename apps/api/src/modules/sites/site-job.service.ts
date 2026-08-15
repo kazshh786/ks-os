@@ -25,8 +25,16 @@ import {
   AgencyAuditService,
   type AgencyActor,
 } from '../agency/agency.service.js';
+import { isTerminalFailedSiteJobStatus } from '@ks-os/site-generation';
 
 type Database = ReturnType<typeof getDatabase>;
+type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+export interface SiteJobRequeueContext {
+  id: string;
+  tenantId: string;
+  previousStatus: 'FAILED' | 'DEAD_LETTER';
+}
 
 const fail = (statusCode: number, code: string, message: string) =>
   Object.assign(new Error(message), { statusCode, code });
@@ -263,6 +271,10 @@ export class AgencySiteJobService {
     actor: AgencyActor,
     jobReference: string,
     reason: string,
+    afterRequeue?: (
+      transaction: Transaction,
+      context: SiteJobRequeueContext,
+    ) => Promise<void>,
   ) {
     return this.database.transaction(async transaction => {
       const result = await transaction.execute(sql`
@@ -280,7 +292,7 @@ export class AgencySiteJobService {
       if (!job) {
         throw fail(404, 'SITE_JOB_NOT_FOUND', 'Site job not found.');
       }
-      if (!['FAILED', 'DEAD_LETTER'].includes(job.status)) {
+      if (!isTerminalFailedSiteJobStatus(job.status)) {
         throw fail(
           409,
           'SITE_JOB_NOT_RETRYABLE',
@@ -303,6 +315,11 @@ export class AgencySiteJobService {
           updated_at = now()
         WHERE id = ${job.id}::uuid
       `);
+      await afterRequeue?.(transaction, {
+        id: job.id,
+        tenantId: job.tenant_id,
+        previousStatus: job.status as SiteJobRequeueContext['previousStatus'],
+      });
       await transaction.execute(sql`
         INSERT INTO site_job_events (
           job_id, tenant_id, event_type, status_from, status_to,

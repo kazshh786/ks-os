@@ -363,6 +363,18 @@ export const FactFindingUploadSchema = z.object({
   consentStatus: z.enum(['NOT_APPLICABLE', 'CONFIRMED', 'REQUIRED']),
 }).strict();
 
+export const AssetEntityBindingSchema = z.discriminatedUnion('entityType', [
+  z.object({ entityType: z.literal('NONE') }).strict(),
+  z.object({
+    entityType: z.literal('STAFF'),
+    entityReference: PublicReferenceSchema,
+  }).strict(),
+  z.object({
+    entityType: z.literal('SERVICE'),
+    entityReference: PublicReferenceSchema,
+  }).strict(),
+]);
+
 export const BuildProductionBriefSchema = z.object({
   includeResponseReferences: z.array(PublicReferenceSchema).max(5_000).optional(),
 }).strict();

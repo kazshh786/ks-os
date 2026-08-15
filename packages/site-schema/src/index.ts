@@ -1,3 +1,4 @@
+export * from './asset-bindings.js';
 export * from './contracts.js';
 export * from './redirects.js';
 export * from './snapshot.js';

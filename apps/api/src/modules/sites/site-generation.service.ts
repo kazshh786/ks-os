@@ -3,12 +3,14 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   max,
   or,
 } from 'drizzle-orm';
 import {
   agencyUsers,
+  factFindingUploads,
   getDatabase,
   knowledgePacks,
   locations,
@@ -43,16 +45,25 @@ import {
 } from '@ks-os/database';
 import {
   SITE_GENERATION_PROMPT_TEMPLATE_VERSION,
+  GOVERNED_SITE_ASSET_CATEGORIES,
+  GOVERNED_SITE_ASSET_CONSENT_STATUSES,
+  GOVERNED_SITE_ASSET_MIME_TYPES,
+  GOVERNED_SITE_ASSET_SCAN_STATUSES,
+  ApprovedGenerationAssetSchema,
   buildVerifiedBusinessFacts,
   generationDigest,
   generationIdempotencyKey,
+  generationRetryProjection,
   searchStrategyDigest,
   validateSearchIntelligencePlan,
   PageSeoBriefSchema,
   parseSearchResearchEvidenceDatabaseRow,
   SearchIntelligenceStrategyV2Schema,
+  SiteGenerationRunStatusSchema,
   isSiteGenerationProviderReady,
+  terminalGenerationRunFailure,
   parseSiteGenerationConfig,
+  type ApprovedGenerationAsset,
   type GenerationRunRequestSchema,
 } from '@ks-os/site-generation';
 import {
@@ -70,6 +81,10 @@ import {
 } from '../agency/agency.service.js';
 import { AgencySiteJobService } from './site-job.service.js';
 import { SiteJobEnqueueService } from './site-job-enqueue.service.js';
+import {
+  GovernedSiteAssetService,
+  type GovernedSiteAssetCandidate,
+} from './governed-site-asset.service.js';
 import { auditV2TemplateReadiness, isV2TemplateManifest } from './v2-template-readiness.js';
 
 type Database = ReturnType<typeof getDatabase>;
@@ -89,6 +104,7 @@ const fail = (statusCode: number, code: string, message: string) =>
 export class AgencySiteGenerationService {
   private readonly jobs: SiteJobEnqueueService;
   private readonly jobOperations: AgencySiteJobService;
+  private readonly governedAssets: GovernedSiteAssetService;
 
   constructor(
     private readonly database: Database = getDatabase(),
@@ -98,6 +114,7 @@ export class AgencySiteGenerationService {
   ) {
     this.jobs = new SiteJobEnqueueService(database, GENERATION_JOB_TYPES, audit);
     this.jobOperations = new AgencySiteJobService(database, audit);
+    this.governedAssets = new GovernedSiteAssetService(database, environment);
   }
 
   async create(
@@ -118,6 +135,7 @@ export class AgencySiteGenerationService {
       .select({
         tenantId: tenants.id,
         tenantReference: tenants.businessReference,
+        businessName: tenants.name,
         tenantStatus: tenants.lifecycleStatus,
         siteId: sites.id,
         siteStatus: sites.status,
@@ -167,7 +185,17 @@ export class AgencySiteGenerationService {
       ? await this.resolveApprovedSearchIntelligence(context, blueprintPages)
       : null;
     await this.assertTemplateLicence(context);
-    const facts = await this.verifiedFactSnapshot(context.tenantId, context.siteId);
+    const assetCandidates = await this.governedAssets.prepare({
+      tenantId: context.tenantId,
+      siteId: context.siteId,
+      siteReference,
+      businessName: context.businessName,
+    });
+    const facts = await this.verifiedFactSnapshot(
+      context.tenantId,
+      context.siteId,
+      { assetCandidates },
+    );
     const sourceDataDigestSha256 = generationDigest(facts);
     const idempotencyKey = generationIdempotencyKey({
       tenantReference: context.tenantReference,
@@ -220,6 +248,11 @@ export class AgencySiteGenerationService {
         generationStatus: 'INCOMPLETE',
         createdByAgencyUserId: actor.agencyUserId,
       }).returning({ id: siteVersions.id, reference: siteVersions.publicReference });
+      await this.governedAssets.materialize(transaction, {
+        tenantId: context.tenantId,
+        siteId: context.siteId,
+        versionId: version.id,
+      }, assetCandidates);
       const [run] = await transaction.insert(siteGenerationRuns).values({
         tenantId: context.tenantId,
         siteId: context.siteId,
@@ -238,6 +271,7 @@ export class AgencySiteGenerationService {
         modelKey,
         idempotencyKey,
         sourceDataDigestSha256,
+        assetInputJson: facts.approvedAssets,
         promptTemplateVersion: SITE_GENERATION_PROMPT_TEMPLATE_VERSION,
         pageCountPlanned: blueprintPages.length,
         requestedByAgencyUserId: actor.agencyUserId,
@@ -309,6 +343,9 @@ export class AgencySiteGenerationService {
   }
 
   async list(siteReference: string) {
+    await this.reconcileTerminalGenerationRuns(siteReference, {
+      reason: 'Automatic reconciliation while reading generation status.',
+    });
     return this.database.select({
       reference: siteGenerationRuns.publicReference,
       siteReference: sites.publicReference,
@@ -421,22 +458,186 @@ export class AgencySiteGenerationService {
   }
 
   async retry(actor: AgencyActor, siteReference: string, runReference: string, reason: string) {
+    await this.reconcileTerminalGenerationRuns(siteReference, {
+      runReference,
+      actor,
+      reason: `Automatic reconciliation before retry: ${reason}`,
+    });
     const run = await this.runContext(siteReference, runReference);
-    if (run.status !== 'FAILED' || !run.jobReference) {
+    if (!run.jobReference || !run.versionId || !run.versionReference) {
       throw fail(409, 'SITE_GENERATION_NOT_RETRYABLE', 'Only failed generation runs can be retried.');
     }
-    await this.jobOperations.retry(actor, run.jobReference, reason);
-    await this.database.update(siteGenerationRuns).set({
-      status: 'PENDING',
-      failureCode: null,
-      failureMessage: null,
-    }).where(eq(siteGenerationRuns.id, run.id));
-    await this.audit.write(actor, 'SITE_GENERATION_RETRIED', 'SITE_GENERATION_RUN', runReference, {
-      tenantId: run.tenantId,
-      reason,
-      category: 'WEBSITE',
+    const retry = generationRetryProjection({
+      runReference,
+      versionReference: run.versionReference,
+      jobReference: run.jobReference,
+      idempotencyKey: run.idempotencyKey,
+      sourceDataDigestSha256: run.sourceDataDigestSha256,
+      runStatus: SiteGenerationRunStatusSchema.parse(run.status),
+      jobStatus: run.jobStatus || '',
     });
+    if (!retry) {
+      throw fail(409, 'SITE_GENERATION_NOT_RETRYABLE', 'Only failed generation runs can be retried.');
+    }
+    const jobReference = retry.jobReference;
+    const versionId = run.versionId;
+    const pinnedAssets = run.assetInputJson === null
+      ? null
+      : ApprovedGenerationAssetSchema.array().parse(run.assetInputJson);
+    const currentFacts = await this.verifiedFactSnapshot(run.tenantId, run.siteId, {
+      pinnedAssets,
+    });
+    if (generationDigest(currentFacts) !== run.sourceDataDigestSha256) {
+      throw fail(
+        409,
+        'GENERATION_SOURCE_DATA_STALE',
+        'Verified business data changed after this generation run was pinned.',
+      );
+    }
+    await this.jobOperations.retry(
+      actor,
+      jobReference,
+      reason,
+      async transaction => {
+        await transaction.update(siteGenerationRuns).set({
+          status: 'PENDING',
+          failureCode: null,
+          failureMessage: null,
+          updatedAt: new Date(),
+        }).where(and(
+          eq(siteGenerationRuns.id, run.id),
+          eq(siteGenerationRuns.tenantId, run.tenantId),
+        ));
+        await transaction.update(siteVersions).set({
+          generationStatus: 'INCOMPLETE',
+          updatedAt: new Date(),
+        }).where(and(
+          eq(siteVersions.id, versionId),
+          eq(siteVersions.tenantId, run.tenantId),
+          eq(siteVersions.siteId, run.siteId),
+        ));
+        await this.audit.write(actor, 'SITE_GENERATION_RETRIED', 'SITE_GENERATION_RUN', runReference, {
+          tenantId: run.tenantId,
+          reason,
+          category: 'WEBSITE',
+          metadata: {
+            siteReference,
+            versionReference: retry.versionReference,
+            idempotencyKey: retry.idempotencyKey,
+            sourceDataDigestSha256: retry.sourceDataDigestSha256,
+            assetInputCount: pinnedAssets?.length ?? 0,
+            reusedDurableJob: true,
+          },
+          tx: transaction,
+        });
+      },
+    );
     return { reference: runReference, status: 'PENDING' as const };
+  }
+
+  private async reconcileTerminalGenerationRuns(
+    siteReference: string,
+    options: {
+      runReference?: string;
+      actor?: AgencyActor;
+      reason: string;
+    },
+  ) {
+    return this.database.transaction(async transaction => {
+      const conditions = [eq(sites.publicReference, siteReference)];
+      if (options.runReference) {
+        conditions.push(eq(siteGenerationRuns.publicReference, options.runReference));
+      }
+      const rows = await transaction.select({
+        id: siteGenerationRuns.id,
+        reference: siteGenerationRuns.publicReference,
+        tenantId: siteGenerationRuns.tenantId,
+        status: siteGenerationRuns.status,
+        versionId: siteGenerationRuns.siteVersionId,
+        provisioningRunId: siteGenerationRuns.provisioningRunId,
+        jobStatus: siteJobs.status,
+        jobFailureCode: siteJobs.failureCode,
+        jobFailureMessage: siteJobs.failureMessage,
+      }).from(siteGenerationRuns)
+        .innerJoin(sites, eq(siteGenerationRuns.siteId, sites.id))
+        .innerJoin(siteJobs, eq(siteGenerationRuns.siteJobId, siteJobs.id))
+        .where(and(...conditions))
+        .for('update');
+      const reconciled = [];
+      for (const run of rows) {
+        const parsedStatus = SiteGenerationRunStatusSchema.safeParse(run.status);
+        if (!parsedStatus.success) continue;
+        const failure = terminalGenerationRunFailure(parsedStatus.data, {
+          status: run.jobStatus,
+          failureCode: run.jobFailureCode,
+          failureMessage: run.jobFailureMessage,
+        });
+        if (!failure) continue;
+        const now = new Date();
+        await transaction.update(siteGenerationRuns).set({
+          status: 'FAILED',
+          failureCode: failure.failureCode,
+          failureMessage: failure.failureMessage,
+          updatedAt: now,
+        }).where(eq(siteGenerationRuns.id, run.id));
+        if (run.versionId) {
+          await transaction.update(siteVersions).set({
+            generationStatus: 'FAILED',
+            updatedAt: now,
+          }).where(eq(siteVersions.id, run.versionId));
+        }
+        if (run.provisioningRunId) {
+          await transaction.update(provisioningRunSteps).set({
+            status: 'FAILED',
+            failureCode: failure.failureCode,
+            safeMessage: failure.failureMessage,
+            completedAt: now,
+            updatedAt: now,
+          }).where(and(
+            eq(provisioningRunSteps.provisioningRunId, run.provisioningRunId),
+            eq(provisioningRunSteps.stepKey, 'GENERATE_SITE'),
+          ));
+          await transaction.update(provisioningRuns).set({
+            status: 'PARTIALLY_FAILED',
+            currentStep: 'GENERATE_SITE',
+            failureCode: failure.failureCode,
+            failureMessage: failure.failureMessage,
+            retryable: false,
+            failedAt: now,
+            updatedAt: now,
+          }).where(eq(provisioningRuns.id, run.provisioningRunId));
+          await transaction.insert(provisioningActivity).values({
+            provisioningRunId: run.provisioningRunId,
+            tenantId: run.tenantId,
+            eventType: 'SITE_GENERATION_STATE_RECONCILED',
+            statusTo: 'PARTIALLY_FAILED',
+            stepKey: 'GENERATE_SITE',
+            safeMessage: 'A terminal durable job was reconciled with its generation run.',
+            agencyUserId: options.actor?.agencyUserId,
+          });
+        }
+        await this.audit.write(
+          options.actor ?? null,
+          'SITE_GENERATION_STATE_RECONCILED',
+          'SITE_GENERATION_RUN',
+          run.reference,
+          {
+            tenantId: run.tenantId,
+            reason: options.reason,
+            category: 'WEBSITE',
+            sourceComponent: options.actor ? 'agency-api' : 'generation-status-read',
+            metadata: {
+              siteReference,
+              jobStatus: run.jobStatus,
+              failureCode: failure.failureCode,
+            },
+            tx: transaction,
+          },
+        );
+        reconciled.push(run.reference);
+      }
+      return { rows, reconciled };
+    });
   }
 
   async reconcileTerminalJobState(
@@ -448,90 +649,24 @@ export class AgencySiteGenerationService {
     if (actor.role !== 'PLATFORM_OWNER') {
       throw fail(403, 'AGENCY_ACCESS_DENIED', 'Only a platform owner can reconcile terminal generation state.');
     }
-    return this.database.transaction(async transaction => {
-      const [run] = await transaction.select({
-        id: siteGenerationRuns.id,
-        tenantId: siteGenerationRuns.tenantId,
-        status: siteGenerationRuns.status,
-        versionId: siteGenerationRuns.siteVersionId,
-        provisioningRunId: siteGenerationRuns.provisioningRunId,
-        jobStatus: siteJobs.status,
-        jobFailureCode: siteJobs.failureCode,
-        jobFailureMessage: siteJobs.failureMessage,
-      }).from(siteGenerationRuns)
-        .innerJoin(sites, eq(siteGenerationRuns.siteId, sites.id))
-        .innerJoin(siteJobs, eq(siteGenerationRuns.siteJobId, siteJobs.id))
-        .where(and(
-          eq(sites.publicReference, siteReference),
-          eq(siteGenerationRuns.publicReference, runReference),
-        )).limit(1).for('update');
-      if (!run) throw fail(404, 'SITE_GENERATION_RUN_NOT_FOUND', 'Generation run not found.');
-      if (['FAILED', 'CANCELLED', 'DESIGN_COMPLETE', 'READY_FOR_REVIEW'].includes(run.status)) {
-        return { reference: runReference, status: run.status, idempotentReplay: true as const };
-      }
-      if (!['FAILED', 'DEAD_LETTER'].includes(run.jobStatus)) {
-        throw fail(
-          409,
-          'SITE_GENERATION_JOB_NOT_TERMINAL',
-          'Only a generation run whose durable job failed terminally can be reconciled.',
-        );
-      }
-      const failureCode = (run.jobFailureCode || 'TERMINAL_JOB_STATE_RECONCILED').slice(0, 100);
-      const failureMessage = (
-        run.jobFailureMessage
-        || 'The durable generation job failed before its run lifecycle was persisted.'
-      ).slice(0, 500);
-      await transaction.update(siteGenerationRuns).set({
-        status: 'FAILED',
-        failureCode,
-        failureMessage,
-        updatedAt: new Date(),
-      }).where(eq(siteGenerationRuns.id, run.id));
-      if (run.versionId) {
-        await transaction.update(siteVersions).set({
-          generationStatus: 'FAILED',
-          updatedAt: new Date(),
-        }).where(eq(siteVersions.id, run.versionId));
-      }
-      if (run.provisioningRunId) {
-        await transaction.update(provisioningRunSteps).set({
-          status: 'FAILED',
-          failureCode,
-          safeMessage: failureMessage,
-          completedAt: new Date(),
-          updatedAt: new Date(),
-        }).where(and(
-          eq(provisioningRunSteps.provisioningRunId, run.provisioningRunId),
-          eq(provisioningRunSteps.stepKey, 'GENERATE_SITE'),
-        ));
-        await transaction.update(provisioningRuns).set({
-          status: 'PARTIALLY_FAILED',
-          currentStep: 'GENERATE_SITE',
-          failureCode,
-          failureMessage,
-          retryable: false,
-          failedAt: new Date(),
-          updatedAt: new Date(),
-        }).where(eq(provisioningRuns.id, run.provisioningRunId));
-        await transaction.insert(provisioningActivity).values({
-          provisioningRunId: run.provisioningRunId,
-          tenantId: run.tenantId,
-          eventType: 'SITE_GENERATION_STATE_RECONCILED',
-          statusTo: 'PARTIALLY_FAILED',
-          stepKey: 'GENERATE_SITE',
-          safeMessage: 'A platform owner reconciled a terminal generation job with its stranded run state.',
-          agencyUserId: actor.agencyUserId,
-        });
-      }
-      await this.audit.write(actor, 'SITE_GENERATION_STATE_RECONCILED', 'SITE_GENERATION_RUN', runReference, {
-        tenantId: run.tenantId,
-        reason,
-        category: 'WEBSITE',
-        metadata: { siteReference, jobStatus: run.jobStatus, failureCode },
-        tx: transaction,
-      });
-      return { reference: runReference, status: 'FAILED' as const, idempotentReplay: false as const };
+    const result = await this.reconcileTerminalGenerationRuns(siteReference, {
+      runReference,
+      actor,
+      reason,
     });
+    const run = result.rows[0];
+    if (!run) throw fail(404, 'SITE_GENERATION_RUN_NOT_FOUND', 'Generation run not found.');
+    if (result.reconciled.includes(runReference)) {
+      return { reference: runReference, status: 'FAILED' as const, idempotentReplay: false as const };
+    }
+    if (['FAILED', 'CANCELLED', 'DESIGN_COMPLETE', 'READY_FOR_REVIEW', 'SUPERSEDED'].includes(run.status)) {
+      return { reference: runReference, status: run.status, idempotentReplay: true as const };
+    }
+    throw fail(
+      409,
+      'SITE_GENERATION_JOB_NOT_TERMINAL',
+      'Only a generation run whose durable job failed terminally can be reconciled.',
+    );
   }
 
   async regeneratePage(actor: AgencyActor, siteReference: string, versionReference: string, pageReference: string) {
@@ -841,7 +976,69 @@ export class AgencySiteGenerationService {
     if (!licence) throw fail(409, 'GENERATION_TEMPLATE_LICENCE_REQUIRED', 'An applicable active Envato licence is required.');
   }
 
-  private async verifiedFactSnapshot(tenantId: string, siteId: string) {
+  private async verifiedFactSnapshot(
+    tenantId: string,
+    siteId: string,
+    options: {
+      assetCandidates?: readonly GovernedSiteAssetCandidate[];
+      pinnedAssets?: readonly ApprovedGenerationAsset[] | null;
+    } = {},
+  ) {
+    const assetConditions = [
+      eq(siteAssets.tenantId, tenantId),
+      eq(siteAssets.siteId, siteId),
+      eq(siteAssets.status, 'READY'),
+      or(
+        isNull(siteAssets.sourceFactFindingUploadId),
+        and(
+          eq(factFindingUploads.uploadStatus, 'UPLOADED'),
+          eq(factFindingUploads.agencyReviewStatus, 'APPROVED'),
+          eq(factFindingUploads.publicUsePermission, true),
+          eq(factFindingUploads.aiUsePermission, true),
+          eq(factFindingUploads.copyrightConfirmed, true),
+          inArray(factFindingUploads.consentStatus, GOVERNED_SITE_ASSET_CONSENT_STATUSES),
+          inArray(factFindingUploads.malwareScanStatus, GOVERNED_SITE_ASSET_SCAN_STATUSES),
+          inArray(factFindingUploads.assetCategory, GOVERNED_SITE_ASSET_CATEGORIES),
+          inArray(factFindingUploads.mimeType, GOVERNED_SITE_ASSET_MIME_TYPES),
+          or(isNull(factFindingUploads.boundStaffUserId), isNotNull(users.id)),
+          or(isNull(factFindingUploads.boundServiceId), isNotNull(services.id)),
+        ),
+      ),
+    ];
+    if (Array.isArray(options.pinnedAssets) && options.pinnedAssets.length) {
+      assetConditions.push(inArray(
+        siteAssets.publicReference,
+        options.pinnedAssets.map(asset => asset.publicReference),
+      ));
+    }
+    const assetRowsPromise = Array.isArray(options.pinnedAssets)
+      && options.pinnedAssets.length === 0
+      ? Promise.resolve([])
+      : this.database.select({
+        reference: siteAssets.publicReference,
+        kind: siteAssets.kind,
+        alt: siteAssets.altText,
+        width: siteAssets.width,
+        height: siteAssets.height,
+        boundStaffUserId: factFindingUploads.boundStaffUserId,
+        boundStaffReference: users.publicReference,
+        boundServiceId: factFindingUploads.boundServiceId,
+        boundServiceReference: services.publicReference,
+      })
+        .from(siteAssets)
+        .leftJoin(factFindingUploads, and(
+          eq(siteAssets.sourceFactFindingUploadId, factFindingUploads.id),
+          eq(siteAssets.tenantId, factFindingUploads.tenantId),
+        ))
+        .leftJoin(users, and(
+          eq(factFindingUploads.boundStaffUserId, users.id),
+          eq(factFindingUploads.tenantId, users.tenantId),
+        ))
+        .leftJoin(services, and(
+          eq(factFindingUploads.boundServiceId, services.id),
+          eq(factFindingUploads.tenantId, services.tenantId),
+        ))
+        .where(and(...assetConditions));
     const [business, serviceRows, locationRows, staffRows, assetRows] = await Promise.all([
       this.database.select({
         reference: tenants.businessReference,
@@ -877,27 +1074,44 @@ export class AgencySiteGenerationService {
         biography: users.bio,
         bookingEnabled: users.bookingEnabled,
       }).from(users).where(and(eq(users.tenantId, tenantId), eq(users.accountStatus, 'ACTIVE'))),
-      this.database.select({
-        reference: siteAssets.publicReference,
-        kind: siteAssets.kind,
-        alt: siteAssets.altText,
-        width: siteAssets.width,
-        height: siteAssets.height,
-      })
-        .from(siteAssets).where(and(
-          eq(siteAssets.tenantId, tenantId),
-          eq(siteAssets.siteId, siteId),
-          eq(siteAssets.status, 'READY'),
-        )),
+      assetRowsPromise,
     ]);
     if (!business[0]) throw fail(409, 'GENERATION_BUSINESS_DATA_MISSING', 'Verified business data is unavailable.');
+    const pinnedByReference = new Map(
+      (options.pinnedAssets ?? []).map(asset => [asset.publicReference, asset]),
+    );
+    const governedAssets = new Map(assetRows.map(asset => {
+      const pinned = pinnedByReference.get(asset.reference);
+      const entityReference = pinned?.entityReference
+        ?? (asset.boundStaffUserId ? asset.boundStaffReference : asset.boundServiceId
+          ? asset.boundServiceReference : undefined);
+      return [asset.reference, {
+        reference: asset.reference,
+        kind: asset.kind,
+        ...(entityReference ? { entityReference } : {}),
+        alt: asset.alt,
+        width: asset.width,
+        height: asset.height,
+      }] as const;
+    }));
+    for (const candidate of options.assetCandidates ?? []) {
+      governedAssets.set(candidate.publicReference, {
+        reference: candidate.publicReference,
+        kind: candidate.kind,
+        ...(candidate.entityReference ? { entityReference: candidate.entityReference } : {}),
+        alt: candidate.altText,
+        width: candidate.width,
+        height: candidate.height,
+      });
+    }
+    const approvedAssets = [...governedAssets.values()];
     return buildVerifiedBusinessFacts({
       business: business[0],
       services: serviceRows,
       locations: locationRows,
       staff: staffRows,
-      assetReferences: assetRows.map(asset => asset.reference),
-      assets: assetRows,
+      assetReferences: approvedAssets.map(asset => asset.reference),
+      assets: approvedAssets,
     });
   }
 
@@ -905,10 +1119,20 @@ export class AgencySiteGenerationService {
     const [run] = await this.database.select({
       id: siteGenerationRuns.id,
       tenantId: siteGenerationRuns.tenantId,
+      siteId: siteGenerationRuns.siteId,
+      versionId: siteGenerationRuns.siteVersionId,
+      versionReference: siteVersions.publicReference,
       status: siteGenerationRuns.status,
+      idempotencyKey: siteGenerationRuns.idempotencyKey,
+      sourceDataDigestSha256: siteGenerationRuns.sourceDataDigestSha256,
+      assetInputJson: siteGenerationRuns.assetInputJson,
       jobReference: siteJobs.publicReference,
+      jobStatus: siteJobs.status,
+      businessName: tenants.name,
     }).from(siteGenerationRuns)
       .innerJoin(sites, eq(siteGenerationRuns.siteId, sites.id))
+      .innerJoin(tenants, eq(siteGenerationRuns.tenantId, tenants.id))
+      .leftJoin(siteVersions, eq(siteGenerationRuns.siteVersionId, siteVersions.id))
       .leftJoin(siteJobs, eq(siteGenerationRuns.siteJobId, siteJobs.id))
       .where(and(
         eq(sites.publicReference, siteReference),

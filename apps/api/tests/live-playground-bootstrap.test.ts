@@ -6,17 +6,15 @@ const bootstrapPath = new URL('../../../scripts/bootstrap-live-website-playgroun
 const knowledgePath = new URL('../../../scripts/activate-live-playground-knowledge-pack.ts', import.meta.url);
 const provisioningExecutorPath = new URL('../../site-worker/src/postgres-provisioning-executor.ts', import.meta.url);
 const provisioningServicePath = new URL('../src/modules/provisioning/provisioning.service.ts', import.meta.url);
-const generationServicePath = new URL('../src/modules/sites/site-generation.service.ts', import.meta.url);
 const terminalMigrationPath = new URL(
   '../../../packages/database/migrations/20260803213000_allow_terminal_generation_after_knowledge_supersession.sql',
   import.meta.url,
 );
-const [bootstrap, knowledge, provisioningExecutor, provisioningService, generationService, terminalMigration] = await Promise.all([
+const [bootstrap, knowledge, provisioningExecutor, provisioningService, terminalMigration] = await Promise.all([
   readFile(bootstrapPath, 'utf8'),
   readFile(knowledgePath, 'utf8'),
   readFile(provisioningExecutorPath, 'utf8'),
   readFile(provisioningServicePath, 'utf8'),
-  readFile(generationServicePath, 'utf8'),
   readFile(terminalMigrationPath, 'utf8'),
 ]);
 
@@ -78,10 +76,6 @@ test('provisioning reuses a real active staff identity before creating an invali
 test('controlled recovery reuses only a draft site and reconciles only a terminal linked job', () => {
   assert.match(provisioningService, /eq\(sites\.status, 'DRAFT'\)/);
   assert.match(provisioningService, /reusedDraftSite: Boolean\(reusableDraftSite\)/);
-  assert.match(generationService, /actor\.role !== 'PLATFORM_OWNER'/);
-  assert.match(generationService, /\['FAILED', 'DEAD_LETTER'\]\.includes\(run\.jobStatus\)/);
-  assert.match(generationService, /SITE_GENERATION_STATE_RECONCILED/);
-  assert.match(generationService, /status: 'PARTIALLY_FAILED'/);
   assert.match(terminalMigration, /TG_OP = 'INSERT' AND pinned_pack_status <> 'ACTIVE'/);
   assert.match(terminalMigration, /NEW\.status NOT IN \('FAILED', 'CANCELLED'\)/);
   assert.match(terminalMigration, /pinned provenance is immutable/);

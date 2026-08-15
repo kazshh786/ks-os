@@ -29,6 +29,14 @@ const PLACEHOLDER: Record<SiteComponentAssetSlot, AssetCoveragePlan['assignments
   DECORATIVE_IMAGE: 'BRAND_IMAGE_REQUIRED',
 };
 
+function isSlotEligible(asset: ApprovedGenerationAsset, slot: SiteComponentAssetSlot) {
+  if (!SLOT_CLASS[slot].includes(asset.assetClass)) return false;
+  // A portrait is an assertion about a specific person. Generic team imagery
+  // may still support primary/secondary section slots, but never a portrait.
+  if (slot === 'PORTRAIT') return Boolean(asset.entityReference);
+  return true;
+}
+
 export function buildApprovedAssetInventory(
   facts: VerifiedBusinessFacts,
 ): readonly ApprovedGenerationAsset[] {
@@ -85,10 +93,10 @@ export function createDeterministicAssetCoveragePlan(input: {
           : undefined;
         const matching = preferred
           && !used.has(preferred.publicReference)
-          && SLOT_CLASS[slot].includes(preferred.assetClass)
+          && isSlotEligible(preferred, slot)
           ? preferred
           : inventory.find(asset =>
-          !used.has(asset.publicReference) && SLOT_CLASS[slot].includes(asset.assetClass));
+          !used.has(asset.publicReference) && isSlotEligible(asset, slot));
         if (matching) {
           used.add(matching.publicReference);
           assignments.push({

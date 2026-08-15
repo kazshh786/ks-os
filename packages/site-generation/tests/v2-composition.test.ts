@@ -181,7 +181,12 @@ test('booking pages receive the deliberate marketing-depth exemption', () => {
 
 const facts = {
   assetReferences: [ids[20]!],
-  approvedAssets: [{ publicReference: ids[20]!, assetClass: 'STAFF', approved: true }],
+  approvedAssets: [{
+    publicReference: ids[20]!,
+    assetClass: 'STAFF',
+    approved: true,
+    entityReference: ids[21]!,
+  }],
 } as VerifiedBusinessFacts;
 
 const portraitPlan = {
@@ -195,6 +200,13 @@ test('asset planning binds approved tenant assets and emits preview-only missing
   const approved = createDeterministicAssetCoveragePlan({ facts, pages: [portraitPlan], requiredSlotsByComponentKey: required });
   assert.equal(approved.assignments[0]?.assetReference, ids[20]);
   assert.equal(validateAssetCoveragePlan({ plan: approved, facts, approvedPageReferences: [ids[30]!] }).length, 0);
+
+  const unboundFacts = {
+    ...facts,
+    approvedAssets: facts.approvedAssets.map(asset => ({ ...asset, entityReference: undefined })),
+  };
+  const unbound = createDeterministicAssetCoveragePlan({ facts: unboundFacts, pages: [portraitPlan], requiredSlotsByComponentKey: required });
+  assert.equal(unbound.assignments[0]?.placeholderCode, 'STAFF_PORTRAIT_REQUIRED');
 
   const missing = createDeterministicAssetCoveragePlan({ facts: { ...facts, approvedAssets: [], assetReferences: [] }, pages: [portraitPlan], requiredSlotsByComponentKey: required });
   assert.equal(missing.assignments[0]?.placeholderCode, 'STAFF_PORTRAIT_REQUIRED');

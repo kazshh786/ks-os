@@ -1973,6 +1973,9 @@ export const siteAssets = pgTable('site_assets', {
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
   siteId: uuid('site_id').notNull().references(() => sites.id, { onDelete: 'restrict' }),
   versionId: uuid('version_id').notNull().references(() => siteVersions.id, { onDelete: 'restrict' }),
+  // The migration owns the FK because factFindingUploads is declared later in
+  // this generated schema module.
+  sourceFactFindingUploadId: uuid('source_fact_finding_upload_id'),
   kind: varchar('kind', { length: 40 }).notNull(),
   storagePath: varchar('storage_path', { length: 1000 }).notNull(),
   mimeType: varchar('mime_type', { length: 100 }).notNull(),
@@ -1985,6 +1988,8 @@ export const siteAssets = pgTable('site_assets', {
 }, table => ({
   tenantSiteVersionIdx: index('site_assets_tenant_site_version_idx').on(table.tenantId, table.siteId, table.versionId),
   storagePathUnique: uniqueIndex('site_assets_storage_path_unique').on(table.storagePath),
+  siteSourceUploadUnique: uniqueIndex('site_assets_site_source_upload_unique').on(table.siteId, table.sourceFactFindingUploadId),
+  sourceUploadIdx: index('site_assets_source_upload_idx').on(table.sourceFactFindingUploadId),
 }));
 
 export const siteApprovals = pgTable('site_approvals', {
@@ -2921,6 +2926,7 @@ export const siteGenerationRuns = pgTable('site_generation_runs', {
   status: text('status').default('PENDING').notNull(),
   idempotencyKey: text('idempotency_key').notNull(),
   sourceDataDigestSha256: text('source_data_digest_sha256').notNull(),
+  assetInputJson: jsonb('asset_input_json'),
   generationContextDigestSha256: text('generation_context_digest_sha256'),
   promptTemplateVersion: text('prompt_template_version').notNull(),
   outputContentDigestSha256: text('output_content_digest_sha256'),
@@ -3627,6 +3633,8 @@ export const factFindingUploads = pgTable('fact_finding_uploads', {
   copyrightConfirmed: boolean('copyright_confirmed').notNull(),
   consentStatus: varchar('consent_status', { length: 30 }).notNull(),
   agencyReviewStatus: varchar('agency_review_status', { length: 30 }).default('PENDING').notNull(),
+  boundStaffUserId: uuid('bound_staff_user_id').references(() => users.id, { onDelete: 'restrict' }),
+  boundServiceId: uuid('bound_service_id').references(() => services.id, { onDelete: 'restrict' }),
   reviewedByAgencyUserId: uuid('reviewed_by_agency_user_id').references(() => agencyUsers.id, { onDelete: 'restrict' }),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -3635,6 +3643,8 @@ export const factFindingUploads = pgTable('fact_finding_uploads', {
   questionnaireReviewIdx: index('fact_finding_uploads_questionnaire_review_idx').on(table.questionnaireId, table.agencyReviewStatus, table.createdAt),
   tenantStatusIdx: index('fact_finding_uploads_tenant_status_idx').on(table.tenantId, table.uploadStatus, table.malwareScanStatus, table.createdAt),
   participantIdx: index('fact_finding_uploads_participant_idx').on(table.participantId, table.createdAt),
+  boundStaffIdx: index('fact_finding_uploads_bound_staff_idx').on(table.boundStaffUserId),
+  boundServiceIdx: index('fact_finding_uploads_bound_service_idx').on(table.boundServiceId),
 }));
 
 export const factFindingConsentRecords = pgTable('fact_finding_consent_records', {

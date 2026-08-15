@@ -4,6 +4,7 @@ export * from './completeness.js';
 export * from './composition.js';
 export * from './contracts.js';
 export * from './facts.js';
+export * from './governed-assets.js';
 export * from './implementation-audit.js';
 export * from './lifecycle.js';
 export * from './normalization.js';

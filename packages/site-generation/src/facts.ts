@@ -43,6 +43,7 @@ export interface CanonicalGenerationFactInput {
   assets?: readonly {
     reference: string;
     kind: string;
+    entityReference?: string | null;
     alt?: string | null;
     width?: number | null;
     height?: number | null;
@@ -129,6 +130,7 @@ export function buildVerifiedBusinessFacts(input: CanonicalGenerationFactInput) 
       .map(asset => ({
         publicReference: asset.reference,
         assetClass: classifyAssetKind(asset.kind),
+        ...(asset.entityReference ? { entityReference: asset.entityReference } : {}),
         ...(asset.alt ? { alt: asset.alt } : {}),
         ...(asset.width ? { width: asset.width } : {}),
         ...(asset.height ? { height: asset.height } : {}),

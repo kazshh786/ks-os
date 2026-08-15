@@ -14,6 +14,7 @@ import bookingsRoutes from './modules/bookings/booking.routes.js';
 import dashboardRoutes from './routes/dashboard.js';
 import publicBookingRoutes from './routes/public/booking.js';
 import publicAvailabilitySummaryRoutes from './routes/public/availability-summary.js';
+import publicSiteAssetRoutes from './routes/public/site-assets.js';
 import clientsRoutes from './routes/clients.js';
 import posModuleRoutes from './modules/pos/index.js';
 import fastifyRawBody from 'fastify-raw-body';
@@ -144,6 +145,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
 
   fastify.register(publicBookingRoutes, { prefix: '/api/v1/public' });
   fastify.register(publicAvailabilitySummaryRoutes, { prefix: '/api/v1/public' });
+  fastify.register(publicSiteAssetRoutes, { prefix: '/api/v1/public/site-assets' });
   fastify.register(publicCalendarRoutes, { prefix: '/api/v1/public' });
   fastify.register(publicFormRoutes, { prefix: '/api/v1/public/forms' });
   fastify.register(publicReputationRoutes, { prefix: '/api/v1/public/review-invitations' });
