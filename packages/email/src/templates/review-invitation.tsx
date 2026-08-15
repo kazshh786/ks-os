@@ -1,5 +1,10 @@
-import { Link, Section, Text } from '@react-email/components';
+import { Text } from '@react-email/components';
 import { BaseEmailLayout, type EmailBrandingProps } from '../components/BaseEmailLayout.js';
+import {
+  ReviewRequestCard,
+  StatusHero,
+} from '../components/FormEmailComponents.js';
+import { getEmailDesign } from '../components/email-design.js';
 
 export interface ReviewInvitationEmailProps extends EmailBrandingProps {
   customerName: string;
@@ -9,23 +14,21 @@ export interface ReviewInvitationEmailProps extends EmailBrandingProps {
   reviewProvider?: 'GOOGLE' | 'TRUSTPILOT';
   emailHeading?: string;
   emailBody?: string;
+  emailPreview?: string;
 }
 
 export function ReviewInvitationEmail(props: ReviewInvitationEmailProps) {
+  const design = getEmailDesign(props.emailDesignStyle, { ...props.emailTheme, primaryColor: props.emailTheme?.primaryColor || props.tenantPrimaryColor });
+  const provider = props.reviewProvider === 'GOOGLE' ? 'Google' : props.reviewProvider === 'TRUSTPILOT' ? 'Trustpilot' : null;
   return (
-    <BaseEmailLayout {...props} tenantName={props.tenantName} tenantPrimaryColor={props.tenantPrimaryColor} previewText={'Thank you for your visit'}>
-      {props.emailHeading && <Text className="text-gray-950 text-xl font-bold">{props.emailHeading}</Text>}
-      <Text className="text-gray-800 text-base" style={{ whiteSpace: 'pre-line' }}>{props.emailBody || <>Hi {props.customerName}, {props.message}</>}</Text>
-      <Text className="text-gray-600 text-sm">Visit date: {props.appointmentDate}</Text>
-      <Section className="my-6 text-center">
-        <Link href={props.reviewUrl} className="rounded bg-slate-900 px-5 py-3 text-white no-underline">
-          {props.reviewProvider === 'GOOGLE' ? 'Rate us on Google' : props.reviewProvider === 'TRUSTPILOT' ? 'Review us on Trustpilot' : 'Share your feedback'}
-        </Link>
-      </Section>
-      <Text className="text-gray-600 text-sm">There is no obligation to leave a review. This link expires automatically.</Text>
+    <BaseEmailLayout {...props} previewText={props.emailPreview || 'How was your visit on ' + props.appointmentDate + '?'}>
+      <StatusHero eyebrow="THANK YOU FOR VISITING" heading={props.emailHeading || 'How was your experience?'} description="Your honest feedback helps our team keep improving." design={design} />
+      <Text style={{ color: design.tokens.body, fontSize: '16px', lineHeight: '25px', margin: '20px 0 0', whiteSpace: 'pre-line' }}>{props.emailBody || <>Hi {props.customerName}, {props.message}</>}</Text>
+      <Text style={{ color: design.tokens.mutedText, fontSize: '13px', lineHeight: '20px', margin: '12px 0 0' }}>Visit date: {props.appointmentDate}</Text>
+      <ReviewRequestCard question="Would you recommend us?" reviewUrl={props.reviewUrl} actionLabel={provider ? 'Review us on ' + provider : 'Share your feedback'} design={design} />
+      <Text style={{ color: design.tokens.mutedText, fontSize: '13px', lineHeight: '20px', margin: 0 }}>There is no obligation to leave a review. This secure link expires automatically.</Text>
     </BaseEmailLayout>
   );
 }
 
 export default ReviewInvitationEmail;
-

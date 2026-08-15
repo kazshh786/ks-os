@@ -820,6 +820,17 @@ export class MockDataProvider implements DataProvider {
       formRemindersEnabled: true,
       paymentConfirmationEnabled: true,
       formReminderTiming: '24_hours_after_assignment',
+      design: { style: 'CLEAN' },
+      theme: {
+        primaryColor: '#b45309',
+        secondaryColor: '#1e293b',
+        accentColor: '#f59e0b',
+        surfaceColor: '#ffffff',
+        textColor: '#0f172a',
+        fontFamily: 'system',
+        borderRadius: 'rounded',
+        mode: 'light',
+      },
       branding: {
         businessName: 'Sovereign Gents Barbershop',
         businessEmail: 'hello@sovereigngents.com',

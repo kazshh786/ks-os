@@ -8,6 +8,7 @@ import {
   SocialFollowCard,
   StatusHero,
 } from '../components/FormEmailComponents.js';
+import { getEmailDesign } from '../components/email-design.js';
 
 export interface FormReminderProps extends Partial<EmailBrandingProps> {
   customerName?: string;
@@ -23,6 +24,7 @@ export interface FormReminderProps extends Partial<EmailBrandingProps> {
   staffName?: string;
   locationName?: string;
   dueDate?: string;
+  emailPreview?: string;
 }
 
 function appointmentParts(props: FormReminderProps) {
@@ -42,15 +44,12 @@ function appointmentParts(props: FormReminderProps) {
 export const FormReminderEmail = (props: FormReminderProps) => {
   const tenantName = props.tenantName || props.businessName || 'Your business';
   const businessName = props.businessName || tenantName;
-  const brandColor = props.tenantPrimaryColor || '#111827';
+  const brandColor = props.tenantPrimaryColor || '#0f172a';
+  const design = getEmailDesign(props.emailDesignStyle, { ...props.emailTheme, primaryColor: props.emailTheme?.primaryColor || brandColor });
   const appointment = appointmentParts(props);
   const hasAppointment = Boolean(appointment.date || appointment.time || props.serviceName);
-  const heading = hasAppointment
-    ? 'One form to complete before your appointment'
-    : 'Reminder: please complete your form';
-  const previewText = hasAppointment
-    ? props.formName + ' is still outstanding before your appointment.'
-    : 'Please complete ' + props.formName + ' securely.';
+  const heading = hasAppointment ? 'One form to complete before your appointment' : 'Reminder: please complete your form';
+  const previewText = hasAppointment ? props.formName + ' is still outstanding before your appointment.' : 'Please complete ' + props.formName + ' securely.';
 
   return (
     <BaseEmailLayout
@@ -65,51 +64,18 @@ export const FormReminderEmail = (props: FormReminderProps) => {
       instagramUrl={props.instagramUrl}
       facebookUrl={props.facebookUrl}
       tiktokUrl={props.tiktokUrl}
-      previewText={previewText}
+      emailDesignStyle={props.emailDesignStyle}
+      emailTheme={props.emailTheme}
+      previewText={props.emailPreview || previewText}
     >
-      <StatusHero
-        eyebrow="FORM STILL OUTSTANDING"
-        heading={heading}
-        description={hasAppointment ? 'There is one form left to complete before your appointment.' : undefined}
-        brandColor={brandColor}
-      />
-      <Text style={{ color: '#374151', fontSize: '16px', lineHeight: '25px', margin: '20px 0 0' }}>
-        {props.customerName ? 'Hi ' + props.customerName + ',' : 'Hello,'}
-      </Text>
-      <FormActionCard
-        formName={props.formName}
-        formLink={props.formLink}
-        formDescription={props.formDescription}
-        estimatedMinutes={props.estimatedMinutes}
-        dueDate={props.dueDate}
-        actionLabel="Complete form"
-        brandColor={brandColor}
-      />
-      <AppointmentSummaryCard
-        date={appointment.date}
-        time={appointment.time}
-        serviceName={props.serviceName}
-        staffName={props.staffName}
-        locationName={props.locationName}
-      />
-      {hasAppointment ? (
-        <Text style={{ color: '#111827', fontSize: '15px', fontWeight: 700, lineHeight: '23px', margin: '16px 0' }}>
-          Please complete this before arriving.
-        </Text>
-      ) : null}
-      <SecurityNotice businessName={businessName} />
-      <BusinessContactCard
-        businessName={businessName}
-        businessEmail={props.businessEmail}
-        businessPhone={props.businessPhone}
-        businessWebsiteUrl={props.businessWebsiteUrl}
-      />
-      <SocialFollowCard
-        businessName={businessName}
-        instagramUrl={props.instagramUrl}
-        facebookUrl={props.facebookUrl}
-        tiktokUrl={props.tiktokUrl}
-      />
+      <StatusHero eyebrow="FORM STILL OUTSTANDING" heading={heading} description={hasAppointment ? 'There is one form left to complete before your appointment.' : undefined} design={design} />
+      <Text style={{ color: design.tokens.body, fontSize: '16px', lineHeight: '25px', margin: '20px 0 0' }}>{props.customerName ? 'Hi ' + props.customerName + ',' : 'Hello,'}</Text>
+      <FormActionCard formName={props.formName} formLink={props.formLink} formDescription={props.formDescription} estimatedMinutes={props.estimatedMinutes} dueDate={props.dueDate} actionLabel="Complete form" design={design} />
+      <AppointmentSummaryCard date={appointment.date} time={appointment.time} serviceName={props.serviceName} staffName={props.staffName} locationName={props.locationName} design={design} />
+      {hasAppointment ? <Text style={{ color: design.tokens.heading, fontSize: '15px', fontWeight: 800, lineHeight: '23px', margin: '16px 0' }}>Please complete this before arriving.</Text> : null}
+      <SecurityNotice businessName={businessName} design={design} />
+      <BusinessContactCard businessName={businessName} businessEmail={props.businessEmail} businessPhone={props.businessPhone} businessWebsiteUrl={props.businessWebsiteUrl} design={design} />
+      <SocialFollowCard businessName={businessName} instagramUrl={props.instagramUrl} facebookUrl={props.facebookUrl} tiktokUrl={props.tiktokUrl} design={design} />
     </BaseEmailLayout>
   );
 };

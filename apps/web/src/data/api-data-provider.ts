@@ -40,6 +40,8 @@ import {
   UpdateCommunicationsSettingsRequest,
   EmailHistoryQuery,
   EmailHistoryItem,
+  EmailPreviewRequest,
+  EmailPreviewResponse,
   DashboardOverviewQuery,
   DashboardOverviewResponse,
   BookingOperationsQuery, BookingOperationsResponse, BookingOperationsItem, BookingPageResponse, BookingPageUpdate, CreateBookingHold, BookingHoldResponse
@@ -620,6 +622,17 @@ export class ApiDataProvider implements DataProvider {
       body: JSON.stringify(settings)
     });
     if (!res.ok) throw new Error('Failed to update communications settings');
+  }
+
+  async renderAutomatedEmailPreview(input: EmailPreviewRequest): Promise<EmailPreviewResponse> {
+    const res = await fetchWithAuth('/api/v1/communications/email-preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error?.message || body?.error || 'Failed to render email preview');
+    return body;
   }
 
   async getEmailHistory(query: EmailHistoryQuery): Promise<{ data: EmailHistoryItem[], nextCursor?: string }> {

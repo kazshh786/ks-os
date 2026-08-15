@@ -1,7 +1,12 @@
 import { FastifyPluginAsync } from 'fastify';
 import { getDatabase, emailOutbox } from '@ks-os/database';
 import { eq, desc } from 'drizzle-orm';
-import { UpdateCommunicationsSettingsSchema, EmailHistoryQuerySchema } from '@ks-os/contracts';
+import {
+  EmailHistoryQuerySchema,
+  EmailPreviewRequestSchema,
+  UpdateCommunicationsSettingsSchema,
+} from '@ks-os/contracts';
+import { EmailPreviewService } from './email-preview.service.js';
 import { EmailService } from './email.service.js';
 import { EmailSettingsService } from './email-settings.service.js';
 
@@ -18,14 +23,10 @@ export const emailRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.route({ method: ['PUT', 'PATCH'], url: '/settings', handler: async (request, reply) => {
     request.requireAuth();
-    if (request.auth!.role !== 'owner') {
-      return reply.code(403).send({ error: 'Forbidden' });
-    }
+    if (request.auth!.role !== 'owner') return reply.code(403).send({ error: 'Forbidden' });
 
     const parseResult = UpdateCommunicationsSettingsSchema.safeParse(request.body);
-    if (!parseResult.success) {
-      return reply.code(400).send({ error: 'Invalid input', details: parseResult.error });
-    }
+    if (!parseResult.success) return reply.code(400).send({ error: 'Invalid input', details: parseResult.error });
 
     const db = getDatabase();
     await db.transaction(tx => new EmailSettingsService().update(
@@ -38,23 +39,29 @@ export const emailRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({ success: true });
   } });
 
+  fastify.post('/email-preview', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
+    request.requireAuth();
+    if (request.auth!.role !== 'owner') return reply.code(403).send({ error: 'Forbidden' });
+    const parsed = EmailPreviewRequestSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'Invalid preview input', details: parsed.error });
+    reply.header('Cache-Control', 'private, no-store');
+    return reply.send(await new EmailPreviewService().render(request.auth!.tenantId, parsed.data));
+  });
+
   fastify.get('/email-history', async (request, reply) => {
     request.requireAuth();
-    if (request.auth!.role !== 'owner') {
-      return reply.code(403).send({ error: 'Forbidden' });
-    }
+    if (request.auth!.role !== 'owner') return reply.code(403).send({ error: 'Forbidden' });
 
     const db = getDatabase();
     const query = EmailHistoryQuerySchema.safeParse(request.query);
     if (!query.success) return reply.code(400).send({ error: 'Invalid query' });
-    
     const historyRows = await db.select()
       .from(emailOutbox)
       .where(eq(emailOutbox.tenantId, request.auth!.tenantId))
       .orderBy(desc(emailOutbox.createdAt))
       .limit(query.data.limit);
 
-    return reply.send({ data: historyRows.map((row) => ({
+    return reply.send({ data: historyRows.map(row => ({
       id: row.id,
       recipientEmailMasked: maskEmail(row.recipientEmail),
       templateKey: row.templateKey,

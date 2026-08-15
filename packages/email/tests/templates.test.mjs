@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getReadableTextColor, renderEmail, templates } from '../dist/index.js';
+import { getContrastRatio, getEmailDesign, getReadableTextColor, renderEmail, templates } from '../dist/index.js';
 
 const formLink = 'https://example.test/forms/token';
 
@@ -114,4 +114,74 @@ test('booking confirmation only renders already-supplied secure assignment links
   assert.match(rendered.text, /Before your appointment/i);
   assert.match(rendered.text, /1 form needs completing/);
   assert.match(rendered.text, /Complete intake form/);
+});
+
+
+test('all four design styles render the production booking, reminder and form templates', async () => {
+  for (const emailDesignStyle of ['CLEAN', 'EDITORIAL', 'STUDIO', 'CONTRAST']) {
+    const base = {
+      tenantName: 'Glow Studio',
+      businessName: 'Glow Studio',
+      businessLogoUrl: 'https://example.test/logo.png',
+      customerName: 'Amelia',
+      serviceName: 'Signature appointment',
+      staffName: 'Alex',
+      bookingDate: 'Friday 14 August 2026',
+      bookingTime: '14:30',
+      formName: 'Consultation',
+      formLink,
+      amount: '45.00',
+      currency: 'GBP',
+      emailDesignStyle,
+      emailTheme: {
+        primaryColor: '#7c3aed',
+        secondaryColor: '#334155',
+        accentColor: '#ec4899',
+        surfaceColor: '#ffffff',
+        textColor: '#0f172a',
+      },
+    };
+    for (const key of ['booking-confirmed', 'appointment-reminder', 'form-assigned', 'form-reminder']) {
+      const rendered = await renderEmail(key, base);
+      assert.match(rendered.html, /data-email-logo-panel="white"/);
+      assert.match(rendered.html, /Glow Studio logo/);
+      assert.ok(rendered.text.trim().length > 0);
+    }
+  }
+});
+
+test('the white logo panel falls back gracefully to the business name', async () => {
+  const rendered = await renderEmail('booking-confirmed', {
+    tenantName: 'Glow Studio',
+    businessName: 'Glow Studio',
+    customerName: 'Amelia',
+    serviceName: 'Signature appointment',
+    bookingDate: 'Friday 14 August 2026',
+    bookingTime: '14:30',
+    emailDesignStyle: 'CONTRAST',
+  });
+  assert.match(rendered.html, /data-email-logo-panel="white"/);
+  assert.match(rendered.text, /Glow Studio/);
+});
+
+test('arbitrary pale and dark brand colours produce WCAG-readable action text', () => {
+  for (const primaryColor of ['#fff2a8', '#111827']) {
+    const design = getEmailDesign('CLEAN', { primaryColor });
+    assert.ok(getContrastRatio(design.tokens.primaryAction, design.tokens.primaryActionText) >= 4.5);
+  }
+});
+
+test('payment confirmation renders a receipt-quality summary', async () => {
+  const rendered = await renderEmail('payment-confirmed', {
+    tenantName: 'Glow Studio',
+    customerName: 'Amelia',
+    amount: '45.00',
+    currency: 'GBP',
+    serviceName: 'Signature appointment',
+    bookingReference: 'KS-PREVIEW',
+    status: 'Paid',
+  });
+  assert.match(rendered.text, /PAYMENT RECEIPT/);
+  assert.match(rendered.text, /Booking reference/);
+  assert.match(rendered.text, /45\.00 GBP/);
 });
