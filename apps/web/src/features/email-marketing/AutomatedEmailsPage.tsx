@@ -11,7 +11,7 @@ import { Check, CheckCircle2, ChevronDown, ExternalLink, Mail, Save, TriangleAle
 import { Link } from 'react-router';
 import { getDataProvider } from '../../data/data-provider.js';
 import { AutomatedEmailPreview } from './AutomatedEmailPreview.js';
-import { EmailMarketingTabs } from './EmailMarketingTabs.js';
+import { EmailMarketingTabs, type EmailPreviewViewport } from './EmailMarketingTabs.js';
 
 type TemplateKey = keyof AutomatedEmailTemplates;
 type BrandingKey = keyof EmailBranding;
@@ -238,6 +238,7 @@ function relevantAutomation(templateKey: TemplateKey): {
 export function AutomatedEmailsPage() {
   const [settings, setSettings] = useState<CommunicationsSettingsResponse | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateKey>('customerBookingConfirmation');
+  const [previewViewport, setPreviewViewport] = useState<EmailPreviewViewport>('desktop');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -410,7 +411,10 @@ export function AutomatedEmailsPage() {
       </header>
 
       <div className="bg-white px-4 sm:px-6">
-        <EmailMarketingTabs />
+        <EmailMarketingTabs
+          previewViewport={previewViewport}
+          onPreviewViewportChange={setPreviewViewport}
+        />
       </div>
 
       {error ? (
@@ -447,6 +451,7 @@ export function AutomatedEmailsPage() {
             templateKey={selectedTemplate}
             template={activeTemplate}
             design={settings.design}
+            viewport={previewViewport}
           />
         </main>
 
