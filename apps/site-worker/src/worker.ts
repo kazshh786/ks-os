@@ -5,7 +5,9 @@ import {
   SiteJobExecutionError,
   SiteJobProgressSchema,
   SiteJobResultSchema,
+  databaseErrorDiagnostics,
   decideSiteJobRetry,
+  isRetryableDatabaseError,
   safeFailureMessage,
   type SiteJobFailureCode,
   type SiteJobHandler,
@@ -34,7 +36,21 @@ function wait(milliseconds: number): Promise<void> {
 function errorCode(error: unknown): SiteJobFailureCode {
   if (error instanceof SiteJobExecutionError) return error.code;
   if (error instanceof z.ZodError) return 'TERMINAL_VALIDATION_FAILURE';
+  if (isRetryableDatabaseError(error)) return 'RETRYABLE_DATABASE_CONTENTION';
   return 'UNEXPECTED_HANDLER_FAILURE';
+}
+
+function databaseLogContext(error: unknown) {
+  const diagnostics = databaseErrorDiagnostics(error);
+  return diagnostics.transient ? {
+    databaseTransient: true,
+    databaseErrorCode: diagnostics.code,
+    databaseSqlState: diagnostics.sqlState,
+    databaseCauseName: diagnostics.causeName,
+    databaseCauseMessage: diagnostics.causeMessage,
+    databaseErrno: diagnostics.errno,
+    databaseSyscall: diagnostics.syscall,
+  } : {};
 }
 
 export class SiteWorker {
@@ -128,6 +144,7 @@ export class SiteWorker {
           workerId: this.config.workerId,
           event: 'poll_failed',
           failureCode: errorCode(error),
+          ...databaseLogContext(error),
         });
       }
       if (!this.draining) await this.waitForNextPoll();
@@ -360,6 +377,7 @@ export class SiteWorker {
         ? 'job_retry_scheduled'
         : 'job_failed',
       failureCode,
+      ...databaseLogContext(reason),
     });
   }
 }
