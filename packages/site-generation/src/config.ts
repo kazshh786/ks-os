@@ -4,9 +4,11 @@ const BooleanValue = z.enum(['true', 'false']).transform(value => value === 'tru
 
 const SiteGenerationEnvironmentSchema = z.object({
   SITE_AI_GENERATION_ENABLED: BooleanValue.default('false'),
-  SITE_AI_PROVIDER: z.enum(['gemini', 'vertex-gemini']).default('gemini'),
+  SITE_AI_PROVIDER: z.enum(['gemini', 'vertex-gemini', 'openai']).default('gemini'),
   SITE_AI_MODEL: z.string().trim().max(160).optional(),
   SITE_AI_API_KEY: z.string().trim().optional(),
+  OPENAI_API_KEY: z.string().trim().optional(),
+  SITE_AI_OPENAI_BASE_URL: z.string().trim().url().max(1_000).default('https://api.openai.com/v1'),
   GOOGLE_CLOUD_PROJECT: z.string().trim().max(255).optional(),
   GOOGLE_CLOUD_LOCATION: z.string().trim().max(100).optional(),
   GOOGLE_APPLICATION_CREDENTIALS: z.string().trim().max(1_024).optional(),
@@ -31,6 +33,14 @@ const SiteGenerationEnvironmentSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ['SITE_AI_API_KEY'],
         message: 'A server-side provider credential is required when generation is enabled.',
+      });
+    }
+  } else if (value.SITE_AI_PROVIDER === 'openai') {
+    if (!value.SITE_AI_API_KEY && !value.OPENAI_API_KEY) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['OPENAI_API_KEY'],
+        message: 'OPENAI_API_KEY or SITE_AI_API_KEY is required when generation is enabled with openai.',
       });
     }
   } else if (value.SITE_AI_PROVIDER === 'vertex-gemini') {
@@ -66,7 +76,10 @@ export function parseSiteGenerationConfig(
     enabled: value.SITE_AI_GENERATION_ENABLED,
     provider: value.SITE_AI_PROVIDER,
     model: value.SITE_AI_MODEL,
-    apiKey: value.SITE_AI_API_KEY,
+    apiKey: value.SITE_AI_PROVIDER === 'openai'
+      ? value.SITE_AI_API_KEY ?? value.OPENAI_API_KEY
+      : value.SITE_AI_API_KEY,
+    openAiBaseUrl: value.SITE_AI_OPENAI_BASE_URL.replace(/\/+$/, ''),
     googleCloudProject: value.GOOGLE_CLOUD_PROJECT,
     googleCloudLocation: value.GOOGLE_CLOUD_LOCATION,
     googleApplicationCredentials: value.GOOGLE_APPLICATION_CREDENTIALS,
