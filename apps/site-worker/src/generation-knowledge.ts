@@ -17,6 +17,10 @@ import {
   prepareSiteGenerationKnowledgeContext,
   type SelectableKnowledgePack,
 } from '@ks-os/site-knowledge';
+import {
+  SiteJobExecutionError,
+  isRetryableDatabaseError,
+} from '@ks-os/site-jobs';
 import type { SiteConversionRole, SitePageType } from '@ks-os/contracts';
 import type { SiteSectionType } from '@ks-os/site-schema';
 
@@ -28,8 +32,47 @@ function asStrings(value: unknown): string[] {
     : [];
 }
 
-/** Loads the pinned database records; CSV paths and source bodies never enter this runtime. */
-export async function loadActiveGenerationKnowledge(
+const defaultSleep = (milliseconds: number) =>
+  new Promise<void>(resolve => setTimeout(resolve, milliseconds));
+
+export async function retryCoherentKnowledgeRead<T>(
+  operation: () => Promise<T>,
+  options: {
+    maximumAttempts?: number;
+    sleep?: (milliseconds: number) => Promise<void>;
+    random?: () => number;
+  } = {},
+): Promise<T> {
+  const maximumAttempts = options.maximumAttempts ?? 3;
+  const sleep = options.sleep ?? defaultSleep;
+  const random = options.random ?? Math.random;
+  let latestError: unknown;
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      latestError = error;
+      if (!isRetryableDatabaseError(error)) throw error;
+      if (attempt >= maximumAttempts) break;
+      const baseDelay = attempt === 1 ? 100 : 300;
+      const jitter = Math.round(Math.max(0, Math.min(1, random())) * 100);
+      await sleep(baseDelay + jitter);
+    }
+  }
+  const failure = new SiteJobExecutionError(
+    'RETRYABLE_DATABASE_CONTENTION',
+    'The website build was interrupted by a temporary database connection problem. Retry the build.',
+  );
+  Object.defineProperty(failure, 'cause', {
+    value: latestError,
+    enumerable: false,
+    configurable: true,
+  });
+  throw failure;
+}
+
+/** Loads one coherent copy of the pinned database records. */
+async function loadActiveGenerationKnowledgeOnce(
   database: Database,
   expectedReference: string,
 ): Promise<SelectableKnowledgePack> {
@@ -187,6 +230,19 @@ export async function loadActiveGenerationKnowledge(
     bundle,
     conflicts: [],
   };
+}
+
+/**
+ * Loads the pinned knowledge bundle. Any transient connection failure restarts
+ * the whole read so callers never receive a bundle assembled from mixed reads.
+ */
+export async function loadActiveGenerationKnowledge(
+  database: Database,
+  expectedReference: string,
+): Promise<SelectableKnowledgePack> {
+  return retryCoherentKnowledgeRead(
+    () => loadActiveGenerationKnowledgeOnce(database, expectedReference),
+  );
 }
 
 export function prepareDatabaseGenerationContext(input: {
