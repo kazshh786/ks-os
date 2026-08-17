@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CommunicationsSettingsResponse } from '@ks-os/contracts';
+import type { CommunicationsSettingsResponse, EmailPreviewResponse } from '@ks-os/contracts';
 import { AutomatedEmailsPage } from './AutomatedEmailsPage';
 
 const { getCommunicationsSettings, updateCommunicationsSettings, renderAutomatedEmailPreview } = vi.hoisted(() => ({
@@ -56,9 +56,9 @@ const settings: CommunicationsSettingsResponse = {
     businessPaymentReceivedEnabled: true,
   },
   templates: {
-    customerBookingConfirmation: { subject: 'Confirmed with {{businessName}}', heading: 'Booking confirmed', body: 'Hi {{customerName}}, your {{serviceName}} is confirmed.' },
+    customerBookingConfirmation: { subject: 'Confirmed with {{businessName}}', preview: 'Your appointment is secured.', heading: 'Booking confirmed', body: 'Hi {{customerName}}, your {{serviceName}} is confirmed.' },
     businessBookingConfirmation: { subject: 'New booking', heading: 'Booking confirmed', body: '{{customerName}} booked {{serviceName}}.' },
-    reminderThreeDays: { subject: 'Three days to go', heading: 'Coming up', body: 'Hi {{customerName}}, see you in three days.' },
+    reminderThreeDays: { subject: 'Three days to go', preview: 'Your visit is coming up.', heading: 'Coming up', body: 'Hi {{customerName}}, see you in three days.' },
     reminderOneDay: { subject: 'Tomorrow', heading: 'See you tomorrow', body: 'Hi {{customerName}}, see you tomorrow.' },
     customerThankYouGoogle: { subject: 'Thank you', heading: 'Thank you', body: 'Please review us on Google.' },
     customerThankYouTrustpilot: { subject: 'Welcome back', heading: 'Thank you again', body: 'Please review us on Trustpilot.' },
@@ -66,54 +66,213 @@ const settings: CommunicationsSettingsResponse = {
   },
 };
 
-describe('AutomatedEmailsPage', () => {
+const firstPreview: EmailPreviewResponse = {
+  subject: 'Confirmed with Glow Studio',
+  html: '<!doctype html><html lang="en"><body><p>First rendered email</p></body></html>',
+  text: 'First rendered email',
+};
+
+function renderPage() {
+  return render(
+    <MemoryRouter initialEntries={['/app/email-marketing/automated-emails']}>
+      <AutomatedEmailsPage />
+    </MemoryRouter>,
+  );
+}
+
+describe('AutomatedEmailsPage email studio', () => {
   beforeEach(() => {
     getCommunicationsSettings.mockReset();
     updateCommunicationsSettings.mockReset();
     renderAutomatedEmailPreview.mockReset();
     getCommunicationsSettings.mockResolvedValue(structuredClone(settings));
     updateCommunicationsSettings.mockResolvedValue(undefined);
-    renderAutomatedEmailPreview.mockResolvedValue({ subject: 'Confirmed with Glow Studio', html: '<!doctype html><html lang="en"><body><p>Rendered email</p></body></html>', text: 'Rendered email' });
+    renderAutomatedEmailPreview.mockResolvedValue(firstPreview);
   });
 
-  it('renders tenant branding, lifecycle controls and a live template preview', async () => {
-    render(<MemoryRouter initialEntries={['/app/email-marketing/automated-emails']}><AutomatedEmailsPage /></MemoryRouter>);
+  it('makes the production-rendered iframe the focus of the studio layout', async () => {
+    renderPage();
+
     expect(await screen.findByRole('heading', { name: 'Automated emails' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Business name')).toHaveValue('Glow Studio');
-    expect(screen.getByLabelText('Instagram URL')).toHaveValue('https://instagram.com/glow');
-    expect(screen.getByRole('checkbox', { name: /Send a 3-day reminder/ })).toBeChecked();
-    expect(await screen.findByTitle('Rendered transactional email')).toBeInTheDocument();
-    await waitFor(() => expect(renderAutomatedEmailPreview).toHaveBeenCalled());
+    const layout = screen.getByTestId('email-studio-layout');
+    expect(layout).toHaveClass('xl:grid-cols-[220px_minmax(520px,1fr)_380px]');
+    expect(screen.getByTestId('preview-stage')).toBeInTheDocument();
+
+    const inspector = screen.getByTestId('email-settings-inspector');
+    expect(inspector).toHaveClass('lg:sticky', 'lg:overflow-y-auto');
+
+    const iframe = await screen.findByTitle('Rendered transactional email');
+    expect(iframe).toHaveAttribute('sandbox', '');
+    expect(iframe).toHaveAttribute('referrerpolicy', 'no-referrer');
+    expect(iframe).toHaveAttribute('srcdoc', firstPreview.html);
+    expect(screen.getAllByRole('button', { name: 'Save changes' })).toHaveLength(1);
   });
 
-  it('edits a template and persists all tenant-scoped email settings', async () => {
+  it('provides compact desktop template navigation and a responsive selector fallback', async () => {
     const user = userEvent.setup();
-    render(<MemoryRouter initialEntries={['/app/email-marketing/automated-emails']}><AutomatedEmailsPage /></MemoryRouter>);
+    renderPage();
     await screen.findByRole('heading', { name: 'Automated emails' });
-    await user.click(screen.getByRole('button', { name: /3-day reminder/ }));
-    const message = screen.getByLabelText('Message');
-    fireEvent.change(message, { target: { value: 'Hi {{customerName}}, your visit is nearly here.' } });
-    await user.click(screen.getByRole('button', { name: 'Save all changes' }));
+
+    const rail = screen.getByRole('navigation', { name: 'Email templates', hidden: true });
+    const threeDayButton = within(rail).getByRole('button', { name: /3-day reminder/i, hidden: true });
+    expect(threeDayButton).toHaveClass('min-h-10');
+
+    const selector = screen.getByLabelText('Email template');
+    await user.selectOptions(selector, 'reminderThreeDays');
+
+    expect(screen.getByRole('heading', { name: '3-day reminder' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Subject')).toHaveValue('Three days to go');
+    expect(screen.getByLabelText('Preview text')).toHaveValue('Your visit is coming up.');
+    expect(screen.getByLabelText('Message')).toHaveValue('Hi {{customerName}}, see you in three days.');
+  });
+
+  it('changes templates from the keyboard-accessible navigation rail', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('heading', { name: 'Automated emails' });
+
+    const rail = screen.getByRole('navigation', { name: 'Email templates', hidden: true });
+    const paymentButton = within(rail).getByRole('button', { name: /Payment received/i, hidden: true });
+    paymentButton.focus();
+    await user.keyboard('{Enter}');
+
+    expect(paymentButton).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByLabelText('Subject')).toHaveValue('Payment received');
+    expect(screen.getByRole('checkbox', { name: /Send automatically/i })).toBeChecked();
+  });
+
+  it('selects Email V3 designs accessibly from the inspector', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByTitle('Rendered transactional email');
+
+    expect(screen.getByText('Synced from booking page')).toBeInTheDocument();
+    const editorial = screen.getByRole('button', { name: /Editorial/i });
+    editorial.focus();
+    await user.keyboard('{Enter}');
+
+    expect(editorial).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(renderAutomatedEmailPreview).toHaveBeenLastCalledWith(expect.objectContaining({
+      design: { style: 'EDITORIAL' },
+    })));
+  });
+
+  it('preserves the desktop and mobile preview toggle semantics', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByTitle('Rendered transactional email');
+
+    const desktop = screen.getByRole('button', { name: 'Desktop' });
+    const mobile = screen.getByRole('button', { name: 'Mobile' });
+    expect(desktop).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(mobile);
+    expect(mobile).toHaveAttribute('aria-pressed', 'true');
+    expect(desktop).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('keeps business fields and lifecycle controls editable in the inspector', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('heading', { name: 'Automated emails' });
+
+    await user.click(screen.getByText('Business'));
+    const businessName = screen.getByLabelText('Business name');
+    expect(businessName).toHaveValue('Glow Studio');
+    expect(screen.getByLabelText('Instagram URL')).toHaveValue('https://instagram.com/glow');
+
+    await user.clear(businessName);
+    await user.type(businessName, 'Glow House');
+    expect(businessName).toHaveValue('Glow House');
+
+    expect(screen.getByRole('checkbox', { name: /Send automatically/i })).toBeChecked();
+    await user.click(screen.getByText('Advanced automation settings'));
+    expect(screen.getByRole('checkbox', { name: /Customer appointment reminders/i })).toBeChecked();
+  });
+
+  it('saves the current settings once and announces dirty and successful states', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('heading', { name: 'Automated emails' });
+
+    await user.selectOptions(screen.getByLabelText('Email template'), 'reminderThreeDays');
+    fireEvent.change(screen.getByLabelText('Message'), {
+      target: { value: 'Hi {{customerName}}, your visit is nearly here.' },
+    });
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(updateCommunicationsSettings).toHaveBeenCalledOnce());
     expect(updateCommunicationsSettings.mock.calls[0][0].templates.reminderThreeDays.body)
       .toBe('Hi {{customerName}}, your visit is nearly here.');
     expect(updateCommunicationsSettings.mock.calls[0][0].design).toEqual({ style: 'CLEAN' });
-    expect(await screen.findByText('Automated email settings saved.')).toBeInTheDocument();
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
   });
 
-  it('selects a global style, uses the booking palette and offers a mobile real-render preview', async () => {
+  it('keeps the last iframe visible while a refreshed preview is loading', async () => {
+    let resolveRefresh!: (value: EmailPreviewResponse) => void;
+    const refresh = new Promise<EmailPreviewResponse>(resolve => {
+      resolveRefresh = resolve;
+    });
+    renderAutomatedEmailPreview
+      .mockReset()
+      .mockResolvedValueOnce(firstPreview)
+      .mockReturnValueOnce(refresh);
+
+    renderPage();
+    const iframe = await screen.findByTitle('Rendered transactional email');
+    expect(iframe).toHaveAttribute('srcdoc', firstPreview.html);
+
+    fireEvent.change(screen.getByLabelText('Message'), {
+      target: { value: 'Updated message copy.' },
+    });
+
+    expect(await screen.findByText('Updating preview…')).toBeInTheDocument();
+    expect(screen.getByTitle('Rendered transactional email')).toHaveAttribute('srcdoc', firstPreview.html);
+
+    const refreshed: EmailPreviewResponse = {
+      subject: 'Updated subject',
+      html: '<!doctype html><html lang="en"><body><p>Updated rendered email</p></body></html>',
+      text: 'Updated rendered email',
+    };
+    await act(async () => {
+      resolveRefresh(refreshed);
+    });
+
+    await waitFor(() => expect(screen.getByTitle('Rendered transactional email')).toHaveAttribute('srcdoc', refreshed.html));
+    expect(screen.queryByText('Updating preview…')).not.toBeInTheDocument();
+  });
+
+  it('preserves the last successful iframe when preview refresh fails', async () => {
+    renderAutomatedEmailPreview
+      .mockReset()
+      .mockResolvedValueOnce(firstPreview)
+      .mockRejectedValueOnce(new Error('preview unavailable'));
+
+    renderPage();
+    const iframe = await screen.findByTitle('Rendered transactional email');
+    expect(iframe).toHaveAttribute('srcdoc', firstPreview.html);
+
+    fireEvent.change(screen.getByLabelText('Heading'), {
+      target: { value: 'A changed heading' },
+    });
+
+    expect(await screen.findByRole('alert', { name: '' })).toHaveTextContent("Preview couldn't update. Try again.");
+    expect(screen.getByTitle('Rendered transactional email')).toHaveAttribute('srcdoc', firstPreview.html);
+  });
+
+  it('keeps available variables insertable without changing the preview architecture', async () => {
     const user = userEvent.setup();
-    render(<MemoryRouter initialEntries={['/app/email-marketing/automated-emails']}><AutomatedEmailsPage /></MemoryRouter>);
-    await screen.findByRole('heading', { name: 'Automated emails' });
-    expect(screen.getByText('Colours synced from your booking page')).toBeInTheDocument();
-    const editorial = screen.getByRole('button', { name: /Editorial/ });
-    await user.click(editorial);
-    expect(editorial).toHaveAttribute('aria-pressed', 'true');
-    await user.click(screen.getByRole('button', { name: 'Mobile' }));
-    expect(screen.getByRole('button', { name: 'Mobile' })).toHaveAttribute('aria-pressed', 'true');
-    await waitFor(() => expect(renderAutomatedEmailPreview).toHaveBeenLastCalledWith(expect.objectContaining({
-      design: { style: 'EDITORIAL' },
-    })));
+    renderPage();
+    await screen.findByTitle('Rendered transactional email');
+
+    await user.click(screen.getByRole('button', { name: 'Insert {{bookingDate}}' }));
+    expect(screen.getByLabelText('Message')).toHaveValue(
+      'Hi {{customerName}}, your {{serviceName}} is confirmed. {{bookingDate}}',
+    );
+    expect(renderAutomatedEmailPreview).toHaveBeenCalledWith(expect.objectContaining({
+      templateKey: 'customerBookingConfirmation',
+    }));
   });
 });
