@@ -176,7 +176,7 @@ describe('AutomatedEmailsPage email studio', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Automated emails' });
 
-    await user.click(screen.getByText('Business'));
+    await user.click(within(screen.getByTestId('email-settings-inspector')).getByText('Business'));
     const businessName = screen.getByLabelText('Business name');
     expect(businessName).toHaveValue('Glow Studio');
     expect(screen.getByLabelText('Instagram URL')).toHaveValue('https://instagram.com/glow');
