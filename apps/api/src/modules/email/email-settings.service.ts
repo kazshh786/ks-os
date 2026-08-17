@@ -7,50 +7,61 @@ import {
 } from '@ks-os/database';
 import {
   AutomatedEmailTemplatesSchema,
+  BookingPageThemeSchema,
   EmailAutomationOptionsSchema,
   EmailBrandingSchema,
+  EmailDesignSettingsSchema,
   type AutomatedEmailTemplate,
   type AutomatedEmailTemplates,
+  type BookingPageTheme,
   type CommunicationsSettingsResponse,
   type EmailAutomationOptions,
   type EmailBranding,
+  type EmailDesignSettings,
   type UpdateCommunicationsSettingsRequest,
 } from '@ks-os/contracts';
 import { and, eq } from 'drizzle-orm';
 
 export const DEFAULT_AUTOMATED_EMAIL_TEMPLATES: AutomatedEmailTemplates = {
   customerBookingConfirmation: {
-    subject: 'Your booking with {{businessName}} is confirmed',
+    subject: 'Your appointment is confirmed — {{bookingDate}} at {{bookingTime}}',
+    preview: '{{serviceName}} with {{staffName}} · Manage your booking online',
     heading: 'Booking confirmed',
     body: 'Hi {{customerName}}, your {{serviceName}} booking is confirmed. We look forward to seeing you.',
   },
   businessBookingConfirmation: {
     subject: 'New booking: {{customerName}} — {{serviceName}}',
+    preview: '{{bookingDate}} at {{bookingTime}} with {{staffName}}',
     heading: 'A new booking is confirmed',
     body: '{{customerName}} is booked for {{serviceName}} on {{bookingDate}} at {{bookingTime}} with {{staffName}}.',
   },
   reminderThreeDays: {
-    subject: 'Your appointment with {{businessName}} is in 3 days',
+    subject: 'Your appointment is in 3 days',
+    preview: '{{bookingDate}} at {{bookingTime}} · {{serviceName}} with {{staffName}}',
     heading: 'Your appointment is coming up',
     body: 'Hi {{customerName}}, this is a friendly reminder that your {{serviceName}} appointment is in 3 days.',
   },
   reminderOneDay: {
-    subject: 'Your appointment with {{businessName}} is tomorrow',
+    subject: 'Your appointment is tomorrow',
+    preview: '{{bookingDate}} at {{bookingTime}} · {{serviceName}} with {{staffName}}',
     heading: 'See you tomorrow',
     body: 'Hi {{customerName}}, this is a reminder that your {{serviceName}} appointment is tomorrow.',
   },
   customerThankYouGoogle: {
     subject: 'Thank you for visiting {{businessName}}',
+    preview: 'How was your {{serviceName}} appointment?',
     heading: 'Thank you for choosing us',
     body: 'Hi {{customerName}}, thank you for visiting us. If you have a moment, an honest Google review would mean a lot to our team.',
   },
   customerThankYouTrustpilot: {
     subject: 'Thank you for coming back to {{businessName}}',
+    preview: 'We would value your honest feedback about your visit',
     heading: 'Thank you for your continued support',
     body: 'Hi {{customerName}}, thank you for choosing us again. If you have a moment, we would be grateful for an honest Trustpilot review.',
   },
   businessPaymentReceived: {
     subject: 'Payment received: {{customerName}} — {{amount}} {{currency}}',
+    preview: '{{serviceName}} · Payment recorded successfully',
     heading: 'Payment received',
     body: 'A payment of {{amount}} {{currency}} has been received from {{customerName}} for {{serviceName}}.',
   },
@@ -64,10 +75,13 @@ export const DEFAULT_EMAIL_AUTOMATIONS: EmailAutomationOptions = {
   businessPaymentReceivedEnabled: true,
 };
 
+export const DEFAULT_EMAIL_DESIGN: EmailDesignSettings = { style: 'CLEAN' };
+
 type StoredSettings = {
   branding?: Partial<EmailBranding>;
   automations?: Partial<EmailAutomationOptions>;
   templates?: Partial<Record<keyof AutomatedEmailTemplates, Partial<AutomatedEmailTemplate>>>;
+  design?: Partial<EmailDesignSettings>;
 };
 
 export type EmailRuntimeSettings = CommunicationsSettingsResponse;
@@ -86,10 +100,15 @@ export function renderAutomatedEmailCopy(template: AutomatedEmailTemplate, repla
     emailSubject: interpolateEmailCopy(template.subject, replacements),
     emailHeading: interpolateEmailCopy(template.heading, replacements),
     emailBody: interpolateEmailCopy(template.body, replacements),
+    ...(template.preview ? { emailPreview: interpolateEmailCopy(template.preview, replacements) } : {}),
   };
 }
 
-export function emailBrandingTemplateData(branding: EmailBranding) {
+export function emailBrandingTemplateData(
+  branding: EmailBranding,
+  design?: EmailDesignSettings,
+  theme?: BookingPageTheme,
+) {
   return {
     tenantName: branding.businessName,
     businessName: branding.businessName,
@@ -101,6 +120,8 @@ export function emailBrandingTemplateData(branding: EmailBranding) {
     instagramUrl: branding.instagramUrl,
     facebookUrl: branding.facebookUrl,
     tiktokUrl: branding.tiktokUrl,
+    ...(design ? { emailDesignStyle: design.style } : {}),
+    ...(theme ? { emailTheme: theme, tenantPrimaryColor: theme.primaryColor } : {}),
   };
 }
 
@@ -134,6 +155,8 @@ export class EmailSettingsService {
         { ...value, ...(saved.templates?.[key as keyof AutomatedEmailTemplates] ?? {}) },
       ]),
     ));
+    const design = EmailDesignSettingsSchema.parse({ ...DEFAULT_EMAIL_DESIGN, ...(saved.design ?? {}) });
+    const theme = BookingPageThemeSchema.parse(bookingPage?.themeJson ?? {});
 
     return {
       replyToEmail: tenant.replyToEmail,
@@ -149,6 +172,8 @@ export class EmailSettingsService {
       branding,
       automations,
       templates,
+      design,
+      theme,
     };
   }
 
@@ -167,6 +192,7 @@ export class EmailSettingsService {
         { ...value, ...(input.templates?.[key as keyof AutomatedEmailTemplates] ?? {}) },
       ]),
     ));
+    const design = EmailDesignSettingsSchema.parse({ ...current.design, ...(input.design ?? {}) });
 
     const tenantUpdate = {
       ...(input.replyToEmail !== undefined ? { replyToEmail: normalizeNullable(input.replyToEmail) } : {}),
@@ -185,12 +211,12 @@ export class EmailSettingsService {
     await query.update(tenants).set(tenantUpdate).where(eq(tenants.id, tenantId));
     await query.insert(tenantEmailAutomationSettings).values({
       tenantId,
-      settingsJson: { branding, automations, templates },
+      settingsJson: { branding, automations, templates, design },
       updatedByUserId,
       updatedAt: new Date(),
     }).onConflictDoUpdate({
       target: tenantEmailAutomationSettings.tenantId,
-      set: { settingsJson: { branding, automations, templates }, updatedByUserId, updatedAt: new Date() },
+      set: { settingsJson: { branding, automations, templates, design }, updatedByUserId, updatedAt: new Date() },
     });
   }
 }

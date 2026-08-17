@@ -31,6 +31,8 @@ import {
   UpdateCommunicationsSettingsRequest,
   EmailHistoryQuery,
   EmailHistoryItem,
+  EmailPreviewRequest,
+  EmailPreviewResponse,
   DashboardOverviewQuery,
   DashboardOverviewResponse
   ,BookingOperationsQuery, BookingOperationsResponse, BookingOperationsItem, BookingPageResponse, BookingPageUpdate, CreateBookingHold, BookingHoldResponse
@@ -157,6 +159,7 @@ export interface DataProvider {
   // Communications
   getCommunicationsSettings(): Promise<CommunicationsSettingsResponse>;
   updateCommunicationsSettings(settings: UpdateCommunicationsSettingsRequest): Promise<void>;
+  renderAutomatedEmailPreview(input: EmailPreviewRequest): Promise<EmailPreviewResponse>;
   getEmailHistory(query: EmailHistoryQuery): Promise<{ data: EmailHistoryItem[], nextCursor?: string }>;
   getDashboardOverview(query: DashboardOverviewQuery): Promise<DashboardOverviewResponse>;
   getAppointmentsReport(query:AppointmentsReportQuery):Promise<AppointmentsReportResponse>;

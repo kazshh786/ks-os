@@ -1,5 +1,10 @@
-import { Section, Text } from '@react-email/components';
+import { Text } from '@react-email/components';
 import { BaseEmailLayout, type EmailBrandingProps } from '../components/BaseEmailLayout.js';
+import {
+  PaymentReceiptCard,
+  StatusHero,
+} from '../components/FormEmailComponents.js';
+import { getEmailDesign } from '../components/email-design.js';
 
 export interface BusinessPaymentReceivedProps extends EmailBrandingProps {
   recipientName?: string;
@@ -7,32 +12,22 @@ export interface BusinessPaymentReceivedProps extends EmailBrandingProps {
   serviceName?: string | null;
   amount: string;
   currency: string;
+  bookingReference?: string;
+  paymentReference?: string;
   emailHeading?: string;
   emailBody?: string;
+  emailPreview?: string;
 }
 
-export function BusinessPaymentReceivedEmail({
-  tenantName,
-  tenantPrimaryColor,
-  recipientName,
-  customerName,
-  serviceName,
-  amount,
-  currency,
-  emailHeading,
-  emailBody,
-  ...branding
-}: BusinessPaymentReceivedProps) {
+export function BusinessPaymentReceivedEmail(props: BusinessPaymentReceivedProps) {
+  const design = getEmailDesign(props.emailDesignStyle, { ...props.emailTheme, primaryColor: props.emailTheme?.primaryColor || props.tenantPrimaryColor });
   return (
-    <BaseEmailLayout tenantName={tenantName} tenantPrimaryColor={tenantPrimaryColor} {...branding} previewText="A customer payment has been received">
-      {emailHeading && <Text className="text-gray-950 text-xl font-bold">{emailHeading}</Text>}
-      {recipientName && <Text className="text-gray-700">Hi {recipientName},</Text>}
-      <Text className="text-gray-800" style={{ whiteSpace: 'pre-line' }}>{emailBody}</Text>
-      <Section className="rounded bg-emerald-50 p-4">
-        <Text className="m-0"><strong>Amount:</strong> {amount} {currency}</Text>
-        <Text className="m-0 mt-2"><strong>Customer:</strong> {customerName}</Text>
-        {serviceName && <Text className="m-0 mt-2"><strong>Service:</strong> {serviceName}</Text>}
-      </Section>
+    <BaseEmailLayout {...props} previewText={props.emailPreview || props.serviceName + ' · Payment recorded successfully'}>
+      <StatusHero eyebrow="PAYMENT RECEIVED" heading={props.emailHeading || props.amount + ' ' + props.currency} description="A customer payment has been recorded successfully." design={design} />
+      {props.recipientName ? <Text style={{ color: design.tokens.body, fontSize: '16px', lineHeight: '25px', margin: '20px 0 8px' }}>Hi {props.recipientName},</Text> : null}
+      {props.emailBody ? <Text style={{ color: design.tokens.body, fontSize: '16px', lineHeight: '25px', margin: '8px 0', whiteSpace: 'pre-line' }}>{props.emailBody}</Text> : null}
+      <PaymentReceiptCard amount={props.amount} currency={props.currency} status="Received" serviceName={props.serviceName || undefined} bookingReference={props.bookingReference} paymentReference={props.paymentReference} design={design} />
+      <Text style={{ color: design.tokens.body, fontSize: '14px', lineHeight: '22px', margin: 0 }}><strong>Customer:</strong> {props.customerName}</Text>
     </BaseEmailLayout>
   );
 }

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { UpdateCommunicationsSettingsSchema } from '@ks-os/contracts';
 import {
   DEFAULT_AUTOMATED_EMAIL_TEMPLATES,
+  DEFAULT_EMAIL_DESIGN,
   interpolateEmailCopy,
   renderAutomatedEmailCopy,
 } from '../src/modules/email/email-settings.service.js';
@@ -36,7 +37,11 @@ test('template tokens interpolate known values and preserve unknown placeholders
     }),
     'Hi Amelia from Glow Studio {{unknown}}',
   );
-  const rendered = renderAutomatedEmailCopy(DEFAULT_AUTOMATED_EMAIL_TEMPLATES.reminderThreeDays, {
+  const rendered = renderAutomatedEmailCopy({
+    ...DEFAULT_AUTOMATED_EMAIL_TEMPLATES.reminderThreeDays,
+    subject: '{{businessName}} reminder',
+    body: 'Hi {{customerName}}, your {{serviceName}} is coming up.',
+  }, {
     customerName: 'Amelia',
     businessName: 'Glow Studio',
     serviceName: 'Facial',
@@ -101,4 +106,32 @@ test('automation email actions provide valid appointment tokens and reject non-q
   assert.match(automation, /appointmentDateTime:c\.startTime\?\.toISOString\(\)/);
   assert.match(automation, /if\(!result\.queued\)throw fail\(409,'AUTOMATION_EMAIL_NOT_QUEUED'/);
   assert.match(automation, /Form emails require a secure assignment link/);
+});
+
+
+test('email design defaults safely and inherits the booking-page palette without a migration', () => {
+  assert.equal(DEFAULT_EMAIL_DESIGN.style, 'CLEAN');
+  const settings = source('modules/email/email-settings.service.ts');
+  assert.match(settings, /EmailDesignSettingsSchema\.parse/);
+  assert.match(settings, /BookingPageThemeSchema\.parse\(bookingPage\?\.themeJson/);
+  assert.match(settings, /settingsJson: \{ branding, automations, templates, design \}/);
+  assert.doesNotMatch(settings, /emailPrimaryColor|emailAccentColor|emailSurfaceColor/);
+});
+
+test('authenticated preview uses the production renderer with fictional data and never queues email', () => {
+  const routes = source('modules/email/email.routes.ts');
+  const preview = source('modules/email/email-preview.service.ts');
+  assert.match(routes, /post\('\/email-preview'/);
+  assert.match(routes, /request\.requireAuth\(\)/);
+  assert.match(routes, /EmailPreviewRequestSchema\.safeParse/);
+  assert.match(preview, /renderEmail\(productionTemplateKey/);
+  assert.match(preview, /customerName: 'Amelia'/);
+  assert.match(preview, /serviceName: 'Signature appointment'/);
+  assert.doesNotMatch(preview, /enqueueEmail|emailOutbox|resend/i);
+});
+
+test('production outbox rendering injects the current shared email design and booking theme', () => {
+  const email = source('modules/email/email.service.ts');
+  assert.match(email, /emailBrandingTemplateData\(runtimeSettings\.branding, runtimeSettings\.design, runtimeSettings\.theme\)/);
+  assert.match(email, /renderEmail\(email\.template_key, renderData\)/);
 });

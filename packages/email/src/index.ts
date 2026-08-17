@@ -47,20 +47,28 @@ export type TemplateKey = keyof typeof templates;
 
 export async function renderEmail(templateKey: string, data: any): Promise<{ html: string; text: string }> {
   const Template = templates[templateKey as TemplateKey];
-  
-  if (!Template) {
-    throw new Error(`Template ${templateKey} not found`);
-  }
-
+  if (!Template) throw new Error(`Template ${templateKey} not found`);
   const element = React.createElement(Template as any, data);
-  
   const [html, text] = await Promise.all([
     render(element),
-    render(element, { plainText: true })
+    render(element, { plainText: true }),
   ]);
-
   return { html, text };
 }
 
-export { getReadableTextColor } from './components/email-colors.js';
-export { SocialFollowCard } from './components/FormEmailComponents.js';
+export {
+  darkenEmailColor,
+  ensureReadableTextColor,
+  getContrastRatio,
+  getReadableTextColor,
+  lightenEmailColor,
+  mixEmailColor,
+} from './components/email-colors.js';
+export { getEmailDesign } from './components/email-design.js';
+export type { EmailBrandTheme, EmailDesign, EmailDesignStyle } from './components/email-design.js';
+export {
+  BrandLogoPanel,
+  SocialFollowCard,
+  PaymentReceiptCard,
+  ChangeComparisonCard,
+} from './components/FormEmailComponents.js';

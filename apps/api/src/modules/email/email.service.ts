@@ -29,6 +29,7 @@ import {
   validateEmailIdempotencyKey,
   validateEmailTemplateData,
 } from './email-safety.js';
+import { EmailSettingsService, emailBrandingTemplateData } from './email-settings.service.js';
 
 export type EnqueueEmailParams = {
   tenantId?: string;
@@ -374,12 +375,20 @@ export class EmailService {
           .limit(1);
         if (current?.status !== 'PROCESSING') continue;
 
-        const rendered = await renderEmail(email.template_key, templateData);
-        const tenantName = String(templateData.tenantName || 'Your business');
+        let renderData = templateData;
+        if (email.tenant_id) {
+          const runtimeSettings = await new EmailSettingsService().get(email.tenant_id, db);
+          renderData = {
+            ...emailBrandingTemplateData(runtimeSettings.branding, runtimeSettings.design, runtimeSettings.theme),
+            ...templateData,
+          };
+        }
+        const rendered = await renderEmail(email.template_key, renderData);
+        const tenantName = String(renderData.tenantName || 'Your business');
         const senderName = tenantName.replace(/[\r\n\"<>]/g, '').trim().slice(0, 120) || 'Your business';
         const fromAddress = process.env[FROM_ENV[email.template_key] || 'EMAIL_BOOKINGS_FROM'];
         if (!fromAddress) throw new Error('EMAIL_FROM_NOT_CONFIGURED');
-        const configuredSubject = String(templateData.emailSubject || SUBJECTS[email.template_key] || 'Update from KS OS')
+        const configuredSubject = String(renderData.emailSubject || SUBJECTS[email.template_key] || 'Update from KS OS')
           .replace(/[\r\n]/g, ' ').trim().slice(0, 160);
         const recipientName = normalizeEmailDisplayName(email.recipient_name);
 

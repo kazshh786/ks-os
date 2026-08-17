@@ -29,6 +29,8 @@ import {
   UpdateCommunicationsSettingsRequest,
   EmailHistoryQuery,
   EmailHistoryItem,
+  EmailPreviewRequest,
+  EmailPreviewResponse,
   DashboardOverviewQuery,
   DashboardOverviewResponse
 } from '@ks-os/contracts';
@@ -820,6 +822,17 @@ export class MockDataProvider implements DataProvider {
       formRemindersEnabled: true,
       paymentConfirmationEnabled: true,
       formReminderTiming: '24_hours_after_assignment',
+      design: { style: 'CLEAN' },
+      theme: {
+        primaryColor: '#b45309',
+        secondaryColor: '#1e293b',
+        accentColor: '#f59e0b',
+        surfaceColor: '#ffffff',
+        textColor: '#0f172a',
+        fontFamily: 'system',
+        borderRadius: 'rounded',
+        mode: 'light',
+      },
       branding: {
         businessName: 'Sovereign Gents Barbershop',
         businessEmail: 'hello@sovereigngents.com',
@@ -853,6 +866,14 @@ export class MockDataProvider implements DataProvider {
   async updateCommunicationsSettings(settings: UpdateCommunicationsSettingsRequest): Promise<void> {
     const current = await this.getCommunicationsSettings();
     saveStorageData('ks_os_comm_settings', { ...current, ...settings });
+  }
+
+  async renderAutomatedEmailPreview(input: EmailPreviewRequest): Promise<EmailPreviewResponse> {
+    return {
+      subject: input.template.subject,
+      html: '<!doctype html><html lang="en"><body><p>Email preview requires the live API renderer.</p></body></html>',
+      text: 'Email preview requires the live API renderer.',
+    };
   }
 
   async getEmailHistory(query: EmailHistoryQuery): Promise<{ data: EmailHistoryItem[], nextCursor?: string }> {

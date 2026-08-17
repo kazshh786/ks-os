@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import { BookingPageThemeSchema } from './booking-operations.js';
 
 const OptionalEmailUrlSchema = z.string().url().max(1000).nullable();
 
 export const AutomatedEmailTemplateSchema = z.object({
   subject: z.string().trim().min(1).max(160).refine(value => !/[\r\n]/.test(value), 'Subject must be one line'),
+  preview: z.string().trim().min(1).max(240).optional(),
   heading: z.string().trim().min(1).max(200),
   body: z.string().trim().min(1).max(2000),
 });
@@ -38,6 +40,33 @@ export const EmailAutomationOptionsSchema = z.object({
   businessPaymentReceivedEnabled: z.boolean(),
 });
 
+export const EmailDesignStyleSchema = z.enum(['CLEAN', 'EDITORIAL', 'STUDIO', 'CONTRAST']);
+export const EmailDesignSettingsSchema = z.object({
+  style: EmailDesignStyleSchema.default('CLEAN'),
+}).strict();
+
+export const AutomatedEmailPreviewKeySchema = z.enum([
+  'customerBookingConfirmation',
+  'businessBookingConfirmation',
+  'reminderThreeDays',
+  'reminderOneDay',
+  'customerThankYouGoogle',
+  'customerThankYouTrustpilot',
+  'businessPaymentReceived',
+]);
+
+export const EmailPreviewRequestSchema = z.object({
+  templateKey: AutomatedEmailPreviewKeySchema,
+  template: AutomatedEmailTemplateSchema,
+  design: EmailDesignSettingsSchema,
+}).strict();
+
+export const EmailPreviewResponseSchema = z.object({
+  subject: z.string(),
+  html: z.string(),
+  text: z.string(),
+});
+
 export const UpdateCommunicationsSettingsSchema = z.object({
   replyToEmail: z.string().email().nullable().optional(),
   senderDisplayName: z.string().nullable().optional(),
@@ -52,6 +81,7 @@ export const UpdateCommunicationsSettingsSchema = z.object({
   branding: EmailBrandingSchema.optional(),
   automations: EmailAutomationOptionsSchema.optional(),
   templates: AutomatedEmailTemplatesSchema.optional(),
+  design: EmailDesignSettingsSchema.optional(),
 });
 
 export type UpdateCommunicationsSettingsRequest = z.infer<typeof UpdateCommunicationsSettingsSchema>;
@@ -70,11 +100,18 @@ export const CommunicationsSettingsSchema = z.object({
   branding: EmailBrandingSchema,
   automations: EmailAutomationOptionsSchema,
   templates: AutomatedEmailTemplatesSchema,
+  design: EmailDesignSettingsSchema,
+  theme: BookingPageThemeSchema,
 });
 
 export type CommunicationsSettingsResponse = z.infer<typeof CommunicationsSettingsSchema>;
 export type EmailBranding = z.infer<typeof EmailBrandingSchema>;
 export type EmailAutomationOptions = z.infer<typeof EmailAutomationOptionsSchema>;
+export type EmailDesignStyle = z.infer<typeof EmailDesignStyleSchema>;
+export type EmailDesignSettings = z.infer<typeof EmailDesignSettingsSchema>;
+export type AutomatedEmailPreviewKey = z.infer<typeof AutomatedEmailPreviewKeySchema>;
+export type EmailPreviewRequest = z.infer<typeof EmailPreviewRequestSchema>;
+export type EmailPreviewResponse = z.infer<typeof EmailPreviewResponseSchema>;
 export type AutomatedEmailTemplate = z.infer<typeof AutomatedEmailTemplateSchema>;
 export type AutomatedEmailTemplates = z.infer<typeof AutomatedEmailTemplatesSchema>;
 

@@ -7,6 +7,7 @@ import {
   SocialFollowCard,
   StatusHero,
 } from '../components/FormEmailComponents.js';
+import { getEmailDesign } from '../components/email-design.js';
 
 export interface FormAssignedProps extends Partial<EmailBrandingProps> {
   customerName?: string;
@@ -22,6 +23,7 @@ export interface FormAssignedProps extends Partial<EmailBrandingProps> {
   staffName?: string;
   locationName?: string;
   dueDate?: string;
+  emailPreview?: string;
 }
 
 function appointmentParts(props: FormAssignedProps) {
@@ -41,7 +43,8 @@ function appointmentParts(props: FormAssignedProps) {
 export const FormAssignedEmail = (props: FormAssignedProps) => {
   const tenantName = props.tenantName || props.businessName || 'Your business';
   const businessName = props.businessName || tenantName;
-  const brandColor = props.tenantPrimaryColor || '#111827';
+  const brandColor = props.tenantPrimaryColor || '#0f172a';
+  const design = getEmailDesign(props.emailDesignStyle, { ...props.emailTheme, primaryColor: props.emailTheme?.primaryColor || brandColor });
   const appointment = appointmentParts(props);
   const appointmentContext = appointment.date || appointment.time || props.serviceName;
   const introduction = props.formDescription
@@ -66,46 +69,19 @@ export const FormAssignedEmail = (props: FormAssignedProps) => {
       instagramUrl={props.instagramUrl}
       facebookUrl={props.facebookUrl}
       tiktokUrl={props.tiktokUrl}
-      previewText={previewText}
+      emailDesignStyle={props.emailDesignStyle}
+      emailTheme={props.emailTheme}
+      previewText={props.emailPreview || previewText}
     >
-      <StatusHero
-        eyebrow="ACTION REQUIRED"
-        heading={'Complete your ' + props.formName}
-        description={introduction}
-        brandColor={brandColor}
-      />
-      <Text style={{ color: '#374151', fontSize: '16px', lineHeight: '25px', margin: '20px 0 0' }}>
+      <StatusHero eyebrow="ACTION REQUIRED" heading={'Complete your ' + props.formName} description={introduction} design={design} />
+      <Text style={{ color: design.tokens.body, fontSize: '16px', lineHeight: '25px', margin: '20px 0 0' }}>
         {props.customerName ? 'Hi ' + props.customerName + ',' : 'Hello,'}
       </Text>
-      {props.formDescription ? (
-        <Text style={{ color: '#374151', fontSize: '16px', lineHeight: '25px', margin: '10px 0 0' }}>
-          {props.formDescription}
-        </Text>
-      ) : null}
-      <FormActionCard
-        formName={props.formName}
-        formLink={props.formLink}
-        estimatedMinutes={props.estimatedMinutes}
-        dueDate={props.dueDate}
-        serviceName={props.serviceName}
-        appointmentDate={appointment.date}
-        appointmentTime={appointment.time}
-        actionLabel="Complete form"
-        brandColor={brandColor}
-      />
-      <SecurityNotice businessName={businessName} />
-      <BusinessContactCard
-        businessName={businessName}
-        businessEmail={props.businessEmail}
-        businessPhone={props.businessPhone}
-        businessWebsiteUrl={props.businessWebsiteUrl}
-      />
-      <SocialFollowCard
-        businessName={businessName}
-        instagramUrl={props.instagramUrl}
-        facebookUrl={props.facebookUrl}
-        tiktokUrl={props.tiktokUrl}
-      />
+      {props.formDescription ? <Text style={{ color: design.tokens.body, fontSize: '16px', lineHeight: '25px', margin: '10px 0 0' }}>{props.formDescription}</Text> : null}
+      <FormActionCard formName={props.formName} formLink={props.formLink} estimatedMinutes={props.estimatedMinutes} dueDate={props.dueDate} serviceName={props.serviceName} appointmentDate={appointment.date} appointmentTime={appointment.time} actionLabel="Complete form" design={design} />
+      <SecurityNotice businessName={businessName} design={design} />
+      <BusinessContactCard businessName={businessName} businessEmail={props.businessEmail} businessPhone={props.businessPhone} businessWebsiteUrl={props.businessWebsiteUrl} design={design} />
+      <SocialFollowCard businessName={businessName} instagramUrl={props.instagramUrl} facebookUrl={props.facebookUrl} tiktokUrl={props.tiktokUrl} design={design} />
     </BaseEmailLayout>
   );
 };
