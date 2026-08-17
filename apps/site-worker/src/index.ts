@@ -1,4 +1,5 @@
 import { closeDatabase, getDatabase } from '@ks-os/database';
+import { ConcurrencyLimitedSiteGenerationProvider } from '@ks-os/site-generation';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseSiteWorkerConfig } from './config.js';
@@ -8,13 +9,39 @@ import {
   type SiteGenerationJobExecutor,
 } from './handlers.js';
 import { JsonSiteWorkerLogger } from './logger.js';
+import { OpenAISiteGenerationProvider } from './openai-site-generation-provider.js';
 import { PostgresSiteJobRepository } from './postgres-repository.js';
-import { createConfiguredSiteGenerationExecutor } from './postgres-generation-executor.js';
+import {
+  PostgresSiteGenerationExecutor,
+  createConfiguredSiteGenerationExecutor,
+} from './postgres-generation-executor.js';
 import { UnifiedWorkspaceProvisioningExecutor } from './unified-provisioning-executor.js';
 import { ProductionPlaywrightQualityAdapter } from './playwright-quality-adapter.js';
 import { PostgresSiteQualityExecutor } from './postgres-quality-executor.js';
 import { PostgresSitePublicationExecutor } from './postgres-publication-executor.js';
 import { SiteWorker } from './worker.js';
+
+function configuredGenerationExecutor(
+  database: ReturnType<typeof getDatabase>,
+  generation: ReturnType<typeof parseSiteWorkerConfig>['generation'],
+): SiteGenerationJobExecutor {
+  if (generation.provider !== 'openai') {
+    return createConfiguredSiteGenerationExecutor(database, generation);
+  }
+  if (!generation.apiKey || !generation.model) {
+    throw new Error('OpenAI site generation requires a configured API key and model.');
+  }
+  const provider = new ConcurrencyLimitedSiteGenerationProvider(
+    new OpenAISiteGenerationProvider({
+      apiKey: generation.apiKey,
+      modelKey: generation.model,
+      requestTimeoutMs: generation.requestTimeoutMs,
+      baseUrl: generation.openAiBaseUrl,
+    }),
+    generation.maxConcurrentRequests,
+  );
+  return new PostgresSiteGenerationExecutor(database, provider, generation);
+}
 
 export async function startSiteWorker(
   environment: NodeJS.ProcessEnv | Record<string, string | undefined>
@@ -25,7 +52,7 @@ export async function startSiteWorker(
   const database = getDatabase(config.databaseUrl);
   const resolvedGenerationExecutor = generationExecutor
     ?? (config.generation.enabled
-      ? createConfiguredSiteGenerationExecutor(database, config.generation)
+      ? configuredGenerationExecutor(database, config.generation)
       : undefined);
   const repository = new PostgresSiteJobRepository(database);
   const qualityExecutor = new PostgresSiteQualityExecutor(
@@ -113,6 +140,7 @@ export * from './config.js';
 export * from './handlers.js';
 export * from './health.js';
 export * from './logger.js';
+export * from './openai-site-generation-provider.js';
 export * from './postgres-repository.js';
 export * from './postgres-generation-executor.js';
 export * from './postgres-provisioning-executor.js';
