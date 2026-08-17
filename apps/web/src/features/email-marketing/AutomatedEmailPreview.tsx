@@ -10,13 +10,11 @@ import { getDataProvider } from '../../data/data-provider.js';
 import type { EmailPreviewViewport } from './EmailMarketingTabs.js';
 
 export function AutomatedEmailPreview({
-  emailName,
   templateKey,
   template,
   design,
   viewport,
 }: {
-  emailName: string;
   templateKey: AutomatedEmailPreviewKey;
   template: AutomatedEmailTemplate;
   design: EmailDesignSettings;
@@ -85,25 +83,14 @@ export function AutomatedEmailPreview({
   };
 
   return (
-    <section
-      aria-label="Email preview"
-      data-testid="preview-stage"
-      className="overflow-hidden border border-slate-200 bg-slate-200"
-    >
-      <div className="min-h-14 border-b border-slate-200 bg-white px-4 py-2">
-        <h2 className="truncate text-sm font-black text-slate-950">{emailName}</h2>
-        <p className="truncate text-xs text-slate-500">
-          <span className="font-bold">Subject:</span> {preview?.subject || template.subject}
-        </p>
-      </div>
-
-      <div data-testid="preview-canvas" className="relative bg-slate-200 p-3 sm:p-6">
+    <section aria-label="Email preview" data-testid="preview-stage" className="bg-slate-200">
+      <div data-testid="preview-canvas" className="relative bg-slate-200">
         <div
           className={
             'relative mx-auto overflow-hidden bg-white transition-[max-width,border-radius] duration-200 ' +
             (viewport === 'mobile'
               ? 'w-full max-w-[390px] rounded-[28px] border-[6px] border-slate-900 shadow-xl'
-              : 'w-full max-w-[680px] border border-slate-300 shadow-lg')
+              : 'w-full max-w-[680px] shadow-lg')
           }
         >
           {loading && preview ? (
@@ -145,10 +132,6 @@ export function AutomatedEmailPreview({
           )}
         </div>
       </div>
-
-      <p className="border-t border-slate-200 bg-white px-4 py-2 text-center text-[10px] font-bold text-slate-500">
-        Production React Email render · Fictional preview data
-      </p>
     </section>
   );
 }

@@ -264,7 +264,7 @@ export function AutomatedEmailsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[70vh] border border-slate-200 bg-white">
+      <div className="-mx-3 -mt-3 min-h-[70vh] border border-slate-200 bg-white sm:-mx-5 sm:-mt-5 lg:-mx-8 lg:-mt-8">
         <div className="h-16 animate-pulse border-b border-slate-200 bg-slate-100" />
         <div className="grid min-h-[620px] gap-px bg-slate-200 xl:grid-cols-[220px_minmax(520px,1fr)_380px]">
           <div className="hidden bg-slate-50 xl:block" />
@@ -376,15 +376,28 @@ export function AutomatedEmailsPage() {
           : 'All changes saved';
 
   return (
-    <form onSubmit={save} className="-mx-3 bg-slate-100 sm:-mx-5 lg:-mx-6" data-testid="email-studio">
-      <header className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-2 backdrop-blur sm:px-6">
+    <form onSubmit={save} className="-mx-3 -mt-3 bg-slate-100 sm:-mx-5 sm:-mt-5 lg:-mx-8 lg:-mt-8" data-testid="email-studio">
+      <div data-testid="email-studio-sticky-bar" className="sticky top-0 z-30 bg-white">
+        <header data-testid="email-studio-header" className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white">
             <Mail className="h-4 w-4" />
           </span>
           <div className="min-w-0">
             <h1 className="truncate text-lg font-black text-slate-950">Automated emails</h1>
-            <p className="truncate text-xs font-semibold text-slate-500">{activeMeta.label} · {activeMeta.audience}</p>
+            <label className="block xl:hidden">
+              <span className="sr-only">Email template</span>
+              <select
+                value={selectedTemplate}
+                onChange={event => selectTemplate(event.target.value as TemplateKey)}
+                className="block max-w-52 truncate border-0 bg-transparent p-0 text-xs font-semibold text-slate-500 focus:outline-none focus:ring-0"
+              >
+                {templateMeta.map(item => (
+                  <option key={item.key} value={item.key}>{item.label} · {item.audience}</option>
+                ))}
+              </select>
+            </label>
+            <p className="hidden truncate text-xs font-semibold text-slate-500 xl:block">{activeMeta.label} · {activeMeta.audience}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -408,13 +421,14 @@ export function AutomatedEmailsPage() {
             {saving ? 'Saving…' : 'Save changes'}
           </button>
         </div>
-      </header>
+        </header>
 
-      <div className="bg-white px-4 sm:px-6">
-        <EmailMarketingTabs
-          previewViewport={previewViewport}
-          onPreviewViewportChange={setPreviewViewport}
-        />
+        <div className="px-4 sm:px-6">
+          <EmailMarketingTabs
+            previewViewport={previewViewport}
+            onPreviewViewportChange={setPreviewViewport}
+          />
+        </div>
       </div>
 
       {error ? (
@@ -426,28 +440,14 @@ export function AutomatedEmailsPage() {
 
       <div
         data-testid="email-studio-layout"
-        className="grid min-h-[calc(100vh-9rem)] bg-slate-200 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[220px_minmax(520px,1fr)_380px]"
+        className="grid min-h-[calc(100vh-7rem)] bg-slate-200 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[220px_minmax(520px,1fr)_380px]"
       >
         <aside className="hidden border-r border-slate-200 bg-slate-50 px-3 py-5 xl:block">
           <TemplateRail selectedTemplate={selectedTemplate} onSelect={selectTemplate} />
         </aside>
 
-        <main className="min-w-0 bg-slate-100 p-3 sm:p-4 lg:p-5">
-          <label className="mb-3 block text-xs font-black text-slate-700 xl:hidden">
-            Email template
-            <select
-              value={selectedTemplate}
-              onChange={event => selectTemplate(event.target.value as TemplateKey)}
-              className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
-            >
-              {templateMeta.map(item => (
-                <option key={item.key} value={item.key}>{item.label} · {item.audience}</option>
-              ))}
-            </select>
-          </label>
-
+        <main className="min-w-0 bg-slate-200">
           <AutomatedEmailPreview
-            emailName={activeMeta.label}
             templateKey={selectedTemplate}
             template={activeTemplate}
             design={settings.design}
@@ -458,7 +458,7 @@ export function AutomatedEmailsPage() {
         <aside
           data-testid="email-settings-inspector"
           aria-label="Email settings inspector"
-          className="min-w-0 border-t border-slate-200 bg-white lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:overflow-y-auto lg:border-l lg:border-t-0"
+          className="min-w-0 border-t border-slate-200 bg-white lg:sticky lg:top-28 lg:h-[calc(100vh-7rem)] lg:overflow-y-auto lg:border-l lg:border-t-0"
         >
           <InspectorSection title="Content">
             <div className="space-y-4">

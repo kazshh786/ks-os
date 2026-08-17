@@ -94,15 +94,24 @@ describe('AutomatedEmailsPage email studio', () => {
     renderPage();
 
     expect(await screen.findByRole('heading', { name: 'Automated emails' })).toBeInTheDocument();
+    const studio = screen.getByTestId('email-studio');
+    expect(studio).toHaveClass('lg:-mx-8', 'lg:-mt-8');
+    const stickyBar = screen.getByTestId('email-studio-sticky-bar');
+    expect(stickyBar).toHaveClass('sticky', 'top-0', 'bg-white');
+    expect(screen.getByTestId('email-studio-header')).toHaveClass('bg-white');
+    expect(screen.getByTestId('email-studio-header')).not.toHaveClass('bg-white/95', 'backdrop-blur');
+
     const layout = screen.getByTestId('email-studio-layout');
-    expect(layout).toHaveClass('xl:grid-cols-[220px_minmax(520px,1fr)_380px]');
+    expect(layout).toHaveClass('min-h-[calc(100vh-7rem)]', 'xl:grid-cols-[220px_minmax(520px,1fr)_380px]');
     const previewStage = screen.getByTestId('preview-stage');
     expect(previewStage).toBeInTheDocument();
-    expect(previewStage).not.toHaveClass('lg:h-[calc(100vh-11.5rem)]');
-    expect(screen.getByTestId('preview-canvas')).not.toHaveClass('overflow-auto');
+    expect(previewStage).not.toHaveClass('border');
+    expect(screen.getByTestId('preview-canvas')).not.toHaveClass('overflow-auto', 'p-3', 'sm:p-6');
+    expect(within(previewStage).queryByText(/Production React Email render/i)).not.toBeInTheDocument();
+    expect(within(previewStage).queryByText(/Subject:/i)).not.toBeInTheDocument();
 
     const inspector = screen.getByTestId('email-settings-inspector');
-    expect(inspector).toHaveClass('lg:sticky', 'lg:overflow-y-auto');
+    expect(inspector).toHaveClass('lg:sticky', 'lg:top-28', 'lg:overflow-y-auto');
 
     const iframe = await screen.findByTitle('Rendered transactional email');
     expect(iframe).toHaveAttribute('sandbox', 'allow-same-origin');
@@ -123,7 +132,7 @@ describe('AutomatedEmailsPage email studio', () => {
     const selector = screen.getByLabelText('Email template');
     await user.selectOptions(selector, 'reminderThreeDays');
 
-    expect(screen.getByRole('heading', { name: '3-day reminder' })).toBeInTheDocument();
+    expect(selector).toHaveValue('reminderThreeDays');
     expect(screen.getByLabelText('Subject')).toHaveValue('Three days to go');
     expect(screen.getByLabelText('Preview text')).toHaveValue('Your visit is coming up.');
     expect(screen.getByLabelText('Message')).toHaveValue('Hi {{customerName}}, see you in three days.');
