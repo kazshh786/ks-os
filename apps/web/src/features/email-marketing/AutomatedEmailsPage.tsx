@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type {
   AutomatedEmailTemplates,
   CommunicationsSettingsResponse,
@@ -156,7 +156,7 @@ function InspectorSection({
   children,
 }: {
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className="border-b border-slate-200 px-5 py-5 last:border-b-0">
@@ -453,7 +453,7 @@ export function AutomatedEmailsPage() {
         <aside
           data-testid="email-settings-inspector"
           aria-label="Email settings inspector"
-          className="min-w-0 border-t border-slate-200 bg-white lg:sticky lg:top-0 lg:h-[calc(100vh-9rem)] lg:overflow-y-auto lg:border-l lg:border-t-0"
+          className="min-w-0 border-t border-slate-200 bg-white lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:overflow-y-auto lg:border-l lg:border-t-0"
         >
           <InspectorSection title="Content">
             <div className="space-y-4">
@@ -524,7 +524,7 @@ export function AutomatedEmailsPage() {
                   palette={settings.theme}
                   onSelect={() => {
                     markChanged();
-                    setSettings({ ...settings, design: { style: item.style } });
+                    setSettings(current => current ? { ...current, design: { style: item.style } } : current);
                   }}
                 />
               ))}
@@ -567,7 +567,7 @@ export function AutomatedEmailsPage() {
                   value={settings.senderDisplayName || ''}
                   onChange={event => {
                     markChanged();
-                    setSettings({ ...settings, senderDisplayName: event.target.value || null });
+                    setSettings(current => current ? { ...current, senderDisplayName: event.target.value || null } : current);
                   }}
                   placeholder={settings.branding.businessName}
                   className="mt-1.5 min-h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-medium focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
@@ -580,7 +580,7 @@ export function AutomatedEmailsPage() {
                   value={settings.replyToEmail || ''}
                   onChange={event => {
                     markChanged();
-                    setSettings({ ...settings, replyToEmail: event.target.value || null });
+                    setSettings(current => current ? { ...current, replyToEmail: event.target.value || null } : current);
                   }}
                   placeholder="hello@yourbusiness.co.uk"
                   className="mt-1.5 min-h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-medium focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
