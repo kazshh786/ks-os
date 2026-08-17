@@ -95,7 +95,7 @@ describe('AutomatedEmailsPage email studio', () => {
 
     expect(await screen.findByRole('heading', { name: 'Automated emails' })).toBeInTheDocument();
     const studio = screen.getByTestId('email-studio');
-    expect(studio).toHaveClass('lg:-mx-8', 'lg:-mt-8');
+    expect(studio).not.toHaveClass('-mx-3', '-mt-3', 'lg:-mx-8', 'lg:-mt-8');
     const stickyBar = screen.getByTestId('email-studio-sticky-bar');
     expect(stickyBar).toHaveClass('sticky', 'top-0', 'bg-white');
     expect(screen.getByTestId('email-studio-header')).toHaveClass('bg-white');
