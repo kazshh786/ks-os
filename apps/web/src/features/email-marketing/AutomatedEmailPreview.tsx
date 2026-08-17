@@ -1,28 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import type {
   AutomatedEmailPreviewKey,
   AutomatedEmailTemplate,
   EmailDesignSettings,
   EmailPreviewResponse,
 } from '@ks-os/contracts';
-import { Monitor, Smartphone, TriangleAlert } from 'lucide-react';
+import { TriangleAlert } from 'lucide-react';
 import { getDataProvider } from '../../data/data-provider.js';
+import type { EmailPreviewViewport } from './EmailMarketingTabs.js';
 
 export function AutomatedEmailPreview({
   emailName,
   templateKey,
   template,
   design,
+  viewport,
 }: {
   emailName: string;
   templateKey: AutomatedEmailPreviewKey;
   template: AutomatedEmailTemplate;
   design: EmailDesignSettings;
+  viewport: EmailPreviewViewport;
 }) {
-  const [viewport, setViewport] = useState<'desktop' | 'mobile'>('desktop');
   const [preview, setPreview] = useState<EmailPreviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [frameHeight, setFrameHeight] = useState(860);
+  const resizeObserver = useRef<ResizeObserver | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -50,52 +54,50 @@ export function AutomatedEmailPreview({
     };
   }, [design, template, templateKey]);
 
+  useEffect(() => () => {
+    resizeObserver.current?.disconnect();
+  }, []);
+
+  const fitFrameToEmail = (event: SyntheticEvent<HTMLIFrameElement>) => {
+    const frame = event.currentTarget;
+    const frameDocument = frame.contentDocument;
+    if (!frameDocument) return;
+
+    resizeObserver.current?.disconnect();
+
+    const measure = () => {
+      const nextHeight = Math.max(
+        frameDocument.documentElement.scrollHeight,
+        frameDocument.body?.scrollHeight || 0,
+        560,
+      );
+      setFrameHeight(Math.ceil(nextHeight));
+    };
+
+    measure();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(measure);
+      observer.observe(frameDocument.documentElement);
+      if (frameDocument.body) observer.observe(frameDocument.body);
+      resizeObserver.current = observer;
+    }
+  };
+
   return (
     <section
       aria-label="Email preview"
       data-testid="preview-stage"
-      className="flex min-h-[680px] flex-col overflow-hidden border border-slate-200 bg-slate-200 lg:h-[calc(100vh-11.5rem)] lg:min-h-[620px]"
+      className="overflow-hidden border border-slate-200 bg-slate-200"
     >
-      <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-black text-slate-950">{emailName}</h2>
-          <p className="truncate text-xs text-slate-500">
-            <span className="font-bold">Subject:</span> {preview?.subject || template.subject}
-          </p>
-        </div>
-        <div role="group" aria-label="Preview size" className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-          <button
-            type="button"
-            aria-pressed={viewport === 'desktop'}
-            onClick={() => setViewport('desktop')}
-            className={
-              'inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ' +
-              (viewport === 'desktop'
-                ? 'bg-white font-black text-violet-700 shadow-sm'
-                : 'font-bold text-slate-600 hover:text-slate-950')
-            }
-          >
-            <Monitor className="h-3.5 w-3.5" />
-            Desktop
-          </button>
-          <button
-            type="button"
-            aria-pressed={viewport === 'mobile'}
-            onClick={() => setViewport('mobile')}
-            className={
-              'inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ' +
-              (viewport === 'mobile'
-                ? 'bg-white font-black text-violet-700 shadow-sm'
-                : 'font-bold text-slate-600 hover:text-slate-950')
-            }
-          >
-            <Smartphone className="h-3.5 w-3.5" />
-            Mobile
-          </button>
-        </div>
+      <div className="min-h-14 border-b border-slate-200 bg-white px-4 py-2">
+        <h2 className="truncate text-sm font-black text-slate-950">{emailName}</h2>
+        <p className="truncate text-xs text-slate-500">
+          <span className="font-bold">Subject:</span> {preview?.subject || template.subject}
+        </p>
       </div>
 
-      <div className="relative flex-1 overflow-auto bg-slate-200 p-3 sm:p-6">
+      <div data-testid="preview-canvas" className="relative bg-slate-200 p-3 sm:p-6">
         <div
           className={
             'relative mx-auto overflow-hidden bg-white transition-[max-width,border-radius] duration-200 ' +
@@ -124,10 +126,12 @@ export function AutomatedEmailPreview({
           {preview ? (
             <iframe
               title="Rendered transactional email"
-              sandbox=""
+              sandbox="allow-same-origin"
               referrerPolicy="no-referrer"
               srcDoc={preview.html}
-              className="block h-[860px] w-full border-0 bg-white"
+              onLoad={fitFrameToEmail}
+              style={{ height: frameHeight }}
+              className="block min-h-[560px] w-full border-0 bg-white"
             />
           ) : error ? (
             <div role="alert" className="flex h-[560px] items-center justify-center p-6 text-center text-sm font-bold text-rose-800">
