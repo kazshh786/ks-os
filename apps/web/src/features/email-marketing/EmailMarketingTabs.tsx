@@ -8,10 +8,24 @@ const tabs = [
 
 export function EmailMarketingTabs() {
   return (
-    <nav aria-label="Email marketing sections" className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+    <nav aria-label="Email marketing sections" className="flex min-h-11 items-end gap-5 border-b border-slate-200">
       {tabs.map(tab => {
         const Icon = tab.icon;
-        return <NavLink key={tab.to} to={tab.to} className={({ isActive }) => `inline-flex min-h-10 items-center gap-2 rounded-xl px-4 text-sm font-black transition ${isActive ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}`}><Icon className="h-4 w-4" />{tab.label}</NavLink>;
+        return (
+          <NavLink
+            key={tab.to}
+            to={tab.to}
+            className={({ isActive }) =>
+              'inline-flex min-h-11 items-center gap-2 border-b-2 px-1 text-sm font-black transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ' +
+              (isActive
+                ? 'border-violet-600 text-slate-950'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-950')
+            }
+          >
+            <Icon className="h-4 w-4" />
+            {tab.label}
+          </NavLink>
+        );
       })}
     </nav>
   );
