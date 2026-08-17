@@ -440,7 +440,7 @@ export function AutomatedEmailsPage() {
 
       <div
         data-testid="email-studio-layout"
-        className="grid min-h-[calc(100vh-9rem)] bg-slate-200 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[220px_minmax(520px,1fr)_380px]"
+        className="grid min-h-[calc(100vh-7rem)] bg-slate-200 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[220px_minmax(520px,1fr)_380px]"
       >
         <aside className="hidden border-r border-slate-200 bg-slate-50 px-3 py-5 xl:block">
           <TemplateRail selectedTemplate={selectedTemplate} onSelect={selectTemplate} />
