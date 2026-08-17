@@ -617,24 +617,30 @@ export function AutomatedEmailsPage() {
                 <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
               </summary>
               <div className="border-t border-slate-200 px-3">
-                <Toggle
-                  checked={settings.bookingConfirmationEnabled}
-                  onChange={value => updateTransactionalSetting('bookingConfirmationEnabled', value)}
-                  label="Customer booking confirmation"
-                  detail="Master switch for customer confirmations."
-                />
-                <Toggle
-                  checked={settings.appointmentRemindersEnabled}
-                  onChange={value => updateTransactionalSetting('appointmentRemindersEnabled', value)}
-                  label="Customer appointment reminders"
-                  detail="Master switch for both reminder timings."
-                />
-                <Toggle
-                  checked={settings.paymentConfirmationEnabled}
-                  onChange={value => updateTransactionalSetting('paymentConfirmationEnabled', value)}
-                  label="Customer payment confirmation"
-                  detail="Confirm a successful customer payment."
-                />
+                {selectedAutomation.kind !== 'setting' || selectedAutomation.key !== 'bookingConfirmationEnabled' ? (
+                  <Toggle
+                    checked={settings.bookingConfirmationEnabled}
+                    onChange={value => updateTransactionalSetting('bookingConfirmationEnabled', value)}
+                    label="Customer booking confirmation"
+                    detail="Master switch for customer confirmations."
+                  />
+                ) : null}
+                {selectedAutomation.kind !== 'setting' || selectedAutomation.key !== 'appointmentRemindersEnabled' ? (
+                  <Toggle
+                    checked={settings.appointmentRemindersEnabled}
+                    onChange={value => updateTransactionalSetting('appointmentRemindersEnabled', value)}
+                    label="Customer appointment reminders"
+                    detail="Master switch for both reminder timings."
+                  />
+                ) : null}
+                {selectedAutomation.kind !== 'setting' || selectedAutomation.key !== 'paymentConfirmationEnabled' ? (
+                  <Toggle
+                    checked={settings.paymentConfirmationEnabled}
+                    onChange={value => updateTransactionalSetting('paymentConfirmationEnabled', value)}
+                    label="Customer payment confirmation"
+                    detail="Confirm a successful customer payment."
+                  />
+                ) : null}
                 {automationMeta
                   .filter(item => selectedAutomation.kind !== 'automation' || item.key !== selectedAutomation.key)
                   .map(item => (
