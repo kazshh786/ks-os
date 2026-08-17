@@ -98,9 +98,11 @@ describe('AutomatedEmailsPage email studio', () => {
     expect(studio).toHaveClass('lg:-mx-8', 'lg:-mt-8');
     const stickyBar = screen.getByTestId('email-studio-sticky-bar');
     expect(stickyBar).toHaveClass('sticky', 'top-0', 'bg-white');
+    expect(screen.getByTestId('email-studio-header')).toHaveClass('bg-white');
+    expect(screen.getByTestId('email-studio-header')).not.toHaveClass('bg-white/95', 'backdrop-blur');
 
     const layout = screen.getByTestId('email-studio-layout');
-    expect(layout).toHaveClass('xl:grid-cols-[220px_minmax(520px,1fr)_380px]');
+    expect(layout).toHaveClass('min-h-[calc(100vh-7rem)]', 'xl:grid-cols-[220px_minmax(520px,1fr)_380px]');
     const previewStage = screen.getByTestId('preview-stage');
     expect(previewStage).toBeInTheDocument();
     expect(previewStage).not.toHaveClass('border');
