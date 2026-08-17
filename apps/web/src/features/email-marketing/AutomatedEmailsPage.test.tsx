@@ -96,13 +96,16 @@ describe('AutomatedEmailsPage email studio', () => {
     expect(await screen.findByRole('heading', { name: 'Automated emails' })).toBeInTheDocument();
     const layout = screen.getByTestId('email-studio-layout');
     expect(layout).toHaveClass('xl:grid-cols-[220px_minmax(520px,1fr)_380px]');
-    expect(screen.getByTestId('preview-stage')).toBeInTheDocument();
+    const previewStage = screen.getByTestId('preview-stage');
+    expect(previewStage).toBeInTheDocument();
+    expect(previewStage).not.toHaveClass('lg:h-[calc(100vh-11.5rem)]');
+    expect(screen.getByTestId('preview-canvas')).not.toHaveClass('overflow-auto');
 
     const inspector = screen.getByTestId('email-settings-inspector');
     expect(inspector).toHaveClass('lg:sticky', 'lg:overflow-y-auto');
 
     const iframe = await screen.findByTitle('Rendered transactional email');
-    expect(iframe).toHaveAttribute('sandbox', '');
+    expect(iframe).toHaveAttribute('sandbox', 'allow-same-origin');
     expect(iframe).toHaveAttribute('referrerpolicy', 'no-referrer');
     expect(iframe).toHaveAttribute('srcdoc', firstPreview.html);
     expect(screen.getAllByRole('button', { name: 'Save changes' })).toHaveLength(1);
@@ -157,13 +160,15 @@ describe('AutomatedEmailsPage email studio', () => {
     })));
   });
 
-  it('preserves the desktop and mobile preview toggle semantics', async () => {
+  it('places the desktop and mobile preview toggle on the email marketing bar', async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByTitle('Rendered transactional email');
 
-    const desktop = screen.getByRole('button', { name: 'Desktop' });
-    const mobile = screen.getByRole('button', { name: 'Mobile' });
+    const toolbar = screen.getByTestId('email-marketing-toolbar');
+    const desktop = within(toolbar).getByRole('button', { name: 'Desktop' });
+    const mobile = within(toolbar).getByRole('button', { name: 'Mobile' });
+    expect(within(screen.getByTestId('preview-stage')).queryByRole('button', { name: 'Desktop' })).not.toBeInTheDocument();
     expect(desktop).toHaveAttribute('aria-pressed', 'true');
 
     await user.click(mobile);
