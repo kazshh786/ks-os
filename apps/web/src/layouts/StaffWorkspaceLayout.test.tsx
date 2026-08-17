@@ -56,4 +56,12 @@ describe('StaffWorkspaceLayout', () => {
     expect(screen.getByRole('button', { name: 'Expand navigation' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Booking Calendar' })).toHaveAttribute('title', 'Booking Calendar');
   });
+  it('attaches the automated email studio directly below the Email Marketing header', () => {
+    renderLayout('/app/email-marketing/automated-emails');
+
+    const main = document.querySelector('#main-content');
+    expect(main).toHaveClass('p-0');
+    expect(main).not.toHaveClass('p-3', 'sm:p-6', 'lg:p-8');
+    expect(screen.getByRole('heading', { name: 'Email Marketing' })).toBeInTheDocument();
+  });
 });
