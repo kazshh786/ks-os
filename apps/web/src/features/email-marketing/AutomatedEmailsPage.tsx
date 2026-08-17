@@ -264,7 +264,7 @@ export function AutomatedEmailsPage() {
 
   if (loading) {
     return (
-      <div className="-mx-3 -mt-3 min-h-[70vh] border border-slate-200 bg-white sm:-mx-5 sm:-mt-5 lg:-mx-8 lg:-mt-8">
+      <div className="min-h-[70vh] border border-slate-200 bg-white">
         <div className="h-16 animate-pulse border-b border-slate-200 bg-slate-100" />
         <div className="grid min-h-[620px] gap-px bg-slate-200 xl:grid-cols-[220px_minmax(520px,1fr)_380px]">
           <div className="hidden bg-slate-50 xl:block" />
@@ -376,7 +376,7 @@ export function AutomatedEmailsPage() {
           : 'All changes saved';
 
   return (
-    <form onSubmit={save} className="-mx-3 -mt-3 bg-slate-100 sm:-mx-5 sm:-mt-5 lg:-mx-8 lg:-mt-8" data-testid="email-studio">
+    <form onSubmit={save} className="bg-slate-100" data-testid="email-studio">
       <div data-testid="email-studio-sticky-bar" className="sticky top-0 z-30 bg-white">
         <header data-testid="email-studio-header" className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
