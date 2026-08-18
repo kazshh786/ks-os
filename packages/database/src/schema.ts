@@ -305,6 +305,21 @@ export const appointments = pgTable('appointments', {
   tenantPublicReferenceUnique: uniqueIndex('appointments_tenant_public_reference_unique').on(table.tenantId, table.publicReference),
 }));
 
+export const appointmentServices = pgTable('appointment_services', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  appointmentId: uuid('appointment_id').notNull().references(() => appointments.id, { onDelete: 'cascade' }),
+  serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'restrict' }),
+  position: integer('position').notNull(),
+  serviceName: varchar('service_name', { length: 255 }).notNull(),
+  durationMinutes: integer('duration_minutes').notNull(),
+  priceAmount: integer('price_amount').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({
+  appointmentServiceUnique: uniqueIndex('appointment_services_appointment_service_unique').on(table.appointmentId, table.serviceId),
+  tenantAppointmentIdx: index('appointment_services_tenant_appointment_idx').on(table.tenantId, table.appointmentId),
+}));
+
 export const bookingPages = pgTable('booking_pages', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }).unique(),
@@ -371,6 +386,7 @@ export const bookingHolds = pgTable('booking_holds', {
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   bookingPageId: uuid('booking_page_id').notNull().references(() => bookingPages.id, { onDelete: 'cascade' }),
   serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+  serviceIds: uuid('service_ids').array().default([]).notNull(),
   staffUserId: uuid('staff_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   locationId: uuid('location_id'),
   resourceId: uuid('resource_id'),
