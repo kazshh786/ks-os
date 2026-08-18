@@ -5,6 +5,7 @@ export * from './booking-schedule-overrides.js';
 export * from './conversation-schema.js';
 export * from './search-research-schema.js';
 export * from './manifest.js';
+export * from './pool-config.js';
 export * from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
@@ -14,6 +15,7 @@ import * as designLibrarySchema from './design-library-schema.js';
 import * as bookingScheduleOverrideSchema from './booking-schedule-overrides.js';
 import * as conversationSchema from './conversation-schema.js';
 import * as searchResearchSchema from './search-research-schema.js';
+import { resolveDatabasePoolMax } from './pool-config.js';
 
 const schema: typeof coreSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema & typeof searchResearchSchema = {
   ...coreSchema,
@@ -44,7 +46,7 @@ export function getDatabase(connectionString?: string): Database {
   if (!globalRef.pgPool) {
     globalRef.pgPool = new pg.Pool({
       connectionString: url,
-      max: 10,
+      max: resolveDatabasePoolMax(),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
       keepAlive: true,
