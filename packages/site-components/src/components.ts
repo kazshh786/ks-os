@@ -411,16 +411,21 @@ export function OpeningHours(
   context: ComponentRenderContext,
 ): SafeHtml {
   const location = requireLocation(context.snapshot, section.locationReference);
-  const rows = location.openingHours.map((hours) => {
+  const liveLocation = context.live?.telemetry.fallbackActivated
+    ? undefined
+    : context.live?.locations.find(candidate =>
+      candidate.publicReference === location.publicReference);
+  const visibleHours = liveLocation?.openingHours?.length
+    ? liveLocation.openingHours
+    : location.openingHours;
+  const rows = visibleHours.map((hours) => {
     const value = hours.opens && hours.closes ? `${hours.opens}–${hours.closes}` : 'Closed';
     return html`<tr><th scope="row">${escapeHtml(hours.day.toLowerCase())}</th><td>${escapeHtml(value)}</td></tr>`;
   }).join('');
   const image = section.imageAssetReference
     ? renderImage(findAsset(context.snapshot, section.imageAssetReference))
     : '';
-  const opening = context.live?.telemetry.fallbackActivated
-    ? undefined
-    : context.live?.locations.find(candidate => candidate.publicReference === location.publicReference)?.opening;
+  const opening = liveLocation?.opening;
   return html`<section class="${sectionClass(section, 'opening-hours')}"><div><h2>${escapeHtml(section.heading)}</h2>${opening && opening.state !== 'UNKNOWN' ? `<p class="live-opening-state">${escapeHtml(opening.label)}</p>` : ''}<table><tbody>${rows}</tbody></table></div>${image}</section>`;
 }
 
