@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { FormSchemaJsonSchema } from '@ks-os/contracts';
 import { FormRenderer } from '../features/forms/FormRenderer.js';
-import { formState } from '../features/forms/form-engine.js';
+import { formatFormAnswer, formState } from '../features/forms/form-engine.js';
 import { AssignedConsentFormSuccessPage } from './ConsentFormSuccessPage.js';
 
 export default function PublicFormCompletionPage() {
@@ -68,6 +68,14 @@ export default function PublicFormCompletionPage() {
   const total = pages.length;
   const progress = Math.round(100 * (page + 1) / total);
   const state = formState(schema, answers);
+  const formPath = `/forms/complete/${token}`;
+
+  const reviewConsentForm = () => {
+    setReview(false);
+    setPage(0);
+    setError('');
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  };
 
   const validate = () => {
     const next: Record<string, string> = {};
@@ -146,9 +154,10 @@ export default function PublicFormCompletionPage() {
           </> : <>
             <h1 className="text-2xl font-black">Review your answers</h1>
             <p className="mt-2 text-slate-600">Check your information before sending it securely.</p>
-            <dl className="my-6 space-y-3">{schema.fields.filter(field => state.get(field.key || field.id)?.visible && !['INFORMATION', 'HEADING', 'DIVIDER', 'HIDDEN'].includes(field.type)).map(field => <div key={field.id} className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold text-slate-500">{field.label}</dt><dd>{Array.isArray(answers[field.key || field.id]) ? (answers[field.key || field.id] as unknown[]).join(', ') : String(answers[field.key || field.id] ?? 'Not answered')}</dd></div>)}</dl>
+            <dl className="my-6 space-y-3">{schema.fields.filter(field => state.get(field.key || field.id)?.visible && !['INFORMATION', 'HEADING', 'DIVIDER', 'HIDDEN'].includes(field.type)).map(field => <div key={field.id} className="rounded-lg bg-slate-50 p-3"><dt className="text-xs font-bold text-slate-500">{field.label}</dt><dd>{formatFormAnswer(field, answers[field.key || field.id])}</dd></div>)}</dl>
             <section className="rounded-xl bg-slate-50 p-4">
               <p>{data.form.acknowledgementText}</p>
+              <a href={formPath} onClick={event => { event.preventDefault(); reviewConsentForm(); }} className="mt-3 inline-block text-sm font-black text-indigo-700 underline decoration-indigo-300 underline-offset-4 hover:text-indigo-900">Review consent form</a>
               <label className="mt-4 block"><input type="checkbox" checked={accepted} onChange={event => setAccepted(event.target.checked)} /> I have read and accept this acknowledgement.</label>
               <label className="mt-4 block font-bold">Full name<input value={name} onChange={event => setName(event.target.value)} className="mt-1 w-full rounded-lg border p-3 font-normal" /></label>
             </section>
