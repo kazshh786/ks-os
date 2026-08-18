@@ -64,4 +64,14 @@ describe('FormFieldControl', () => {
 
     expect(screen.getByRole('link', { name: 'Read consent form' })).toHaveAttribute('href', '/forms/complete/secure-token/acknowledgement');
   });
+
+  it('shows the consent document link treatment in the builder preview', () => {
+    window.history.pushState({}, '', '/app/forms/11111111-1111-4111-8111-111111111111/edit');
+    render(<FormFieldControl field={consentField} value={false} onChange={vi.fn()} builderMode />);
+
+    const link = screen.getByRole('link', { name: 'Read consent form preview' });
+    expect(link).toHaveTextContent('Read consent form');
+    expect(link).toHaveAttribute('href', '#consent-document-preview');
+    expect(link).not.toHaveAttribute('target');
+  });
 });
