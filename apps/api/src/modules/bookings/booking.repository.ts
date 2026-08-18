@@ -191,6 +191,7 @@ export class BookingRepository {
   async createBookingUsingDbFunction(
     tenantId: string,
     serviceId: string,
+    serviceIds: string[],
     staffId: string,
     startTime: string, // ISO string
     client: { name: string; email?: string; phone?: string },
@@ -216,7 +217,8 @@ export class BookingRepository {
         ${payNow}::boolean,
         ${idempotencyKey}::uuid,
         ${bookingChannel}::text,
-        ${mobileAddress ? JSON.stringify(mobileAddress) : null}::jsonb
+        ${mobileAddress ? JSON.stringify(mobileAddress) : null}::jsonb,
+        ARRAY[${sql.join(serviceIds.map(selectedId => sql`${selectedId}::uuid`), sql`, `)}]::uuid[]
       )
     `);
 

@@ -1,5 +1,5 @@
 import { BookingRepository } from './booking.repository.js';
-import { appointments, bookingAuditEvents, clients, getDatabase, internalNotifications, services, tenants, users } from '@ks-os/database';
+import { appointmentServices, appointments, bookingAuditEvents, clients, getDatabase, internalNotifications, services, tenants, users } from '@ks-os/database';
 import { eq, and, or, gt, lt, notInArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import type { BookingOperationsItem, BookingOperationsQuery, BookingOperationsResponse, CreateBlockedTimeRequest } from '@ks-os/contracts';
@@ -374,6 +374,7 @@ export class BookingService {
   async createPublicBooking(
     tenantId: string,
     serviceId: string,
+    serviceIds: string[],
     staffId: string,
     startTime: string,
     client: { name: string; email?: string; phone?: string },
@@ -388,6 +389,7 @@ export class BookingService {
     const booking = await this.repository.createBookingUsingDbFunction(
       tenantId,
       serviceId,
+      serviceIds,
       staffId,
       startTime,
       client,
@@ -418,10 +420,14 @@ export class BookingService {
     const localDateTime = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: tenant.timezone }).format(booking.startTime);
     const bookingDate = new Intl.DateTimeFormat('en-GB', { dateStyle: 'full', timeZone: tenant.timezone }).format(booking.startTime);
     const bookingTime = new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: tenant.timezone }).format(booking.startTime);
+    const serviceLines = await db.select({ name: appointmentServices.serviceName })
+      .from(appointmentServices)
+      .where(and(eq(appointmentServices.tenantId, tenantId), eq(appointmentServices.appointmentId, bookingId)))
+      .orderBy(appointmentServices.position);
     const replacements = {
       businessName: tenantName,
       customerName: booking.clientName || booking.clientNameFallback || 'there',
-      serviceName: booking.serviceName || 'Service',
+      serviceName: serviceLines.map(line => line.name).join(', ') || booking.serviceName || 'Service',
       staffName: booking.staffName || 'our team',
       bookingDate,
       bookingTime,

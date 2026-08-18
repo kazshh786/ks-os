@@ -13,6 +13,7 @@ import { BookingPageService } from '../../modules/bookings/booking-page.service.
 import { safeReferrerHost } from '../../modules/bookings/booking-page.utils.js';
 import { FormsService } from '../../modules/forms/forms.service.js';
 import { PublicWaitlistService } from '../../modules/sites/public-waitlist.service.js';
+import { assertServiceSelectionAllowed, normaliseSelectedServiceIds } from '../../modules/bookings/service-selection.js';
 
 import { 
   calculateDepositAmount,
@@ -144,9 +145,6 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
     }
     const parseResult = { success: true as const, data: { ...queryResult.data, tenantId: resolved.tenant.id } };
 
-    if (resolved.page.allowedServiceIds.length && !resolved.page.allowedServiceIds.includes(parseResult.data.serviceId)) {
-      return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
-    }
     if (parseResult.data.staffId && parseResult.data.staffId !== 'any' && resolved.page.allowedStaffIds.length && !resolved.page.allowedStaffIds.includes(parseResult.data.staffId)) {
       return reply.code(404).send({ error: { code: 'STAFF_NOT_AVAILABLE', message: 'This team member is not available for online booking.' } });
     }
@@ -155,7 +153,12 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const availability = await calculateAvailability(parseResult.data, { locationId: parseResult.data.locationId, resourceId: parseResult.data.resourceId });
+      const selectedServiceIds = normaliseSelectedServiceIds(parseResult.data.serviceId, parseResult.data.serviceIds);
+      assertServiceSelectionAllowed(resolved.page.bookingRules as any, selectedServiceIds);
+      if (resolved.page.allowedServiceIds.length && selectedServiceIds.some(serviceId => !resolved.page.allowedServiceIds.includes(serviceId))) {
+        return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'One or more services are not available for online booking.' } });
+      }
+      const availability = await calculateAvailability({ ...parseResult.data, serviceIds: selectedServiceIds }, { locationId: parseResult.data.locationId, resourceId: parseResult.data.resourceId });
       const rules = resolved.page.bookingRules as { minimumNoticeMinutes?: number; maximumFutureDays?: number };
       const earliest = Date.now() + Math.max(0, rules.minimumNoticeMinutes || 0) * 60_000;
       const latest = Date.now() + Math.max(1, rules.maximumFutureDays || 90) * 86_400_000;
@@ -258,39 +261,46 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
 
     const data = parseResult.data;
 
-    if (page.allowedServiceIds.length && !page.allowedServiceIds.includes(data.serviceId)) return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
     if (page.allowedStaffIds.length && !page.allowedStaffIds.includes(data.staffId)) return reply.code(404).send({ error: { code: 'STAFF_NOT_AVAILABLE', message: 'This team member is not available for online booking.' } });
     if (data.locationId && page.allowedLocationIds.length && !page.allowedLocationIds.includes(data.locationId)) return reply.code(404).send({ error: { code: 'LOCATION_NOT_AVAILABLE', message: 'This location is not available for online booking.' } });
 
     try {
+      const selectedServiceIds = normaliseSelectedServiceIds(data.serviceId, data.serviceIds);
+      assertServiceSelectionAllowed(page.bookingRules as any, selectedServiceIds);
+      if (page.allowedServiceIds.length && selectedServiceIds.some(serviceId => !page.allowedServiceIds.includes(serviceId))) {
+        return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'One or more services are not available for online booking.' } });
+      }
       const bookingService = new BookingService();
       const entitlementService = new EntitlementService();
       await entitlementService.assertUsageAvailable(tenant.id, 'bookings.monthly');
       const applicableForms = await bookingPageService.applicableIntakeForms(page.id, tenant.id, {
         serviceId: data.serviceId,
+        serviceIds: selectedServiceIds,
         staffId: data.staffId,
         locationId: data.locationId,
       });
-      const [bookedService] = await db.select({
+      const bookedServices = await db.select({
+        id: services.id,
         requiresDeposit: services.requiresDeposit,
         price: services.price,
         discount: services.discount,
       }).from(services)
-        .where(and(eq(services.id, data.serviceId), eq(services.tenantId, tenant.id), eq(services.isActive, true)))
-        .limit(1);
-      if (!bookedService) return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
+        .where(and(inArray(services.id, selectedServiceIds), eq(services.tenantId, tenant.id), eq(services.isActive, true)));
+      if (bookedServices.length !== selectedServiceIds.length) return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'One or more services are not available for online booking.' } });
+      const serviceById = new Map(bookedServices.map(service => [service.id, service]));
+      const orderedServices = selectedServiceIds.map(serviceId => serviceById.get(serviceId)!);
       const paymentSettings = page.paymentSettings as {
         mode?: string;
         depositType?: string;
         depositPercentage?: number;
         depositFixedAmount?: number;
       };
-      const verifiedPaymentMode = bookedService.requiresDeposit ? 'deposit_required'
+      const verifiedPaymentMode = orderedServices.some(service => service.requiresDeposit) ? 'deposit_required'
         : paymentSettings.mode === 'FULL' ? 'pay_now'
         : paymentSettings.mode === 'DEPOSIT' ? 'deposit_required'
           : paymentSettings.mode === 'CUSTOMER_CHOICE' ? data.paymentMode
             : 'pay_later';
-      const baseServiceAmount = Math.max(0, bookedService.price - bookedService.discount);
+      const baseServiceAmount = orderedServices.reduce((total, service) => total + Math.max(0, service.price - service.discount), 0);
       const expectedAmountDue = verifiedPaymentMode === 'deposit_required'
         ? calculateDepositAmount(baseServiceAmount, paymentSettings)
         : baseServiceAmount;
@@ -305,6 +315,7 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         const created = await bookingService.createPublicBooking(
           tenant.id,
           data.serviceId,
+          selectedServiceIds,
           data.staffId,
           data.startTime,
           data.client,
