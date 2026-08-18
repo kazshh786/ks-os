@@ -9,6 +9,10 @@ vi.mock('./PublicWorkspaceFormPage.js', () => ({
   PublicWorkspaceFormLegalPage: () => <div>Legal document</div>,
 }));
 
+vi.mock('./PublicFormCompletionPage.js', () => ({
+  AssignedConsentFormLegalPage: () => <div>Assigned consent document</div>,
+}));
+
 vi.mock('./ConsentFormSuccessPage.js', () => ({
   WorkspaceConsentFormSuccessPage: () => <div>Workspace consent success</div>,
 }));
@@ -39,5 +43,17 @@ describe('workspace catch-all routes', () => {
     await user.click(screen.getByRole('button', { name: 'Submit consent form' }));
     expect(await screen.findByText('Workspace consent success')).toBeInTheDocument();
     expect(screen.queryByText('Workspace consent form')).not.toBeInTheDocument();
+  });
+
+  it('renders the consent document for secure assigned links', () => {
+    render(
+      <MemoryRouter initialEntries={['/forms/complete/secure-token/acknowledgement']}>
+        <Routes>
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Assigned consent document')).toBeInTheDocument();
   });
 });
