@@ -18,6 +18,7 @@ export class SiteGenerationProviderError extends Error {
     readonly kind: ProviderFailureKind,
     message: string,
     readonly retryAfterMs?: number,
+    readonly safeDiagnostic?: string,
   ) {
     super(message);
     this.name = 'SiteGenerationProviderError';
@@ -296,6 +297,39 @@ interface VertexGeminiResponse {
   };
 }
 
+interface VertexGeminiErrorResponse {
+  error?: {
+    code?: number;
+    status?: string;
+    message?: string;
+  };
+}
+
+async function vertexFailureDiagnostic(response: Response): Promise<string | undefined> {
+  try {
+    const raw = await response.text();
+    if (!raw || raw.length > 8_000) return undefined;
+    const decoded = JSON.parse(raw) as VertexGeminiErrorResponse;
+    const status = typeof decoded.error?.status === 'string'
+      && /^[A-Z][A-Z0-9_]{1,63}$/.test(decoded.error.status)
+      ? decoded.error.status
+      : undefined;
+    const message = typeof decoded.error?.message === 'string'
+      ? decoded.error.message
+        .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+        .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
+        .replace(/https?:\/\/\S+/gi, '[url]')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 500)
+      : undefined;
+    const fields = [status, message].filter(Boolean);
+    return fields.length > 0 ? fields.join(': ') : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function withoutTrailingSlashes(value: string): string {
   let end = value.length;
   while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
@@ -511,6 +545,7 @@ export class VertexGeminiSiteGenerationProvider implements SiteGenerationProvide
       const retryable = response.status === 429 || response.status >= 500;
       const retryAfterHeader = response.headers.get('retry-after');
       const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : undefined;
+      const safeDiagnostic = await vertexFailureDiagnostic(response);
       const kind: ProviderFailureKind = response.status === 429
         ? 'RETRYABLE_RATE_LIMIT'
         : retryable
@@ -520,6 +555,7 @@ export class VertexGeminiSiteGenerationProvider implements SiteGenerationProvide
         kind,
         `The generation provider rejected the request (${response.status}).`,
         Number.isFinite(retryAfter) ? (retryAfter as number) * 1_000 : undefined,
+        safeDiagnostic,
       );
     }
 

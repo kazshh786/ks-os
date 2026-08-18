@@ -853,6 +853,24 @@ test('Vertex Gemini maps 429, 5xx, 401, 403 and invalid output to provider error
     (err: unknown) => err instanceof SiteGenerationProviderError && err.kind === 'TERMINAL_PROVIDER_FAILURE',
   );
 
+  const invalidSchemaProvider = new VertexGeminiSiteGenerationProvider({
+    ...baseOptions,
+    fetchImplementation: async () => new Response(JSON.stringify({
+      error: {
+        code: 400,
+        status: 'INVALID_ARGUMENT',
+        message: 'Unsupported schema keyword near [url] Bearer should-not-appear',
+      },
+    }), { status: 400, headers: { 'content-type': 'application/json' } }),
+  });
+  await assert.rejects(
+    invalidSchemaProvider.generateStructuredOutput(request),
+    (err: unknown) => err instanceof SiteGenerationProviderError
+      && err.kind === 'TERMINAL_PROVIDER_FAILURE'
+      && err.safeDiagnostic === 'INVALID_ARGUMENT: Unsupported schema keyword near [url] Bearer [redacted]'
+      && !err.safeDiagnostic.includes('should-not-appear'),
+  );
+
   const badCredentialProvider = new VertexGeminiSiteGenerationProvider({
     ...baseOptions,
     googleAuthFactory: () => ({
