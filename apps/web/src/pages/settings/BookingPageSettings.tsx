@@ -17,6 +17,7 @@ import {
 import { BookingPageSlugSchema, type BookingChannel, type BookingPageResponse, type BookingPageUpdate } from '@ks-os/contracts';
 import { getDataProvider } from '../../data/data-provider.js';
 import { PublicBookingFlow } from '../../features/bookings/PublicBookingFlow.js';
+import type { Service } from '../../types.js';
 import { BookingPoliciesModal } from './BookingPoliciesModal.js';
 
 type PreviewWidth = 'desktop' | 'tablet' | 'mobile';
@@ -36,6 +37,8 @@ function normalisePage(settings: BookingPageResponse): BookingPageResponse {
       ...settings.bookingRules,
       maximumFutureDays: Math.max(minimumCustomerWindowDays, settings.bookingRules.maximumFutureDays || minimumCustomerWindowDays),
       enabledBookingChannels: settings.bookingRules.enabledBookingChannels?.length ? settings.bookingRules.enabledBookingChannels : ['in_shop'],
+      serviceSelectionMode: settings.bookingRules.serviceSelectionMode || 'SINGLE',
+      exclusiveServiceIds: settings.bookingRules.exclusiveServiceIds || [],
     },
     paymentSettings: {
       ...settings.paymentSettings,
@@ -49,6 +52,7 @@ function normalisePage(settings: BookingPageResponse): BookingPageResponse {
 
 export function BookingPageSettings() {
   const [page, setPage] = useState<BookingPageResponse | null>(null);
+  const [services, setServices] = useState<Service[]>([]);
   const [loadedSlug, setLoadedSlug] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -64,8 +68,14 @@ export function BookingPageSettings() {
     setLoading(true);
     setError('');
     try {
-      const settings = normalisePage(await getDataProvider().getBookingPageSettings());
+      const provider = getDataProvider();
+      const [settingsResult, serviceList] = await Promise.all([
+        provider.getBookingPageSettings(),
+        provider.getServices('current'),
+      ]);
+      const settings = normalisePage(settingsResult);
       setPage(settings);
+      setServices(serviceList);
       setLoadedSlug(settings.publicSlug);
       setCustomDomain(settings.customDomain || '');
       void getDataProvider().getBookingPageAnalytics(30).then(setAnalytics).catch(() => undefined);
@@ -87,6 +97,15 @@ export function BookingPageSettings() {
   const slugChanged = page.publicSlug !== loadedSlug;
   const editableBookingUrl = `https://${page.publicSlug}.kasimshah.com/book`;
   const enabledChannels = page.bookingRules.enabledBookingChannels || ['in_shop'];
+  const selectableServices = services.filter(service => !page.allowedServiceIds.length || page.allowedServiceIds.includes(service.id));
+  const exclusiveServiceIds = page.bookingRules.exclusiveServiceIds || [];
+
+  const toggleExclusiveService = (serviceId: string, exclusive: boolean) => {
+    const next = exclusive
+      ? [...new Set([...exclusiveServiceIds, serviceId])]
+      : exclusiveServiceIds.filter(id => id !== serviceId);
+    update('bookingRules', { ...page.bookingRules, exclusiveServiceIds: next });
+  };
 
   const toggleChannel = (channel: BookingChannel, enabled: boolean) => {
     const next = enabled
@@ -237,6 +256,25 @@ export function BookingPageSettings() {
             <ChannelToggle title="Mobile appointments" description="Your team travels to the address supplied by the customer." checked={enabledChannels.includes('mobile')} onChange={checked => toggleChannel('mobile', checked)} />
           </div>
           <Link to="/app/settings/availability" className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-black text-indigo-800">Set separate hours for each appointment type</Link>
+        </section>
+
+        <section className="rounded-2xl border bg-white p-5">
+          <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 h-5 w-5 text-indigo-600" /><div><h2 className="text-lg font-black">Service selection</h2><p className="mt-1 text-xs leading-5 text-slate-500">Choose whether customers book one service, combine any services, or follow rules for individual package services.</p></div></div>
+          <fieldset className="mt-4 space-y-3">
+            <legend className="sr-only">Customer service selection mode</legend>
+            {([
+              ['SINGLE', 'One service only', 'Selecting a service replaces the previous choice.'],
+              ['MULTIPLE', 'Allow multiple services', 'Customers can combine any available services in one appointment.'],
+              ['CUSTOM', 'Set rules per service', 'Choose which packages or services must be booked on their own.'],
+            ] as const).map(([value, title, description]) => <label key={value} className={`flex cursor-pointer gap-3 rounded-xl border p-3 ${page.bookingRules.serviceSelectionMode === value ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200'}`}><input type="radio" name="service-selection-mode" value={value} checked={page.bookingRules.serviceSelectionMode === value} onChange={() => update('bookingRules', { ...page.bookingRules, serviceSelectionMode: value })} className="mt-1" /><span><strong className="block text-sm text-slate-950">{title}</strong><span className="mt-1 block text-xs leading-5 text-slate-500">{description}</span></span></label>)}
+          </fieldset>
+          {page.bookingRules.serviceSelectionMode === 'CUSTOM' && <div className="mt-5">
+            <p className="text-sm font-black text-slate-950">Services that must be booked alone</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">Use this for packages that already include several treatments.</p>
+            <div className="mt-3 max-h-72 space-y-2 overflow-auto rounded-xl border border-slate-200 p-2">
+              {selectableServices.length ? selectableServices.map(service => <label key={service.id} className="flex cursor-pointer items-start justify-between gap-3 rounded-lg p-2 hover:bg-slate-50"><span><strong className="block text-sm text-slate-900">{service.name}</strong><span className="text-xs text-slate-500">{service.durationMin} minutes · £{service.price.toFixed(2)}</span></span><span className="flex shrink-0 items-center gap-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={exclusiveServiceIds.includes(service.id)} onChange={event => toggleExclusiveService(service.id, event.target.checked)} />Book alone</span></label>) : <p className="p-3 text-sm text-slate-500">Add an active service before setting individual rules.</p>}
+            </div>
+          </div>}
         </section>
 
         <section className="rounded-2xl border bg-white p-5">
