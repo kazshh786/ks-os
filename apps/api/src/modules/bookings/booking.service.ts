@@ -427,7 +427,7 @@ export class BookingService {
     const replacements = {
       businessName: tenantName,
       customerName: booking.clientName || booking.clientNameFallback || 'there',
-      serviceName: serviceLines.map(line => line.name).join(', ') || booking.serviceName || 'Service',
+      serviceName: serviceLines.map((line: { name: string }) => line.name).join(', ') || booking.serviceName || 'Service',
       staffName: booking.staffName || 'our team',
       bookingDate,
       bookingTime,
