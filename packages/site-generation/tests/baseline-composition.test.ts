@@ -622,6 +622,7 @@ test('D-E-F-G-H: multi-page baseline calls the provider only for locked content 
     },
   };
   const persistedPages: string[] = [];
+  const progressUpdates: Array<{ current: number; total: number; message?: string }> = [];
   let compositionPersisted = false;
   let completed = false;
   const result = await executeStructuredSiteGeneration({
@@ -648,6 +649,7 @@ test('D-E-F-G-H: multi-page baseline calls the provider only for locked content 
     },
     maxRepairAttempts: 0,
     maxOutputCharacters: 250_000,
+    updateProgress: async progress => { progressUpdates.push(progress); },
     pipelineVersion: 2,
     generationMode: 'baseline',
     searchIntelligence: {
@@ -661,6 +663,8 @@ test('D-E-F-G-H: multi-page baseline calls the provider only for locked content 
   assert.deepEqual(persistedPages, plan.pages.map(page => page.pageReference));
   assert.equal(compositionPersisted, true);
   assert.equal(completed, true);
+  assert.deepEqual([...new Set(progressUpdates.map(progress => progress.total))], [plan.pages.length]);
+  assert.equal(progressUpdates.at(-1)?.current, plan.pages.length);
 });
 
 test('J: thin Home composition is rejected by the existing baseline completeness contract', () => {
