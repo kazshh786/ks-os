@@ -1339,6 +1339,14 @@ test('67ac. terminal generation preflight failures persist the run and provision
   assert.match(generationExecutorSource, /await failProvisionedWorkspace\(database, run\.id/);
 });
 
+test('67ad. terminal provider failures retain only the provider safe diagnostic', () => {
+  assert.match(generationExecutorSource, /error\.safeDiagnostic/);
+  assert.doesNotMatch(
+    generationExecutorSource.match(/function mapProviderError[\s\S]*?export function createConfiguredSiteGenerationExecutor/)?.[0] ?? '',
+    /rawPrompt|rawResponse|authorization|credential/,
+  );
+});
+
 test('67ab. live AI quality review remains disabled without a configured provider', () => {
   assert.throws(() => parseSiteWorkerConfig({
     DATABASE_URL: 'postgresql://test.invalid/test',

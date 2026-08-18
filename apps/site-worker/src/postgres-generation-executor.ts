@@ -1035,7 +1035,9 @@ function mapProviderError(error: unknown): never {
     'TERMINAL_VALIDATION_FAILURE',
     error.kind === 'TERMINAL_INVALID_OUTPUT'
       ? 'The provider could not produce valid structured output.'
-      : 'The generation provider rejected the request terminally.',
+      : `The generation provider rejected the request terminally.${error.safeDiagnostic
+        ? ` ${error.safeDiagnostic}`
+        : ''}`,
   );
 }
 
