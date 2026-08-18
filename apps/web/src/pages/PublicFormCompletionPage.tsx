@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useLocation, useNavigate, useParams } from 'react-router';
 import { FormSchemaJsonSchema } from '@ks-os/contracts';
 import { FormRenderer } from '../features/forms/FormRenderer.js';
 import { formatFormAnswer, formState } from '../features/forms/form-engine.js';
 import { AssignedConsentFormSuccessPage } from './ConsentFormSuccessPage.js';
+
+async function loadAssignedForm(token: string) {
+  const response = await fetch(`/api/v1/public/forms/${token}`);
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error?.code || 'FORM_TOKEN_INVALID');
+  const value = body.data;
+  return { ...value, form: { ...value.form, schema: FormSchemaJsonSchema.parse(value.form.schema) } };
+}
 
 export default function PublicFormCompletionPage() {
   const { token = '' } = useParams();
@@ -21,14 +29,9 @@ export default function PublicFormCompletionPage() {
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
 
   useEffect(() => {
-    fetch(`/api/v1/public/forms/${token}`)
-      .then(async response => {
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error?.code || 'FORM_TOKEN_INVALID');
-        return body.data;
-      })
+    loadAssignedForm(token)
       .then(value => {
-        setData({ ...value, form: { ...value.form, schema: FormSchemaJsonSchema.parse(value.form.schema) } });
+        setData(value);
         try {
           const draft = JSON.parse(sessionStorage.getItem(`form-draft-${token}`) || 'null');
           if (draft?.answers) setAnswers(draft.answers);
@@ -165,6 +168,53 @@ export default function PublicFormCompletionPage() {
             <div className="mt-6 flex justify-between"><button type="button" onClick={() => setReview(false)} className="rounded-xl border px-5 py-3 font-bold">Edit answers</button><button type="button" onClick={() => void submit()} disabled={!accepted} className="rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:opacity-40">Submit securely</button></div>
           </>}
         </section>
+      </div>
+    </main>
+  );
+}
+
+export function AssignedConsentFormLegalPage() {
+  const location = useLocation();
+  const match = location.pathname.match(/^\/forms\/complete\/([^/]+)\/acknowledgement$/i);
+  const token = match?.[1] ? decodeURIComponent(match[1]) : '';
+  const [data, setData] = useState<any>();
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!token) {
+      setError('FORM_TOKEN_INVALID');
+      return;
+    }
+    let active = true;
+    loadAssignedForm(token)
+      .then(value => { if (active) setData(value); })
+      .catch(cause => { if (active) setError(cause instanceof Error ? cause.message : 'FORM_TOKEN_INVALID'); });
+    return () => { active = false; };
+  }, [token]);
+
+  if (error) return <main className="mx-auto max-w-2xl p-8"><h1 className="text-xl font-black">This consent form is unavailable</h1><p>Return to the secure form or ask the business for a new link.</p></main>;
+  if (!data) return <main className="mx-auto max-w-2xl p-8" aria-live="polite">Loading consent form…</main>;
+
+  const schema = FormSchemaJsonSchema.parse(data.form.schema);
+  const primary = schema.theme.primaryColor || data.salon.primaryColor;
+  const formPath = `/forms/complete/${encodeURIComponent(token)}`;
+  const content = String(data.form.acknowledgementText || '').trim();
+
+  return (
+    <main className="min-h-screen bg-slate-100 p-4 md:p-8">
+      <div className="mx-auto max-w-3xl">
+        <a href={formPath} className="inline-flex rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm">Back to consent form</a>
+        <article className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
+          <header className="border-b border-slate-100 px-6 py-8 md:px-10">
+            <p className="text-xs font-black uppercase tracking-[0.16em]" style={{ color: primary }}>{data.salon.name}</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Consent form</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-600">Please read this consent information before confirming the treatment consent checkbox.</p>
+          </header>
+          <div className="px-6 py-8 md:px-10">
+            {content ? <p className="whitespace-pre-line text-[15px] leading-7 text-slate-700">{content}</p> : <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">No consent statement has been provided. Please contact {data.salon.name} before continuing.</div>}
+          </div>
+          <footer className="border-t border-slate-100 bg-slate-50 px-6 py-5 text-right md:px-10"><a href={formPath} className="font-black underline underline-offset-4" style={{ color: primary }}>Return to consent form</a></footer>
+        </article>
       </div>
     </main>
   );
