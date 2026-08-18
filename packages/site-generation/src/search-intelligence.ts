@@ -906,7 +906,10 @@ function generatedPrimaryHeading(
   facts?: VerifiedBusinessFacts,
 ): string | null {
   for (const section of page.sections) {
-    if (section.type === 'HERO' || section.type === 'SERVICE_DETAILS') return section.heading;
+    if (section.type === 'HERO'
+      || section.type === 'INTRODUCTION'
+      || section.type === 'SERVICE_DETAILS'
+      || section.type === 'RICH_TEXT') return section.heading ?? null;
     if (section.type === 'STAFF_PROFILE') {
       const staffName = facts?.staff
         .find(staff => staff.publicReference === section.staffReference)

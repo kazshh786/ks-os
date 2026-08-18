@@ -320,6 +320,9 @@ export const BlueprintGenerationPageSchema = z.object({
   conversionRole: SiteConversionRoleSchema,
   layoutReference: PublicReferenceSchema,
   plannedSectionTypes: z.array(SiteSectionTypeSchema).min(1).max(100),
+  serviceReference: PublicReferenceSchema.optional(),
+  locationReference: PublicReferenceSchema.optional(),
+  staffReference: PublicReferenceSchema.optional(),
 }).strict();
 
 export const GenerationPlanSchema = z.object({

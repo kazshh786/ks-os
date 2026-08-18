@@ -2,8 +2,13 @@ import { z } from 'zod';
 
 const BooleanValue = z.enum(['true', 'false']).transform(value => value === 'true');
 
+export const SITE_BASELINE_GENERATOR_VERSION = 'baseline-1' as const;
+export const SITE_GENERATION_MODES = ['ai-composition', 'baseline'] as const;
+export type SiteGenerationMode = typeof SITE_GENERATION_MODES[number];
+
 const SiteGenerationEnvironmentSchema = z.object({
   SITE_AI_GENERATION_ENABLED: BooleanValue.default('false'),
+  SITE_AI_GENERATION_MODE: z.enum(SITE_GENERATION_MODES).default('ai-composition'),
   SITE_AI_PROVIDER: z.enum(['gemini', 'vertex-gemini', 'openai']).default('gemini'),
   SITE_AI_MODEL: z.string().trim().max(160).optional(),
   SITE_AI_API_KEY: z.string().trim().optional(),
@@ -74,6 +79,7 @@ export function parseSiteGenerationConfig(
   const value = SiteGenerationEnvironmentSchema.parse(environment);
   return {
     enabled: value.SITE_AI_GENERATION_ENABLED,
+    generationMode: value.SITE_AI_GENERATION_MODE,
     provider: value.SITE_AI_PROVIDER,
     model: value.SITE_AI_MODEL,
     apiKey: value.SITE_AI_PROVIDER === 'openai'
@@ -88,7 +94,9 @@ export function parseSiteGenerationConfig(
     maxOutputCharacters: value.SITE_AI_MAX_OUTPUT_CHARACTERS,
     maxConcurrentRequests: value.SITE_AI_MAX_CONCURRENT_REQUESTS,
     temperature: value.SITE_AI_TEMPERATURE,
-    generatorVersion: value.SITE_AI_GENERATOR_VERSION,
+    generatorVersion: value.SITE_AI_GENERATION_MODE === 'baseline'
+      ? SITE_BASELINE_GENERATOR_VERSION
+      : value.SITE_AI_GENERATOR_VERSION,
   };
 }
 

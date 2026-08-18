@@ -71,13 +71,14 @@ export class DeliveryContextService {
   }
 
   async get(tenantReference: string) {
-    let generationProvider: { enabled: boolean; ready: boolean; providerKey: string | null; modelKey: string | null; blocker: string | null };
+    let generationProvider: { enabled: boolean; ready: boolean; generationMode: string; providerKey: string | null; modelKey: string | null; blocker: string | null };
     try {
       const config = parseSiteGenerationConfig(process.env);
       const ready = isSiteGenerationProviderReady(config);
       generationProvider = {
         enabled: config.enabled,
         ready,
+        generationMode: config.generationMode,
         providerKey: config.provider,
         modelKey: config.model || null,
         blocker: ready ? null : 'Complete the selected server-side provider configuration.',
@@ -86,6 +87,7 @@ export class DeliveryContextService {
       generationProvider = {
         enabled: process.env.SITE_AI_GENERATION_ENABLED === 'true',
         ready: false,
+        generationMode: process.env.SITE_AI_GENERATION_MODE || 'ai-composition',
         providerKey: process.env.SITE_AI_PROVIDER || null,
         modelKey: process.env.SITE_AI_MODEL || null,
         blocker: 'The selected server-side generation provider configuration is incomplete.',

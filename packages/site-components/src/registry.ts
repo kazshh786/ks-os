@@ -329,9 +329,13 @@ function componentDefinition(
     ? ['BOOKING_CTA', 'FINAL_CTA'] as const
     : [sectionType];
   const mediaLed = /image|media|gallery|portrait|collage|full-bleed|before-after/.test(name);
-  const requiredAssetSlots = mediaLed
-    ? defaults.requiredAssets ?? defaults.assets.slice(0, 1)
-    : defaults.requiredAssets ?? [];
+  const textSafeStaffProfile = sectionType === 'STAFF_PROFILE'
+    && /editorial|card|services-led/.test(name);
+  const requiredAssetSlots = textSafeStaffProfile
+    ? []
+    : mediaLed
+      ? defaults.requiredAssets ?? defaults.assets.slice(0, 1)
+      : defaults.requiredAssets ?? [];
   const canonicalName = COMPONENT_NAMES[sectionType][0];
   const servicesLed = name.includes('services-led');
   const live = livePolicy(sectionType);

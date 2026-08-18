@@ -84,7 +84,11 @@ export function createDeterministicAssetCoveragePlan(input: {
   const uncoveredRequirements: AssetCoveragePlan['uncoveredRequirements'] = [];
   for (const page of input.pages) {
     for (const selection of page.selectedComponents) {
-      for (const slot of input.requiredSlotsByComponentKey.get(selection.componentKey) ?? []) {
+      const plannedSlots = [...new Set([
+        ...(input.requiredSlotsByComponentKey.get(selection.componentKey) ?? []),
+        ...selection.assetAssignments.map(assignment => assignment.slot),
+      ])];
+      for (const slot of plannedSlots) {
         const preferredReference = selection.assetAssignments?.find(
           assignment => assignment.slot === slot,
         )?.assetReference;
@@ -92,11 +96,11 @@ export function createDeterministicAssetCoveragePlan(input: {
           ? inventory.find(asset => asset.publicReference === preferredReference)
           : undefined;
         const matching = preferred
-          && !used.has(preferred.publicReference)
           && isSlotEligible(preferred, slot)
           ? preferred
           : inventory.find(asset =>
-          !used.has(asset.publicReference) && isSlotEligible(asset, slot));
+          !used.has(asset.publicReference) && isSlotEligible(asset, slot))
+            ?? inventory.find(asset => isSlotEligible(asset, slot));
         if (matching) {
           used.add(matching.publicReference);
           assignments.push({

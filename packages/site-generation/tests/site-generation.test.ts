@@ -275,17 +275,38 @@ test('only verified or explicitly confirmed public facts enter prompts', () => {
 
 test('canonical business-fact projection is stable and contains no internal identifiers', () => {
   const canonical = buildVerifiedBusinessFacts({
-    business: { reference: refs.business, name: 'Studio Example' },
+    business: {
+      reference: refs.business,
+      name: 'Studio Example',
+      minimumCancellationNoticeMinutes: 1_440,
+      minimumRescheduleNoticeMinutes: 720,
+      lateCancellationMessage: 'Please contact the studio after the cancellation deadline.',
+      depositPolicyMessage: 'Deposits are reviewed after cancellation.',
+    },
     services: [
       { reference: refs.targetPage, name: 'Second' },
       { reference: refs.service, name: 'Consultation', price: '50.00' },
     ],
-    locations: [{ reference: refs.location, name: 'Central', address: '1 High Street' }],
+    locations: [{
+      reference: refs.location,
+      name: 'Central',
+      address: '1 High Street',
+      openingHours: [
+        { dayOfWeek: 2, intervalNumber: 1, opensAt: '09:00:00', closesAt: '17:00:00' },
+        { dayOfWeek: 1, intervalNumber: 1, opensAt: '10:00:00', closesAt: '18:00:00' },
+      ],
+    }],
     staff: [{ reference: refs.staff, name: 'Alex', bookingEnabled: true }],
     assetReferences: [refs.targetPage, refs.page],
   });
   assert.deepEqual(canonical.services.map(item => item.publicReference), [refs.service, refs.targetPage]);
   assert.deepEqual(canonical.assetReferences, [refs.page, refs.targetPage]);
+  assert.equal(
+    canonical.locations[0]?.facts.find(fact => fact.key === 'opening_hours')?.value,
+    'MONDAY 10:00-18:00; TUESDAY 09:00-17:00',
+  );
+  assert.equal(canonical.policies.find(fact => fact.key === 'minimum_cancellation_notice_minutes')?.value, 1_440);
+  assert.equal(canonical.policies.find(fact => fact.key === 'deposit_policy')?.value, 'Deposits are reviewed after cancellation.');
   assert.doesNotMatch(JSON.stringify(canonical), /tenantId|databaseId|customer/i);
 });
 
@@ -469,6 +490,8 @@ test('idempotency changes with source, blueprint and pack revisions', () => {
 test('disabled environment builds without secrets; enabled environment fails safely when incomplete', () => {
   const disabled = parseSiteGenerationConfig({});
   assert.equal(disabled.enabled, false);
+  assert.equal(disabled.generationMode, 'ai-composition');
+  assert.equal(disabled.generatorVersion, '1.0.0');
   assert.equal(isSiteGenerationProviderReady(disabled), false);
   assert.throws(() => parseSiteGenerationConfig({ SITE_AI_GENERATION_ENABLED: 'true' }), /server-side/);
   const enabled = parseSiteGenerationConfig({
@@ -478,6 +501,9 @@ test('disabled environment builds without secrets; enabled environment fails saf
   });
   assert.equal(enabled.model, 'gemini-test-model');
   assert.equal(isSiteGenerationProviderReady(enabled), true);
+  const baseline = parseSiteGenerationConfig({ SITE_AI_GENERATION_MODE: 'baseline' });
+  assert.equal(baseline.generationMode, 'baseline');
+  assert.equal(baseline.generatorVersion, 'baseline-1');
 });
 
 test('deterministic fake validates fixtures and makes no network request', async () => {
