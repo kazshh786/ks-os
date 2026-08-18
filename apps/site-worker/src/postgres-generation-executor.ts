@@ -36,6 +36,7 @@ import {
   siteGenerationRuns,
   siteGenerationSectionRuns,
   siteJobs,
+  siteLocationOperatingHours,
   sitePages,
   sitePageSeoBriefs,
   siteSearchResearchEvidence,
@@ -407,6 +408,11 @@ function pinnedGenerationAssets(run: RunContext): ApprovedGenerationAsset[] | nu
     : ApprovedGenerationAssetSchema.array().parse(run.assetInputJson);
 }
 
+const SNAPSHOT_WEEKDAYS = [
+  'SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY',
+  'THURSDAY', 'FRIDAY', 'SATURDAY',
+] as const;
+
 async function persistValidatedPreviewSnapshot(
   transaction: DatabaseTransaction,
   run: RunContext,
@@ -509,7 +515,7 @@ async function persistValidatedPreviewSnapshot(
       .where(and(...assetConditions))
       .orderBy(asc(siteAssets.publicReference));
 
-  const [pageRows, sectionRows, compatibilityRows, serviceRows, locationRows, staffRows, assignmentRows, assetRows] =
+  const [pageRows, sectionRows, compatibilityRows, serviceRows, locationRows, operatingHourRows, staffRows, assignmentRows, assetRows] =
     await Promise.all([
       transaction.select({
         id: sitePages.id,
@@ -566,6 +572,7 @@ async function persistValidatedPreviewSnapshot(
         eq(services.isActive, true),
       )),
       transaction.select({
+        id: locations.id,
         reference: locations.publicReference,
         name: locations.name,
         address: locations.address,
@@ -575,6 +582,18 @@ async function persistValidatedPreviewSnapshot(
         eq(locations.tenantId, run.tenantId),
         eq(locations.isActive, true),
       )),
+      transaction.select({
+        locationId: siteLocationOperatingHours.locationId,
+        dayOfWeek: siteLocationOperatingHours.dayOfWeek,
+        intervalNumber: siteLocationOperatingHours.intervalNumber,
+        opensAt: siteLocationOperatingHours.opensAt,
+        closesAt: siteLocationOperatingHours.closesAt,
+      }).from(siteLocationOperatingHours).where(
+        eq(siteLocationOperatingHours.tenantId, run.tenantId),
+      ).orderBy(
+        asc(siteLocationOperatingHours.dayOfWeek),
+        asc(siteLocationOperatingHours.intervalNumber),
+      ),
       transaction.select({
         id: users.id,
         reference: users.publicReference,
@@ -942,7 +961,13 @@ async function persistValidatedPreviewSnapshot(
       ...(optionalPublicPhone(location.phone)
         ? { publicTelephone: optionalPublicPhone(location.phone) }
         : {}),
-      openingHours: [],
+      openingHours: operatingHourRows
+        .filter(hours => hours.locationId === location.id)
+        .map(hours => ({
+          day: SNAPSHOT_WEEKDAYS[hours.dayOfWeek]!,
+          opens: hours.opensAt.slice(0, 5),
+          closes: hours.closesAt.slice(0, 5),
+        })),
     })),
     services: entityBindings.services,
     staff: entityBindings.staff,
@@ -1027,7 +1052,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
     private readonly database: Database,
     private readonly provider: SiteGenerationProvider,
     private readonly config: Pick<SiteWorkerConfig['generation'],
-      'maxRepairAttempts' | 'maxOutputCharacters' | 'generatorVersion'>,
+      'maxRepairAttempts' | 'maxOutputCharacters' | 'generatorVersion' | 'generationMode'>,
   ) {}
 
   async execute(
@@ -1105,6 +1130,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       signal: lease.signal,
       updateProgress: lease.updateProgress,
       pipelineVersion: runtime.pipelineVersion,
+      generationMode: this.config.generationMode,
       searchIntelligence: runtime.searchIntelligence,
     });
     await finalizeProvisionedWorkspace(this.database, run.id);
@@ -1433,10 +1459,25 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
       rendererKey: templateLayoutRenderers.rendererKey,
       rendererVersion: templateLayoutRenderers.rendererVersion,
       rendererStatus: templateLayoutRenderers.rendererStatus,
+      serviceReference: services.publicReference,
+      locationReference: locations.publicReference,
+      staffReference: users.publicReference,
       sortOrder: siteBlueprintPages.sortOrder,
     }).from(siteBlueprintPages)
       .innerJoin(templateLayouts, eq(siteBlueprintPages.templateLayoutId, templateLayouts.id))
       .innerJoin(templateLayoutRenderers, eq(templateLayouts.id, templateLayoutRenderers.templateLayoutId))
+      .leftJoin(services, and(
+        eq(siteBlueprintPages.serviceId, services.id),
+        eq(siteBlueprintPages.tenantId, services.tenantId),
+      ))
+      .leftJoin(locations, and(
+        eq(siteBlueprintPages.locationId, locations.id),
+        eq(siteBlueprintPages.tenantId, locations.tenantId),
+      ))
+      .leftJoin(users, and(
+        eq(siteBlueprintPages.staffUserId, users.id),
+        eq(siteBlueprintPages.tenantId, users.tenantId),
+      ))
       .where(and(
         eq(siteBlueprintPages.blueprintId, run.blueprintId),
         eq(siteBlueprintPages.tenantId, run.tenantId),
@@ -1526,6 +1567,9 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         conversionRole: page.conversionRole,
         layoutReference: page.layoutReference,
         plannedSectionTypes: plannedSections,
+        ...(page.serviceReference ? { serviceReference: page.serviceReference } : {}),
+        ...(page.locationReference ? { locationReference: page.locationReference } : {}),
+        ...(page.staffReference ? { staffReference: page.staffReference } : {}),
       };
     });
     const plan = GenerationPlanSchema.parse({
@@ -1650,7 +1694,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
           eq(factFindingUploads.tenantId, services.tenantId),
         ))
         .where(and(...assetConditions));
-    const [business, serviceRows, locationRows, staffRows, assetRows] = await Promise.all([
+    const [business, serviceRows, locationRows, staffRows, assetRows, operatingHourRows] = await Promise.all([
       this.database.select({
         reference: tenants.businessReference,
         name: tenants.name,
@@ -1661,6 +1705,10 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         primaryColour: tenants.primaryColor,
         secondaryColour: tenants.secondaryColor,
         accentColour: tenants.accentColor,
+        minimumCancellationNoticeMinutes: tenants.minimumCancellationNoticeMinutes,
+        minimumRescheduleNoticeMinutes: tenants.minimumRescheduleNoticeMinutes,
+        lateCancellationMessage: tenants.lateCancellationMessage,
+        depositPolicyMessage: tenants.depositPolicyMessage,
       }).from(tenants).where(eq(tenants.id, run.tenantId)).limit(1),
       this.database.select({
         reference: services.publicReference,
@@ -1670,6 +1718,7 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         price: services.price,
       }).from(services).where(and(eq(services.tenantId, run.tenantId), eq(services.isActive, true))),
       this.database.select({
+        id: locations.id,
         reference: locations.publicReference,
         name: locations.name,
         address: locations.address,
@@ -1684,6 +1733,14 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
         bookingEnabled: users.bookingEnabled,
       }).from(users).where(and(eq(users.tenantId, run.tenantId), eq(users.accountStatus, 'ACTIVE'))),
       assetRowsPromise,
+      this.database.select({
+        locationId: siteLocationOperatingHours.locationId,
+        dayOfWeek: siteLocationOperatingHours.dayOfWeek,
+        intervalNumber: siteLocationOperatingHours.intervalNumber,
+        opensAt: siteLocationOperatingHours.opensAt,
+        closesAt: siteLocationOperatingHours.closesAt,
+      }).from(siteLocationOperatingHours)
+        .where(eq(siteLocationOperatingHours.tenantId, run.tenantId)),
     ]);
     const row = business[0];
     if (!row) throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'Verified business data is unavailable.');
@@ -1693,7 +1750,10 @@ export class PostgresSiteGenerationExecutor implements SiteGenerationJobExecutor
     return buildVerifiedBusinessFacts({
       business: row,
       services: serviceRows,
-      locations: locationRows,
+      locations: locationRows.map(({ id: locationId, ...location }) => ({
+        ...location,
+        openingHours: operatingHourRows.filter(hours => hours.locationId === locationId),
+      })),
       staff: staffRows,
       assetReferences: assetRows.map(asset => asset.reference),
       assets: assetRows.map(asset => ({

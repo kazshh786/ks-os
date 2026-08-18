@@ -146,6 +146,13 @@ test('rejects unknown, disabled and semantically incompatible component keys', (
   assert.throws(() => resolveSiteComponent({ sectionType: 'STAFF_PROFILE', componentKey: 'profile-split-v1', pageType: 'HOME' }), /incompatible with HOME/);
 });
 
+test('staff profiles expose governed image-led and text-safe variants', () => {
+  const profiles = listSiteComponents({ sectionType: 'STAFF_PROFILE', pageType: 'TEAM_DETAIL' });
+  assert.ok(profiles.some(component => component.requiredAssetSlots.includes('PORTRAIT')));
+  assert.ok(profiles.some(component => component.requiredAssetSlots.length === 0
+    && component.supportedAssetSlots.includes('PORTRAIT')));
+});
+
 test('renders every active component through deterministic markup', () => {
   for (const component of listSiteComponents()) {
     const section = { ...sectionFor(component.sectionType), componentKey: component.componentKey } as SiteSection;

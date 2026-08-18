@@ -213,6 +213,26 @@ test('asset planning binds approved tenant assets and emits preview-only missing
   assert.ok(validateAssetCoveragePlan({ plan: missing, facts: { ...facts, approvedAssets: [], assetReferences: [] }, approvedPageReferences: [ids[30]!] }).some(finding => finding.code === 'MISSING_REQUIRED_ASSET'));
 });
 
+test('asset planning preserves an approved optional baseline media assignment', () => {
+  const optionalPlan = {
+    ...portraitPlan,
+    selectedComponents: [{
+      sectionType: 'HERO' as const,
+      componentKey: 'hero-centered-v1',
+      purpose: 'Introduce the verified business with approved supporting media.',
+      dataBindings: ['BUSINESS', 'BOOKING'] as const,
+      assetAssignments: [{ slot: 'PRIMARY_IMAGE' as const, assetReference: ids[20]! }],
+    }],
+  } as PageCompositionPlan;
+  const coverage = createDeterministicAssetCoveragePlan({
+    facts,
+    pages: [optionalPlan],
+    requiredSlotsByComponentKey: new Map([['hero-centered-v1', []]]),
+  });
+  assert.equal(coverage.assignments[0]?.slot, 'PRIMARY_IMAGE');
+  assert.equal(coverage.assignments[0]?.assetReference, ids[20]);
+});
+
 test('cross-tenant asset references are rejected', () => {
   const findings = validateAssetCoveragePlan({
     facts,

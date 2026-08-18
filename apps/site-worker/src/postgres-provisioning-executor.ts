@@ -35,6 +35,7 @@ import {
   siteGenerationRuns,
   siteJobEvents,
   siteJobs,
+  siteLocationOperatingHours,
   sites,
   siteVersions,
   staffSchedules,
@@ -1128,14 +1129,24 @@ export class PostgresWorkspaceProvisioningExecutor implements WorkspaceProvision
     const [existing] = await this.db.select({ id: siteGenerationRuns.id, reference: siteGenerationRuns.publicReference })
       .from(siteGenerationRuns).where(eq(siteGenerationRuns.provisioningRunId, run.runId)).limit(1);
     if (existing) return [{ type: 'SITE_GENERATION_RUN', reference: existing.reference }];
-    const [business, serviceRows, locationRows, staffRows] = await Promise.all([
-      this.db.select({ reference: tenants.businessReference, name: tenants.name, legalName: tenants.legalBusinessName, businessType: tenants.businessType, phone: tenants.operationalPhone, email: tenants.replyToEmail, primaryColour: tenants.primaryColor, secondaryColour: tenants.secondaryColor, accentColour: tenants.accentColor }).from(tenants).where(eq(tenants.id, run.tenantId)).limit(1).then(rows => rows[0]),
+    const [business, serviceRows, locationRows, staffRows, operatingHourRows] = await Promise.all([
+      this.db.select({ reference: tenants.businessReference, name: tenants.name, legalName: tenants.legalBusinessName, businessType: tenants.businessType, phone: tenants.operationalPhone, email: tenants.replyToEmail, primaryColour: tenants.primaryColor, secondaryColour: tenants.secondaryColor, accentColour: tenants.accentColor, minimumCancellationNoticeMinutes: tenants.minimumCancellationNoticeMinutes, minimumRescheduleNoticeMinutes: tenants.minimumRescheduleNoticeMinutes, lateCancellationMessage: tenants.lateCancellationMessage, depositPolicyMessage: tenants.depositPolicyMessage }).from(tenants).where(eq(tenants.id, run.tenantId)).limit(1).then(rows => rows[0]),
       this.db.select({ reference: services.publicReference, name: services.name, description: services.description, duration: services.duration, price: services.price }).from(services).where(and(eq(services.tenantId, run.tenantId), eq(services.isActive, true))),
-      this.db.select({ reference: locations.publicReference, name: locations.name, address: locations.address, postcode: locations.postcode, phone: locations.phone }).from(locations).where(and(eq(locations.tenantId, run.tenantId), eq(locations.isActive, true))),
+      this.db.select({ id: locations.id, reference: locations.publicReference, name: locations.name, address: locations.address, postcode: locations.postcode, phone: locations.phone }).from(locations).where(and(eq(locations.tenantId, run.tenantId), eq(locations.isActive, true))),
       this.db.select({ reference: users.publicReference, name: users.name, jobTitle: users.jobTitle, biography: users.bio, bookingEnabled: users.bookingEnabled }).from(users).where(and(eq(users.tenantId, run.tenantId), eq(users.accountStatus, 'ACTIVE'))),
+      this.db.select({ locationId: siteLocationOperatingHours.locationId, dayOfWeek: siteLocationOperatingHours.dayOfWeek, intervalNumber: siteLocationOperatingHours.intervalNumber, opensAt: siteLocationOperatingHours.opensAt, closesAt: siteLocationOperatingHours.closesAt }).from(siteLocationOperatingHours).where(eq(siteLocationOperatingHours.tenantId, run.tenantId)),
     ]);
     if (!business) throw new SiteJobExecutionError('TERMINAL_DATA_MISSING', 'The canonical business profile is missing.');
-    const sourceDataDigestSha256 = generationDigest(buildVerifiedBusinessFacts({ business, services: serviceRows, locations: locationRows, staff: staffRows, assetReferences: [] }));
+    const sourceDataDigestSha256 = generationDigest(buildVerifiedBusinessFacts({
+      business,
+      services: serviceRows,
+      locations: locationRows.map(({ id: locationId, ...location }) => ({
+        ...location,
+        openingHours: operatingHourRows.filter(hours => hours.locationId === locationId),
+      })),
+      staff: staffRows,
+      assetReferences: [],
+    }));
     const idempotencyKey = generationIdempotencyKey({
       tenantReference: run.tenantReference, siteReference: run.siteReference,
       blueprintReference: blueprint.reference, blueprintRevision: blueprint.revision,

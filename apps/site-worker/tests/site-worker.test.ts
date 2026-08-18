@@ -1275,6 +1275,14 @@ test('67a. enabled AI generation requires server-side provider configuration', (
   });
   assert.equal(config.generation.enabled, true);
   assert.equal(config.generation.model, 'test-model');
+  assert.equal(config.generation.generationMode, 'ai-composition');
+
+  const baselineConfig = parseSiteWorkerConfig({
+    DATABASE_URL: 'postgresql://test.invalid/test',
+    SITE_AI_GENERATION_MODE: 'baseline',
+  });
+  assert.equal(baselineConfig.generation.generationMode, 'baseline');
+  assert.equal(baselineConfig.generation.generatorVersion, 'baseline-1');
 
   const vertexConfig = parseSiteWorkerConfig({
     DATABASE_URL: 'postgresql://test.invalid/test',
@@ -1294,6 +1302,7 @@ test('67a. enabled AI generation requires server-side provider configuration', (
   assert.match(compositionSource, /createConfiguredSiteGenerationExecutor/);
   assert.match(generationExecutorSource, /class PostgresSiteGenerationExecutor/);
   assert.match(generationExecutorSource, /executeStructuredSiteGeneration/);
+  assert.match(generationExecutorSource, /generationMode: this\.config\.generationMode/);
   assert.doesNotMatch(generationExecutorSource, /console\.|rawPrompt|rawResponse/);
 });
 
@@ -1362,6 +1371,9 @@ test('67c. completed generation persists a validated digest-bound preview withou
   assert.match(generationExecutorSource, /prepareSiteRenderSnapshotForStorage/);
   assert.match(generationExecutorSource, /snapshotKind: 'PREVIEW'/);
   assert.match(generationExecutorSource, /sourceContentDigestSha256/);
+  assert.match(generationExecutorSource, /siteLocationOperatingHours/);
+  assert.match(generationExecutorSource, /openingHours: operatingHourRows/);
+  assert.doesNotMatch(generationExecutorSource, /openingHours: \[\]/);
   assert.doesNotMatch(
     generationExecutorSource.match(
       /async function persistValidatedPreviewSnapshot[\s\S]*?function mapProviderError/,

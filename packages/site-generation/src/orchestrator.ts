@@ -30,6 +30,8 @@ import { assertGeneratedPageSetMatchesPlan, validateGenerationPlan } from './pla
 import { detectDuplicateContent, validateGeneratedPage } from './validation.js';
 import { generationDigest } from './normalization.js';
 import { generatedPageResponseJsonSchema } from './response-schema.js';
+import { createBaselineComposition } from './baseline-composition.js';
+import type { SiteGenerationMode } from './config.js';
 import {
   assertSearchIntelligenceReady,
   validateGeneratedPageAgainstSeoBrief,
@@ -91,6 +93,7 @@ export interface ExecuteSiteGenerationInput {
   signal?: AbortSignal;
   updateProgress?: (input: { current: number; total: number; message: string }) => Promise<void>;
   pipelineVersion?: 1 | 2;
+  generationMode?: SiteGenerationMode;
   searchIntelligence?: ApprovedSearchIntelligenceInput;
 }
 
@@ -171,61 +174,90 @@ export async function executeStructuredSiteGeneration(
     const pageCompositionPlans = new Map<string, PageCompositionPlan>();
     let assetCoveragePlan: ReturnType<typeof createDeterministicAssetCoveragePlan> | undefined;
     if ((input.pipelineVersion ?? 1) === 2) {
-      await input.updateProgress?.({ current: 0, total: input.plan.pages.length + 2, message: 'Creating the governed site-wide composition strategy.' });
-      const strategyResponse = await input.provider.generateStructuredOutput({
-        prompt: composeSiteStrategyPrompt({
+      if ((input.generationMode ?? 'ai-composition') === 'baseline') {
+        await input.updateProgress?.({ current: 0, total: input.plan.pages.length + 1, message: 'Creating deterministic governed baseline compositions.' });
+        const baseline = createBaselineComposition({
           plan: input.plan,
+          constraints: input.constraints,
           facts: input.facts,
-          approvedSearchStrategy: input.searchIntelligence?.strategy,
-        }),
-        outputSchema: SiteCompositionStrategySchema,
-        responseJsonSchema: SITE_STRATEGY_RESPONSE_JSON_SCHEMA,
-        maxOutputCharacters: input.maxOutputCharacters,
-        signal: input.signal,
-      });
-      siteStrategy = strategyResponse.value;
-      for (const page of input.plan.pages) {
-        const template = input.constraints.find(item => item.layoutReference === page.layoutReference);
-        const knowledge = input.knowledgeContexts.get(page.pageReference);
-        if (!template || !knowledge) throw new Error('A pinned page composition context is missing.');
-        const composed = composePageCompositionPrompt({
-          page,
-          template,
-          strategy: strategyResponse.value,
-          facts: input.facts,
-          knowledge,
-          approvedPageReferences: input.plan.pages.map(item => item.pageReference),
-          approvedSearchStrategy: input.searchIntelligence?.strategy,
-          pageSeoBrief: input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference),
+          briefs: input.searchIntelligence?.briefs,
         });
-        const planned = await generateWithControlledRepair<PageCompositionPlan>({
-          provider: input.provider,
-          maxRepairAttempts: input.maxRepairAttempts,
-          buildRequest: () => ({
-            prompt: composed,
-            outputSchema: PageCompositionPlanSchema,
-            responseJsonSchema: pageCompositionResponseJsonSchema({
-              page,
-              template,
-              approvedPageReferences: input.plan.pages.map(item => item.pageReference),
-            }),
-            maxOutputCharacters: input.maxOutputCharacters,
-            signal: input.signal,
+        siteStrategy = baseline.strategy;
+        for (const pagePlan of baseline.pagePlans) {
+          const page = input.plan.pages.find(item => item.pageReference === pagePlan.pageReference)!;
+          const template = input.constraints.find(item => item.layoutReference === page.layoutReference)!;
+          const findings = validatePageCompositionPlan({
+            output: pagePlan,
+            page,
+            template,
+            approvedPageReferences: input.plan.pages.map(item => item.pageReference),
+            approvedAssetReferences: input.facts.approvedAssets?.length
+              ? input.facts.approvedAssets.map(asset => asset.publicReference)
+              : input.facts.assetReferences,
+          });
+          if (findings.some(item => item.severity === 'ERROR')) {
+            await input.persistence.persistFindings(findings);
+            throw new Error(`The deterministic baseline composition is invalid for ${page.pageType}.`);
+          }
+          pageCompositionPlans.set(pagePlan.pageReference, pagePlan);
+        }
+      } else {
+        await input.updateProgress?.({ current: 0, total: input.plan.pages.length + 2, message: 'Creating the governed site-wide composition strategy.' });
+        const strategyResponse = await input.provider.generateStructuredOutput({
+          prompt: composeSiteStrategyPrompt({
+            plan: input.plan,
+            facts: input.facts,
+            approvedSearchStrategy: input.searchIntelligence?.strategy,
           }),
-          validate: value => {
-            const findings = validatePageCompositionPlan({
-              output: value,
-              page,
-              template,
-              approvedPageReferences: input.plan.pages.map(item => item.pageReference),
-              approvedAssetReferences: input.facts.approvedAssets?.length
-                ? input.facts.approvedAssets.map(asset => asset.publicReference)
-                : input.facts.assetReferences,
-            });
-            return { valid: !findings.some(item => item.severity === 'ERROR'), findings };
-          },
+          outputSchema: SiteCompositionStrategySchema,
+          responseJsonSchema: SITE_STRATEGY_RESPONSE_JSON_SCHEMA,
+          maxOutputCharacters: input.maxOutputCharacters,
+          signal: input.signal,
         });
-        pageCompositionPlans.set(page.pageReference, planned.response.value);
+        siteStrategy = strategyResponse.value;
+        for (const page of input.plan.pages) {
+          const template = input.constraints.find(item => item.layoutReference === page.layoutReference);
+          const knowledge = input.knowledgeContexts.get(page.pageReference);
+          if (!template || !knowledge) throw new Error('A pinned page composition context is missing.');
+          const composed = composePageCompositionPrompt({
+            page,
+            template,
+            strategy: strategyResponse.value,
+            facts: input.facts,
+            knowledge,
+            approvedPageReferences: input.plan.pages.map(item => item.pageReference),
+            approvedSearchStrategy: input.searchIntelligence?.strategy,
+            pageSeoBrief: input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference),
+          });
+          const planned = await generateWithControlledRepair<PageCompositionPlan>({
+            provider: input.provider,
+            maxRepairAttempts: input.maxRepairAttempts,
+            buildRequest: () => ({
+              prompt: composed,
+              outputSchema: PageCompositionPlanSchema,
+              responseJsonSchema: pageCompositionResponseJsonSchema({
+                page,
+                template,
+                approvedPageReferences: input.plan.pages.map(item => item.pageReference),
+              }),
+              maxOutputCharacters: input.maxOutputCharacters,
+              signal: input.signal,
+            }),
+            validate: value => {
+              const findings = validatePageCompositionPlan({
+                output: value,
+                page,
+                template,
+                approvedPageReferences: input.plan.pages.map(item => item.pageReference),
+                approvedAssetReferences: input.facts.approvedAssets?.length
+                  ? input.facts.approvedAssets.map(asset => asset.publicReference)
+                  : input.facts.assetReferences,
+              });
+              return { valid: !findings.some(item => item.severity === 'ERROR'), findings };
+            },
+          });
+          pageCompositionPlans.set(page.pageReference, planned.response.value);
+        }
       }
       const requiredSlotsByComponentKey = new Map(
         [...pageCompositionPlans.values()].flatMap(page => page.selectedComponents)
@@ -246,7 +278,7 @@ export async function executeStructuredSiteGeneration(
         ),
       );
       await input.persistence.persistCompositionArtifacts?.({
-        strategy: strategyResponse.value,
+        strategy: siteStrategy!,
         pagePlans: [...pageCompositionPlans.values()],
         assetCoveragePlan,
       });
@@ -344,7 +376,11 @@ export async function executeStructuredSiteGeneration(
           }
           const seoBrief = input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference);
           if (validation.page && seoBrief) {
-            validation.findings.push(...validateGeneratedPageAgainstSeoBrief({ brief: seoBrief, page: validation.page })
+            validation.findings.push(...validateGeneratedPageAgainstSeoBrief({
+              brief: seoBrief,
+              page: validation.page,
+              facts: input.facts,
+            })
               .map(item => ({
                 severity: 'ERROR' as const,
                 category: 'METADATA' as const,

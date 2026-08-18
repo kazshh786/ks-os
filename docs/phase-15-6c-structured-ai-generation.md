@@ -82,6 +82,7 @@ All settings are server/worker-only. The platform builds with generation off.
 
 ```dotenv
 SITE_AI_GENERATION_ENABLED=false
+SITE_AI_GENERATION_MODE=ai-composition
 SITE_AI_PROVIDER=gemini
 SITE_AI_MODEL=
 SITE_AI_API_KEY=
@@ -92,6 +93,12 @@ SITE_AI_MAX_CONCURRENT_REQUESTS=2
 SITE_AI_TEMPERATURE=0.2
 SITE_AI_GENERATOR_VERSION=1.0.0
 ```
+
+`SITE_AI_GENERATION_MODE=baseline` enables the deterministic baseline composer.
+In that mode KS OS selects the approved page recipe and allow-listed component
+sequence locally, while the configured Gemini provider remains responsible for
+structured content inside those locked slots. Baseline runs pin generator
+version `baseline-1`, so they cannot replay an older AI-composition run.
 
 Do not create `VITE_` equivalents. Provider and model selection are not browser
 inputs. Enabling generation without a model or API key is a readiness error.

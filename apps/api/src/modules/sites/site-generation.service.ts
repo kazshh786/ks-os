@@ -29,6 +29,7 @@ import {
   siteSearchStrategies,
   siteJobEvents,
   siteJobs,
+  siteLocationOperatingHours,
   sitePages,
   siteSections,
   sites,
@@ -326,6 +327,8 @@ export class AgencySiteGenerationService {
           knowledgePackReference: knowledge.reference,
           providerKey: provider.provider,
           modelKey,
+          generationMode: provider.generationMode,
+          generatorVersion: provider.generatorVersion,
           searchStrategyReference: searchIntelligence?.reference ?? null,
           searchStrategyVersion: searchIntelligence?.version ?? null,
           searchStrategyDigestSha256: searchIntelligence?.digestSha256 ?? null,
@@ -1039,7 +1042,7 @@ export class AgencySiteGenerationService {
           eq(factFindingUploads.tenantId, services.tenantId),
         ))
         .where(and(...assetConditions));
-    const [business, serviceRows, locationRows, staffRows, assetRows] = await Promise.all([
+    const [business, serviceRows, locationRows, staffRows, assetRows, operatingHourRows] = await Promise.all([
       this.database.select({
         reference: tenants.businessReference,
         name: tenants.name,
@@ -1050,6 +1053,10 @@ export class AgencySiteGenerationService {
         primaryColour: tenants.primaryColor,
         secondaryColour: tenants.secondaryColor,
         accentColour: tenants.accentColor,
+        minimumCancellationNoticeMinutes: tenants.minimumCancellationNoticeMinutes,
+        minimumRescheduleNoticeMinutes: tenants.minimumRescheduleNoticeMinutes,
+        lateCancellationMessage: tenants.lateCancellationMessage,
+        depositPolicyMessage: tenants.depositPolicyMessage,
       }).from(tenants).where(eq(tenants.id, tenantId)).limit(1),
       this.database.select({
         reference: services.publicReference,
@@ -1060,6 +1067,7 @@ export class AgencySiteGenerationService {
         active: services.isActive,
       }).from(services).where(and(eq(services.tenantId, tenantId), eq(services.isActive, true))),
       this.database.select({
+        id: locations.id,
         reference: locations.publicReference,
         name: locations.name,
         address: locations.address,
@@ -1075,6 +1083,14 @@ export class AgencySiteGenerationService {
         bookingEnabled: users.bookingEnabled,
       }).from(users).where(and(eq(users.tenantId, tenantId), eq(users.accountStatus, 'ACTIVE'))),
       assetRowsPromise,
+      this.database.select({
+        locationId: siteLocationOperatingHours.locationId,
+        dayOfWeek: siteLocationOperatingHours.dayOfWeek,
+        intervalNumber: siteLocationOperatingHours.intervalNumber,
+        opensAt: siteLocationOperatingHours.opensAt,
+        closesAt: siteLocationOperatingHours.closesAt,
+      }).from(siteLocationOperatingHours)
+        .where(eq(siteLocationOperatingHours.tenantId, tenantId)),
     ]);
     if (!business[0]) throw fail(409, 'GENERATION_BUSINESS_DATA_MISSING', 'Verified business data is unavailable.');
     const pinnedByReference = new Map(
@@ -1108,7 +1124,10 @@ export class AgencySiteGenerationService {
     return buildVerifiedBusinessFacts({
       business: business[0],
       services: serviceRows,
-      locations: locationRows,
+      locations: locationRows.map(({ id: locationId, ...location }) => ({
+        ...location,
+        openingHours: operatingHourRows.filter(hours => hours.locationId === locationId),
+      })),
       staff: staffRows,
       assetReferences: approvedAssets.map(asset => asset.reference),
       assets: approvedAssets,

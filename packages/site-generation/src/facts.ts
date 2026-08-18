@@ -17,6 +17,10 @@ export interface CanonicalGenerationFactInput {
     primaryColour?: string | null;
     secondaryColour?: string | null;
     accentColour?: string | null;
+    minimumCancellationNoticeMinutes?: number | null;
+    minimumRescheduleNoticeMinutes?: number | null;
+    lateCancellationMessage?: string | null;
+    depositPolicyMessage?: string | null;
   };
   services: readonly {
     reference: string;
@@ -31,6 +35,12 @@ export interface CanonicalGenerationFactInput {
     address?: string | null;
     postcode?: string | null;
     phone?: string | null;
+    openingHours?: readonly {
+      dayOfWeek: number;
+      intervalNumber?: number;
+      opensAt: string;
+      closesAt: string;
+    }[];
   }[];
   staff: readonly {
     reference: string;
@@ -70,6 +80,19 @@ const publicFact = (
   ? null
   : { key, value, status };
 
+const WEEKDAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'] as const;
+
+function openingHoursFact(
+  hours: CanonicalGenerationFactInput['locations'][number]['openingHours'],
+) {
+  if (!hours?.length) return null;
+  return [...hours]
+    .sort((left, right) => left.dayOfWeek - right.dayOfWeek
+      || (left.intervalNumber ?? 1) - (right.intervalNumber ?? 1))
+    .map(item => `${WEEKDAYS[item.dayOfWeek] ?? `DAY_${item.dayOfWeek}`} ${item.opensAt.slice(0, 5)}-${item.closesAt.slice(0, 5)}`)
+    .join('; ');
+}
+
 function compact<T>(items: Array<T | null>): T[] {
   return items.filter((item): item is T => item !== null);
 }
@@ -106,6 +129,7 @@ export function buildVerifiedBusinessFacts(input: CanonicalGenerationFactInput) 
         publicFact('physical_address', location.address),
         publicFact('postcode', location.postcode),
         publicFact('phone_number', location.phone),
+        publicFact('opening_hours', openingHoursFact(location.openingHours), 'VERIFIED'),
       ]),
     })),
     staff: [...input.staff].sort((left, right) =>
@@ -118,7 +142,12 @@ export function buildVerifiedBusinessFacts(input: CanonicalGenerationFactInput) 
         publicFact('staff_booking_enabled', staff.bookingEnabled),
       ]),
     })),
-    policies: [],
+    policies: compact([
+      publicFact('minimum_cancellation_notice_minutes', input.business.minimumCancellationNoticeMinutes, 'VERIFIED'),
+      publicFact('minimum_reschedule_notice_minutes', input.business.minimumRescheduleNoticeMinutes, 'VERIFIED'),
+      publicFact('late_cancellation_policy', input.business.lateCancellationMessage, 'VERIFIED'),
+      publicFact('deposit_policy', input.business.depositPolicyMessage, 'VERIFIED'),
+    ]),
     brand: compact([
       publicFact('brand_primary_colour', input.business.primaryColour),
       publicFact('brand_secondary_colour', input.business.secondaryColour),

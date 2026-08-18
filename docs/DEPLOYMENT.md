@@ -27,6 +27,7 @@ CLOUDFLARE_ZONE_ID=<zone reference>
 CLOUDFLARE_API_TOKEN=<server-side scoped token>
 SITE_RENDERER_ORIGIN_HOST=<dedicated origin hostname>
 SITE_AI_GENERATION_ENABLED=true
+SITE_AI_GENERATION_MODE=baseline
 SITE_AI_PROVIDER=gemini
 SITE_AI_MODEL=<governed model name>
 SITE_AI_API_KEY=<server-side key>

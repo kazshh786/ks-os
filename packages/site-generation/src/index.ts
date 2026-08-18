@@ -1,5 +1,6 @@
 export * from './config.js';
 export * from './assets.js';
+export * from './baseline-composition.js';
 export * from './completeness.js';
 export * from './composition.js';
 export * from './contracts.js';
