@@ -341,6 +341,40 @@ test('C-D-E: approved staff media is used and missing optional media falls back 
   assert.ok(profileWithAssets.assetAssignments.every(assignment => assignment.assetReference !== otherStaffAsset.publicReference));
 });
 
+test('baseline fills TEAM_DETAIL depth from the approved native layout when FAQ is unsupported', () => {
+  const detail = fixture('TEAM_DETAIL', 41);
+  const page = { ...detail.page, conversionRole: 'TRUST_BUILDING' as const };
+  const sectionOrder: SiteSectionType[] = [
+    'HEADER', 'HERO', 'STAFF_PROFILE', 'INTRODUCTION', 'FEATURED_SERVICES',
+    'SERVICE_GRID', 'BENEFITS', 'TRUST_INDICATORS', 'RICH_TEXT', 'BOOKING_CTA', 'FOOTER',
+  ];
+  const template: TemplateGenerationConstraint = {
+    ...detail.template,
+    compatiblePageTypes: ['TEAM_DETAIL'],
+    requiredSectionTypes: ['HEADER', 'HERO', 'STAFF_PROFILE', 'BOOKING_CTA', 'FOOTER'],
+    sectionOrder,
+    availableComponentKeys: sectionOrder.flatMap(sectionType =>
+      listSiteComponents({ sectionType, pageType: page.pageType, conversionRole: page.conversionRole })
+        .map(component => component.componentKey)),
+  };
+  const approvedPageReferences = [page.pageReference, id(999)];
+  const plan = createBaselinePageCompositionPlan({
+    page,
+    template,
+    facts: completeFacts(),
+    approvedPageReferences,
+  });
+  const selected = new Set(plan.selectedComponents.map(section => section.sectionType));
+  assert.equal(selected.has('FAQ'), false);
+  assert.ok(selected.has('INTRODUCTION') || selected.has('TRUST_INDICATORS') || selected.has('RICH_TEXT'));
+  assert.equal(validatePageCompositionPlan({
+    output: plan,
+    page,
+    template,
+    approvedPageReferences,
+  }).some(finding => finding.severity === 'ERROR'), false);
+});
+
 test('F-G: approved Search Intelligence links and topic guide baseline content composition', () => {
   const { page, template } = fixture('FAQ', 5);
   const targetPageReference = id(999);
