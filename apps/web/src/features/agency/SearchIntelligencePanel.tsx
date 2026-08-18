@@ -105,6 +105,7 @@ export function SearchIntelligencePanel({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [latestGeneration, setLatestGeneration] = useState<GenerationRunSummary | null>(null);
+  const [retryConfirmationOpen, setRetryConfirmationOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -134,6 +135,10 @@ export function SearchIntelligencePanel({
   }, [siteReference]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (latestGeneration?.status !== 'FAILED') setRetryConfirmationOpen(false);
+  }, [latestGeneration?.reference, latestGeneration?.status]);
 
   const brief = data?.briefs.find(item => item.reference === selectedBriefReference) ?? null;
   useEffect(() => {
@@ -205,8 +210,7 @@ export function SearchIntelligencePanel({
   };
 
   const retryWebsiteBuild = async () => {
-    if (!latestGeneration || latestGeneration.status !== 'FAILED') return;
-    if (!window.confirm('Retry this failed website build using the same governed inputs?')) return;
+    if (!latestGeneration || latestGeneration.status !== 'FAILED' || !retryConfirmationOpen) return;
     setBusy('retry'); setError(''); setNotice('');
     try {
       await agencyFetch(`/sites/${siteReference}/generation-runs/${latestGeneration.reference}/retry`, {
@@ -214,6 +218,7 @@ export function SearchIntelligencePanel({
         body: JSON.stringify({ reason: 'Retry the failed governed website build from the agency workspace.' }),
       });
       setNotice('The failed website build has been re-queued using the same governed inputs.');
+      setRetryConfirmationOpen(false);
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The failed website build could not be retried.');
@@ -281,7 +286,7 @@ export function SearchIntelligencePanel({
     {error ? <p role="alert" className="mt-4 rounded-xl border border-rose-900 bg-rose-950/30 p-3 text-xs text-rose-200">{error}</p> : null}
     {notice ? <p role="status" className="mt-4 rounded-xl border border-emerald-900 bg-emerald-950/30 p-3 text-xs text-emerald-200">{notice}</p> : null}
     {researchRequired ? <div className="mt-4 rounded-xl border border-amber-800 bg-amber-950/25 p-4"><p className="flex items-center gap-2 text-xs font-black text-amber-200"><AlertTriangle className="h-4 w-4" />Research required</p><p className="mt-2 text-xs leading-5 text-amber-100/80">This is a blueprint-context planning draft. It cannot be approved or used for website generation until a governed research bundle with referenced evidence and one complete brief per blueprint page is imported and reviewed.</p>{isDraft && canManage ? <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-amber-700 px-4 text-xs font-black text-amber-200"><Search className="h-4 w-4" />{busy === 'import' ? 'Importing governed research…' : 'Import governed research bundle'}<input type="file" accept="application/json,.json" disabled={Boolean(busy)} className="sr-only" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void importResearchBundle(file); }} /></label> : null}</div> : null}
-    {latestGeneration?.status === 'FAILED' ? <div className="mt-4 rounded-xl border border-rose-800 bg-rose-950/25 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="flex items-center gap-2 text-xs font-black text-rose-200"><AlertTriangle className="h-4 w-4" />Latest website build failed</p><p className="mt-1 max-w-3xl text-xs leading-5 text-rose-100/80">{latestGeneration.failureMessage || 'The latest governed website build failed before it became ready for review.'}</p>{latestGeneration.failureCode ? <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-rose-300">{latestGeneration.failureCode}</p> : null}</div><button type="button" disabled={!canManage || Boolean(busy)} onClick={() => void retryWebsiteBuild()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-black text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40">{busy === 'retry' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{busy === 'retry' ? 'Retrying build…' : 'Retry build'}</button></div></div> : null}
+    {latestGeneration?.status === 'FAILED' ? <div className="mt-4 rounded-xl border border-rose-800 bg-rose-950/25 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="flex items-center gap-2 text-xs font-black text-rose-200"><AlertTriangle className="h-4 w-4" />Latest website build failed</p><p className="mt-1 max-w-3xl text-xs leading-5 text-rose-100/80">{latestGeneration.failureMessage || 'The latest governed website build failed before it became ready for review.'}</p>{latestGeneration.failureCode ? <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-rose-300">{latestGeneration.failureCode}</p> : null}</div>{retryConfirmationOpen ? <div role="group" aria-label="Confirm website build retry" className="max-w-sm rounded-xl border border-rose-700 bg-rose-950/60 p-3"><p className="text-xs leading-5 text-rose-100">Retry this failed website build using the same governed inputs?</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={!canManage || Boolean(busy)} onClick={() => void retryWebsiteBuild()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-black text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40">{busy === 'retry' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{busy === 'retry' ? 'Retrying build…' : 'Confirm retry'}</button><button type="button" disabled={Boolean(busy)} onClick={() => setRetryConfirmationOpen(false)} className="min-h-11 rounded-xl border border-rose-700 px-4 text-xs font-black text-rose-100 disabled:opacity-40">Cancel</button></div></div> : <button type="button" disabled={!canManage || Boolean(busy)} onClick={() => setRetryConfirmationOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-black text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40"><RefreshCw className="h-4 w-4" />Retry build</button>}</div></div> : null}
     {data.status === 'APPROVED' && blueprint?.status === 'APPROVED' ? <div className="mt-4 rounded-xl border border-violet-700/70 bg-violet-950/25 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-black text-violet-100">Approved inputs are ready for a full rebuild</p><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">Create a new governed website version from blueprint revision {blueprint.revision} and Search Intelligence version {data.strategy.strategyVersion}. The existing website version and version history are preserved.</p></div><button type="button" disabled={!canManage || Boolean(busy)} onClick={() => void rebuildWebsite()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-black text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40">{busy === 'rebuild' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{busy === 'rebuild' ? 'Queuing rebuild…' : 'Rebuild website'}</button></div></div> : null}
 
     <div className="mt-5 grid gap-3 md:grid-cols-4">
