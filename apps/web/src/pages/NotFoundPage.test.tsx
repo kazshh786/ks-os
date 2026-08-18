@@ -56,4 +56,15 @@ describe('workspace catch-all routes', () => {
 
     expect(screen.getByText('Assigned consent document')).toBeInTheDocument();
   });
+  it('renders terms through the same secure assigned document route', () => {
+    render(
+      <MemoryRouter initialEntries={['/forms/complete/secure-token/terms']}>
+        <Routes>
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Assigned consent document')).toBeInTheDocument();
+  });
 });
