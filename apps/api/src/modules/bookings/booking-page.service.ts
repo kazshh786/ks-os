@@ -33,6 +33,7 @@ import {
   RESERVED_BOOKING_SLUGS,
   verifiedBookingPublicUrl,
 } from './booking-page.utils.js';
+import { assertServiceSelectionAllowed, normaliseSelectedServiceIds } from './service-selection.js';
 
 type AnalyticsEventInput = typeof PublicBookingAnalyticsEventSchema._type;
 type DatabaseLike = ReturnType<typeof getDatabase> | any;
@@ -45,6 +46,8 @@ const DEFAULT_RULES = {
   allowAnyStaff: true,
   allowGuestBooking: true,
   customerNotesEnabled: true,
+  serviceSelectionMode: 'SINGLE' as const,
+  exclusiveServiceIds: [] as string[],
 };
 const DEFAULT_PAYMENT = { mode: 'DEPOSIT', depositType: 'PERCENTAGE', depositPercentage: 20, depositFixedAmount: 1_000, promotionCodesEnabled: false, giftCardsEnabled: false };
 const DEFAULT_INTAKE = { requiredBeforeConfirmation: false, allowCompleteAfterBooking: true, showEstimatedTime: true };
@@ -134,9 +137,14 @@ export class BookingPageService {
 
   private async assertScopedIds(tenantId: string, update: BookingPageUpdate, db: DatabaseLike) {
     const checks: Array<Promise<void>> = [];
-    if (update.allowedServiceIds?.length) checks.push((async () => {
-      const rows = await db.select({ id: services.id }).from(services).where(and(eq(services.tenantId, tenantId), inArray(services.id, update.allowedServiceIds!)));
-      if (rows.length !== new Set(update.allowedServiceIds).size) throw Object.assign(new Error('One or more services do not belong to this business.'), { code: 'INVALID_SERVICE_SCOPE', statusCode: 400 });
+    const scopedServiceIds = [
+      ...(update.allowedServiceIds || []),
+      ...(update.bookingRules?.exclusiveServiceIds || []),
+    ];
+    if (scopedServiceIds.length) checks.push((async () => {
+      const uniqueIds = [...new Set(scopedServiceIds)];
+      const rows = await db.select({ id: services.id }).from(services).where(and(eq(services.tenantId, tenantId), inArray(services.id, uniqueIds)));
+      if (rows.length !== uniqueIds.length) throw Object.assign(new Error('One or more services do not belong to this business.'), { code: 'INVALID_SERVICE_SCOPE', statusCode: 400 });
     })());
     if (update.allowedStaffIds?.length) checks.push((async () => {
       const rows = await db.select({ id: users.id }).from(users).where(and(eq(users.tenantId, tenantId), inArray(users.id, update.allowedStaffIds!)));
@@ -311,7 +319,7 @@ export class BookingPageService {
   async applicableIntakeForms(
     pageId: string,
     tenantId: string,
-    context: { serviceId: string; staffId: string; locationId?: string | null; completionStage?: string },
+    context: { serviceId: string; serviceIds?: string[]; staffId: string; locationId?: string | null; completionStage?: string },
   ) {
     return getDatabase().select({
       id: forms.id,
@@ -325,7 +333,10 @@ export class BookingPageService {
         eq(bookingPageForms.tenantId, tenantId),
         eq(forms.tenantId, tenantId),
         eq(forms.status, 'PUBLISHED'),
-        or(isNull(bookingPageForms.serviceId), eq(bookingPageForms.serviceId, context.serviceId)),
+        or(
+          isNull(bookingPageForms.serviceId),
+          inArray(bookingPageForms.serviceId, normaliseSelectedServiceIds(context.serviceId, context.serviceIds)),
+        ),
         or(isNull(bookingPageForms.staffUserId), eq(bookingPageForms.staffUserId, context.staffId)),
         context.locationId
           ? or(isNull(bookingPageForms.locationId), eq(bookingPageForms.locationId, context.locationId))
@@ -339,6 +350,11 @@ export class BookingPageService {
     if (!resolved) throw Object.assign(new Error('Booking page not found.'), { code: 'BOOKING_SITE_NOT_FOUND', statusCode: 404 });
     const { page, tenant } = resolved;
     const db = getDatabase();
+    const selectedServiceIds = normaliseSelectedServiceIds(input.serviceId, input.serviceIds);
+    assertServiceSelectionAllowed(page.bookingRules as any, selectedServiceIds);
+    if (page.allowedServiceIds.length && selectedServiceIds.some(serviceId => !page.allowedServiceIds.includes(serviceId))) {
+      throw Object.assign(new Error('One or more services are not available for online booking.'), { code: 'SERVICE_NOT_AVAILABLE', statusCode: 404 });
+    }
     const rawToken = deterministicPublicToken(`booking-hold:${page.id}`, input.idempotencyKey, tokenSecret());
     const sessionHash = hashPublicToken(rawToken, tokenSecret());
     const holdMinutes = env.BOOKING_SLOT_HOLD_MINUTES;
@@ -346,7 +362,12 @@ export class BookingPageService {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenant.id}:${input.staffId}:${input.startTime}`}::text, 0))`);
       await tx.update(bookingHolds).set({ status: 'EXPIRED', releasedAt: new Date() }).where(and(eq(bookingHolds.status, 'ACTIVE'), lt(bookingHolds.expiresAt, new Date())));
       const [existing] = await tx.select().from(bookingHolds).where(and(eq(bookingHolds.bookingPageId, page.id), eq(bookingHolds.idempotencyKey, input.idempotencyKey))).limit(1);
-      if (existing) return this.holdResponse(existing, rawToken);
+      if (existing) {
+        if (existing.serviceIds.join(',') !== selectedServiceIds.join(',')) {
+          throw Object.assign(new Error('This reservation key was already used for another service selection.'), { code: 'HOLD_MISMATCH', statusCode: 409 });
+        }
+        return this.holdResponse(existing, rawToken);
+      }
       const localDateParts = new Intl.DateTimeFormat('en-GB', {
         timeZone: tenant.timezone,
         year: 'numeric',
@@ -360,7 +381,7 @@ export class BookingPageService {
         throw Object.assign(new Error('The selected appointment date could not be read.'), { code: 'INVALID_HOLD_REQUEST', statusCode: 400 });
       }
       const localDate = `${year}-${month}-${day}`;
-      const availability = await calculateAvailability({ tenantId: tenant.id, serviceId: input.serviceId, staffId: input.staffId, date: localDate, bookingChannel: input.bookingChannel }, { locationId: input.locationId, resourceId: input.resourceId, database: tx });
+      const availability = await calculateAvailability({ tenantId: tenant.id, serviceId: input.serviceId, serviceIds: selectedServiceIds, staffId: input.staffId, date: localDate, bookingChannel: input.bookingChannel }, { locationId: input.locationId, resourceId: input.resourceId, database: tx });
       const requestedStart = new Date(input.startTime).getTime();
       const slot = availability.slots.find(item => item.staffId === input.staffId && new Date(item.start).getTime() === requestedStart);
       if (!slot) throw Object.assign(new Error('That time is no longer available.'), { code: 'SLOT_UNAVAILABLE', statusCode: 409 });
@@ -369,7 +390,7 @@ export class BookingPageService {
       )).limit(1);
       if (conflictingHold) throw Object.assign(new Error('That time is temporarily reserved.'), { code: 'SLOT_HELD', statusCode: 409 });
       const [hold] = await tx.insert(bookingHolds).values({
-        tenantId: tenant.id, bookingPageId: page.id, serviceId: input.serviceId, staffUserId: input.staffId,
+        tenantId: tenant.id, bookingPageId: page.id, serviceId: input.serviceId, serviceIds: selectedServiceIds, staffUserId: input.staffId,
         locationId: input.locationId || null, resourceId: input.resourceId || null, customerSessionHash: sessionHash,
         startTime: new Date(slot.start), endTime: new Date(slot.end), idempotencyKey: input.idempotencyKey,
         expiresAt: new Date(Date.now() + holdMinutes * 60_000),
@@ -392,14 +413,15 @@ export class BookingPageService {
     return Boolean(released);
   }
 
-  async validateHoldForBooking(tx: DatabaseLike, pageId: string, input: { holdId?: string; holdToken?: string; serviceId: string; staffId: string; startTime: string; locationId?: string | null }) {
+  async validateHoldForBooking(tx: DatabaseLike, pageId: string, input: { holdId?: string; holdToken?: string; serviceId: string; serviceIds?: string[]; staffId: string; startTime: string; locationId?: string | null }) {
     if (!input.holdId && !input.holdToken) return null;
     if (!input.holdId || !input.holdToken) throw Object.assign(new Error('The slot reservation is incomplete.'), { code: 'INVALID_HOLD', statusCode: 400 });
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.holdId}::text, 0))`);
     const [hold] = await tx.select().from(bookingHolds).where(and(eq(bookingHolds.id, input.holdId), eq(bookingHolds.bookingPageId, pageId))).limit(1);
     if (!hold || hold.customerSessionHash !== hashPublicToken(input.holdToken, tokenSecret())) throw Object.assign(new Error('The slot reservation is invalid.'), { code: 'INVALID_HOLD', statusCode: 409 });
     if (hold.status !== 'ACTIVE' || hold.expiresAt <= new Date()) throw Object.assign(new Error('The slot reservation has expired.'), { code: 'HOLD_EXPIRED', statusCode: 409 });
-    if (hold.serviceId !== input.serviceId || hold.staffUserId !== input.staffId || hold.startTime.toISOString() !== input.startTime || (hold.locationId || null) !== (input.locationId || null)) {
+    const selectedServiceIds = normaliseSelectedServiceIds(input.serviceId, input.serviceIds);
+    if (hold.serviceId !== input.serviceId || hold.serviceIds.join(',') !== selectedServiceIds.join(',') || hold.staffUserId !== input.staffId || hold.startTime.toISOString() !== input.startTime || (hold.locationId || null) !== (input.locationId || null)) {
       throw Object.assign(new Error('The booking does not match the reserved slot.'), { code: 'HOLD_MISMATCH', statusCode: 409 });
     }
     return hold;

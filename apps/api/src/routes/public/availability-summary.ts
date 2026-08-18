@@ -1,14 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { BookingPageSlugSchema, ERROR_CODES } from '@ks-os/contracts';
+import { BookingPageSlugSchema, ERROR_CODES, SelectedServiceIdsSchema } from '@ks-os/contracts';
 import { getDatabase, services } from '@ks-os/database';
 import { calculateAvailability } from '../../modules/availability/availability.service.js';
 import { BookingPageService } from '../../modules/bookings/booking-page.service.js';
+import { assertServiceSelectionAllowed, normaliseSelectedServiceIds } from '../../modules/bookings/service-selection.js';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)');
 const availableDatesQuerySchema = z.object({
   serviceId: z.string().uuid(),
+  serviceIds: SelectedServiceIdsSchema.optional(),
   staffId: z.union([z.literal('any'), z.string().uuid()]).default('any'),
   locationId: z.string().uuid().optional(),
   resourceId: z.string().uuid().optional(),
@@ -84,8 +86,14 @@ export default async function publicAvailabilitySummaryRoutes(fastify: FastifyIn
     }
 
     const query = parsed.data;
-    if (resolved.page.allowedServiceIds.length && !resolved.page.allowedServiceIds.includes(query.serviceId)) {
-      return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'This service is not available for online booking.' } });
+    const selectedServiceIds = normaliseSelectedServiceIds(query.serviceId, query.serviceIds);
+    try {
+      assertServiceSelectionAllowed(resolved.page.bookingRules as any, selectedServiceIds);
+    } catch (error: any) {
+      return reply.code(error.statusCode || 409).send({ error: { code: error.code || 'INVALID_SERVICE_SELECTION', message: error.message } });
+    }
+    if (resolved.page.allowedServiceIds.length && selectedServiceIds.some(serviceId => !resolved.page.allowedServiceIds.includes(serviceId))) {
+      return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'One or more services are not available for online booking.' } });
     }
     if (query.staffId !== 'any' && resolved.page.allowedStaffIds.length && !resolved.page.allowedStaffIds.includes(query.staffId)) {
       return reply.code(404).send({ error: { code: 'STAFF_NOT_AVAILABLE', message: 'This team member is not available for online booking.' } });
@@ -108,6 +116,7 @@ export default async function publicAvailabilitySummaryRoutes(fastify: FastifyIn
           const availability = await calculateAvailability({
             tenantId: resolved.tenant.id,
             serviceId: query.serviceId,
+            serviceIds: selectedServiceIds,
             staffId: query.staffId,
             locationId: query.locationId,
             resourceId: query.resourceId,

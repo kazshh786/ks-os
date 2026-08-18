@@ -63,7 +63,7 @@ test('emailed assignments keep secure acknowledgement, terms and submission URLs
   await user.click(screen.getByRole('button', { name: 'Review answers' }));
 
   expect(screen.getByRole('link', { name: /Consent acknowledgement/ })).toHaveAttribute('href', `/forms/complete/${token}/acknowledgement`);
-  expect(screen.getByRole('link', { name: /Terms & conditions/ })).toHaveAttribute('href', `/forms/complete/${token}/terms`);
+  expect(screen.getByRole('link', { name: /Terms and conditions/ })).toHaveAttribute('href', `/forms/complete/${token}/terms`);
 
   await user.click(screen.getByRole('checkbox'));
   await user.type(screen.getByLabelText('Full legal name'), 'Test Customer');

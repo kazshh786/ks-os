@@ -31,6 +31,12 @@ test('Integration: Booking Payments E2E', async (t) => {
 
   const realStripe = getStripeClient();
   const mockStripe = {
+    accounts: {
+      retrieve: sinon.stub(realStripe.accounts, 'retrieve').resolves({
+        id: 'acct_123',
+        charges_enabled: true,
+      } as any),
+    },
     checkout: {
       sessions: {
         create: sinon.stub(realStripe.checkout.sessions, 'create')
@@ -90,7 +96,8 @@ test('Integration: Booking Payments E2E', async (t) => {
       stripeAccountId: 'acct_123',
       connectionStatus: 'READY',
       chargesEnabled: true,
-      payoutsEnabled: true
+      payoutsEnabled: true,
+      livemode: false
     } as any);
 
     createPaymentSessionStub.resolves({
@@ -107,7 +114,10 @@ test('Integration: Booking Payments E2E', async (t) => {
       from: sinon.stub().returns({
         where: sinon.stub().returns({
           limit: sinon.stub().resolves([{ 
-            id: '11111111-1111-1111-1111-111111111111', 
+            id: '11111111-1111-1111-1111-111111111111',
+            requiresDeposit: false,
+            price: 5000,
+            discount: 0,
             currency: 'GBP',
             stripeAccountId: 'acct_123',
             connectionStatus: 'READY',

@@ -20,6 +20,7 @@ type CalendarView = 'calendar' | 'times';
 type AvailabilityCalendarProps = {
   slug: string;
   serviceId: string;
+  serviceIds?: string[];
   staffId: string;
   locationId?: string;
   bookingChannel: BookingChannel;
@@ -42,6 +43,7 @@ const lowAvailabilityThreshold = 3;
 export function AvailabilityCalendar({
   slug,
   serviceId,
+  serviceIds,
   staffId,
   locationId,
   bookingChannel,
@@ -51,6 +53,7 @@ export function AvailabilityCalendar({
   primary,
   onChange,
 }: AvailabilityCalendarProps) {
+  const selectedServiceIds = useMemo(() => serviceIds?.length ? serviceIds : [serviceId], [serviceId, serviceIds]);
   const minimum = useMemo(() => localDate(minimumDate), [minimumDate]);
   const maximum = useMemo(() => localDate(maximumDate), [maximumDate]);
   const selected = useMemo(() => localDate(value), [value]);
@@ -67,7 +70,7 @@ export function AvailabilityCalendar({
 
   useEffect(() => {
     setView('calendar');
-  }, [bookingChannel, locationId, serviceId, staffId]);
+  }, [bookingChannel, locationId, selectedServiceIds, serviceId, staffId]);
 
   const range = useMemo(() => {
     const from = isBefore(startOfMonth(visibleMonth), minimum) ? minimum : startOfMonth(visibleMonth);
@@ -92,6 +95,7 @@ export function AvailabilityCalendar({
       from: range.from,
       to: range.to,
     });
+    query.set('serviceIds', selectedServiceIds.join(','));
     if (locationId) query.set('locationId', locationId);
 
     fetch(`/api/v1/public/${encodeURIComponent(slug)}/available-dates?${query}`, { signal: controller.signal })
@@ -121,7 +125,7 @@ export function AvailabilityCalendar({
       });
 
     return () => controller.abort();
-  }, [bookingChannel, locationId, range.from, range.to, serviceId, slug, staffId]);
+  }, [bookingChannel, locationId, range.from, range.to, selectedServiceIds, serviceId, slug, staffId]);
 
   const gridStart = startOfWeek(startOfMonth(visibleMonth), { weekStartsOn: 1 });
   const gridEnd = endOfWeek(endOfMonth(visibleMonth), { weekStartsOn: 1 });

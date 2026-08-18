@@ -50,9 +50,18 @@ export type PublicTenantCatalog = z.infer<typeof PublicTenantCatalogSchema>;
 // AVAILABILITY
 // ============================================================================
 
+export const SelectedServiceIdsSchema = z.preprocess(
+  value => typeof value === 'string' ? value.split(',').filter(Boolean) : value,
+  z.array(z.string().uuid()).min(1).max(10).refine(
+    value => new Set(value).size === value.length,
+    'Each service can only be selected once.',
+  ),
+);
+
 export const AvailabilityQuerySchema = z.object({
   tenantId: z.string().uuid().optional(),
   serviceId: z.string().uuid(),
+  serviceIds: SelectedServiceIdsSchema.optional(),
   staffId: z.string().optional(),
   locationId: z.string().uuid().optional(),
   resourceId: z.string().uuid().optional(),
@@ -102,6 +111,7 @@ export type MobileAddress = z.infer<typeof MobileAddressSchema>;
 
 export const CreateBookingRequestSchema = z.object({
   serviceId: z.string().uuid(),
+  serviceIds: SelectedServiceIdsSchema.optional(),
   staffId: z.string().uuid(),
   startTime: z.string().datetime(),
   client: CustomerBookingDetailsSchema,
@@ -121,6 +131,9 @@ export const CreateBookingRequestSchema = z.object({
   analyticsSessionId: z.string().uuid().optional(),
   customerNotes: z.string().trim().max(2_000).optional(),
 }).strict().superRefine((value, context) => {
+  if (value.serviceIds && value.serviceIds[0] !== value.serviceId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['serviceIds'], message: 'The primary service must be first.' });
+  }
   if (value.bookingChannel === 'mobile' && !value.mobileAddress) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['mobileAddress'], message: 'An appointment address is required for mobile bookings.' });
   }

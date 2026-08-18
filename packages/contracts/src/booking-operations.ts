@@ -57,6 +57,9 @@ export type BookingPageTheme = z.infer<typeof BookingPageThemeSchema>;
 export const BookingChannelSchema = z.enum(['in_shop', 'mobile']);
 export type BookingChannel = z.infer<typeof BookingChannelSchema>;
 
+export const ServiceSelectionModeSchema = z.enum(['SINGLE', 'MULTIPLE', 'CUSTOM']);
+export type ServiceSelectionMode = z.infer<typeof ServiceSelectionModeSchema>;
+
 const bookingRulesSchema = z.object({
   minimumNoticeMinutes: z.number().int().min(0).max(525_600).default(60),
   maximumFutureDays: z.number().int().min(1).max(730).default(90),
@@ -65,6 +68,8 @@ const bookingRulesSchema = z.object({
   allowGuestBooking: z.boolean().default(true),
   customerNotesEnabled: z.boolean().default(true),
   enabledBookingChannels: z.array(BookingChannelSchema).min(1).max(2).default(['in_shop']),
+  serviceSelectionMode: ServiceSelectionModeSchema.default('SINGLE'),
+  exclusiveServiceIds: z.array(z.string().uuid()).max(250).default([]),
 }).strict();
 
 const paymentSettingsSchema = z.object({
@@ -228,6 +233,7 @@ export type BookingOperationsResponse = z.infer<typeof BookingOperationsResponse
 
 export const CreateBookingHoldSchema = z.object({
   serviceId: z.string().uuid(),
+  serviceIds: z.array(z.string().uuid()).min(1).max(10).optional(),
   staffId: z.string().uuid(),
   locationId: z.string().uuid().nullable().optional(),
   resourceId: z.string().uuid().nullable().optional(),

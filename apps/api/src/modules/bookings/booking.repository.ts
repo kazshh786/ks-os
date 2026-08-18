@@ -200,7 +200,8 @@ export class BookingRepository {
     bookingChannel: string,
     mobileAddress?: any,
     resourceId?: string | null,
-    tx?: any
+    tx?: any,
+    serviceIds: string[] = [serviceId],
   ) {
     const dbOrTx = tx || getDatabase();
     const result = await dbOrTx.execute(sql`
@@ -215,6 +216,7 @@ export class BookingRepository {
         ${paymentMode}::text,
         ${payNow}::boolean,
         ${idempotencyKey}::uuid,
+        ARRAY[${sql.join(serviceIds.map(selectedId => sql`${selectedId}::uuid`), sql`, `)}]::uuid[],
         ${bookingChannel}::text,
         ${mobileAddress ? JSON.stringify(mobileAddress) : null}::jsonb
       )

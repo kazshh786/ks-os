@@ -302,7 +302,7 @@ async function ensureBookingData(agencyActor: AgencyActor, tenant: typeof tenant
     allowedLocationIds: [resolvedLocation.id],
     allowedServiceIds: serviceRows.map(item => item.id),
     allowedStaffIds: memberRows.map(item => item.id),
-    bookingRules: { minimumNoticeMinutes: 120, maximumFutureDays: 90, slotIntervalMinutes: 30, allowAnyStaff: true, allowGuestBooking: true, customerNotesEnabled: true, enabledBookingChannels: ['in_shop'] },
+    bookingRules: { minimumNoticeMinutes: 120, maximumFutureDays: 90, slotIntervalMinutes: 30, allowAnyStaff: true, allowGuestBooking: true, customerNotesEnabled: true, enabledBookingChannels: ['in_shop'], serviceSelectionMode: 'SINGLE', exclusiveServiceIds: [] },
     paymentSettings: { mode: 'PAY_LATER', depositPercentage: 0, promotionCodesEnabled: false, giftCardsEnabled: false },
     cancellationSettings: { customerCancellationEnabled: true, customerReschedulingEnabled: true, minimumNoticeMinutes: 1440, policyText: 'Please give at least 24 hours notice when cancelling or rescheduling.' },
     seoSettings: { title: 'Book Luma Beauty Studio', description: 'Book a fictional beauty appointment in the KS OS playground.', socialTitle: 'Luma Beauty Studio', socialDescription: 'A fictional KS OS live booking playground.', socialImageUrl: null, allowIndexing: false, canonicalUrl: null },

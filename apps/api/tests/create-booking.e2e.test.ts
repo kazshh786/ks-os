@@ -35,7 +35,25 @@ test('Booking Creation endpoints', async (t) => {
     }
   };
 
-  const dbStub = sinon.stub(getDatabase() as any, 'select').returns(queryBuilder as any);
+  const serviceQueryBuilder = {
+    from: sinon.stub().returnsThis(),
+    where: sinon.stub().returnsThis(),
+    limit: sinon.stub().returnsThis(),
+    then: function(resolve: any) {
+      resolve([{
+        id: '11111111-1111-1111-1111-111111111111',
+        requiresDeposit: false,
+        price: 0,
+        discount: 0,
+      }]);
+    },
+  };
+
+  const dbStub = sinon.stub(getDatabase() as any, 'select').callsFake((selection: any) =>
+    selection && Object.prototype.hasOwnProperty.call(selection, 'requiresDeposit')
+      ? serviceQueryBuilder as any
+      : queryBuilder as any,
+  );
   const insertResult: any = Promise.resolve();
   insertResult.values = sinon.stub().returns(insertResult);
   insertResult.onConflictDoNothing = sinon.stub().returns(insertResult);
