@@ -12,7 +12,7 @@ import {
 import { useNavigate, useParams } from 'react-router';
 import { FormSchemaJsonSchema, type FormSchemaJson } from '@ks-os/contracts';
 import { FormRenderer } from '../features/forms/FormRenderer.js';
-import { formState } from '../features/forms/form-engine.js';
+import { formatFormAnswer, formState } from '../features/forms/form-engine.js';
 import { currentWorkspaceSlug } from '../lib/workspace-hostname.js';
 
 type PublicWorkspaceFormData = {
@@ -184,6 +184,13 @@ export default function PublicWorkspaceFormPage() {
   const terms = termsContent(schema);
   const formPath = `/form/${encodeURIComponent(formSlug)}`;
 
+  const reviewConsentForm = () => {
+    setReview(false);
+    setPage(0);
+    setSubmitError('');
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  };
+
   const validationErrors = (scope: 'current' | 'all') => {
     const next: Record<string, string> = {};
     const activePage = schema.pages[page];
@@ -299,11 +306,12 @@ export default function PublicWorkspaceFormPage() {
           </nav>
         </> : <>
           <div className="border-b border-slate-100 px-6 py-7 md:px-9 md:py-9"><div className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wide" style={{ background: `${accent}12`, color: accent }}><CheckCircle2 className="h-3.5 w-3.5" />Almost finished</div><h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950">Review and confirm</h1><p className="mt-2 text-slate-600">Check your information before sending it securely to {data.salon.name}.</p></div>
-          <div className="px-6 py-7 md:px-9 md:py-9"><dl className="space-y-3">{schema.fields.filter(field => state.get(field.key || field.id)?.visible && !['INFORMATION', 'HEADING', 'DIVIDER', 'HIDDEN'].includes(field.type)).map(field => { const value = answers[field.key || field.id]; return <div key={field.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"><dt className="text-xs font-black uppercase tracking-wide text-slate-500">{field.label}</dt><dd className="mt-1 font-semibold text-slate-900">{Array.isArray(value) ? value.join(', ') : value === true ? 'Yes' : value === false ? 'No' : String(value ?? 'Not answered')}</dd></div>; })}</dl>
+          <div className="px-6 py-7 md:px-9 md:py-9"><dl className="space-y-3">{schema.fields.filter(field => state.get(field.key || field.id)?.visible && !['INFORMATION', 'HEADING', 'DIVIDER', 'HIDDEN'].includes(field.type)).map(field => { const value = answers[field.key || field.id]; return <div key={field.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"><dt className="text-xs font-black uppercase tracking-wide text-slate-500">{field.label}</dt><dd className="mt-1 font-semibold text-slate-900">{formatFormAnswer(field, value)}</dd></div>; })}</dl>
             <section id="consent-confirmation" className="mt-6 rounded-2xl border p-5" style={{ borderColor: `${primary}35`, background: `${primary}0d` }}>
               <h2 className="font-black" style={{ color: primary }}>Consent acknowledgement</h2>
               <p className="mt-2 text-sm leading-6 text-slate-700">{data.form.acknowledgementText}</p>
               <div className="mt-4 flex flex-wrap gap-2">
+                <a href={formPath} onClick={event => { event.preventDefault(); reviewConsentForm(); }} className="inline-flex items-center gap-1.5 rounded-full border border-white bg-white px-3 py-2 text-xs font-black shadow-sm" style={{ color: primary }}><ArrowLeft className="h-3.5 w-3.5" />Review consent form</a>
                 <a href={`${formPath}/acknowledgement`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-white bg-white px-3 py-2 text-xs font-black shadow-sm" style={{ color: primary }}><FileText className="h-3.5 w-3.5" />Consent acknowledgement<ExternalLink className="h-3 w-3" /></a>
                 {terms && <a href={`${formPath}/terms`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-white bg-white px-3 py-2 text-xs font-black shadow-sm" style={{ color: primary }}><FileText className="h-3.5 w-3.5" />Terms &amp; conditions<ExternalLink className="h-3 w-3" /></a>}
               </div>
