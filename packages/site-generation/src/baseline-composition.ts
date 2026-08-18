@@ -319,9 +319,27 @@ export function createBaselinePageCompositionPlan(input: {
         },
       }];
     });
-  const selectedTypes = new Set(candidates
-    .filter(candidate => desired.has(candidate.sectionType))
-    .map(candidate => candidate.sectionType));
+  const selectedTypes = new Set<SiteSectionType>();
+  const selectAvailable = (sectionTypes: ReadonlySet<SiteSectionType>, enforceLimit: boolean) => {
+    for (const candidate of candidates) {
+      if (!sectionTypes.has(candidate.sectionType) || selectedTypes.has(candidate.sectionType)) continue;
+      if (enforceLimit && selectedTypes.size >= recipe.maxRecommendedSections) break;
+      selectedTypes.add(candidate.sectionType);
+    }
+  };
+
+  // Required layout capabilities and page-purpose alternatives are mandatory.
+  // Add recipe, blueprint and enrichment preferences only while the governed
+  // page-type ceiling has room so a rich approved layout cannot overfill a page.
+  selectAvailable(new Set(input.template.requiredSectionTypes), false);
+  for (const alternatives of recipe.requiredAnyOf) {
+    if (alternatives.some(sectionType => selectedTypes.has(sectionType))) continue;
+    const selectedAlternative = candidates.find(candidate => alternatives.includes(candidate.sectionType));
+    if (selectedAlternative) selectedTypes.add(selectedAlternative.sectionType);
+  }
+  selectAvailable(new Set(recipe.recommendedSectionTypes), true);
+  selectAvailable(new Set(input.page.plannedSectionTypes), true);
+  selectAvailable(new Set(BASELINE_DEPTH_ENRICHMENTS[input.page.pageType] ?? []), true);
 
   // A recipe can recommend a section that an otherwise compatible approved
   // layout intentionally does not support (for example FAQ on TEAM_DETAIL).
