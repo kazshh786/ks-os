@@ -107,7 +107,10 @@ test('Integration: Booking Payments E2E', async (t) => {
       from: sinon.stub().returns({
         where: sinon.stub().returns({
           limit: sinon.stub().resolves([{ 
-            id: '11111111-1111-1111-1111-111111111111', 
+            id: '11111111-1111-1111-1111-111111111111',
+            requiresDeposit: false,
+            price: 5000,
+            discount: 0,
             currency: 'GBP',
             stripeAccountId: 'acct_123',
             connectionStatus: 'READY',

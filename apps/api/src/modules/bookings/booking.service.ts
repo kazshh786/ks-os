@@ -374,7 +374,6 @@ export class BookingService {
   async createPublicBooking(
     tenantId: string,
     serviceId: string,
-    serviceIds: string[],
     staffId: string,
     startTime: string,
     client: { name: string; email?: string; phone?: string },
@@ -385,11 +384,11 @@ export class BookingService {
     mobileAddress?: any,
     resourceId?: string | null,
     tx?: any,
+    serviceIds: string[] = [serviceId],
   ) {
     const booking = await this.repository.createBookingUsingDbFunction(
       tenantId,
       serviceId,
-      serviceIds,
       staffId,
       startTime,
       client,
@@ -400,6 +399,7 @@ export class BookingService {
       mobileAddress,
       resourceId,
       tx,
+      serviceIds,
     );
 
     if (!booking) {

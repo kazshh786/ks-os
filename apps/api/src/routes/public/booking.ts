@@ -285,7 +285,8 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         price: services.price,
         discount: services.discount,
       }).from(services)
-        .where(and(inArray(services.id, selectedServiceIds), eq(services.tenantId, tenant.id), eq(services.isActive, true)));
+        .where(and(inArray(services.id, selectedServiceIds), eq(services.tenantId, tenant.id), eq(services.isActive, true)))
+        .limit(selectedServiceIds.length);
       if (bookedServices.length !== selectedServiceIds.length) return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'One or more services are not available for online booking.' } });
       const serviceById = new Map(bookedServices.map(service => [service.id, service]));
       const orderedServices = selectedServiceIds.map(serviceId => serviceById.get(serviceId)!);
@@ -315,7 +316,6 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         const created = await bookingService.createPublicBooking(
           tenant.id,
           data.serviceId,
-          selectedServiceIds,
           data.staffId,
           data.startTime,
           data.client,
@@ -326,6 +326,7 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
           data.mobileAddress,
           data.resourceId,
           tx,
+          selectedServiceIds,
         );
         const appointmentId = created.appointment_id || created.id;
         if (data.intakeSubmissionIds.length) {

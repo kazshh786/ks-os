@@ -191,7 +191,6 @@ export class BookingRepository {
   async createBookingUsingDbFunction(
     tenantId: string,
     serviceId: string,
-    serviceIds: string[],
     staffId: string,
     startTime: string, // ISO string
     client: { name: string; email?: string; phone?: string },
@@ -201,7 +200,8 @@ export class BookingRepository {
     bookingChannel: string,
     mobileAddress?: any,
     resourceId?: string | null,
-    tx?: any
+    tx?: any,
+    serviceIds: string[] = [serviceId],
   ) {
     const dbOrTx = tx || getDatabase();
     const result = await dbOrTx.execute(sql`
