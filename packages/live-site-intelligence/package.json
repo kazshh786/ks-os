@@ -8,11 +8,13 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
     },
     "./database": {
       "types": "./dist/drizzle-data-source.d.ts",
-      "import": "./dist/drizzle-data-source.js"
+      "import": "./dist/drizzle-data-source.js",
+      "require": "./dist/drizzle-data-source.js"
     }
   },
   "scripts": {
