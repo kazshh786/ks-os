@@ -1,5 +1,21 @@
 import type { FormSchemaJson } from '@ks-os/contracts';
 
+type FormField = FormSchemaJson['fields'][number];
+
+function optionLabel(field: FormField, value: unknown): string {
+  const normalized = String(value ?? '');
+  const option = field.options?.find(candidate => candidate.id === normalized || candidate.value === normalized);
+  return option?.label || normalized;
+}
+
+export function formatFormAnswer(field: FormField, value: unknown): string {
+  if (value == null || value === '' || (Array.isArray(value) && !value.length)) return 'Not answered';
+  if (value === true) return 'Yes';
+  if (value === false) return 'No';
+  if (Array.isArray(value)) return value.map(item => optionLabel(field, item)).join(', ');
+  return optionLabel(field, value);
+}
+
 export function formState(schema: FormSchemaJson, answers: Record<string, unknown>) {
   const state = new Map(schema.fields.map(field => [field.key || field.id, { visible: !field.hidden, required: field.required }]));
   for (const rule of schema.logic.filter(rule => rule.enabled)) {
