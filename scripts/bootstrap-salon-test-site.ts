@@ -396,6 +396,8 @@ async function ensureBookingData(agencyActor: AgencyActor, tenant: typeof tenant
       allowGuestBooking: true,
       customerNotesEnabled: true,
       enabledBookingChannels: ['in_shop'],
+      serviceSelectionMode: 'SINGLE',
+      exclusiveServiceIds: [],
     },
     paymentSettings: {
       mode: 'PAY_LATER',
