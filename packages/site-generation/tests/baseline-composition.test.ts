@@ -375,6 +375,37 @@ test('baseline fills TEAM_DETAIL depth from the approved native layout when FAQ 
   }).some(finding => finding.severity === 'ERROR'), false);
 });
 
+test('baseline caps optional NEW_CLIENT_GUIDE sections at the governed recipe maximum', () => {
+  const guide = fixture('NEW_CLIENT_GUIDE', 42);
+  const sectionOrder = [
+    ...guide.template.sectionOrder,
+    'BENEFITS',
+    'TRUST_INDICATORS',
+  ] as SiteSectionType[];
+  const page = { ...guide.page, plannedSectionTypes: sectionOrder };
+  const template: TemplateGenerationConstraint = {
+    ...guide.template,
+    sectionOrder,
+    availableComponentKeys: sectionOrder.flatMap(sectionType =>
+      listSiteComponents({ sectionType, pageType: page.pageType, conversionRole: page.conversionRole })
+        .map(component => component.componentKey)),
+  };
+  const approvedPageReferences = [page.pageReference, id(999)];
+  const plan = createBaselinePageCompositionPlan({
+    page,
+    template,
+    facts: completeFacts(),
+    approvedPageReferences,
+  });
+  assert.equal(plan.selectedComponents.length, PAGE_COMPLETENESS_RECIPES.NEW_CLIENT_GUIDE.maxRecommendedSections);
+  assert.equal(validatePageCompositionPlan({
+    output: plan,
+    page,
+    template,
+    approvedPageReferences,
+  }).some(finding => finding.severity === 'ERROR'), false);
+});
+
 test('F-G: approved Search Intelligence links and topic guide baseline content composition', () => {
   const { page, template } = fixture('FAQ', 5);
   const targetPageReference = id(999);
