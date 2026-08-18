@@ -175,7 +175,7 @@ export async function executeStructuredSiteGeneration(
     let assetCoveragePlan: ReturnType<typeof createDeterministicAssetCoveragePlan> | undefined;
     if ((input.pipelineVersion ?? 1) === 2) {
       if ((input.generationMode ?? 'ai-composition') === 'baseline') {
-        await input.updateProgress?.({ current: 0, total: input.plan.pages.length + 1, message: 'Creating deterministic governed baseline compositions.' });
+        await input.updateProgress?.({ current: 0, total: input.plan.pages.length, message: 'Creating deterministic governed baseline compositions.' });
         const baseline = createBaselineComposition({
           plan: input.plan,
           constraints: input.constraints,
@@ -202,7 +202,7 @@ export async function executeStructuredSiteGeneration(
           pageCompositionPlans.set(pagePlan.pageReference, pagePlan);
         }
       } else {
-        await input.updateProgress?.({ current: 0, total: input.plan.pages.length + 2, message: 'Creating the governed site-wide composition strategy.' });
+        await input.updateProgress?.({ current: 0, total: input.plan.pages.length, message: 'Creating the governed site-wide composition strategy.' });
         const strategyResponse = await input.provider.generateStructuredOutput({
           prompt: composeSiteStrategyPrompt({
             plan: input.plan,
