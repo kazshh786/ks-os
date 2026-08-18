@@ -31,6 +31,12 @@ test('Integration: Booking Payments E2E', async (t) => {
 
   const realStripe = getStripeClient();
   const mockStripe = {
+    accounts: {
+      retrieve: sinon.stub(realStripe.accounts, 'retrieve').resolves({
+        id: 'acct_123',
+        charges_enabled: true,
+      } as any),
+    },
     checkout: {
       sessions: {
         create: sinon.stub(realStripe.checkout.sessions, 'create')
@@ -90,7 +96,8 @@ test('Integration: Booking Payments E2E', async (t) => {
       stripeAccountId: 'acct_123',
       connectionStatus: 'READY',
       chargesEnabled: true,
-      payoutsEnabled: true
+      payoutsEnabled: true,
+      livemode: false
     } as any);
 
     createPaymentSessionStub.resolves({
