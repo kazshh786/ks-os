@@ -23,75 +23,17 @@ import {
 import {
   PublicLiveSiteDataSchema,
   type LiveSiteResolutionInput,
-  type PublicOpeningState,
 } from './contracts.js';
+import {
+  resolveOpeningHoursSchedule,
+  resolveOpeningState,
+} from './opening-hours.js';
 import { isSnapshotBoundAvailability, type LiveSiteDataSource } from './resolver.js';
 
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
-
-function clock(value: unknown) {
-  const match = typeof value === 'string' ? value.match(/^(\d{2}):(\d{2})/) : null;
-  return match ? `${match[1]}:${match[2]}` : null;
-}
-
-function localClock(now: Date, timezone: string) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: timezone,
-    weekday: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(now);
-  const weekday = parts.find(part => part.type === 'weekday')?.value;
-  const hour = parts.find(part => part.type === 'hour')?.value;
-  const minute = parts.find(part => part.type === 'minute')?.value;
-  return {
-    day: Math.max(0, WEEKDAYS.indexOf(weekday as typeof WEEKDAYS[number])),
-    time: `${hour ?? '00'}:${minute ?? '00'}`,
-  };
-}
-
-type HoursRow = { dayOfWeek: number; opensAt: unknown; closesAt: unknown };
-
-function openingState(input: {
-  now: Date;
-  timezone: string;
-  active: boolean;
-  canonicalHours: readonly HoursRow[];
-  fallbackHours: readonly HoursRow[];
-  closure?: { publicLabel: string };
-}): PublicOpeningState {
-  if (!input.active) return { state: 'CLOSED', label: 'Closed', source: 'CANONICAL_HOURS' };
-  if (input.closure) {
-    return {
-      state: 'TEMPORARILY_CLOSED',
-      label: input.closure.publicLabel,
-      source: 'CANONICAL_HOURS',
-    };
-  }
-  const sourceRows = input.canonicalHours.length ? input.canonicalHours : input.fallbackHours;
-  const source = input.canonicalHours.length ? 'CANONICAL_HOURS' : 'BOOKING_SCHEDULE_FALLBACK';
-  if (!sourceRows.length) return { state: 'UNKNOWN', label: 'Hours unavailable', source: 'UNAVAILABLE' };
-  const local = localClock(input.now, input.timezone);
-  const normalized = sourceRows.flatMap(row => {
-    const opens = clock(row.opensAt);
-    const closes = clock(row.closesAt);
-    return opens && closes ? [{ day: row.dayOfWeek, opens, closes }] : [];
-  });
-  const current = normalized.find(row => row.day === local.day && row.opens <= local.time && row.closes > local.time);
-  if (current) return { state: 'OPEN', label: `Open now · closes at ${current.closes}`, source };
-  for (let offset = 0; offset <= 7; offset += 1) {
-    const day = (local.day + offset) % 7;
-    const next = normalized
-      .filter(row => row.day === day && (offset > 0 || row.opens > local.time))
-      .sort((left, right) => left.opens.localeCompare(right.opens))[0];
-    if (next) {
-      const when = offset === 0 ? 'today' : offset === 1 ? 'tomorrow' : WEEKDAYS[day];
-      return { state: 'CLOSED', label: `Closed · opens ${when} at ${next.opens}`, source };
-    }
-  }
-  return { state: 'CLOSED', label: 'Closed', source };
-}
+const PUBLIC_WEEKDAYS = [
+  'SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY',
+  'THURSDAY', 'FRIDAY', 'SATURDAY',
+] as const;
 
 function publicMoney(amountMinor: number, currency: string) {
   return {
@@ -344,12 +286,14 @@ export class DrizzleLiveSiteDataSource implements LiveSiteDataSource {
         serviceReferences: [],
         staffReferences: [],
         opening: { state: 'UNKNOWN' as const, label: 'Hours unavailable', source: 'UNAVAILABLE' as const },
+        openingHours: [],
       };
       const assignedStaff = new Set(effectiveStaffLocationRows
         .filter(link => link.locationId === location.id)
         .map(link => link.staffId));
-      const fallbackHours = scheduleRows.filter(row => assignedStaff.has(row.staffId));
+      const bookingHours = scheduleRows.filter(row => assignedStaff.has(row.staffId));
       const canonicalHours = hoursRows.filter(row => row.locationId === location.id);
+      const schedule = resolveOpeningHoursSchedule(canonicalHours, bookingHours);
       const staffReferences = [...(locationStaffReferences.get(location.id) ?? [])];
       const serviceReferences = [...(locationServiceReferences.get(location.id) ?? [])];
       return {
@@ -358,14 +302,19 @@ export class DrizzleLiveSiteDataSource implements LiveSiteDataSource {
         bookingEligible: location.active && staffReferences.length > 0 && serviceReferences.length > 0,
         serviceReferences,
         staffReferences,
-        opening: openingState({
+        opening: resolveOpeningState({
           now,
           timezone: location.timezone,
           active: location.active,
           canonicalHours,
-          fallbackHours,
+          bookingHours,
           closure: closureRows.find(row => row.locationId === location.id),
         }),
+        openingHours: schedule.rows.map(hours => ({
+          day: PUBLIC_WEEKDAYS[hours.dayOfWeek]!,
+          opens: hours.opens,
+          closes: hours.closes,
+        })),
       };
     });
 

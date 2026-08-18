@@ -97,9 +97,16 @@ export const PublicOpeningStateSchema = z.object({
   label: z.string().trim().min(1).max(120),
   closesAt: z.string().datetime().optional(),
   opensAt: z.string().datetime().optional(),
-  source: z.enum(['CANONICAL_HOURS', 'BOOKING_SCHEDULE_FALLBACK', 'UNAVAILABLE']),
+  source: z.enum(['CANONICAL_HOURS', 'BOOKING_SCHEDULE_FALLBACK', 'SYSTEM_DEFAULT', 'UNAVAILABLE']),
 }).strict();
 export type PublicOpeningState = z.infer<typeof PublicOpeningStateSchema>;
+
+export const PublicLiveOpeningHoursEntrySchema = z.object({
+  day: z.enum(['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']),
+  opens: z.string().regex(/^\d{2}:\d{2}$/),
+  closes: z.string().regex(/^\d{2}:\d{2}$/),
+}).strict();
+export type PublicLiveOpeningHoursEntry = z.infer<typeof PublicLiveOpeningHoursEntrySchema>;
 
 export const PublicLiveLocationStateSchema = z.object({
   publicReference: PublicReferenceSchema,
@@ -108,6 +115,7 @@ export const PublicLiveLocationStateSchema = z.object({
   serviceReferences: z.array(PublicReferenceSchema).max(500),
   staffReferences: z.array(PublicReferenceSchema).max(500),
   opening: PublicOpeningStateSchema,
+  openingHours: z.array(PublicLiveOpeningHoursEntrySchema).max(28).optional(),
 }).strict();
 export type PublicLiveLocationState = z.infer<typeof PublicLiveLocationStateSchema>;
 
