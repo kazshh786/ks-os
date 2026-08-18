@@ -292,9 +292,8 @@ export function createBaselinePageCompositionPlan(input: {
   const order = input.template.sectionOrder.length
     ? input.template.sectionOrder
     : [...desired];
-  const selectedComponents = order
-    .filter(sectionType => desired.has(sectionType)
-      && !input.template.prohibitedSectionTypes.includes(sectionType)
+  const candidates = order
+    .filter(sectionType => !input.template.prohibitedSectionTypes.includes(sectionType)
       && sectionFactsAvailable(sectionType, input.facts))
     .flatMap(sectionType => {
       const component = selectComponent({
@@ -307,15 +306,77 @@ export function createBaselinePageCompositionPlan(input: {
       if (!component) return [];
       return [{
         sectionType,
-        componentKey: component.componentKey,
-        purpose: `Fulfil the governed ${sectionType.toLowerCase().replaceAll('_', ' ')} role for this ${input.page.pageType.toLowerCase().replaceAll('_', ' ')} page.`,
-        dataBindings: [
-          ...component.requiredDataBindings,
-          ...component.optionalDataBindings.filter(binding => bindings.has(binding)),
-        ],
-        assetAssignments: assetAssignments(component, assets, input.page, sectionType),
+        component,
+        selection: {
+          sectionType,
+          componentKey: component.componentKey,
+          purpose: `Fulfil the governed ${sectionType.toLowerCase().replaceAll('_', ' ')} role for this ${input.page.pageType.toLowerCase().replaceAll('_', ' ')} page.`,
+          dataBindings: [
+            ...component.requiredDataBindings,
+            ...component.optionalDataBindings.filter(binding => bindings.has(binding)),
+          ],
+          assetAssignments: assetAssignments(component, assets, input.page, sectionType),
+        },
       }];
     });
+  const selectedTypes = new Set(candidates
+    .filter(candidate => desired.has(candidate.sectionType))
+    .map(candidate => candidate.sectionType));
+
+  // A recipe can recommend a section that an otherwise compatible approved
+  // layout intentionally does not support (for example FAQ on TEAM_DETAIL).
+  // Fill only the resulting depth gaps from that layout's own ordered,
+  // allow-listed capabilities instead of failing or inventing a component.
+  if (!recipe.bookingDepthExempt) {
+    const depth = () => {
+      const classifications = candidates
+        .filter(candidate => selectedTypes.has(candidate.sectionType))
+        .map(candidate => candidate.component.classification);
+      return {
+        meaningful: classifications.filter(classification =>
+          classification !== 'CHROME' && classification !== 'CONVERSION').length,
+        substantive: classifications.filter(classification =>
+          classification === 'PRIMARY'
+          || classification === 'SUBSTANTIVE'
+          || classification === 'LEGAL').length,
+        supporting: classifications.filter(classification => classification === 'SUPPORTING').length,
+      };
+    };
+
+    while (selectedTypes.size < recipe.maxRecommendedSections) {
+      const current = depth();
+      const meaningfulMissing = Math.max(0, recipe.minMeaningfulSections - current.meaningful);
+      const substantiveMissing = Math.max(0, recipe.minSubstantiveSections - current.substantive);
+      const supportingMissing = Math.max(0, recipe.minSupportingSections - current.supporting);
+      if (!meaningfulMissing && !substantiveMissing && !supportingMissing) break;
+
+      const supplement = candidates
+        .filter(candidate => !selectedTypes.has(candidate.sectionType))
+        .map((candidate, orderIndex) => {
+          const classification = candidate.component.classification;
+          const meaningful = classification !== 'CHROME' && classification !== 'CONVERSION';
+          const substantive = classification === 'PRIMARY'
+            || classification === 'SUBSTANTIVE'
+            || classification === 'LEGAL';
+          const supporting = classification === 'SUPPORTING';
+          return {
+            ...candidate,
+            orderIndex,
+            score: (meaningfulMissing && meaningful ? 100 : 0)
+              + (substantiveMissing && substantive ? 200 : 0)
+              + (supportingMissing && supporting ? 200 : 0),
+          };
+        })
+        .filter(candidate => candidate.score > 0)
+        .sort((left, right) => right.score - left.score || left.orderIndex - right.orderIndex)[0];
+      if (!supplement) break;
+      selectedTypes.add(supplement.sectionType);
+    }
+  }
+
+  const selectedComponents = candidates
+    .filter(candidate => selectedTypes.has(candidate.sectionType))
+    .map(candidate => candidate.selection);
 
   const approvedPages = new Set(input.approvedPageReferences);
   const seoLinks = (input.pageSeoBrief?.internalLinks ?? [])
