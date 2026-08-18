@@ -6,6 +6,7 @@ import PaymentSuccess from './book/PaymentSuccess.js';
 import PaymentCancel from './book/PaymentCancel.js';
 import PublicWorkspaceFormPage, { PublicWorkspaceFormLegalPage } from './PublicWorkspaceFormPage.js';
 import { WorkspaceConsentFormSuccessPage } from './ConsentFormSuccessPage.js';
+import { AssignedConsentFormLegalPage } from './PublicFormCompletionPage.js';
 
 function PublicBookingSurface({ children }: { children: React.ReactNode }) {
   return (
@@ -29,6 +30,7 @@ export const NotFoundPage: React.FC = () => {
   if (path === '/book/payment/cancel') {
     return <PublicBookingSurface><PaymentCancel /></PublicBookingSurface>;
   }
+  if (/^\/forms\/complete\/[^/]+\/acknowledgement$/i.test(path)) return <AssignedConsentFormLegalPage />;
   if (/^\/form\/[^/]+\/acknowledgement$/i.test(path)) return <PublicWorkspaceFormLegalPage documentType="acknowledgement" />;
   if (/^\/form\/[^/]+\/terms$/i.test(path)) return <PublicWorkspaceFormLegalPage documentType="terms" />;
   if (/^\/form\/[^/]+\/success$/i.test(path)) return <WorkspaceConsentFormSuccessPage />;
