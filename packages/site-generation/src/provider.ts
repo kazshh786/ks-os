@@ -305,23 +305,33 @@ interface VertexGeminiErrorResponse {
   };
 }
 
+function sanitizeVertexDiagnosticText(value: string): string | undefined {
+  const sanitized = value
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 500);
+  return sanitized || undefined;
+}
+
 async function vertexFailureDiagnostic(response: Response): Promise<string | undefined> {
   try {
     const raw = await response.text();
     if (!raw || raw.length > 8_000) return undefined;
-    const decoded = JSON.parse(raw) as VertexGeminiErrorResponse;
+    let decoded: VertexGeminiErrorResponse;
+    try {
+      decoded = JSON.parse(raw) as VertexGeminiErrorResponse;
+    } catch {
+      return sanitizeVertexDiagnosticText(raw);
+    }
     const status = typeof decoded.error?.status === 'string'
       && /^[A-Z][A-Z0-9_]{1,63}$/.test(decoded.error.status)
       ? decoded.error.status
       : undefined;
     const message = typeof decoded.error?.message === 'string'
-      ? decoded.error.message
-        .replace(/[\u0000-\u001f\u007f]+/g, ' ')
-        .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
-        .replace(/https?:\/\/\S+/gi, '[url]')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 500)
+      ? sanitizeVertexDiagnosticText(decoded.error.message)
       : undefined;
     const fields = [status, message].filter(Boolean);
     return fields.length > 0 ? fields.join(': ') : undefined;
@@ -453,6 +463,8 @@ export class VertexGeminiSiteGenerationProvider implements SiteGenerationProvide
     throw new SiteGenerationProviderError(
       'TERMINAL_PROVIDER_FAILURE',
       'Application Default Credentials could not authorize the Vertex AI request.',
+      undefined,
+      'ADC_AUTHORIZATION_FAILED',
     );
   }
 
@@ -503,6 +515,8 @@ export class VertexGeminiSiteGenerationProvider implements SiteGenerationProvide
       throw new SiteGenerationProviderError(
         'TERMINAL_PROVIDER_FAILURE',
         'Application Default Credentials could not authorize the Vertex AI request.',
+        undefined,
+        'ADC_AUTHORIZATION_FAILED',
       );
     }
 
@@ -545,7 +559,7 @@ export class VertexGeminiSiteGenerationProvider implements SiteGenerationProvide
       const retryable = response.status === 429 || response.status >= 500;
       const retryAfterHeader = response.headers.get('retry-after');
       const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : undefined;
-      const safeDiagnostic = await vertexFailureDiagnostic(response);
+      const safeDiagnostic = await vertexFailureDiagnostic(response) ?? `HTTP_${response.status}`;
       const kind: ProviderFailureKind = response.status === 429
         ? 'RETRYABLE_RATE_LIMIT'
         : retryable
@@ -566,9 +580,17 @@ export class VertexGeminiSiteGenerationProvider implements SiteGenerationProvide
       .trim();
 
     if (!text || envelope.promptFeedback?.blockReason) {
+      const blockReason = envelope.promptFeedback?.blockReason;
+      const finishReason = envelope.candidates?.[0]?.finishReason;
       throw new SiteGenerationProviderError(
         'TERMINAL_PROVIDER_FAILURE',
         'The generation provider returned no usable structured output.',
+        undefined,
+        blockReason
+          ? `PROMPT_BLOCKED_${sanitizeVertexDiagnosticText(blockReason) ?? 'UNKNOWN'}`
+          : finishReason
+            ? `NO_OUTPUT_${sanitizeVertexDiagnosticText(finishReason) ?? 'UNKNOWN'}`
+            : 'EMPTY_PROVIDER_OUTPUT',
       );
     }
 

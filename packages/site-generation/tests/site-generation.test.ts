@@ -871,6 +871,31 @@ test('Vertex Gemini maps 429, 5xx, 401, 403 and invalid output to provider error
       && !err.safeDiagnostic.includes('should-not-appear'),
   );
 
+  const plainFailureProvider = new VertexGeminiSiteGenerationProvider({
+    ...baseOptions,
+    fetchImplementation: async () => new Response(
+      'Model is unavailable at https://example.invalid Bearer private-value',
+      { status: 404 },
+    ),
+  });
+  await assert.rejects(
+    plainFailureProvider.generateStructuredOutput(request),
+    (err: unknown) => err instanceof SiteGenerationProviderError
+      && err.safeDiagnostic === 'Model is unavailable at [url] Bearer [redacted]',
+  );
+
+  const emptyOutputProvider = new VertexGeminiSiteGenerationProvider({
+    ...baseOptions,
+    fetchImplementation: async () => new Response(JSON.stringify({
+      candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [] } }],
+    }), { status: 200 }),
+  });
+  await assert.rejects(
+    emptyOutputProvider.generateStructuredOutput(request),
+    (err: unknown) => err instanceof SiteGenerationProviderError
+      && err.safeDiagnostic === 'NO_OUTPUT_MAX_TOKENS',
+  );
+
   const badCredentialProvider = new VertexGeminiSiteGenerationProvider({
     ...baseOptions,
     googleAuthFactory: () => ({
