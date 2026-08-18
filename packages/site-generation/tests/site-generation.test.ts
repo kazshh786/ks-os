@@ -696,6 +696,80 @@ test('Vertex Gemini adapter uses GoogleAuth request headers, the global endpoint
   assert.equal((capturedInit?.headers as Record<string, string>)['authorization'], 'Bearer mock-adc-bearer-token');
 });
 
+test('Vertex Gemini projects response schemas onto the supported JSON Schema subset', async () => {
+  let capturedInit: RequestInit | undefined;
+  const provider = new VertexGeminiSiteGenerationProvider({
+    project: 'my-gcp-project',
+    location: 'global',
+    modelKey: 'gemini-3.6-flash',
+    requestTimeoutMs: 5_000,
+    googleAuthFactory: () => ({
+      getRequestHeaders: async () => new Headers({ authorization: 'Bearer test-token' }),
+    }),
+    fetchImplementation: async (_url, init) => {
+      capturedInit = init;
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: '{"type":"HERO","secondary":true,"sections":[]}' }] } }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    },
+  });
+
+  await provider.generateStructuredOutput({
+    prompt: 'Generate a governed page',
+    outputSchema: z.object({
+      type: z.literal('HERO'),
+      secondary: z.literal(true),
+      sections: z.array(z.object({ heading: z.string() })),
+    }).strict(),
+    responseJsonSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'secondary', 'sections'],
+      properties: {
+        type: { const: 'HERO' },
+        secondary: { const: true },
+        sections: {
+          type: 'array',
+          minItems: 0,
+          maxItems: 0,
+          prefixItems: [{
+            type: 'object',
+            properties: {
+              heading: { type: 'string', minLength: 1, maxLength: 240 },
+            },
+          }],
+          items: false,
+        },
+      },
+    },
+    maxOutputCharacters: 5_000,
+  });
+
+  const requestBody = JSON.parse(String(capturedInit?.body)) as {
+    generationConfig: { responseJsonSchema: Record<string, unknown> };
+  };
+  const projected = requestBody.generationConfig.responseJsonSchema;
+  assert.deepEqual(projected, {
+    type: 'object',
+    additionalProperties: false,
+    required: ['type', 'secondary', 'sections'],
+    properties: {
+      type: { enum: ['HERO'] },
+      secondary: {},
+      sections: {
+        type: 'array',
+        minItems: 0,
+        maxItems: 0,
+        prefixItems: [{
+          type: 'object',
+          properties: { heading: { type: 'string' } },
+        }],
+      },
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(projected), /const|minLength|maxLength/);
+});
+
 test('Vertex Gemini adapter respects custom endpoint override', async () => {
   let capturedUrl = '';
   const provider = new VertexGeminiSiteGenerationProvider({
