@@ -302,6 +302,82 @@ function withoutTrailingSlashes(value: string): string {
   return value.slice(0, end);
 }
 
+const VERTEX_JSON_SCHEMA_SCALAR_PROPERTIES = new Set([
+  '$id',
+  '$ref',
+  '$anchor',
+  'type',
+  'format',
+  'title',
+  'description',
+  'enum',
+  'minItems',
+  'maxItems',
+  'minimum',
+  'maximum',
+  'required',
+  'propertyOrdering',
+]);
+
+/**
+ * Vertex accepts JSON Schema, but only a documented subset of its keywords.
+ * The authoritative Zod schema still validates every provider response locally;
+ * this projection only prevents Vertex from rejecting unsupported request fields.
+ */
+function vertexResponseJsonSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const projected: Record<string, unknown> = {};
+
+  if (schema.enum === undefined
+    && (typeof schema.const === 'string' || typeof schema.const === 'number')) {
+    projected.enum = [schema.const];
+  }
+
+  for (const [key, value] of Object.entries(schema)) {
+    if (VERTEX_JSON_SCHEMA_SCALAR_PROPERTIES.has(key)) {
+      projected[key] = value;
+      continue;
+    }
+
+    if ((key === 'properties' || key === '$defs')
+      && value !== null
+      && typeof value === 'object'
+      && !Array.isArray(value)) {
+      projected[key] = Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .filter((entry): entry is [string, Record<string, unknown>] => (
+            entry[1] !== null && typeof entry[1] === 'object' && !Array.isArray(entry[1])
+          ))
+          .map(([name, child]) => [name, vertexResponseJsonSchema(child)]),
+      );
+      continue;
+    }
+
+    if ((key === 'anyOf' || key === 'oneOf' || key === 'prefixItems')
+      && Array.isArray(value)) {
+      projected[key] = value
+        .filter((child): child is Record<string, unknown> => (
+          child !== null && typeof child === 'object' && !Array.isArray(child)
+        ))
+        .map(child => vertexResponseJsonSchema(child));
+      continue;
+    }
+
+    if ((key === 'items' || key === 'additionalProperties')
+      && value !== null
+      && typeof value === 'object'
+      && !Array.isArray(value)) {
+      projected[key] = vertexResponseJsonSchema(value as Record<string, unknown>);
+      continue;
+    }
+
+    if (key === 'additionalProperties' && typeof value === 'boolean') {
+      projected[key] = value;
+    }
+  }
+
+  return projected;
+}
+
 /** Server-only Vertex Gemini adapter using Application Default Credentials. */
 export class VertexGeminiSiteGenerationProvider implements SiteGenerationProvider {
   readonly providerKey = 'vertex-gemini';
@@ -408,7 +484,7 @@ export class VertexGeminiSiteGenerationProvider implements SiteGenerationProvide
           contents: [{ role: 'user', parts: [{ text: request.prompt }] }],
           generationConfig: {
             responseMimeType: 'application/json',
-            responseJsonSchema: request.responseJsonSchema,
+            responseJsonSchema: vertexResponseJsonSchema(request.responseJsonSchema),
             candidateCount: 1,
             ...(this.options.temperature === undefined
               ? {}
