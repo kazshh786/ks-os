@@ -18,8 +18,12 @@ test('approved Search Intelligence exposes a governed full-site rebuild action',
 
 test('failed website generation can be retried from the Search Intelligence workspace', () => {
   const source = web('features/agency/SearchIntelligencePanel.tsx');
+  const retryHandler = source.slice(source.indexOf('const retryWebsiteBuild'), source.indexOf('const rebuildWebsite'));
   assert.match(source, /Latest website build failed/);
   assert.match(source, /Retry build/);
+  assert.match(source, /Confirm retry/);
+  assert.match(source, /setRetryConfirmationOpen\(true\)/);
+  assert.doesNotMatch(retryHandler, /window\.confirm/);
   assert.match(source, /latestGeneration\.status !== 'FAILED'/);
   assert.match(source, /generation\.idempotentReplay && generation\.status === 'FAILED'/);
   assert.match(source, /generation-runs\/\$\{latestGeneration\.reference\}\/retry/);
