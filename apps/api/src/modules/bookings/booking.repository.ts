@@ -216,9 +216,9 @@ export class BookingRepository {
         ${paymentMode}::text,
         ${payNow}::boolean,
         ${idempotencyKey}::uuid,
+        ARRAY[${sql.join(serviceIds.map(selectedId => sql`${selectedId}::uuid`), sql`, `)}]::uuid[],
         ${bookingChannel}::text,
-        ${mobileAddress ? JSON.stringify(mobileAddress) : null}::jsonb,
-        ARRAY[${sql.join(serviceIds.map(selectedId => sql`${selectedId}::uuid`), sql`, `)}]::uuid[]
+        ${mobileAddress ? JSON.stringify(mobileAddress) : null}::jsonb
       )
     `);
 

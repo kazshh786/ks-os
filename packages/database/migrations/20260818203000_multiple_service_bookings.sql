@@ -67,9 +67,9 @@ CREATE OR REPLACE FUNCTION public.create_public_booking(
   p_payment_mode text,
   p_pay_now boolean,
   p_idempotency_key uuid,
+  p_service_ids uuid[],
   p_booking_channel text DEFAULT 'in_shop',
-  p_mobile_address jsonb DEFAULT NULL,
-  p_service_ids uuid[] DEFAULT NULL
+  p_mobile_address jsonb DEFAULT NULL
 )
 RETURNS TABLE(
   appointment_id uuid,
@@ -337,11 +337,11 @@ END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.create_public_booking(
-  uuid, uuid, uuid, timestamptz, text, text, text, text, boolean, uuid, text, jsonb, uuid[]
+  uuid, uuid, uuid, timestamptz, text, text, text, text, boolean, uuid, uuid[], text, jsonb
 ) FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.create_public_booking(
-  uuid, uuid, uuid, timestamptz, text, text, text, text, boolean, uuid, text, jsonb, uuid[]
+  uuid, uuid, uuid, timestamptz, text, text, text, text, boolean, uuid, uuid[], text, jsonb
 ) TO service_role;
 
 COMMENT ON TABLE appointment_services IS
