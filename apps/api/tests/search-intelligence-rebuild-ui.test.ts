@@ -7,7 +7,11 @@ const web = (path: string) => readFileSync(resolve(process.cwd(), `../web/src/${
 
 test('approved Search Intelligence exposes a governed full-site rebuild action', () => {
   const source = web('features/agency/SearchIntelligencePanel.tsx');
+  const rebuildHandler = source.slice(source.indexOf('const rebuildWebsite'), source.indexOf('if (loading)'));
   assert.match(source, /Rebuild website/);
+  assert.match(source, /Confirm rebuild/);
+  assert.match(source, /setRebuildConfirmationOpen\(true\)/);
+  assert.doesNotMatch(rebuildHandler, /window\.confirm/);
   assert.match(source, /\/generation-runs/);
   assert.match(source, /generationReason: 'BLUEPRINT_REVISION'/);
   assert.match(source, /data\.status === 'APPROVED'/);
