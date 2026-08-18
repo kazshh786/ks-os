@@ -337,9 +337,15 @@ export function createBaselinePageCompositionPlan(input: {
     const selectedAlternative = candidates.find(candidate => alternatives.includes(candidate.sectionType));
     if (selectedAlternative) selectedTypes.add(selectedAlternative.sectionType);
   }
-  selectAvailable(new Set(recipe.recommendedSectionTypes), true);
-  selectAvailable(new Set(input.page.plannedSectionTypes), true);
-  selectAvailable(new Set(BASELINE_DEPTH_ENRICHMENTS[input.page.pageType] ?? []), true);
+
+  // Reserve one governed conversion before depth balancing so a dense layout
+  // cannot satisfy editorial counts at the expense of its required end action.
+  if (!recipe.bookingDepthExempt
+    && !['BOOKING_CTA', 'FINAL_CTA'].some(sectionType => selectedTypes.has(sectionType as SiteSectionType))) {
+    const conversion = candidates.find(candidate =>
+      candidate.sectionType === 'BOOKING_CTA' || candidate.sectionType === 'FINAL_CTA');
+    if (conversion) selectedTypes.add(conversion.sectionType);
+  }
 
   // A recipe can recommend a section that an otherwise compatible approved
   // layout intentionally does not support (for example FAQ on TEAM_DETAIL).
@@ -391,6 +397,13 @@ export function createBaselinePageCompositionPlan(input: {
       selectedTypes.add(supplement.sectionType);
     }
   }
+
+  // Depth requirements must reserve their place before optional blueprint and
+  // enrichment preferences consume the page-type ceiling. This matters when a
+  // preferred supporting section cannot bind to the current verified facts.
+  selectAvailable(new Set(recipe.recommendedSectionTypes), true);
+  selectAvailable(new Set(input.page.plannedSectionTypes), true);
+  selectAvailable(new Set(BASELINE_DEPTH_ENRICHMENTS[input.page.pageType] ?? []), true);
 
   const selectedComponents = candidates
     .filter(candidate => selectedTypes.has(candidate.sectionType))

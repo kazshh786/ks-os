@@ -378,26 +378,37 @@ test('baseline fills TEAM_DETAIL depth from the approved native layout when FAQ 
 test('baseline caps optional NEW_CLIENT_GUIDE sections at the governed recipe maximum', () => {
   const guide = fixture('NEW_CLIENT_GUIDE', 42);
   const sectionOrder = [
-    ...guide.template.sectionOrder,
-    'BENEFITS',
-    'TRUST_INDICATORS',
+    'HEADER', 'HERO', 'INTRODUCTION', 'PROCESS', 'BENEFITS', 'RICH_TEXT',
+    'FAQ', 'LOCATION', 'OPENING_HOURS', 'CONTACT', 'BOOKING_CTA',
+    'FINAL_CTA', 'FOOTER',
   ] as SiteSectionType[];
-  const page = { ...guide.page, plannedSectionTypes: sectionOrder };
+  const page = {
+    ...guide.page,
+    conversionRole: 'OBJECTION_HANDLING' as const,
+    plannedSectionTypes: sectionOrder,
+  };
   const template: TemplateGenerationConstraint = {
     ...guide.template,
+    conversionRole: page.conversionRole,
+    requiredSectionTypes: ['HEADER', 'HERO', 'RICH_TEXT', 'FINAL_CTA', 'FOOTER'],
     sectionOrder,
     availableComponentKeys: sectionOrder.flatMap(sectionType =>
       listSiteComponents({ sectionType, pageType: page.pageType, conversionRole: page.conversionRole })
         .map(component => component.componentKey)),
   };
   const approvedPageReferences = [page.pageReference, id(999)];
+  const factsWithoutOpeningHours = structuredClone(completeFacts());
+  factsWithoutOpeningHours.locations[0]!.facts = factsWithoutOpeningHours.locations[0]!.facts
+    .filter(fact => fact.key !== 'opening_hours');
   const plan = createBaselinePageCompositionPlan({
     page,
     template,
-    facts: completeFacts(),
+    facts: factsWithoutOpeningHours,
     approvedPageReferences,
   });
   assert.equal(plan.selectedComponents.length, PAGE_COMPLETENESS_RECIPES.NEW_CLIENT_GUIDE.maxRecommendedSections);
+  assert.ok(plan.selectedComponents.some(selection =>
+    getSiteComponent(selection.componentKey)?.classification === 'SUPPORTING'));
   assert.equal(validatePageCompositionPlan({
     output: plan,
     page,
