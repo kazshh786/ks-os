@@ -30,7 +30,8 @@ export const NotFoundPage: React.FC = () => {
   if (path === '/book/payment/cancel') {
     return <PublicBookingSurface><PaymentCancel /></PublicBookingSurface>;
   }
-  if (/^\/forms\/complete\/[^/]+\/acknowledgement$/i.test(path)) return <AssignedConsentFormLegalPage />;
+  if (/^\/forms\/complete\/[^/]+\/acknowledgement$/i.test(path)) return <AssignedConsentFormLegalPage documentType="acknowledgement" />;
+  if (/^\/forms\/complete\/[^/]+\/terms$/i.test(path)) return <AssignedConsentFormLegalPage documentType="terms" />;
   if (/^\/form\/[^/]+\/acknowledgement$/i.test(path)) return <PublicWorkspaceFormLegalPage documentType="acknowledgement" />;
   if (/^\/form\/[^/]+\/terms$/i.test(path)) return <PublicWorkspaceFormLegalPage documentType="terms" />;
   if (/^\/form\/[^/]+\/success$/i.test(path)) return <WorkspaceConsentFormSuccessPage />;

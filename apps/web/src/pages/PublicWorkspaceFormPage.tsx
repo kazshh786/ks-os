@@ -20,7 +20,7 @@ type PublicWorkspaceFormData = {
   form: {
     title: string;
     description: string;
-    publicSlug: string;
+    publicSlug?: string;
     schema: FormSchemaJson;
     acknowledgementText: string;
   };
@@ -38,8 +38,28 @@ function formEndpoint(workspaceSlug: string, formSlug: string): string {
   return `/api/v1/public/forms/workspace/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(formSlug)}`;
 }
 
-async function loadPublicForm(workspaceSlug: string, formSlug: string): Promise<PublicWorkspaceFormData> {
-  const response = await fetch(formEndpoint(workspaceSlug, formSlug));
+function assignedFormEndpoint(token: string): string {
+  return `/api/v1/public/forms/${encodeURIComponent(token)}`;
+}
+
+function sourceEndpoint(assignmentToken: string | undefined, workspaceSlug: string, formSlug: string): string {
+  return assignmentToken
+    ? assignedFormEndpoint(assignmentToken)
+    : formEndpoint(workspaceSlug, formSlug);
+}
+
+function sourceFormPath(assignmentToken: string | undefined, formSlug: string): string {
+  return assignmentToken
+    ? `/forms/complete/${encodeURIComponent(assignmentToken)}`
+    : `/form/${encodeURIComponent(formSlug)}`;
+}
+
+function validSource(assignmentToken: string | undefined, workspaceSlug: string, formSlug: string): boolean {
+  return Boolean(assignmentToken || (workspaceSlug && formSlug));
+}
+
+async function loadPublicForm(endpoint: string): Promise<PublicWorkspaceFormData> {
+  const response = await fetch(endpoint);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error?.code || 'FORM_NOT_FOUND');
   const value = body.data as Omit<PublicWorkspaceFormData, 'form'> & {
@@ -119,10 +139,13 @@ function LegalDocumentBody({ content }: { content: string }) {
   );
 }
 
-export default function PublicWorkspaceFormPage() {
+export default function PublicWorkspaceFormPage({ assignmentToken }: { assignmentToken?: string } = {}) {
   const params = useParams();
-  const formSlug = params.formSlug || pathFormSlug();
-  const workspaceSlug = currentWorkspaceSlug();
+  const formSlug = assignmentToken ? '' : params.formSlug || pathFormSlug();
+  const workspaceSlug = assignmentToken ? '' : currentWorkspaceSlug();
+  const endpoint = sourceEndpoint(assignmentToken, workspaceSlug, formSlug);
+  const formPath = sourceFormPath(assignmentToken, formSlug);
+  const hasSource = validSource(assignmentToken, workspaceSlug, formSlug);
   const navigate = useNavigate();
   const [data, setData] = useState<PublicWorkspaceFormData | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
@@ -137,16 +160,20 @@ export default function PublicWorkspaceFormPage() {
   const [submitting, setSubmitting] = useState(false);
   const [saveState, setSaveState] = useState('Not saved');
   const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
-  const draftKey = workspaceSlug && formSlug ? `public-form-draft-${workspaceSlug}-${formSlug}` : '';
+  const draftKey = assignmentToken
+    ? `form-draft-${assignmentToken}`
+    : workspaceSlug && formSlug
+      ? `public-form-draft-${workspaceSlug}-${formSlug}`
+      : '';
 
   useEffect(() => {
-    if (!workspaceSlug || !formSlug) {
+    if (!hasSource) {
       setLoadError('FORM_NOT_FOUND');
       setLoading(false);
       return;
     }
     let active = true;
-    loadPublicForm(workspaceSlug, formSlug)
+    loadPublicForm(endpoint)
       .then(value => {
         if (!active) return;
         setData(value);
@@ -157,11 +184,22 @@ export default function PublicWorkspaceFormPage() {
         } catch {
           sessionStorage.removeItem(draftKey);
         }
+        if (assignmentToken) {
+          void fetch(`${assignedFormEndpoint(assignmentToken)}/analytics`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              eventType: 'VIEW',
+              deviceType: innerWidth < 640 ? 'MOBILE' : innerWidth < 1024 ? 'TABLET' : 'DESKTOP',
+              language: navigator.language,
+            }),
+          });
+        }
       })
       .catch(cause => { if (active) setLoadError(cause instanceof Error ? cause.message : 'FORM_NOT_FOUND'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [draftKey, formSlug, workspaceSlug]);
+  }, [assignmentToken, draftKey, endpoint, hasSource]);
 
   useEffect(() => {
     if (!data || !draftKey || !Object.keys(answers).length) return;
@@ -175,15 +213,13 @@ export default function PublicWorkspaceFormPage() {
   }, [answers, data, draftKey, page]);
 
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-slate-100 p-8" aria-live="polite"><div className="rounded-3xl border border-slate-200 bg-white px-8 py-10 text-center shadow-xl"><div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-indigo-100 border-t-indigo-600" /><p className="mt-4 font-bold text-slate-600">Loading your secure form…</p></div></main>;
-  if (loadError || !data || !workspaceSlug) return <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6 text-center"><section className="max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-xl"><LockKeyhole className="mx-auto h-10 w-10 text-slate-400" /><h1 className="mt-4 text-2xl font-black text-slate-950">This form is unavailable</h1><p className="mt-3 leading-6 text-slate-600">Check the address or ask the business for the correct form link.</p></section></main>;
+  if (loadError || !data || !hasSource) return <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6 text-center"><section className="max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-xl"><LockKeyhole className="mx-auto h-10 w-10 text-slate-400" /><h1 className="mt-4 text-2xl font-black text-slate-950">This form is unavailable</h1><p className="mt-3 leading-6 text-slate-600">Check the address or ask the business for the correct form link.</p></section></main>;
 
   const schema = data.form.schema;
   const pages = schema.pages.length ? schema.pages : [{ id: 'all', title: data.form.title }];
   const total = pages.length;
   const state = formState(schema, answers);
   const terms = termsContent(schema);
-  const formPath = `/form/${encodeURIComponent(formSlug)}`;
-
   const reviewConsentForm = () => {
     setReview(false);
     setPage(0);
@@ -246,7 +282,7 @@ export default function PublicWorkspaceFormPage() {
     setSubmitting(true);
     setSubmitError('');
     try {
-      const response = await fetch(`${formEndpoint(workspaceSlug, formSlug)}/submissions`, {
+      const response = await fetch(`${endpoint}/submissions`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -264,6 +300,15 @@ export default function PublicWorkspaceFormPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error?.code || 'FORM_SUBMISSION_FAILED');
       sessionStorage.removeItem(draftKey);
+      if (assignmentToken) {
+        sessionStorage.setItem(`form-success-${assignmentToken}`, JSON.stringify({
+          salonName: data.salon.name,
+          message: schema.settings.completionMessage,
+          redirectUrl: schema.settings.completionRedirectUrl,
+          primaryColor: schema.theme.primaryColor || data.salon.primaryColor,
+          accentColor: schema.theme.mutedColor || data.salon.accentColor,
+        }));
+      }
       navigate(`${formPath}/success`, { replace: true });
     } catch (cause) {
       const code = cause instanceof Error ? cause.message : 'FORM_SUBMISSION_FAILED';
@@ -329,23 +374,26 @@ export default function PublicWorkspaceFormPage() {
   </main>;
 }
 
-export function PublicWorkspaceFormLegalPage({ documentType }: { documentType: LegalDocumentType }) {
-  const formSlug = pathFormSlug();
-  const workspaceSlug = currentWorkspaceSlug();
+export function PublicWorkspaceFormLegalPage({ documentType, assignmentToken }: { documentType: LegalDocumentType; assignmentToken?: string }) {
+  const formSlug = assignmentToken ? '' : pathFormSlug();
+  const workspaceSlug = assignmentToken ? '' : currentWorkspaceSlug();
+  const endpoint = sourceEndpoint(assignmentToken, workspaceSlug, formSlug);
+  const formPath = sourceFormPath(assignmentToken, formSlug);
+  const hasSource = validSource(assignmentToken, workspaceSlug, formSlug);
   const [data, setData] = useState<PublicWorkspaceFormData | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!workspaceSlug || !formSlug) {
+    if (!hasSource) {
       setError('FORM_NOT_FOUND');
       return;
     }
     let active = true;
-    loadPublicForm(workspaceSlug, formSlug)
+    loadPublicForm(endpoint)
       .then(value => { if (active) setData(value); })
       .catch(cause => { if (active) setError(cause instanceof Error ? cause.message : 'FORM_NOT_FOUND'); });
     return () => { active = false; };
-  }, [formSlug, workspaceSlug]);
+  }, [endpoint, hasSource]);
 
   if (error) return <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6 text-center"><section className="max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-xl"><FileText className="mx-auto h-10 w-10 text-slate-400" /><h1 className="mt-4 text-2xl font-black text-slate-950">This document is unavailable</h1><p className="mt-3 text-slate-600">Return to the consent form or contact the business for assistance.</p></section></main>;
   if (!data) return <main className="flex min-h-screen items-center justify-center bg-slate-100 p-8" aria-live="polite"><div className="rounded-3xl border border-slate-200 bg-white px-8 py-10 text-center shadow-xl"><div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-indigo-100 border-t-indigo-600" /><p className="mt-4 font-bold text-slate-600">Loading document…</p></div></main>;
@@ -354,8 +402,6 @@ export function PublicWorkspaceFormLegalPage({ documentType }: { documentType: L
   const title = documentType === 'terms' ? 'Terms and conditions' : 'Consent acknowledgement';
   const primary = data.form.schema.theme.primaryColor || data.salon.primaryColor;
   const accent = data.form.schema.theme.mutedColor || data.salon.accentColor;
-  const formPath = `/form/${encodeURIComponent(formSlug)}`;
-
   return (
     <main className="relative min-h-screen overflow-hidden bg-slate-100 px-4 py-7 md:px-8 md:py-12">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px]" style={{ background: `radial-gradient(circle at top left, ${primary}24, transparent 45%), radial-gradient(circle at top right, ${accent}20, transparent 42%)` }} />
