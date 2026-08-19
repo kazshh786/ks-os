@@ -15,8 +15,13 @@ const prompt = await readFile(
   'utf8',
 );
 
-test('AI generation provenance defaults to the current generator contract', () => {
-  const config = parseSiteGenerationConfig({});
+test('enabled AI generation provenance defaults to the current generator contract', () => {
+  const config = parseSiteGenerationConfig({
+    SITE_AI_GENERATION_ENABLED: 'true',
+    SITE_AI_PROVIDER: 'gemini',
+    SITE_AI_MODEL: 'test-model',
+    SITE_AI_API_KEY: 'test-only',
+  });
   assert.equal(config.generatorVersion, SITE_GENERATOR_VERSION);
   assert.equal(config.generatorVersion, '2.0.0');
 });
