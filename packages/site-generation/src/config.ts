@@ -97,7 +97,9 @@ export function parseSiteGenerationConfig(
     temperature: value.SITE_AI_TEMPERATURE,
     generatorVersion: value.SITE_AI_GENERATION_MODE === 'baseline'
       ? SITE_BASELINE_GENERATOR_VERSION
-      : value.SITE_AI_GENERATOR_VERSION,
+      : value.SITE_AI_GENERATION_ENABLED
+        ? value.SITE_AI_GENERATOR_VERSION
+        : '1.0.0',
   };
 }
 
