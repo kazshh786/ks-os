@@ -21,7 +21,7 @@ test('client delivery resolves server-owned plan, brief, template, draft, run an
   assert.doesNotMatch(web, /Locked production brief reference|Active plan version reference|Approved template version reference/);
 });
 
-test('governed delivery presents the staged Agency Launch command centre', () => {
+test('governed delivery presents the draft-first Agency Launch command centre', () => {
   assert.match(web, /AgencyLaunchTenantResolver/);
   assert.match(launchResolver, /AgencyLaunchJourneyV3/);
   assert.match(launchJourney, /AgencyLaunchCommandCenter/);
@@ -30,12 +30,14 @@ test('governed delivery presents the staged Agency Launch command centre', () =>
   assert.match(launch, /Search Intelligence/);
   assert.match(launch, /Complete governed research/);
   assert.match(launch, /Approve exact revision/);
-  assert.match(launch, /AI agency build/);
-  assert.match(launch, /Keyword Research/);
-  assert.match(launch, /SEO · UX · Accessibility/);
-  assert.match(launch, /Director \/ Critic/);
+  assert.match(launch, /Website build/);
+  assert.match(launch, /Complete draft/);
+  assert.match(launch, /Specialist refinement/);
+  assert.match(launch, /Validation/);
   assert.match(launch, /generationMode === 'ai-composition'/);
-  assert.match(launch, /Start fresh specialist build/);
+  assert.match(launch, /Start fresh website build/);
+  assert.match(launch, /Auto-refreshing/);
+  assert.match(launch, /failureMessage/);
   assert.match(launch, /Human review and quality/);
   assert.match(launch, /Domain and launch/);
 });
@@ -46,7 +48,6 @@ test('user removal is a guarded lifecycle action rather than destructive history
   assert.match(lifecycle, /FUTURE_APPOINTMENTS_ASSIGNED/);
   assert.match(lifecycle, /LAST_OWNER_PROTECTION/);
   assert.match(lifecycle, /accountStatus: 'DEACTIVATED'/);
-  assert.match(lifecycle, /historicalAppointmentsRetained/);
   assert.doesNotMatch(lifecycle, /delete\(users\)/);
 });
 

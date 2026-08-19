@@ -2,6 +2,7 @@ import type { SiteGenerationKnowledgeContext } from '@ks-os/site-knowledge';
 import type {
   AssetCoveragePlan,
   BlueprintGenerationPageSchema,
+  GeneratedPage,
   PageCompositionPlan,
   SiteCompositionStrategy,
   TemplateGenerationConstraint,
@@ -15,6 +16,7 @@ import { getSiteComponent } from '@ks-os/site-components';
 import type { PageSeoBrief, SearchIntelligenceStrategyV2 } from './search-intelligence.js';
 
 type BlueprintPage = z.infer<typeof BlueprintGenerationPageSchema>;
+export type SiteGenerationPhase = 'INITIAL_DRAFT' | 'SPECIALIST_REFINEMENT';
 
 export interface ComposeGenerationContextInput {
   page: BlueprintPage;
@@ -28,6 +30,8 @@ export interface ComposeGenerationContextInput {
   lockedComponentSequence?: readonly { sectionType: string; componentKey?: string }[];
   approvedSearchStrategy?: SearchIntelligenceStrategyV2;
   pageSeoBrief?: PageSeoBrief;
+  generationPhase?: SiteGenerationPhase;
+  existingDraftPage?: GeneratedPage;
   repair?: {
     attempt: number;
     findings: readonly { code: string; message: string }[];
@@ -35,21 +39,39 @@ export interface ComposeGenerationContextInput {
 }
 
 const SYSTEM_CONTRACT = [
-  'Generate structured KS OS public-site content only.',
+  'Create the best complete KS OS website draft you can from the supplied governed context now.',
+  'Treat SEO, UX, conversion, accessibility, responsive clarity, trust and persuasive copy as baseline quality requirements of the first draft rather than prerequisites that can block creation.',
+  'Missing non-critical business data must not stop draft generation: omit unsupported public claims, use only safe known facts, and mark genuine gaps for agency review.',
+  'Missing-data findings are review notes, not terminal failures: use WARNING or REVIEW severity for non-critical gaps and never label an ordinary missing asset, biography, research item or optional content gap as ERROR.',
   'The sole primary conversion is native KS OS appointment booking.',
   'Return only JSON matching the supplied schema; no Markdown fences.',
   'Never return HTML, CSS, JavaScript, executable code, imports, embeds, or external booking URLs.',
-  'Never invent services, prices, staff, locations, credentials, reviews, availability, guarantees, outcomes, or awards.',
-  'Mark missing facts for agency review.',
+  'Never invent services, prices, staff, locations, credentials, reviews, availability, guarantees, outcomes, awards, business history, or search evidence.',
+].join(' ');
+
+const REFINEMENT_CONTRACT = [
+  'This is a refinement pass over an already valid generated draft.',
+  'Improve clarity, usefulness, search quality, persuasion, accessibility and visual/content rhythm using the supplied specialist review.',
+  'Preserve every server-controlled page identity field, section count, section order, semantic section type and allow-listed componentKey from the existing draft and composition plan.',
+  'Do not introduce new unsupported facts, claims, URLs, services, staff, locations, prices, credentials, reviews, results or awards.',
+  'A refinement should make the existing draft better, not redesign the governed architecture.',
 ].join(' ');
 
 export function composeGenerationPrompt(input: ComposeGenerationContextInput) {
+  const generationPhase = input.generationPhase ?? 'INITIAL_DRAFT';
   const selectedComponentContracts = input.pageCompositionPlan?.selectedComponents
     .map(selection => getSiteComponent(selection.componentKey))
     .filter(component => component !== null)
     .map(componentPromptMetadata) ?? [];
   const context = {
     systemGenerationContract: SYSTEM_CONTRACT,
+    generationTask: generationPhase === 'SPECIALIST_REFINEMENT'
+      ? REFINEMENT_CONTRACT
+      : 'Generate a complete, coherent, useful public page in this pass. Do not defer ordinary copy, SEO, UX, conversion or accessibility work to another system.',
+    generationPhase,
+    existingDraftPage: generationPhase === 'SPECIALIST_REFINEMENT'
+      ? input.existingDraftPage
+      : undefined,
     platformRules: {
       ruleIds: input.knowledge.applicableRuleIds,
       requiredInstructions: input.knowledge.requiredInstructions,

@@ -173,17 +173,17 @@ function validateBooking(page: GeneratedPage, findings: GenerationFinding[]) {
   const required = ['HEADER', 'FOOTER'] as const;
   for (const type of required) {
     if (!types.has(type)) {
-      findings.push(finding('ERROR', 'BOOKING', `${type}_BOOKING_ACTION_REQUIRED`, `${type} with native booking is required.`));
+      findings.push(finding('WARNING', 'BOOKING', `${type}_BOOKING_ACTION_REQUIRED`, `${type} with native booking is recommended before publication.`));
     }
   }
   if (!types.has('BOOKING_CTA') && !types.has('FINAL_CTA')) {
-    findings.push(finding('ERROR', 'BOOKING', 'FINAL_BOOKING_ACTION_REQUIRED', 'A page-ending native booking action is required.'));
+    findings.push(finding('WARNING', 'BOOKING', 'FINAL_BOOKING_ACTION_REQUIRED', 'A page-ending native booking action is recommended before publication.'));
   }
   if (page.pageType !== 'BOOKING'
     && !types.has('HERO')
     && !types.has('SERVICE_DETAILS')
     && !types.has('STAFF_PROFILE')) {
-    findings.push(finding('ERROR', 'BOOKING', 'PRIMARY_BOOKING_ACTION_REQUIRED', 'A primary conversion section with native booking is required.'));
+    findings.push(finding('WARNING', 'BOOKING', 'PRIMARY_BOOKING_ACTION_REQUIRED', 'A primary conversion section with native booking is recommended before publication.'));
   }
 }
 
