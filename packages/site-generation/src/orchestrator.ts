@@ -39,6 +39,12 @@ import {
   type SearchIntelligenceStrategyV2,
   type SearchResearchEvidence,
 } from './search-intelligence.js';
+import {
+  SPECIALIST_AGENT_TEAM_VERSION,
+  attachSpecialistTeamContext,
+  runSpecialistAgentTeam,
+  type SpecialistAgentTeamOutput,
+} from './specialist-agents.js';
 
 export interface ApprovedSearchIntelligenceInput {
   strategy: SearchIntelligenceStrategyV2;
@@ -66,6 +72,7 @@ export interface SiteGenerationPersistence {
     findings: readonly GenerationFinding[];
   }): Promise<void>;
   persistFindings(findings: readonly GenerationFinding[]): Promise<void>;
+  persistSpecialistArtifacts?(artifacts: SpecialistAgentTeamOutput): Promise<void>;
   persistCompositionArtifacts?(input: {
     strategy: SiteCompositionStrategy;
     pagePlans: readonly PageCompositionPlan[];
@@ -171,6 +178,7 @@ export async function executeStructuredSiteGeneration(
   const generated: GeneratedPage[] = [];
   try {
     let siteStrategy: SiteCompositionStrategy | undefined;
+    let specialistArtifacts: SpecialistAgentTeamOutput | undefined;
     const pageCompositionPlans = new Map<string, PageCompositionPlan>();
     let assetCoveragePlan: ReturnType<typeof createDeterministicAssetCoveragePlan> | undefined;
     if ((input.pipelineVersion ?? 1) === 2) {
@@ -202,13 +210,36 @@ export async function executeStructuredSiteGeneration(
           pageCompositionPlans.set(pagePlan.pageReference, pagePlan);
         }
       } else {
-        await input.updateProgress?.({ current: 0, total: input.plan.pages.length, message: 'Creating the governed site-wide composition strategy.' });
-        const strategyResponse = await input.provider.generateStructuredOutput({
+        specialistArtifacts = await runSpecialistAgentTeam({
+          plan: input.plan,
+          facts: input.facts,
+          searchIntelligence: input.searchIntelligence!,
+          knowledgeContexts: input.knowledgeContexts,
+          provider: input.provider,
+          maxOutputCharacters: input.maxOutputCharacters,
+          signal: input.signal,
+          updateStatus: async message => {
+            await input.updateProgress?.({
+              current: 0,
+              total: input.plan.pages.length,
+              message,
+            });
+          },
+        });
+        await input.persistence.persistSpecialistArtifacts?.(specialistArtifacts);
+
+        await input.updateProgress?.({ current: 0, total: input.plan.pages.length, message: 'The specialist team is synthesising the governed site-wide composition strategy.' });
+        const strategyPrompt = attachSpecialistTeamContext({
           prompt: composeSiteStrategyPrompt({
             plan: input.plan,
             facts: input.facts,
             approvedSearchStrategy: input.searchIntelligence?.strategy,
           }),
+          team: specialistArtifacts,
+          scope: 'SITE',
+        });
+        const strategyResponse = await input.provider.generateStructuredOutput({
+          prompt: strategyPrompt,
           outputSchema: SiteCompositionStrategySchema,
           responseJsonSchema: SITE_STRATEGY_RESPONSE_JSON_SCHEMA,
           maxOutputCharacters: input.maxOutputCharacters,
@@ -219,15 +250,20 @@ export async function executeStructuredSiteGeneration(
           const template = input.constraints.find(item => item.layoutReference === page.layoutReference);
           const knowledge = input.knowledgeContexts.get(page.pageReference);
           if (!template || !knowledge) throw new Error('A pinned page composition context is missing.');
-          const composed = composePageCompositionPrompt({
-            page,
-            template,
-            strategy: strategyResponse.value,
-            facts: input.facts,
-            knowledge,
-            approvedPageReferences: input.plan.pages.map(item => item.pageReference),
-            approvedSearchStrategy: input.searchIntelligence?.strategy,
-            pageSeoBrief: input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference),
+          const composed = attachSpecialistTeamContext({
+            prompt: composePageCompositionPrompt({
+              page,
+              template,
+              strategy: strategyResponse.value,
+              facts: input.facts,
+              knowledge,
+              approvedPageReferences: input.plan.pages.map(item => item.pageReference),
+              approvedSearchStrategy: input.searchIntelligence?.strategy,
+              pageSeoBrief: input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference),
+            }),
+            team: specialistArtifacts,
+            scope: 'PAGE',
+            pageReference: page.pageReference,
           });
           const planned = await generateWithControlledRepair<PageCompositionPlan>({
             provider: input.provider,
@@ -335,8 +371,16 @@ export async function executeStructuredSiteGeneration(
               ? { repair: { attempt: repairAttempt, findings: previousFindings } }
               : {}),
           });
+          const prompt = specialistArtifacts
+            ? attachSpecialistTeamContext({
+              prompt: composed.prompt,
+              team: specialistArtifacts,
+              scope: 'CONTENT',
+              pageReference: page.pageReference,
+            })
+            : composed.prompt;
           return {
-            prompt: composed.prompt,
+            prompt,
             outputSchema: GeneratedPageSchema as z.ZodType<GeneratedPage>,
             responseJsonSchema,
             maxOutputCharacters: input.maxOutputCharacters,
@@ -457,6 +501,9 @@ export async function executeStructuredSiteGeneration(
       pageReferences: [...completed].sort(),
       outputContentDigestSha256,
       promptTemplateVersion: SITE_GENERATION_PROMPT_TEMPLATE_VERSION,
+      ...(specialistArtifacts
+        ? { specialistAgentTeamVersion: SPECIALIST_AGENT_TEAM_VERSION }
+        : {}),
       findingCount: duplicateFindings.length + compositionFindings.length,
     };
   } catch (error) {
