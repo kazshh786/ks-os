@@ -7,6 +7,7 @@ export * from './contracts.js';
 export * from './facts.js';
 export * from './governed-assets.js';
 export * from './implementation-audit.js';
+export * from './keyword-research-agent.js';
 export * from './lifecycle.js';
 export * from './normalization.js';
 export * from './operations.js';
