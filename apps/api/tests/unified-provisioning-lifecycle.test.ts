@@ -26,12 +26,17 @@ test('governed delivery presents the staged Agency Launch command centre', () =>
   assert.match(launchResolver, /AgencyLaunchJourneyV3/);
   assert.match(launchJourney, /AgencyLaunchCommandCenter/);
   assert.match(launchJourney, /Advanced controls/);
-  assert.match(launch, /Agency Launch V2/);
+  assert.match(launch, /Agency Launch V3/);
   assert.match(launch, /Search Intelligence/);
   assert.match(launch, /Complete governed research/);
   assert.match(launch, /Approve exact revision/);
-  assert.match(launch, /Website build/);
-  assert.match(launch, /Review and quality/);
+  assert.match(launch, /AI agency build/);
+  assert.match(launch, /Keyword Research/);
+  assert.match(launch, /SEO · UX · Accessibility/);
+  assert.match(launch, /Director \/ Critic/);
+  assert.match(launch, /generationMode === 'ai-composition'/);
+  assert.match(launch, /Start fresh specialist build/);
+  assert.match(launch, /Human review and quality/);
   assert.match(launch, /Domain and launch/);
 });
 
