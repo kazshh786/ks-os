@@ -11,6 +11,23 @@ export interface ControlledRepairResult<T> {
   findings: readonly { code: string; message: string }[];
 }
 
+function normalizeMissingDataFindings<T>(value: T): T {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const object = value as Record<string, unknown>;
+  if (!Array.isArray(object.missingDataFindings)) return value;
+
+  return {
+    ...object,
+    missingDataFindings: object.missingDataFindings.map(finding => {
+      if (!finding || typeof finding !== 'object' || Array.isArray(finding)) return finding;
+      const findingObject = finding as Record<string, unknown>;
+      return findingObject.severity === 'ERROR'
+        ? { ...findingObject, severity: 'WARNING' }
+        : finding;
+    }),
+  } as T;
+}
+
 export async function generateWithControlledRepair<T>(input: {
   provider: SiteGenerationProvider;
   maxRepairAttempts: number;
@@ -26,10 +43,12 @@ export async function generateWithControlledRepair<T>(input: {
   let previousFindings: readonly { code: string; message: string }[] = [];
   for (let repairAttempt = 0; repairAttempt <= input.maxRepairAttempts; repairAttempt += 1) {
     try {
-      const response = await input.provider.generateStructuredOutput(
+      const providerResponse = await input.provider.generateStructuredOutput(
         input.buildRequest(repairAttempt, previousFindings),
       );
-      const validation = input.validate(response.value);
+      const value = normalizeMissingDataFindings(providerResponse.value);
+      const response: StructuredGenerationResponse<T> = { ...providerResponse, value };
+      const validation = input.validate(value);
       if (validation.valid) {
         return { response, repairAttempts: repairAttempt, findings: validation.findings };
       }
