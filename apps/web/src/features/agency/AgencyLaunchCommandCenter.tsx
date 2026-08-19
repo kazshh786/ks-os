@@ -21,20 +21,32 @@ type BuildPipelineProps = {
   generatorVersion: string | null | undefined;
   providerKey: string | null | undefined;
   modelKey: string | null | undefined;
+  pageCountPlanned: number;
+  pageCountCompleted: number;
+  failureCode?: string | null;
+  failureMessage?: string | null;
 };
 
 const V3_TEMPLATE_REFERENCE = 'e054818e-c185-44fd-b453-010000000005';
 const DEFAULT_PAGE_TYPES = ['HOME', 'SERVICE_HUB', 'ABOUT', 'CONTACT', 'FAQ', 'POLICIES', 'BOOKING'];
-const SPECIALIST_BUILD_PIPELINE = [
-  { label: 'Keyword Research', description: 'Evidence-only analysis of approved Search Intelligence, keyword metrics and competitor observations.' },
-  { label: 'SEO · UX · Accessibility', description: 'Parallel strategic review of search intent, visitor journeys and accessibility constraints.' },
-  { label: 'Conversion', description: 'Optimises the conversion path using the approved SEO, UX and accessibility handoff.' },
-  { label: 'Copy', description: 'Creates the content direction from governed facts, search strategy and conversion priorities.' },
-  { label: 'Design', description: 'Translates strategy and copy into visual direction using the approved component vocabulary.' },
-  { label: 'Director / Critic', description: 'Resolves specialist conflicts without overriding Knowledge Pack, facts or platform rules.' },
-  { label: 'Site Composition', description: 'KS OS selects the governed site-wide composition and approved page/component plans.' },
-  { label: 'Page Generation', description: 'Structured pages are generated inside the pinned blueprint, renderer and booking constraints.' },
-  { label: 'Validation', description: 'Schema, facts, claims, booking, links, design and accessibility checks gate the reviewable draft.' },
+const PROCESSING_GENERATION_STATUSES = ['PENDING', 'PREPARING_CONTEXT', 'GENERATING', 'VALIDATING', 'REPAIRING'] as const;
+const DRAFT_FIRST_BUILD_PIPELINE = [
+  {
+    label: 'Complete draft',
+    description: 'The master prompt builds every governed page first, with SEO, UX, conversion, accessibility and useful copy included from the start.',
+  },
+  {
+    label: 'Specialist refinement',
+    description: 'SEO, UX, accessibility, conversion, copy and design specialists review the existing draft. A refinement failure preserves the valid draft.',
+  },
+  {
+    label: 'Validation',
+    description: 'Hard schema, verified-fact, component, booking and template rules are checked. Quality findings remain visible for review rather than deleting the draft.',
+  },
+  {
+    label: 'Human review',
+    description: 'The agency reviews the noindex preview and findings before approving the exact version for publication.',
+  },
 ] as const;
 
 function priorityReferences(priorities: unknown, candidates: Array<{ reference: string; name: string }> | undefined) {
@@ -68,42 +80,75 @@ const stateTone: Record<StageState, string> = {
   COMPLETE: 'border-emerald-700 text-emerald-200',
 };
 
-function SpecialistBuildPipeline({ generationMode, generationStatus, generatorVersion, providerKey, modelKey }: BuildPipelineProps) {
-  const specialistMode = generationMode === 'ai-composition';
-  const processing = Boolean(generationStatus && ['PENDING', 'PREPARING_CONTEXT', 'GENERATING', 'VALIDATING', 'REPAIRING'].includes(generationStatus));
+function DraftFirstBuildPipeline({
+  generationMode,
+  generationStatus,
+  generatorVersion,
+  providerKey,
+  modelKey,
+  pageCountPlanned,
+  pageCountCompleted,
+  failureCode,
+  failureMessage,
+}: BuildPipelineProps) {
+  const aiCompositionMode = generationMode === 'ai-composition';
+  const processing = Boolean(generationStatus && PROCESSING_GENERATION_STATUSES.includes(generationStatus as typeof PROCESSING_GENERATION_STATUSES[number]));
   const complete = Boolean(generationStatus && ['DESIGN_COMPLETE', 'READY_FOR_REVIEW', 'GENERATION_COMPLETE'].includes(generationStatus));
   const failed = generationStatus === 'FAILED';
-  const stateLabel = complete ? 'Completed' : processing ? 'Running' : failed ? 'Ready for fresh run' : 'Planned';
+  const stateLabel = complete ? 'Ready for review' : processing ? 'Running' : failed ? 'Failed' : 'Planned';
   const stateClass = complete
     ? 'border-emerald-700 bg-emerald-950/30 text-emerald-200'
     : processing
       ? 'border-violet-700 bg-violet-950/30 text-violet-200'
       : failed
-        ? 'border-amber-700 bg-amber-950/30 text-amber-100'
+        ? 'border-rose-700 bg-rose-950/30 text-rose-100'
         : 'border-slate-700 bg-slate-950 text-slate-300';
+  const progressPercent = pageCountPlanned > 0
+    ? Math.min(100, Math.round((pageCountCompleted / pageCountPlanned) * 100))
+    : 0;
 
-  return <section aria-label="Specialist website build pipeline" className="mt-4 rounded-2xl border border-violet-800/60 bg-slate-950/70 p-4 sm:p-5">
+  return <section aria-label="Draft-first website build pipeline" className="mt-4 rounded-2xl border border-violet-800/60 bg-slate-950/70 p-4 sm:p-5">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-300">AI agency build path</p>
-        <h4 className="mt-1 text-sm font-black text-white">PLAN → CREATE → REVIEW → CRITIQUE → REVISE → VALIDATE → SHIP</h4>
-        <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">Specialists produce governed briefs and recommendations. KS OS retains final control of verified facts, Knowledge Pack rules, Search Intelligence, components, booking and validators.</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-300">Website build path</p>
+        <h4 className="mt-1 text-sm font-black text-white">GENERATE DRAFT → REFINE → VALIDATE → HUMAN REVIEW</h4>
+        <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">The website is created before specialist refinement. A quality or refinement issue should become a finding, not erase an otherwise valid draft.</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${specialistMode ? 'border-emerald-700 bg-emerald-950/30 text-emerald-200' : 'border-rose-700 bg-rose-950/30 text-rose-200'}`}>{specialistMode ? 'AI COMPOSITION' : `MODE: ${generationMode || 'UNKNOWN'}`}</span>
+        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${aiCompositionMode ? 'border-emerald-700 bg-emerald-950/30 text-emerald-200' : 'border-rose-700 bg-rose-950/30 text-rose-200'}`}>{aiCompositionMode ? 'AI COMPOSITION' : `MODE: ${generationMode || 'UNKNOWN'}`}</span>
         <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${stateClass}`}>{stateLabel.toUpperCase()}</span>
       </div>
     </div>
-    {!specialistMode ? <p role="alert" className="mt-4 rounded-xl border border-rose-800 bg-rose-950/30 p-3 text-xs font-bold leading-5 text-rose-200">The specialist build is fail-closed because the runtime generation mode is not <code>ai-composition</code>.</p> : null}
-    <ol className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-      {SPECIALIST_BUILD_PIPELINE.map((step, index) => <li key={step.label} className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+
+    {!aiCompositionMode ? <p role="alert" className="mt-4 rounded-xl border border-rose-800 bg-rose-950/30 p-3 text-xs font-bold leading-5 text-rose-200">The AI website build is unavailable because the runtime generation mode is not <code>ai-composition</code>.</p> : null}
+
+    {generationStatus ? <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><small className="font-black uppercase tracking-wide text-slate-500">Live build progress</small><p className="mt-1 text-sm font-black text-white">{generationStatus.replaceAll('_', ' ')} · {pageCountCompleted} / {pageCountPlanned || 0} pages</p></div>
+        {processing ? <span className="text-[10px] font-black uppercase tracking-wide text-violet-300">Auto-refreshing</span> : null}
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800" aria-label={`${progressPercent}% of planned pages completed`}>
+        <div className="h-full bg-violet-500 transition-[width]" style={{ width: `${progressPercent}%` }} />
+      </div>
+    </div> : null}
+
+    {failed ? <div role="alert" className="mt-4 rounded-xl border border-rose-800 bg-rose-950/25 p-4">
+      <small className="font-black uppercase tracking-wide text-rose-300">Build error</small>
+      <p className="mt-2 text-xs font-black text-rose-100">{failureCode || 'SITE_GENERATION_FAILED'}</p>
+      <p className="mt-1 text-xs leading-5 text-rose-200">{failureMessage || 'The website build failed before a reviewable draft was ready.'}</p>
+      <p className="mt-2 text-[11px] leading-5 text-rose-300">A new build can be started after the underlying issue is resolved. Failed historical runs remain visible as provenance.</p>
+    </div> : null}
+
+    <ol className="mt-4 grid gap-2 md:grid-cols-2">
+      {DRAFT_FIRST_BUILD_PIPELINE.map((step, index) => <li key={step.label} className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
         <div className="flex items-start gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-violet-950 text-[10px] font-black text-violet-200">{index + 1}</span><div><strong className="text-xs text-white">{step.label}</strong><p className="mt-1 text-[11px] leading-5 text-slate-500">{step.description}</p></div></div>
       </li>)}
     </ol>
+
     <div className="mt-4 grid gap-2 sm:grid-cols-3">
       <div className="rounded-xl bg-slate-900/70 p-3"><small className="font-black uppercase tracking-wide text-slate-600">Runtime</small><p className="mt-1 text-xs font-bold text-slate-300">{generationMode || 'Unknown mode'}</p></div>
       <div className="rounded-xl bg-slate-900/70 p-3"><small className="font-black uppercase tracking-wide text-slate-600">Provider / model</small><p className="mt-1 text-xs font-bold text-slate-300">{providerKey || 'Provider pending'} · {modelKey || 'Model pending'}</p></div>
-      <div className="rounded-xl bg-slate-900/70 p-3"><small className="font-black uppercase tracking-wide text-slate-600">Latest run provenance</small><p className="mt-1 text-xs font-bold text-slate-300">{generatorVersion || 'No generation run yet'}{generationStatus ? ` · ${generationStatus.replaceAll('_', ' ')}` : ''}</p></div>
+      <div className="rounded-xl bg-slate-900/70 p-3"><small className="font-black uppercase tracking-wide text-slate-600">Generator provenance</small><p className="mt-1 text-xs font-bold text-slate-300">{generatorVersion || 'No generation run yet'}</p></div>
     </div>
   </section>;
 }
@@ -144,9 +189,11 @@ export function AgencyLaunchCommandCenter({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const load = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const [detail, context, booking, questionnaires] = await Promise.all([
         Promise.resolve(tenantDetail),
@@ -174,22 +221,33 @@ export function AgencyLaunchCommandCenter({
       }
       setData({ detail, context, booking, questionnaires, siteReference, site });
     } catch (cause) {
-      setData(null);
-      setError(cause instanceof Error ? cause.message : 'The governed launch workspace could not be loaded.');
+      if (!silent) {
+        setData(null);
+        setError(cause instanceof Error ? cause.message : 'The governed launch workspace could not be loaded.');
+      }
       throw cause;
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [tenantDetail, tenantReference]);
 
   useEffect(() => { void load().catch(() => undefined); }, [load]);
+
+  const liveGenerationStatus = data?.site?.generations?.[0]?.status as string | undefined;
+  useEffect(() => {
+    if (!liveGenerationStatus || !PROCESSING_GENERATION_STATUSES.includes(liveGenerationStatus as typeof PROCESSING_GENERATION_STATUSES[number])) return undefined;
+    const timer = window.setInterval(() => {
+      void load(true).catch(() => undefined);
+    }, 3_000);
+    return () => window.clearInterval(timer);
+  }, [liveGenerationStatus, load]);
 
   const command = async (key: string, operation: () => Promise<any>, message: string) => {
     setBusy(key); setError(''); setNotice('');
     try {
       const result = await operation();
       setNotice(message);
-      await load();
+      await load(true);
       return result;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The launch action could not be completed.');
@@ -261,7 +319,7 @@ export function AgencyLaunchCommandCenter({
   const generateWebsite = () => command('generation', () => agencyFetch(`/sites/${data.siteReference}/generation-runs`, {
     method: 'POST',
     body: JSON.stringify({ blueprintReference: data.site.blueprint.reference, generationReason: 'INITIAL_SITE' }),
-  }), 'Specialist website build queued through the governed service. Publication remains separate.');
+  }), 'Website build queued. The master generator will create the complete draft before specialist refinement; publication remains separate.');
 
   const stages = useMemo<Stage[]>(() => {
     if (!data) return [];
@@ -281,15 +339,18 @@ export function AgencyLaunchCommandCenter({
     ));
     const generation = site.generations?.[0] || null;
     const providerReady = context.generationProvider?.ready === true;
-    const specialistModeReady = context.generationProvider?.generationMode === 'ai-composition';
-    const generationReady = Boolean(factsLocked && bookingReady && planReady && blueprint?.status === 'APPROVED' && search?.status === 'APPROVED' && !searchResearchRequired && context.knowledge?.ready && context.designLibrary?.nativeTemplateReady && providerReady && specialistModeReady);
-    const generationProcessing = Boolean(generation && ['PENDING', 'PREPARING_CONTEXT', 'GENERATING', 'VALIDATING', 'REPAIRING'].includes(generation.status));
+    const aiCompositionReady = context.generationProvider?.generationMode === 'ai-composition';
+    const generationReady = Boolean(factsLocked && bookingReady && planReady && blueprint?.status === 'APPROVED' && search?.status === 'APPROVED' && !searchResearchRequired && context.knowledge?.ready && context.designLibrary?.nativeTemplateReady && providerReady && aiCompositionReady);
+    const generationProcessing = Boolean(generation && PROCESSING_GENERATION_STATUSES.includes(generation.status));
     const generationReviewable = Boolean(generation && ['READY_FOR_REVIEW', 'DESIGN_COMPLETE', 'GENERATION_COMPLETE'].includes(generation.status));
     const generationFailed = generation?.status === 'FAILED';
     const canStartFreshGeneration = generationReady && (!generation || generationFailed);
     const quality = site.quality?.[0] || null;
     const canonicalDomain = site.domains?.find((domain: any) => (domain.domainRole || domain.role) === 'CANONICAL');
     const publication = site.publications?.[0] || null;
+    const plannedPages = Number(generation?.pageCountPlanned || blueprint?.pages?.length || blueprint?.pageCount || 0);
+    const completedPages = Number(generation?.pageCountCompleted || 0);
+
     return [
       { number: 1, name: 'Client', state: 'COMPLETE', owner: 'Agency', summary: `${context.tenant.name} workspace exists`, blockers: [], artifact: `Tenant ${context.tenant.agencyReference}` },
       { number: 2, name: 'Discovery', state: !latestDiscovery ? 'NOT_STARTED' : discoverySubmitted ? 'COMPLETE' : ['INVITED', 'IN_PROGRESS', 'CLARIFICATION_REQUIRED'].includes(latestDiscovery.status) ? 'NEEDS_CLIENT' : 'NEEDS_AGENCY', owner: latestDiscovery && ['INVITED', 'IN_PROGRESS', 'CLARIFICATION_REQUIRED'].includes(latestDiscovery.status) ? 'Client' : 'Agency', summary: !latestDiscovery ? 'Create a secure client discovery request' : `${latestDiscovery.status.replaceAll('_', ' ')} · ${latestDiscovery.openFollowUpCount || 0} open follow-ups`, blockers: [], artifact: latestDiscovery ? `Discovery v${latestDiscovery.version} · ${latestDiscovery.consentCount || 0} consent decisions` : 'No discovery artifact yet', action: <Link className={actionClass} to={`/agency/fact-finding?tenant=${tenantReference}${latestDiscovery ? `&questionnaire=${latestDiscovery.reference}` : ''}`}>{latestDiscovery ? 'Open discovery' : 'Create discovery'}</Link> },
@@ -301,19 +362,19 @@ export function AgencyLaunchCommandCenter({
       { number: 8, name: 'Search Intelligence', state: blueprint?.status !== 'APPROVED' ? 'BLOCKED' : !search ? 'NOT_STARTED' : searchResearchRequired ? 'NEEDS_AGENCY' : search.status === 'APPROVED' ? 'APPROVED' : 'READY_FOR_REVIEW', owner: 'Agency search strategist', summary: !search ? 'Create one governed brief per approved blueprint page' : searchResearchRequired ? `Planning draft · research required · ${search.briefs?.length || 0} blueprint-bound briefs` : `Strategy v${search.strategy?.strategyVersion || 1} · ${search.briefs?.length || 0} briefs · ${search.status}`, blockers: blueprint?.status !== 'APPROVED' ? ['Approve the exact blueprint first.'] : searchResearchRequired ? ['Complete governed search research, import the evidence-bound strategy and review every page brief before approval.'] : [], artifact: search ? `${search.strategy?.provenance?.providerKey} · exact blueprint revision binding` : 'No Search Intelligence artifact', action: blueprint?.status === 'APPROVED' && !search ? <button className={actionClass} disabled={Boolean(busy)} onClick={() => void createSearch()}>Create Search Intelligence strategy</button> : siteReference ? <Link className={actionClass} to={`/agency/sites/${siteReference}/studio`}>{searchResearchRequired ? 'Complete governed research' : 'Review Search Intelligence'}</Link> : undefined },
       {
         number: 9,
-        name: 'AI agency build',
+        name: 'Website build',
         state: generationProcessing ? 'PROCESSING' : generationReviewable ? 'READY_FOR_REVIEW' : generationFailed && generationReady ? 'NEEDS_AGENCY' : generationFailed ? 'BLOCKED' : generationReady ? 'NEEDS_AGENCY' : 'BLOCKED',
-        owner: generationProcessing ? 'KS OS specialist team' : 'Agency',
+        owner: generationProcessing ? 'KS OS generator' : 'Agency',
         summary: generationProcessing
-          ? `Specialist build ${generation.status.replaceAll('_', ' ')}`
+          ? `${generation.status.replaceAll('_', ' ')} · ${completedPages} / ${plannedPages} draft pages completed`
           : generationReviewable
-            ? 'Specialist build completed and is ready for human review'
-            : generationFailed && generationReady
-              ? `Previous run failed (${generation.generatorVersion || 'unknown version'}). Start a fresh specialist build.`
+            ? `${completedPages || plannedPages} / ${plannedPages} pages created, refined and validated for human review`
+            : generationFailed
+              ? `Build failed after ${completedPages} / ${plannedPages} pages${generation.failureCode ? ` · ${generation.failureCode}` : ''}`
               : generationReady
-                ? 'All governed inputs are approved. Start the specialist website build.'
-                : 'Specialist generation remains fail-closed',
-        blockers: generationReady || generationProcessing || generationReviewable ? [] : [
+                ? 'All required build inputs are available. Create the complete website draft now.'
+                : 'Website generation is waiting for required build inputs',
+        blockers: generationReady || generationProcessing || generationReviewable || generationFailed ? [] : [
           !factsLocked ? 'Production facts are not locked.' : '',
           !bookingReady ? 'Booking is not ready.' : '',
           blueprint?.status !== 'APPROVED' ? 'Blueprint is not approved.' : '',
@@ -322,21 +383,25 @@ export function AgencyLaunchCommandCenter({
           !context.knowledge?.ready ? 'No single active PUBLIC_SITE knowledge pack.' : '',
           !context.designLibrary?.nativeTemplateReady ? 'V3 renderer is not ready.' : '',
           !providerReady ? context.generationProvider?.blocker || 'Generation provider is not ready.' : '',
-          !specialistModeReady ? 'Generation mode must be ai-composition for the specialist agency pipeline.' : '',
+          !aiCompositionReady ? 'Generation mode must be ai-composition for the AI website build.' : '',
         ].filter(Boolean),
         artifact: generation
-          ? `Latest run ${generation.reference} · ${generation.generatorVersion || 'unknown generator'} · runtime ${context.generationProvider?.generationMode || 'unknown'}`
+          ? `Run ${generation.reference} · generator ${generation.generatorVersion || 'unknown'} · ${generation.providerKey || context.generationProvider?.providerKey || 'provider'} / ${generation.modelKey || context.generationProvider?.modelKey || 'model'}`
           : `${context.generationProvider?.providerKey || 'provider'} · ${context.generationProvider?.modelKey || 'model pending'} · ${context.generationProvider?.generationMode || 'mode unknown'}`,
-        detail: <SpecialistBuildPipeline
+        detail: <DraftFirstBuildPipeline
           generationMode={context.generationProvider?.generationMode}
           generationStatus={generation?.status}
           generatorVersion={generation?.generatorVersion}
-          providerKey={context.generationProvider?.providerKey}
-          modelKey={context.generationProvider?.modelKey}
+          providerKey={generation?.providerKey || context.generationProvider?.providerKey}
+          modelKey={generation?.modelKey || context.generationProvider?.modelKey}
+          pageCountPlanned={plannedPages}
+          pageCountCompleted={completedPages}
+          failureCode={generation?.failureCode}
+          failureMessage={generation?.failureMessage}
         />,
-        action: canStartFreshGeneration ? <button className={actionClass} disabled={Boolean(busy)} onClick={() => void generateWebsite()}>{generationFailed ? 'Start fresh specialist build' : 'Start specialist build'}</button> : undefined,
+        action: canStartFreshGeneration ? <button className={actionClass} disabled={Boolean(busy)} onClick={() => void generateWebsite()}>{generationFailed ? 'Start fresh website build' : 'Start website build'}</button> : undefined,
       },
-      { number: 10, name: 'Human review and quality', state: !generation || !generationReviewable ? 'BLOCKED' : site.studio?.version?.status === 'APPROVED' && quality?.status === 'PASSED' ? 'APPROVED' : 'NEEDS_AGENCY', owner: 'Agency design reviewer', summary: quality ? `Quality ${quality.status}` : 'Signed/noindex preview and independent human review required', blockers: !generation || !generationReviewable ? ['The specialist website build must reach READY_FOR_REVIEW or DESIGN_COMPLETE.'] : [], artifact: site.studio?.version ? `Site version ${site.studio.version.reference} · ${site.studio.version.status}` : 'No reviewable version', action: siteReference ? <Link className={actionClass} to={`/agency/sites/${siteReference}/studio`}>Open Site Studio review</Link> : undefined },
+      { number: 10, name: 'Human review and quality', state: !generation || !generationReviewable ? 'BLOCKED' : site.studio?.version?.status === 'APPROVED' && quality?.status === 'PASSED' ? 'APPROVED' : 'NEEDS_AGENCY', owner: 'Agency design reviewer', summary: quality ? `Quality ${quality.status}` : 'Signed/noindex preview and independent human review required', blockers: !generation || !generationReviewable ? ['The website build must reach READY_FOR_REVIEW or DESIGN_COMPLETE.'] : [], artifact: site.studio?.version ? `Site version ${site.studio.version.reference} · ${site.studio.version.status}` : 'No reviewable version', action: siteReference ? <Link className={actionClass} to={`/agency/sites/${siteReference}/studio`}>Open Site Studio review</Link> : undefined },
       { number: 11, name: 'Domain and launch', state: publication?.status === 'LIVE' ? 'COMPLETE' : canonicalDomain?.status === 'ACTIVE' ? 'NEEDS_AGENCY' : 'BLOCKED', owner: 'Agency launch owner', summary: publication?.status === 'LIVE' ? 'Explicit publication is live' : 'Domain, quality and exact-version publication approval remain separate', blockers: [!canonicalDomain || canonicalDomain.status !== 'ACTIVE' ? 'Canonical or managed hostname is not active.' : '', quality?.status !== 'PASSED' ? 'Publication quality gate has not passed.' : '', site.studio?.version?.status !== 'APPROVED' ? 'The exact site version lacks final human approval.' : ''].filter(Boolean), artifact: canonicalDomain ? `${canonicalDomain.hostname} · ${canonicalDomain.status}` : 'No canonical domain', action: siteReference ? <Link className={actionClass} to={`/agency/sites/${siteReference}/studio`}>Review launch gates</Link> : undefined },
     ];
   }, [busy, data, latestDiscovery, tenantReference]);
@@ -348,11 +413,12 @@ export function AgencyLaunchCommandCenter({
       <button type="button" onClick={() => void load().catch(() => undefined)} className="mt-4 min-h-11 rounded-xl border border-rose-700 px-4 text-xs font-black text-rose-100">Retry</button>
     </div>;
   }
+
   const complete = stages.filter(stage => ['APPROVED', 'COMPLETE'].includes(stage.state)).length;
   return <div className="space-y-6">
     <header className="rounded-3xl border border-violet-800/60 bg-gradient-to-br from-violet-950 via-slate-950 to-slate-900 p-6 sm:p-8">
       <button type="button" onClick={onBack} className="min-h-11 rounded-xl border border-slate-700 px-4 text-xs font-black text-slate-300">← All clients</button>
-      <div className="mt-5 flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-violet-300">Agency Launch V3</p><h1 className="mt-2 text-3xl font-black text-white">{data.context.tenant.name}</h1><p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">A governed command centre for discovery, facts, booking, architecture, Search Intelligence, the specialist AI agency build, human review and launch. AI proposes; KS OS verifies.</p></div><div className="rounded-2xl border border-slate-700 bg-slate-950/70 p-4 text-right"><small className="font-black uppercase text-slate-500">Approved / complete</small><strong className="mt-1 block text-2xl text-white">{complete} / {stages.length}</strong></div></div>
+      <div className="mt-5 flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-violet-300">Agency Launch V3</p><h1 className="mt-2 text-3xl font-black text-white">{data.context.tenant.name}</h1><p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Create the complete website draft first, refine it with specialist AI, validate hard rules, then send the exact version to human review before publication.</p></div><div className="rounded-2xl border border-slate-700 bg-slate-950/70 p-4 text-right"><small className="font-black uppercase text-slate-500">Approved / complete</small><strong className="mt-1 block text-2xl text-white">{complete} / {stages.length}</strong></div></div>
     </header>
     {error ? <p role="alert" className="rounded-xl border border-rose-800 bg-rose-950/35 p-4 text-sm text-rose-200">{error}</p> : null}
     {notice ? <p role="status" className="rounded-xl border border-emerald-800 bg-emerald-950/35 p-4 text-sm text-emerald-200">{notice}</p> : null}
