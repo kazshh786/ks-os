@@ -1,4 +1,5 @@
 import { PublicReferenceSchema } from '@ks-os/contracts';
+import type { SiteGenerationKnowledgeContext } from '@ks-os/site-knowledge';
 import { z } from 'zod';
 import type { GenerationPlan, VerifiedBusinessFacts } from './contracts.js';
 import { selectGenerationSafeFacts } from './facts.js';
@@ -10,7 +11,7 @@ import type {
   SearchResearchEvidence,
 } from './search-intelligence.js';
 
-export const SPECIALIST_AGENT_TEAM_VERSION = 'agent-team-1' as const;
+export const SPECIALIST_AGENT_TEAM_VERSION = 'agent-team-2' as const;
 
 export const SpecialistAgentNameSchema = z.enum([
   'SEO',
@@ -90,34 +91,63 @@ export interface ApprovedSpecialistSearchContext {
   evidence: readonly SearchResearchEvidence[];
 }
 
+export interface SpecialistKnowledgeGuidance {
+  pageReference: string;
+  pageType: string;
+  conversionRole: string;
+  knowledgePack: {
+    reference: string;
+    semanticVersion: string;
+    schemaVersion: number;
+    contentDigest: string;
+  };
+  applicableRuleIds: readonly string[];
+  requiredInstructions: readonly string[];
+  prohibitedBehaviours: readonly string[];
+  missingBusinessDataRequirements: readonly string[];
+  deterministicRequirements: readonly string[];
+  aiReviewInstructions: readonly string[];
+  humanReviewInstructions: readonly string[];
+  pagePlaybook: SiteGenerationKnowledgeContext['pagePlaybook'];
+  sourceReferences: SiteGenerationKnowledgeContext['sourceReferences'];
+  omittedRuleCount: number;
+  requiredRulesExceededLimit: boolean;
+}
+
 const ROLE_MANDATES: Record<SpecialistAgentName, readonly string[]> = {
   SEO: [
     'Own organic-search interpretation, information discoverability, metadata direction, and internal-linking priorities.',
     'Use only the approved Search Intelligence strategy, briefs, and evidence. Do not invent keywords, rankings, volumes, competitors, locations, or market facts.',
+    'Apply applicable Knowledge Pack technical SEO, local SEO, content SEO, trust, accessibility and UX instructions whenever they affect search quality.',
     'Protect search intent without keyword stuffing or weakening the user journey.',
   ],
   UX: [
     'Own user needs, information hierarchy, task flow, interaction clarity, content sequencing, and mobile journey quality.',
+    'Apply applicable Knowledge Pack UX, mobile, accessibility, booking, trust and conversion instructions before making a recommendation.',
     'Recommend what each page must help the visitor understand or do; do not choose unsupported components or override approved layout constraints.',
     'Reduce cognitive load and ambiguity while preserving meaningful page depth.',
   ],
   CONVERSION: [
     'Own the path from visitor intent to the native KS OS booking action.',
+    'Apply applicable Knowledge Pack booking, conversion, trust, UX, mobile, copywriting and accessibility instructions before optimising conversion.',
     'Identify trust needs, objections, friction, reassurance, CTA timing, and conversion continuity without creating false urgency or unsupported proof.',
     'The sole primary conversion is native KS OS appointment booking; never propose an external booking destination.',
   ],
   COPY: [
     'Own messaging hierarchy, voice, clarity, persuasion, heading direction, evidence usage, and CTA language.',
+    'Apply applicable Knowledge Pack copywriting, content SEO, trust, conversion, accessibility and booking instructions to messaging guidance.',
     'Do not write final page copy in this planning step. Give guidance that the page generator can execute later.',
     'Never invent claims, testimonials, outcomes, credentials, guarantees, prices, availability, or business history.',
   ],
   DESIGN: [
     'Own visual hierarchy, layout rhythm, typography intent, image treatment, component density, responsive behaviour, and restrained motion.',
+    'Apply applicable Knowledge Pack UX, mobile, accessibility, trust, performance and conversion instructions to visual recommendations.',
     'Treat the approved component registry and layout manifest as the buildable design vocabulary. Do not propose arbitrary UI outside it.',
     'Avoid formulaic sameness; recommend purposeful variation while keeping the brand coherent.',
   ],
   ACCESSIBILITY: [
     'Own accessible interaction, readable content hierarchy, keyboard and focus expectations, motion restraint, semantic clarity, and visual legibility.',
+    'Apply every applicable Knowledge Pack accessibility rule plus related UX, mobile, copywriting and booking requirements.',
     'Accessibility requirements are hard constraints, not aesthetic preferences.',
     'Flag likely conflicts early so design, copy, and conversion guidance can resolve them before page generation.',
   ],
@@ -196,25 +226,69 @@ function specialistResponseJsonSchema(name: SpecialistAgentName) {
   };
 }
 
+export function createSpecialistKnowledgeGuidance(input: {
+  plan: GenerationPlan;
+  knowledgeContexts: ReadonlyMap<string, SiteGenerationKnowledgeContext>;
+}): SpecialistKnowledgeGuidance[] {
+  return input.plan.pages.map(page => {
+    const context = input.knowledgeContexts.get(page.pageReference);
+    if (!context) {
+      throw new Error(`SPECIALIST_KNOWLEDGE_CONTEXT_MISSING:${page.pageReference}`);
+    }
+    if (context.packReference !== input.plan.knowledgePackReference
+      || context.semanticVersion !== input.plan.knowledgePackSemanticVersion) {
+      throw new Error(`SPECIALIST_KNOWLEDGE_CONTEXT_PROVENANCE_MISMATCH:${page.pageReference}`);
+    }
+    return {
+      pageReference: page.pageReference,
+      pageType: page.pageType,
+      conversionRole: page.conversionRole,
+      knowledgePack: {
+        reference: context.packReference,
+        semanticVersion: context.semanticVersion,
+        schemaVersion: context.schemaVersion,
+        contentDigest: context.contentDigest,
+      },
+      applicableRuleIds: context.applicableRuleIds,
+      requiredInstructions: context.requiredInstructions,
+      prohibitedBehaviours: context.prohibitedBehaviours,
+      missingBusinessDataRequirements: context.missingBusinessDataRequirements,
+      deterministicRequirements: context.deterministicRequirements,
+      aiReviewInstructions: context.aiReviewInstructions,
+      humanReviewInstructions: context.humanReviewInstructions,
+      pagePlaybook: context.pagePlaybook,
+      sourceReferences: context.sourceReferences,
+      omittedRuleCount: context.omittedRuleCount,
+      requiredRulesExceededLimit: context.requiredRulesExceededLimit,
+    };
+  });
+}
+
 export function composeSpecialistAgentPrompt(input: {
   specialist: SpecialistAgentName;
   plan: GenerationPlan;
   facts: VerifiedBusinessFacts;
   searchIntelligence: ApprovedSpecialistSearchContext;
+  knowledgeGuidelines: readonly SpecialistKnowledgeGuidance[];
   collaboratorBriefs?: Partial<Record<SpecialistAgentName, SpecialistBrief>>;
 }) {
   return stableGenerationStringify({
     systemContract: [
       `Act only as the ${input.specialist} specialist in a governed website-generation team.`,
       'Return structured planning guidance only. Do not return final page copy, HTML, CSS, JavaScript, framework code, URLs, or embeds.',
-      'Verified facts, approved Search Intelligence, blueprint identity, template constraints, component compatibility, native booking rules, accessibility rules, and downstream validators remain authoritative.',
-      'Specialist recommendations are expert guidance inside those hard constraints; never weaken or bypass governance.',
+      'The supplied pinned Knowledge Pack context and approved Search Intelligence are governing inputs, not optional inspiration.',
+      'Follow every applicable Knowledge Pack requiredInstruction and deterministicRequirement. Never recommend a prohibitedBehaviour. When required business data is missing, flag the dependency instead of inventing or inferring it.',
+      'Treat approved Search Intelligence strategy, page briefs and research evidence as immutable market/search guidance. Do not invent or substitute keywords, intent, locations, competitors, volumes or evidence.',
+      'Verified facts, blueprint identity, template constraints, component compatibility, native booking rules, accessibility rules, and downstream validators remain authoritative.',
+      'If a specialist preference conflicts with a Knowledge Pack rule, approved Search Intelligence, verified fact, or downstream hard constraint, the governing input wins.',
       'Use only approved page references from the supplied blueprint when attaching a recommendation to pages.',
+      'Knowledge source references are provenance only; do not fabricate or quote source content that is not present in the selected guidance.',
     ],
-    operation: `SPECIALIST_${input.specialist}_BRIEF_V1`,
+    operation: `SPECIALIST_${input.specialist}_BRIEF_V2`,
     teamVersion: SPECIALIST_AGENT_TEAM_VERSION,
     roleMandate: ROLE_MANDATES[input.specialist],
     approvedBlueprint: input.plan,
+    pinnedKnowledgePackGuidelines: input.knowledgeGuidelines,
     approvedSearchIntelligence: {
       strategy: input.searchIntelligence.strategy,
       briefs: input.searchIntelligence.briefs,
@@ -227,6 +301,9 @@ export function composeSpecialistAgentPrompt(input: {
 
 export function composeSpecialistDirectorPrompt(input: {
   plan: GenerationPlan;
+  facts: VerifiedBusinessFacts;
+  searchIntelligence: ApprovedSpecialistSearchContext;
+  knowledgeGuidelines: readonly SpecialistKnowledgeGuidance[];
   briefs: {
     seo: SpecialistBrief;
     ux: SpecialistBrief;
@@ -239,14 +316,19 @@ export function composeSpecialistDirectorPrompt(input: {
   return stableGenerationStringify({
     systemContract: [
       'Act as the project director and critic for a governed specialist website-generation team.',
-      'Reconcile conflicts between specialists without inventing business facts or overriding platform governance.',
-      'Prefer solutions that satisfy user needs, search intent, conversion clarity, brand quality, and accessibility together.',
-      'If two recommendations conflict, state the conflict and a concrete resolution for downstream composition and generation.',
+      'The pinned Knowledge Pack and approved Search Intelligence remain governing inputs during conflict resolution; specialist consensus can never override them.',
+      'Reject or resolve any specialist recommendation that conflicts with a required instruction, deterministic requirement, prohibited behaviour, missing-data requirement, approved search brief, verified business fact, native booking rule, accessibility requirement, template constraint or downstream validator.',
+      'Reconcile conflicts between specialists without inventing business facts or search evidence.',
+      'Prefer solutions that satisfy user needs, search intent, conversion clarity, brand quality, performance-minded design, and accessibility together.',
+      'If two recommendations conflict, state the conflict and a concrete governed resolution for downstream composition and generation.',
       'Return structured JSON only. Do not return page copy or implementation code.',
     ],
-    operation: 'SPECIALIST_DIRECTOR_REVIEW_V1',
+    operation: 'SPECIALIST_DIRECTOR_REVIEW_V2',
     teamVersion: SPECIALIST_AGENT_TEAM_VERSION,
     approvedPageReferences: input.plan.pages.map(page => page.pageReference),
+    pinnedKnowledgePackGuidelines: input.knowledgeGuidelines,
+    approvedSearchIntelligence: input.searchIntelligence,
+    verifiedBusinessFacts: selectGenerationSafeFacts(input.facts),
     specialistBriefs: input.briefs,
   });
 }
@@ -255,12 +337,17 @@ export async function runSpecialistAgentTeam(input: {
   plan: GenerationPlan;
   facts: VerifiedBusinessFacts;
   searchIntelligence: ApprovedSpecialistSearchContext;
+  knowledgeContexts: ReadonlyMap<string, SiteGenerationKnowledgeContext>;
   provider: SiteGenerationProvider;
   maxOutputCharacters: number;
   signal?: AbortSignal;
   updateStatus?: (message: string) => Promise<void>;
 }): Promise<SpecialistAgentTeamOutput> {
   const maxOutputCharacters = Math.min(input.maxOutputCharacters, 50_000);
+  const knowledgeGuidelines = createSpecialistKnowledgeGuidance({
+    plan: input.plan,
+    knowledgeContexts: input.knowledgeContexts,
+  });
 
   const run = async <T extends SpecialistBrief>(
     specialist: SpecialistAgentName,
@@ -272,6 +359,7 @@ export async function runSpecialistAgentTeam(input: {
         plan: input.plan,
         facts: input.facts,
         searchIntelligence: input.searchIntelligence,
+        knowledgeGuidelines,
         collaboratorBriefs,
       }),
       outputSchema: specialistSchema(specialist) as z.ZodType<T>,
@@ -282,21 +370,21 @@ export async function runSpecialistAgentTeam(input: {
     return response.value;
   };
 
-  await input.updateStatus?.('SEO, UX and accessibility specialists are reviewing the approved inputs.');
+  await input.updateStatus?.('SEO, UX and accessibility specialists are reviewing approved Search Intelligence and Knowledge Pack guidance.');
   const [seo, ux, accessibility] = await Promise.all([
     run<z.infer<typeof SeoSpecialistBriefSchema>>('SEO'),
     run<z.infer<typeof UxSpecialistBriefSchema>>('UX'),
     run<z.infer<typeof AccessibilitySpecialistBriefSchema>>('ACCESSIBILITY'),
   ]);
 
-  await input.updateStatus?.('The conversion specialist is reconciling search intent and the user journey.');
+  await input.updateStatus?.('The conversion specialist is reconciling search intent, Knowledge Pack rules and the user journey.');
   const conversion = await run<z.infer<typeof ConversionSpecialistBriefSchema>>('CONVERSION', {
     SEO: seo,
     UX: ux,
     ACCESSIBILITY: accessibility,
   });
 
-  await input.updateStatus?.('The copy specialist is defining messaging guidance from the agreed journey.');
+  await input.updateStatus?.('The copy specialist is defining messaging guidance inside the approved search and knowledge constraints.');
   const copy = await run<z.infer<typeof CopySpecialistBriefSchema>>('COPY', {
     SEO: seo,
     UX: ux,
@@ -304,7 +392,7 @@ export async function runSpecialistAgentTeam(input: {
     ACCESSIBILITY: accessibility,
   });
 
-  await input.updateStatus?.('The design specialist is translating the strategy into governed visual direction.');
+  await input.updateStatus?.('The design specialist is translating governed UX, conversion, copy and accessibility guidance into visual direction.');
   const design = await run<z.infer<typeof DesignSpecialistBriefSchema>>('DESIGN', {
     UX: ux,
     CONVERSION: conversion,
@@ -312,10 +400,13 @@ export async function runSpecialistAgentTeam(input: {
     ACCESSIBILITY: accessibility,
   });
 
-  await input.updateStatus?.('The specialist director is resolving cross-discipline conflicts before composition.');
+  await input.updateStatus?.('The specialist director is resolving conflicts against the pinned Knowledge Pack and Search Intelligence inputs.');
   const directorResponse = await input.provider.generateStructuredOutput({
     prompt: composeSpecialistDirectorPrompt({
       plan: input.plan,
+      facts: input.facts,
+      searchIntelligence: input.searchIntelligence,
+      knowledgeGuidelines,
       briefs: { seo, ux, conversion, copy, design, accessibility },
     }),
     outputSchema: SpecialistDirectorReviewSchema,
@@ -373,7 +464,7 @@ export function attachSpecialistTeamContext(input: {
       team,
       synthesisRules: [
         'Use specialist guidance to make judgement calls where governance allows creative discretion.',
-        'Hard platform constraints, verified facts, approved Search Intelligence, template compatibility, component contracts, native booking rules, and validators always override specialist preferences.',
+        'Hard platform constraints, pinned Knowledge Pack guidance, verified facts, approved Search Intelligence, template compatibility, component contracts, native booking rules, and validators always override specialist preferences.',
         'Resolve cross-discipline tension according to the director review instead of blindly following one specialist.',
         'Do not copy planning prose verbatim into public content; translate it into the requested structured output.',
       ],
