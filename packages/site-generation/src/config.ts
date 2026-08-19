@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SITE_GENERATOR_VERSION } from './contracts.js';
 
 const BooleanValue = z.enum(['true', 'false']).transform(value => value === 'true');
 
@@ -22,7 +23,7 @@ const SiteGenerationEnvironmentSchema = z.object({
   SITE_AI_MAX_OUTPUT_CHARACTERS: z.coerce.number().int().min(1_000).max(2_000_000).default(250_000),
   SITE_AI_MAX_CONCURRENT_REQUESTS: z.coerce.number().int().min(1).max(16).default(2),
   SITE_AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.2),
-  SITE_AI_GENERATOR_VERSION: z.string().trim().min(1).max(80).default('1.0.0'),
+  SITE_AI_GENERATOR_VERSION: z.string().trim().min(1).max(80).default(SITE_GENERATOR_VERSION),
 }).passthrough().superRefine((value, context) => {
   if (!value.SITE_AI_GENERATION_ENABLED) return;
   if (!value.SITE_AI_MODEL) {
