@@ -3,6 +3,10 @@ import type { SiteGenerationKnowledgeContext } from '@ks-os/site-knowledge';
 import { z } from 'zod';
 import type { GenerationPlan, VerifiedBusinessFacts } from './contracts.js';
 import { selectGenerationSafeFacts } from './facts.js';
+import {
+  runKeywordResearchAgent,
+  type KeywordResearchReport,
+} from './keyword-research-agent.js';
 import { stableGenerationStringify } from './normalization.js';
 import type { SiteGenerationProvider } from './provider.js';
 import type {
@@ -11,7 +15,7 @@ import type {
   SearchResearchEvidence,
 } from './search-intelligence.js';
 
-export const SPECIALIST_AGENT_TEAM_VERSION = 'agent-team-2' as const;
+export const SPECIALIST_AGENT_TEAM_VERSION = 'agent-team-3' as const;
 
 export const SpecialistAgentNameSchema = z.enum([
   'SEO',
@@ -22,6 +26,12 @@ export const SpecialistAgentNameSchema = z.enum([
   'ACCESSIBILITY',
 ]);
 export type SpecialistAgentName = z.infer<typeof SpecialistAgentNameSchema>;
+
+export const SpecialistDisciplineNameSchema = z.enum([
+  'KEYWORD_RESEARCH',
+  ...SpecialistAgentNameSchema.options,
+]);
+export type SpecialistDisciplineName = z.infer<typeof SpecialistDisciplineNameSchema>;
 
 export const SpecialistRecommendationSchema = z.object({
   priority: z.enum(['MUST', 'SHOULD', 'COULD']),
@@ -64,7 +74,7 @@ export const SpecialistDirectorReviewSchema = z.object({
   verdict: z.enum(['APPROVED', 'REVISE']),
   summary: z.string().trim().min(20).max(1_500),
   conflicts: z.array(z.object({
-    specialists: z.array(SpecialistAgentNameSchema).min(2).max(6),
+    specialists: z.array(SpecialistDisciplineNameSchema).min(2).max(7),
     issue: z.string().trim().min(10).max(1_000),
     resolution: z.string().trim().min(10).max(1_000),
   }).strict()).max(20).default([]),
@@ -75,6 +85,8 @@ export type SpecialistDirectorReview = z.infer<typeof SpecialistDirectorReviewSc
 
 export const SpecialistAgentTeamOutputSchema = z.object({
   version: z.literal(SPECIALIST_AGENT_TEAM_VERSION),
+  keywordResearch: z.custom<KeywordResearchReport>(value =>
+    Boolean(value && typeof value === 'object' && (value as KeywordResearchReport).specialist === 'KEYWORD_RESEARCH')),
   seo: SeoSpecialistBriefSchema,
   ux: UxSpecialistBriefSchema,
   conversion: ConversionSpecialistBriefSchema,
@@ -117,6 +129,7 @@ export interface SpecialistKnowledgeGuidance {
 const ROLE_MANDATES: Record<SpecialistAgentName, readonly string[]> = {
   SEO: [
     'Own organic-search interpretation, information discoverability, metadata direction, and internal-linking priorities.',
+    'Use the evidence-grounded Keyword Research report as a research handoff, then make SEO decisions against the approved Search Intelligence strategy and page briefs.',
     'Use only the approved Search Intelligence strategy, briefs, and evidence. Do not invent keywords, rankings, volumes, competitors, locations, or market facts.',
     'Apply applicable Knowledge Pack technical SEO, local SEO, content SEO, trust, accessibility and UX instructions whenever they affect search quality.',
     'Protect search intent without keyword stuffing or weakening the user journey.',
@@ -194,7 +207,7 @@ const DIRECTOR_REVIEW_RESPONSE_JSON_SCHEMA: Record<string, unknown> = {
         additionalProperties: false,
         required: ['specialists', 'issue', 'resolution'],
         properties: {
-          specialists: { type: 'array', items: { type: 'string', enum: SpecialistAgentNameSchema.options } },
+          specialists: { type: 'array', items: { type: 'string', enum: SpecialistDisciplineNameSchema.options } },
           issue: { type: 'string' },
           resolution: { type: 'string' },
         },
@@ -270,6 +283,7 @@ export function composeSpecialistAgentPrompt(input: {
   facts: VerifiedBusinessFacts;
   searchIntelligence: ApprovedSpecialistSearchContext;
   knowledgeGuidelines: readonly SpecialistKnowledgeGuidance[];
+  keywordResearch?: KeywordResearchReport;
   collaboratorBriefs?: Partial<Record<SpecialistAgentName, SpecialistBrief>>;
 }) {
   return stableGenerationStringify({
@@ -279,12 +293,13 @@ export function composeSpecialistAgentPrompt(input: {
       'The supplied pinned Knowledge Pack context and approved Search Intelligence are governing inputs, not optional inspiration.',
       'Follow every applicable Knowledge Pack requiredInstruction and deterministicRequirement. Never recommend a prohibitedBehaviour. When required business data is missing, flag the dependency instead of inventing or inferring it.',
       'Treat approved Search Intelligence strategy, page briefs and research evidence as immutable market/search guidance. Do not invent or substitute keywords, intent, locations, competitors, volumes or evidence.',
+      'The Keyword Research report is an evidence-grounded research handoff. It can highlight patterns and opportunities but cannot override approved Search Intelligence or claim evidence beyond its supplied scope.',
       'Verified facts, blueprint identity, template constraints, component compatibility, native booking rules, accessibility rules, and downstream validators remain authoritative.',
       'If a specialist preference conflicts with a Knowledge Pack rule, approved Search Intelligence, verified fact, or downstream hard constraint, the governing input wins.',
       'Use only approved page references from the supplied blueprint when attaching a recommendation to pages.',
       'Knowledge source references are provenance only; do not fabricate or quote source content that is not present in the selected guidance.',
     ],
-    operation: `SPECIALIST_${input.specialist}_BRIEF_V2`,
+    operation: `SPECIALIST_${input.specialist}_BRIEF_V3`,
     teamVersion: SPECIALIST_AGENT_TEAM_VERSION,
     roleMandate: ROLE_MANDATES[input.specialist],
     approvedBlueprint: input.plan,
@@ -294,6 +309,7 @@ export function composeSpecialistAgentPrompt(input: {
       briefs: input.searchIntelligence.briefs,
       evidence: input.searchIntelligence.evidence,
     },
+    keywordResearch: input.keywordResearch,
     verifiedBusinessFacts: selectGenerationSafeFacts(input.facts),
     collaboratorBriefs: input.collaboratorBriefs,
   });
@@ -305,6 +321,7 @@ export function composeSpecialistDirectorPrompt(input: {
   searchIntelligence: ApprovedSpecialistSearchContext;
   knowledgeGuidelines: readonly SpecialistKnowledgeGuidance[];
   briefs: {
+    keywordResearch: KeywordResearchReport;
     seo: SpecialistBrief;
     ux: SpecialistBrief;
     conversion: SpecialistBrief;
@@ -317,13 +334,14 @@ export function composeSpecialistDirectorPrompt(input: {
     systemContract: [
       'Act as the project director and critic for a governed specialist website-generation team.',
       'The pinned Knowledge Pack and approved Search Intelligence remain governing inputs during conflict resolution; specialist consensus can never override them.',
+      'The Keyword Research specialist is research-only. Use its evidence-grounded patterns to challenge SEO assumptions, but never treat an inferred gap as an observed ranking fact.',
       'Reject or resolve any specialist recommendation that conflicts with a required instruction, deterministic requirement, prohibited behaviour, missing-data requirement, approved search brief, verified business fact, native booking rule, accessibility requirement, template constraint or downstream validator.',
       'Reconcile conflicts between specialists without inventing business facts or search evidence.',
       'Prefer solutions that satisfy user needs, search intent, conversion clarity, brand quality, performance-minded design, and accessibility together.',
       'If two recommendations conflict, state the conflict and a concrete governed resolution for downstream composition and generation.',
       'Return structured JSON only. Do not return page copy or implementation code.',
     ],
-    operation: 'SPECIALIST_DIRECTOR_REVIEW_V2',
+    operation: 'SPECIALIST_DIRECTOR_REVIEW_V3',
     teamVersion: SPECIALIST_AGENT_TEAM_VERSION,
     approvedPageReferences: input.plan.pages.map(page => page.pageReference),
     pinnedKnowledgePackGuidelines: input.knowledgeGuidelines,
@@ -349,9 +367,23 @@ export async function runSpecialistAgentTeam(input: {
     knowledgeContexts: input.knowledgeContexts,
   });
 
+  await input.updateStatus?.('The keyword research specialist is analysing competitor keywords, observed rankings and search evidence.');
+  const keywordResearch = await runKeywordResearchAgent({
+    plan: input.plan,
+    facts: input.facts,
+    strategy: input.searchIntelligence.strategy,
+    briefs: input.searchIntelligence.briefs,
+    evidence: input.searchIntelligence.evidence,
+    knowledgeGuidelines,
+    provider: input.provider,
+    maxOutputCharacters: input.maxOutputCharacters,
+    signal: input.signal,
+  });
+
   const run = async <T extends SpecialistBrief>(
     specialist: SpecialistAgentName,
     collaboratorBriefs?: Partial<Record<SpecialistAgentName, SpecialistBrief>>,
+    keywordResearchInput?: KeywordResearchReport,
   ) => {
     const response = await input.provider.generateStructuredOutput<T>({
       prompt: composeSpecialistAgentPrompt({
@@ -360,6 +392,7 @@ export async function runSpecialistAgentTeam(input: {
         facts: input.facts,
         searchIntelligence: input.searchIntelligence,
         knowledgeGuidelines,
+        keywordResearch: keywordResearchInput,
         collaboratorBriefs,
       }),
       outputSchema: specialistSchema(specialist) as z.ZodType<T>,
@@ -372,7 +405,7 @@ export async function runSpecialistAgentTeam(input: {
 
   await input.updateStatus?.('SEO, UX and accessibility specialists are reviewing approved Search Intelligence and Knowledge Pack guidance.');
   const [seo, ux, accessibility] = await Promise.all([
-    run<z.infer<typeof SeoSpecialistBriefSchema>>('SEO'),
+    run<z.infer<typeof SeoSpecialistBriefSchema>>('SEO', undefined, keywordResearch),
     run<z.infer<typeof UxSpecialistBriefSchema>>('UX'),
     run<z.infer<typeof AccessibilitySpecialistBriefSchema>>('ACCESSIBILITY'),
   ]);
@@ -407,7 +440,7 @@ export async function runSpecialistAgentTeam(input: {
       facts: input.facts,
       searchIntelligence: input.searchIntelligence,
       knowledgeGuidelines,
-      briefs: { seo, ux, conversion, copy, design, accessibility },
+      briefs: { keywordResearch, seo, ux, conversion, copy, design, accessibility },
     }),
     outputSchema: SpecialistDirectorReviewSchema,
     responseJsonSchema: DIRECTOR_REVIEW_RESPONSE_JSON_SCHEMA,
@@ -417,6 +450,7 @@ export async function runSpecialistAgentTeam(input: {
 
   return SpecialistAgentTeamOutputSchema.parse({
     version: SPECIALIST_AGENT_TEAM_VERSION,
+    keywordResearch,
     seo,
     ux,
     conversion,
@@ -436,6 +470,17 @@ function briefForPage(brief: SpecialistBrief, pageReference: string) {
   };
 }
 
+function keywordResearchForDownstream(report: KeywordResearchReport) {
+  return {
+    specialist: report.specialist,
+    researchOnly: report.researchOnly,
+    objective: report.objective,
+    coverage: report.coverage,
+    limitations: report.limitations,
+    handoffToSeo: report.handoffToSeo,
+  };
+}
+
 export function attachSpecialistTeamContext(input: {
   prompt: string;
   team: SpecialistAgentTeamOutput;
@@ -443,9 +488,11 @@ export function attachSpecialistTeamContext(input: {
   pageReference?: string;
 }) {
   const base = JSON.parse(input.prompt) as Record<string, unknown>;
+  const compactKeywordResearch = keywordResearchForDownstream(input.team.keywordResearch);
   const team = input.pageReference
     ? {
       version: input.team.version,
+      keywordResearch: compactKeywordResearch,
       seo: briefForPage(input.team.seo, input.pageReference),
       ux: briefForPage(input.team.ux, input.pageReference),
       conversion: briefForPage(input.team.conversion, input.pageReference),
@@ -454,7 +501,10 @@ export function attachSpecialistTeamContext(input: {
       accessibility: briefForPage(input.team.accessibility, input.pageReference),
       directorReview: input.team.directorReview,
     }
-    : input.team;
+    : {
+      ...input.team,
+      keywordResearch: compactKeywordResearch,
+    };
 
   return stableGenerationStringify({
     ...base,
@@ -464,6 +514,7 @@ export function attachSpecialistTeamContext(input: {
       team,
       synthesisRules: [
         'Use specialist guidance to make judgement calls where governance allows creative discretion.',
+        'Keyword Research is evidence gathering for SEO; downstream generators should follow the SEO synthesis and director resolution rather than treating raw research opportunities as page instructions.',
         'Hard platform constraints, pinned Knowledge Pack guidance, verified facts, approved Search Intelligence, template compatibility, component contracts, native booking rules, and validators always override specialist preferences.',
         'Resolve cross-discipline tension according to the director review instead of blindly following one specialist.',
         'Do not copy planning prose verbatim into public content; translate it into the requested structured output.',
