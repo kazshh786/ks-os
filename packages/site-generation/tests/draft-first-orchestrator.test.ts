@@ -14,6 +14,10 @@ const prompt = await readFile(
   new URL('../src/prompt.ts', import.meta.url),
   'utf8',
 );
+const repair = await readFile(
+  new URL('../src/repair.ts', import.meta.url),
+  'utf8',
+);
 
 test('enabled AI generation provenance defaults to the current generator contract', () => {
   const config = parseSiteGenerationConfig({
@@ -48,4 +52,10 @@ test('the master prompt treats quality disciplines as first-draft responsibiliti
   assert.match(prompt, /Missing non-critical business data must not stop draft generation/);
   assert.match(prompt, /Generate a complete, coherent, useful public page in this pass/);
   assert.match(prompt, /SPECIALIST_REFINEMENT/);
+});
+
+test('model-authored missing-data errors are normalised into reviewable warnings', () => {
+  assert.match(repair, /normalizeMissingDataFindings/);
+  assert.match(repair, /findingObject\.severity === 'ERROR'/);
+  assert.match(repair, /severity: 'WARNING'/);
 });
