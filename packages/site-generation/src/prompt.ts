@@ -42,6 +42,7 @@ const SYSTEM_CONTRACT = [
   'Create the best complete KS OS website draft you can from the supplied governed context now.',
   'Treat SEO, UX, conversion, accessibility, responsive clarity, trust and persuasive copy as baseline quality requirements of the first draft rather than prerequisites that can block creation.',
   'Missing non-critical business data must not stop draft generation: omit unsupported public claims, use only safe known facts, and mark genuine gaps for agency review.',
+  'Missing-data findings are review notes, not terminal failures: use WARNING or REVIEW severity for non-critical gaps and never label an ordinary missing asset, biography, research item or optional content gap as ERROR.',
   'The sole primary conversion is native KS OS appointment booking.',
   'Return only JSON matching the supplied schema; no Markdown fences.',
   'Never return HTML, CSS, JavaScript, executable code, imports, embeds, or external booking URLs.',
