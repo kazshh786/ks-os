@@ -7,6 +7,7 @@ import {
   composeSpecialistAgentPrompt,
   composeSpecialistDirectorPrompt,
   createSpecialistKnowledgeGuidance,
+  type KeywordResearchReport,
   type SpecialistAgentName,
   type SpecialistAgentTeamOutput,
   type SpecialistBrief,
@@ -55,9 +56,35 @@ function brief(specialist: SpecialistAgentName): SpecialistBrief {
   };
 }
 
+function keywordResearch(): KeywordResearchReport {
+  return {
+    specialist: 'KEYWORD_RESEARCH',
+    researchOnly: true,
+    objective: 'Analyse approved competitor keyword evidence before the SEO specialist decides how to act on it.',
+    methodology: [
+      'Use only approved keyword, competitor, rank and metric evidence from the Search Intelligence system.',
+      'Separate observed competitor facts from analytical opportunities and state research limitations explicitly.',
+    ],
+    coverage: {
+      keywordUniverseCount: 1,
+      researchEvidenceCount: 1,
+      measuredKeywordCount: 0,
+      observedCompetitorCount: 0,
+      competitorKeywordObservationCount: 0,
+      rankedObservationCount: 0,
+    },
+    competitorFindings: [],
+    keywordOpportunities: [],
+    clusters: [],
+    limitations: ['The fixture has no observed competitor ranking evidence, so no competitor ranking claim is permitted.'],
+    handoffToSeo: ['Use the approved research scope when deciding page targeting and do not expand it with invented keyword data.'],
+  };
+}
+
 function team(): SpecialistAgentTeamOutput {
   return {
     version: SPECIALIST_AGENT_TEAM_VERSION,
+    keywordResearch: keywordResearch(),
     seo: brief('SEO') as SpecialistAgentTeamOutput['seo'],
     ux: brief('UX') as SpecialistAgentTeamOutput['ux'],
     conversion: brief('CONVERSION') as SpecialistAgentTeamOutput['conversion'],
@@ -163,9 +190,10 @@ function knowledgeContext(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-test('specialist team schema binds each brief to the correct specialist role', () => {
+test('specialist team schema binds each brief to the correct specialist role and includes keyword research', () => {
   const valid = team();
   assert.equal(SpecialistAgentTeamOutputSchema.safeParse(valid).success, true);
+  assert.equal(valid.keywordResearch.researchOnly, true);
 
   const invalid = {
     ...valid,
@@ -174,32 +202,27 @@ test('specialist team schema binds each brief to the correct specialist role', (
   assert.equal(SpecialistAgentTeamOutputSchema.safeParse(invalid).success, false);
 });
 
-test('page specialist context keeps global and page-specific advice but drops other-page advice', () => {
+test('page specialist context keeps global and page-specific advice but sends only compact keyword research downstream', () => {
   const prompt = attachSpecialistTeamContext({
     prompt: JSON.stringify({ operation: 'PAGE_COMPOSITION_PLAN_V2', approved: true }),
     team: team(),
     scope: 'PAGE',
     pageReference: pageA,
   });
-  const parsed = JSON.parse(prompt) as {
-    operation: string;
-    specialistCollaboration: {
-      scope: string;
-      team: SpecialistAgentTeamOutput;
-      synthesisRules: string[];
-    };
-  };
+  const parsed = JSON.parse(prompt) as any;
 
   assert.equal(parsed.operation, 'PAGE_COMPOSITION_PLAN_V2');
   assert.equal(parsed.specialistCollaboration.scope, 'PAGE');
   assert.equal(parsed.specialistCollaboration.team.seo.recommendations.length, 2);
-  assert.ok(parsed.specialistCollaboration.team.seo.recommendations.some(item => item.pageReferences.length === 0));
-  assert.ok(parsed.specialistCollaboration.team.seo.recommendations.some(item => item.pageReferences.includes(pageA)));
-  assert.equal(parsed.specialistCollaboration.team.seo.recommendations.some(item => item.pageReferences.includes(pageB)), false);
-  assert.ok(parsed.specialistCollaboration.synthesisRules.some(rule => rule.includes('pinned Knowledge Pack guidance')));
+  assert.ok(parsed.specialistCollaboration.team.seo.recommendations.some((item: any) => item.pageReferences.length === 0));
+  assert.ok(parsed.specialistCollaboration.team.seo.recommendations.some((item: any) => item.pageReferences.includes(pageA)));
+  assert.equal(parsed.specialistCollaboration.team.seo.recommendations.some((item: any) => item.pageReferences.includes(pageB)), false);
+  assert.equal(parsed.specialistCollaboration.team.keywordResearch.researchOnly, true);
+  assert.equal(parsed.specialistCollaboration.team.keywordResearch.competitorFindings, undefined);
+  assert.ok(parsed.specialistCollaboration.synthesisRules.some((rule: string) => rule.includes('Keyword Research is evidence gathering for SEO')));
 });
 
-test('every specialist prompt receives the pinned Knowledge Pack rules and approved Search Intelligence', () => {
+test('every creative specialist prompt receives the pinned Knowledge Pack rules and approved Search Intelligence', () => {
   const knowledgeGuidelines = createSpecialistKnowledgeGuidance({
     plan: plan(),
     knowledgeContexts: new Map([[pageA, knowledgeContext()]]),
@@ -212,6 +235,7 @@ test('every specialist prompt receives the pinned Knowledge Pack rules and appro
       facts: facts(),
       searchIntelligence: searchIntelligence(),
       knowledgeGuidelines,
+      ...(specialist === 'SEO' ? { keywordResearch: keywordResearch() } : {}),
     });
     const parsed = JSON.parse(prompt) as any;
     assert.equal(parsed.teamVersion, SPECIALIST_AGENT_TEAM_VERSION);
@@ -225,10 +249,11 @@ test('every specialist prompt receives the pinned Knowledge Pack rules and appro
     assert.equal(parsed.approvedSearchIntelligence.strategy.primaryIntent, 'Book a verified local service');
     assert.equal(parsed.approvedSearchIntelligence.briefs[0].pageReference, pageA);
     assert.ok(parsed.systemContract.some((rule: string) => rule.includes('governing inputs')));
+    if (specialist === 'SEO') assert.equal(parsed.keywordResearch.specialist, 'KEYWORD_RESEARCH');
   }
 });
 
-test('the specialist director is governed by the same Knowledge Pack, Search Intelligence and verified facts', () => {
+test('the specialist director receives keyword research plus the same Knowledge Pack, Search Intelligence and verified facts', () => {
   const knowledgeGuidelines = createSpecialistKnowledgeGuidance({
     plan: plan(),
     knowledgeContexts: new Map([[pageA, knowledgeContext()]]),
@@ -239,6 +264,7 @@ test('the specialist director is governed by the same Knowledge Pack, Search Int
     searchIntelligence: searchIntelligence(),
     knowledgeGuidelines,
     briefs: {
+      keywordResearch: keywordResearch(),
       seo: brief('SEO'),
       ux: brief('UX'),
       conversion: brief('CONVERSION'),
@@ -250,7 +276,9 @@ test('the specialist director is governed by the same Knowledge Pack, Search Int
   const parsed = JSON.parse(prompt) as any;
   assert.equal(parsed.pinnedKnowledgePackGuidelines[0].knowledgePack.contentDigest, 'knowledge-context-digest');
   assert.equal(parsed.approvedSearchIntelligence.strategy.market, 'GB');
+  assert.equal(parsed.specialistBriefs.keywordResearch.specialist, 'KEYWORD_RESEARCH');
   assert.ok(parsed.systemContract.some((rule: string) => rule.includes('specialist consensus can never override')));
+  assert.ok(parsed.systemContract.some((rule: string) => rule.includes('research-only')));
 });
 
 test('specialist knowledge input rejects a context from the wrong pinned pack or version', () => {
