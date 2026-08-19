@@ -400,7 +400,7 @@ export async function executeStructuredSiteGeneration(
           brief: input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference),
           facts: input.facts,
         }),
-        ...(completeness?.findings ?? []),
+        ...asWarnings(completeness?.findings ?? []),
       ];
       const digest = generationDigest(result.response.value);
       await input.persistence.persistPage({
@@ -586,7 +586,7 @@ export async function executeStructuredSiteGeneration(
               brief: input.searchIntelligence?.briefs.find(brief => brief.pageReference === page.pageReference),
               facts: input.facts,
             }),
-            ...completeness.findings,
+            ...asWarnings(completeness.findings),
           ];
           const digest = generationDigest(refined.response.value);
           await input.persistence.persistPage({
@@ -624,7 +624,10 @@ export async function executeStructuredSiteGeneration(
     const compositionFindings = pipelineVersion === 2
       ? detectCompositionRepetition(generated)
       : [];
-    await input.persistence.persistFindings([...duplicateFindings, ...compositionFindings]);
+    await input.persistence.persistFindings(asWarnings([
+      ...duplicateFindings,
+      ...compositionFindings,
+    ]));
 
     const outputContentDigestSha256 = generationDigest(
       [...pageDigests.entries()]
