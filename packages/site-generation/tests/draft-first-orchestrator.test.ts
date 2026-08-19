@@ -26,11 +26,13 @@ test('enabled AI generation provenance defaults to the current generator contrac
   assert.equal(config.generatorVersion, '2.0.0');
 });
 
-test('the master generation pass creates the draft before specialist refinement', () => {
+test('the master generation pass is the first creative AI work and precedes specialist refinement', () => {
   const draftIndex = orchestrator.indexOf('Generating complete draft page');
   const refinementIndex = orchestrator.indexOf('Complete draft created. Specialist team is reviewing it for refinement.');
   assert.ok(draftIndex >= 0);
   assert.ok(refinementIndex > draftIndex);
+  assert.match(orchestrator, /Structure is deterministic\. The first creative provider call is the actual website draft\./);
+  assert.doesNotMatch(orchestrator, /composeSiteStrategyPrompt|composePageCompositionPrompt|SITE_STRATEGY_RESPONSE_JSON_SCHEMA/);
   assert.doesNotMatch(orchestrator, /SEARCH_INTELLIGENCE_NOT_READY/);
 });
 
