@@ -214,6 +214,7 @@ export async function executeStructuredSiteGeneration(
           plan: input.plan,
           facts: input.facts,
           searchIntelligence: input.searchIntelligence!,
+          knowledgeContexts: input.knowledgeContexts,
           provider: input.provider,
           maxOutputCharacters: input.maxOutputCharacters,
           signal: input.signal,
