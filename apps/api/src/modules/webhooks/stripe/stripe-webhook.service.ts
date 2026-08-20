@@ -184,7 +184,7 @@ export class StripeWebhookService {
               .where(eq(stripePaymentAttempts.id, attempt.id));
 
             await tx.update(appointments)
-              .set({ status: 'CONFIRMED', paymentStatus: 'PAID', updatedAt: new Date() })
+              .set({ status: 'CONFIRMED', paymentStatus: 'SUCCEEDED', updatedAt: new Date() })
               .where(eq(appointments.id, attempt.appointmentId));
 
             const [transaction] = await tx.insert(checkoutTransactions).values({
