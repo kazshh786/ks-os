@@ -13,6 +13,8 @@ test('payment confirmation email is populated with appointment and payment conte
   assert.match(payments, /locationName:\s*locations\.name/);
   assert.match(payments, /paymentReference:\s*checkoutTransactions\.stripePaymentIntentId/);
   assert.match(payments, /appointmentDateTime:\s*row\.appointmentStartTime\?\.toISOString\(\)/);
+  assert.match(payments, /appointmentServices\.serviceName/);
+  assert.match(payments, /templateKey === 'payment-confirmed' \|\| row\.paymentConfirmationEnabled/);
 });
 
 test('portal claim email is not sent while a pay-now booking is still pending', () => {
