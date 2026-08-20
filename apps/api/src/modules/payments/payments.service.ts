@@ -54,6 +54,8 @@ export class PaymentsService {
       serviceName: services.name,
       staffName: users.name,
       locationName: locations.name,
+      locationAddress: locations.address,
+      locationPostcode: locations.postcode,
       paymentReference: checkoutTransactions.stripePaymentIntentId,
     }).from(checkoutTransactions)
       .leftJoin(appointments, and(eq(appointments.id, checkoutTransactions.appointmentId), eq(appointments.tenantId, checkoutTransactions.tenantId)))
@@ -77,6 +79,20 @@ export class PaymentsService {
         .orderBy(appointmentServices.position);
       serviceName = serviceLines.map((line: { name: string }) => line.name).join(', ') || serviceName;
     }
+    let locationName = row.locationName || undefined;
+    let locationAddress = [row.locationAddress, row.locationPostcode].filter(Boolean).join(', ');
+    if (!locationName && !locationAddress) {
+      const [primaryLocation] = await tx.select({
+        name: locations.name,
+        address: locations.address,
+        postcode: locations.postcode,
+      }).from(locations)
+        .where(and(eq(locations.tenantId, tenantId), eq(locations.isPrimary, true)))
+        .limit(1);
+      locationName = primaryLocation?.name || undefined;
+      locationAddress = [primaryLocation?.address, primaryLocation?.postcode].filter(Boolean).join(', ');
+    }
+    const locationSummary = [locationName, locationAddress].filter(Boolean).join(' · ') || undefined;
     const commonData = {
       ...emailBrandingTemplateData(settings.branding),
       tenantPrimaryColor: row.tenantPrimaryColor,
@@ -86,7 +102,7 @@ export class PaymentsService {
       appointmentDateTime: row.appointmentStartTime?.toISOString(),
       timezone: row.timezone || 'Europe/London',
       staffName: row.staffName,
-      locationName: row.locationName,
+      locationName: locationSummary,
       bookingReference: row.bookingReference,
       paymentReference: row.paymentReference,
       status: templateKey === 'payment-confirmed' ? 'Paid' : undefined,
