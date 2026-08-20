@@ -1,5 +1,5 @@
 import { BookingRepository } from './booking.repository.js';
-import { appointmentServices, appointments, bookingAuditEvents, clients, getDatabase, internalNotifications, services, tenants, users } from '@ks-os/database';
+import { appointmentServices, appointments, bookingAuditEvents, clients, getDatabase, internalNotifications, locations, services, tenants, users } from '@ks-os/database';
 import { eq, and, or, gt, lt, notInArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import type { BookingOperationsItem, BookingOperationsQuery, BookingOperationsResponse, CreateBlockedTimeRequest } from '@ks-os/contracts';
@@ -424,6 +424,26 @@ export class BookingService {
       .from(appointmentServices)
       .where(and(eq(appointmentServices.tenantId, tenantId), eq(appointmentServices.appointmentId, bookingId)))
       .orderBy(appointmentServices.position);
+    let locationSummary: string | undefined;
+    if (booking.bookingChannel === 'mobile') {
+      const mobileAddress = booking.mobileAddress as { line1?: string; line2?: string | null; city?: string; postcode?: string } | null;
+      locationSummary = mobileAddress
+        ? [mobileAddress.line1, mobileAddress.line2, mobileAddress.city, mobileAddress.postcode].filter(Boolean).join(', ') || undefined
+        : undefined;
+    } else {
+      const [location] = await db.select({
+        name: locations.name,
+        address: locations.address,
+        postcode: locations.postcode,
+      }).from(locations)
+        .where(and(
+          eq(locations.tenantId, tenantId),
+          booking.locationId ? eq(locations.id, booking.locationId) : eq(locations.isPrimary, true),
+        ))
+        .limit(1);
+      const address = [location?.address, location?.postcode].filter(Boolean).join(', ');
+      locationSummary = [location?.name, address].filter(Boolean).join(' · ') || undefined;
+    }
     const replacements = {
       businessName: tenantName,
       customerName: booking.clientName || booking.clientNameFallback || 'there',
@@ -447,6 +467,9 @@ export class BookingService {
           serviceName: replacements.serviceName,
           startTime: booking.startTime.toISOString(),
           timezone: tenant.timezone,
+          staffName: booking.staffName,
+          locationName: locationSummary,
+          bookingReference: booking.publicReference,
           ...renderAutomatedEmailCopy(settings.templates.customerBookingConfirmation, replacements),
         },
         idempotencyKey: `public-booking-confirmed:${bookingId}`,
@@ -641,7 +664,7 @@ export class BookingService {
         previousValues: { startTime: booking.startTime.toISOString(), endTime: booking.endTime.toISOString(), staffId: booking.userId, locationId: booking.locationId, resourceId: booking.resourceId },
         newValues: { startTime: newStart.toISOString(), endTime: newEnd.toISOString(), staffId: targetStaffId, locationId: options.locationId ?? booking.locationId, resourceId: options.resourceId ?? booking.resourceId },
         reason: options.reason,
-        requestId: options.requestId,
+        requestId,
         bookingSource: booking.bookingSource,
       });
       await this.businessEvents.emit({ id:stableEventId('BOOKING_RESCHEDULED',bookingId,newStart.toISOString()), tenantId:auth.tenantId, type:'BOOKING_RESCHEDULED', occurredAt:new Date().toISOString(), sourceType:'appointment', sourceId:bookingId, payload:{appointmentId:bookingId,previousStartTime:booking.startTime.toISOString(),startTime:newStart.toISOString()} },tx);
