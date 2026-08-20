@@ -1,6 +1,6 @@
 import { PaymentsRepository } from './payments.repository.js';
 import type { PaymentHistoryQuery, PaymentHistoryItem, PaymentDetailResponse, CreateRefundRequest, CreateRefundResponse, DerivedPaymentState, PaymentSource } from '@ks-os/contracts';
-import { getDatabase, stripeRefunds, checkoutTransactions, stripeConnections, users, appointments, clients, services, tenants } from '@ks-os/database';
+import { getDatabase, stripeRefunds, checkoutTransactions, stripeConnections, users, appointments, clients, services, tenants, locations } from '@ks-os/database';
 import { eq, and, or } from 'drizzle-orm';
 import { getStripeClient } from '../../lib/stripe.js';
 import { BusinessEventsService, stableEventId } from '../automations/business-events.service.js';
@@ -45,14 +45,22 @@ export class PaymentsService {
       tenantPrimaryColor: tenants.primaryColor,
       replyToEmail: tenants.replyToEmail,
       paymentConfirmationEnabled: tenants.paymentConfirmationEnabled,
+      timezone: tenants.timezone,
       clientEmail: clients.email,
       clientName: clients.name,
       appointmentClientName: appointments.clientName,
+      appointmentStartTime: appointments.startTime,
+      bookingReference: appointments.publicReference,
       serviceName: services.name,
+      staffName: users.name,
+      locationName: locations.name,
+      paymentReference: checkoutTransactions.stripePaymentIntentId,
     }).from(checkoutTransactions)
       .leftJoin(appointments, and(eq(appointments.id, checkoutTransactions.appointmentId), eq(appointments.tenantId, checkoutTransactions.tenantId)))
       .leftJoin(clients, and(eq(clients.id, appointments.clientId), eq(clients.tenantId, checkoutTransactions.tenantId)))
       .leftJoin(services, and(eq(services.id, appointments.serviceId), eq(services.tenantId, checkoutTransactions.tenantId)))
+      .leftJoin(users, and(eq(users.id, appointments.userId), eq(users.tenantId, checkoutTransactions.tenantId)))
+      .leftJoin(locations, and(eq(locations.id, appointments.locationId), eq(locations.tenantId, checkoutTransactions.tenantId)))
       .leftJoin(tenants, eq(tenants.id, checkoutTransactions.tenantId))
       .where(and(eq(checkoutTransactions.id, transactionId), eq(checkoutTransactions.tenantId, tenantId)))
       .limit(1);
@@ -67,6 +75,13 @@ export class PaymentsService {
       clientName: customerName,
       customerName,
       serviceName: row.serviceName,
+      appointmentDateTime: row.appointmentStartTime?.toISOString(),
+      timezone: row.timezone || 'Europe/London',
+      staffName: row.staffName,
+      locationName: row.locationName,
+      bookingReference: row.bookingReference,
+      paymentReference: row.paymentReference,
+      status: templateKey === 'payment-confirmed' ? 'Paid' : undefined,
       amount,
       currency,
       ...extra,
