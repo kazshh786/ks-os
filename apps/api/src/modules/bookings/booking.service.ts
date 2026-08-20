@@ -664,7 +664,7 @@ export class BookingService {
         previousValues: { startTime: booking.startTime.toISOString(), endTime: booking.endTime.toISOString(), staffId: booking.userId, locationId: booking.locationId, resourceId: booking.resourceId },
         newValues: { startTime: newStart.toISOString(), endTime: newEnd.toISOString(), staffId: targetStaffId, locationId: options.locationId ?? booking.locationId, resourceId: options.resourceId ?? booking.resourceId },
         reason: options.reason,
-        requestId,
+        requestId: options.requestId,
         bookingSource: booking.bookingSource,
       });
       await this.businessEvents.emit({ id:stableEventId('BOOKING_RESCHEDULED',bookingId,newStart.toISOString()), tenantId:auth.tenantId, type:'BOOKING_RESCHEDULED', occurredAt:new Date().toISOString(), sourceType:'appointment', sourceId:bookingId, payload:{appointmentId:bookingId,previousStartTime:booking.startTime.toISOString(),startTime:newStart.toISOString()} },tx);
