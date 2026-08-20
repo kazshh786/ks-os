@@ -1,6 +1,6 @@
 import { PaymentsRepository } from './payments.repository.js';
 import type { PaymentHistoryQuery, PaymentHistoryItem, PaymentDetailResponse, CreateRefundRequest, CreateRefundResponse, DerivedPaymentState, PaymentSource } from '@ks-os/contracts';
-import { getDatabase, stripeRefunds, checkoutTransactions, stripeConnections, users, appointments, clients, services, tenants, locations } from '@ks-os/database';
+import { getDatabase, stripeRefunds, checkoutTransactions, stripeConnections, users, appointments, appointmentServices, clients, services, tenants, locations } from '@ks-os/database';
 import { eq, and, or } from 'drizzle-orm';
 import { getStripeClient } from '../../lib/stripe.js';
 import { BusinessEventsService, stableEventId } from '../automations/business-events.service.js';
@@ -69,12 +69,20 @@ export class PaymentsService {
     const customerName = row.clientName || row.appointmentClientName || 'Customer';
     const amount = (row.amount / 100).toFixed(2);
     const currency = row.currency || 'GBP';
+    let serviceName = row.serviceName || undefined;
+    if (row.appointmentId) {
+      const serviceLines = await tx.select({ name: appointmentServices.serviceName })
+        .from(appointmentServices)
+        .where(and(eq(appointmentServices.tenantId, tenantId), eq(appointmentServices.appointmentId, row.appointmentId)))
+        .orderBy(appointmentServices.position);
+      serviceName = serviceLines.map((line: { name: string }) => line.name).join(', ') || serviceName;
+    }
     const commonData = {
       ...emailBrandingTemplateData(settings.branding),
       tenantPrimaryColor: row.tenantPrimaryColor,
       clientName: customerName,
       customerName,
-      serviceName: row.serviceName,
+      serviceName,
       appointmentDateTime: row.appointmentStartTime?.toISOString(),
       timezone: row.timezone || 'Europe/London',
       staffName: row.staffName,
@@ -87,7 +95,7 @@ export class PaymentsService {
       ...extra,
     };
     let customerQueued = false;
-    if (row.clientEmail && row.paymentConfirmationEnabled) {
+    if (row.clientEmail && (templateKey === 'payment-confirmed' || row.paymentConfirmationEnabled)) {
       const result = await this.email.enqueueEmail({
         tenantId,
         recipientEmail: row.clientEmail,
@@ -112,7 +120,7 @@ export class PaymentsService {
       const replacements = {
         businessName: settings.branding.businessName,
         customerName,
-        serviceName: row.serviceName || 'the booking',
+        serviceName: serviceName || 'the booking',
         amount,
         currency,
       };
