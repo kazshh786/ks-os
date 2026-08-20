@@ -291,6 +291,13 @@ export class BookingPageService {
       .from(staffServiceAssignments).where(and(eq(staffServiceAssignments.tenantId, tenant.id), eq(staffServiceAssignments.isActive, true), inArray(staffServiceAssignments.staffUserId, staffRows.map(row => row.id)), inArray(staffServiceAssignments.serviceId, serviceRows.map(row => row.id)))) : [];
     const locationRows = await db.select({ id: locations.id, publicReference: locations.publicReference, name: locations.name, address: locations.address, postcode: locations.postcode, timezone: locations.timezone, isPrimary: locations.isPrimary })
       .from(locations).where(and(eq(locations.tenantId, tenant.id), eq(locations.isActive, true), page.allowedLocationIds.length ? inArray(locations.id, page.allowedLocationIds) : undefined));
+    const [primaryLocation] = await db.select({
+      name: locations.name,
+      address: locations.address,
+      postcode: locations.postcode,
+    }).from(locations)
+      .where(and(eq(locations.tenantId, tenant.id), eq(locations.isPrimary, true)))
+      .limit(1);
     const linkedForms = await db.select({ id: forms.id, title: forms.title, description: forms.description, formType: forms.formType, required: bookingPageForms.required, completionStage: bookingPageForms.completionStage, serviceId: bookingPageForms.serviceId, staffId: bookingPageForms.staffUserId, locationId: bookingPageForms.locationId })
       .from(bookingPageForms).innerJoin(forms, eq(forms.id, bookingPageForms.formId))
       .where(and(eq(bookingPageForms.bookingPageId, page.id), eq(bookingPageForms.tenantId, tenant.id), eq(forms.tenantId, tenant.id), eq(forms.status, 'PUBLISHED')));
@@ -303,6 +310,11 @@ export class BookingPageService {
         currency: tenant.currency,
         contactPhone: tenant.operationalPhone,
         contactEmail: tenant.replyToEmail,
+        businessAddress: primaryLocation ? {
+          name: primaryLocation.name,
+          address: primaryLocation.address,
+          postcode: primaryLocation.postcode,
+        } : null,
         colors: { primary: tenant.primaryColor, secondary: tenant.secondaryColor, accent: tenant.accentColor },
       },
       paymentMode: tenant.defaultPaymentMode,
@@ -408,8 +420,7 @@ export class BookingPageService {
     const resolved = await this.resolvePublicPage(identifier, host);
     if (!resolved) return false;
     const expectedHash = hashPublicToken(token, tokenSecret());
-    const [released] = await getDatabase().update(bookingHolds).set({ status: 'RELEASED', releasedAt: new Date() })
-      .where(and(eq(bookingHolds.id, holdId), eq(bookingHolds.bookingPageId, resolved.page.id), eq(bookingHolds.customerSessionHash, expectedHash), eq(bookingHolds.status, 'ACTIVE'))).returning({ id: bookingHolds.id });
+    const [released] = await getDatabase().update(bookingHolds).set({ status: 'RELEASED', releasedAt: new Date() }).where(and(eq(bookingHolds.id, holdId), eq(bookingHolds.bookingPageId, resolved.page.id), eq(bookingHolds.customerSessionHash, expectedHash), eq(bookingHolds.status, 'ACTIVE'))).returning({ id: bookingHolds.id });
     return Boolean(released);
   }
 
