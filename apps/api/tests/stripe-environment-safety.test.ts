@@ -100,6 +100,8 @@ test('Connect and payment webhooks use separate secrets and ignore the wrong mod
   assert.match(service, /STRIPE_PAYMENTS_WEBHOOK_SECRET/);
   assert.match(service, /event\.livemode !== \(configuredMode === 'live'\)/);
   assert.match(service, /attempt\.stripeAccountId !== stripeAccountId/);
+  assert.match(service, /status: 'CONFIRMED', paymentStatus: 'SUCCEEDED'/);
+  assert.doesNotMatch(service, /status: 'CONFIRMED', paymentStatus: 'PAID'/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS livemode boolean/);
   assert.doesNotMatch(migration, /DEFAULT (true|false)/i);
 });
