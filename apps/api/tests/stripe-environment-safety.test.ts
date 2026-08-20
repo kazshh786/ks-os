@@ -87,10 +87,13 @@ test('Connect replaces an inaccessible or opposite-mode tenant account', () => {
 });
 
 test('Connect and payment webhooks use separate secrets and ignore the wrong mode', () => {
+  const app = source('src/app.ts');
   const routes = source('src/modules/webhooks/stripe/stripe-webhook.routes.ts');
   const service = source('src/modules/webhooks/stripe/stripe-webhook.service.ts');
   const migration = source('../../packages/database/migrations/20260804010000_stripe_connection_mode.sql');
 
+  assert.match(app, /'\/api\/v1\/webhooks\/stripe\/connect'/);
+  assert.match(app, /'\/api\/v1\/webhooks\/stripe\/payments'/);
   assert.match(routes, /registerWebhook\('\/connect'/);
   assert.match(routes, /registerWebhook\('\/payments'/);
   assert.match(service, /STRIPE_CONNECT_WEBHOOK_SECRET/);
