@@ -128,7 +128,13 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(fastifyRawBody, {
     global: false,
     runFirst: true,
-    routes: ['/api/v1/webhooks/resend', '/api/v1/webhooks/gocardless', '/api/v1/webhooks/meta'],
+    routes: [
+      '/api/v1/webhooks/resend',
+      '/api/v1/webhooks/gocardless',
+      '/api/v1/webhooks/meta',
+      '/api/v1/webhooks/stripe/connect',
+      '/api/v1/webhooks/stripe/payments',
+    ],
     encoding: 'utf8',
   });
   fastify.register(formbody);
