@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { renderEmail } from '../dist/index.js';
 
-test('payment confirmation includes booking details and payment receipt in the existing email design system', async () => {
+test('payment confirmation includes booking details, business address and payment receipt in the existing email design system', async () => {
   const rendered = await renderEmail('payment-confirmed', {
     tenantName: 'Glow Studio',
     businessName: 'Glow Studio',
@@ -15,7 +15,7 @@ test('payment confirmation includes booking details and payment receipt in the e
     appointmentDateTime: '2026-08-21T13:30:00.000Z',
     timezone: 'Europe/London',
     staffName: 'Alex',
-    locationName: 'High Street',
+    locationName: 'High Street · 10 Market Road, M1 1AA',
     bookingReference: 'KS-BOOKING-123',
     paymentReference: 'pi_123456789',
     emailDesignStyle: 'CLEAN',
@@ -26,6 +26,7 @@ test('payment confirmation includes booking details and payment receipt in the e
   assert.match(rendered.text, /Signature appointment/);
   assert.match(rendered.text, /Alex/);
   assert.match(rendered.text, /High Street/);
+  assert.match(rendered.text, /10 Market Road, M1 1AA/);
   assert.match(rendered.text, /KS-BOOKING-123/);
   assert.match(rendered.text, /PAYMENT RECEIPT/);
   assert.match(rendered.text, /45\.00 GBP/);
