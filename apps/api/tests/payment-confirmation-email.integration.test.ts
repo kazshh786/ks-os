@@ -17,10 +17,13 @@ test('payment confirmation email is populated with appointment and payment conte
   assert.match(payments, /templateKey === 'payment-confirmed' \|\| row\.paymentConfirmationEnabled/);
 });
 
-test('portal claim email is not sent while a pay-now booking is still pending', () => {
+test('paid booking customer gets the combined payment email instead of duplicate booking and portal emails', () => {
   const claim = read('modules/customer-portal/customer-claim-email.service.ts');
+  const email = read('modules/email/email.service.ts');
 
   assert.match(claim, /booking\.status !== 'CONFIRMED'/);
   assert.match(claim, /BOOKING_NOT_CONFIRMED/);
-  assert.match(claim, /templateKey:\s*'customer-portal-claim'/);
+  assert.match(email, /params\.templateKey === 'booking-confirmed'/);
+  assert.match(email, /eq\(emailOutbox\.templateKey, 'payment-confirmed'\)/);
+  assert.match(email, /PAYMENT_CONFIRMATION_COVERS_BOOKING/);
 });
