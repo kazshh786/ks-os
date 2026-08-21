@@ -209,17 +209,196 @@
   }
 }
 
+@media (max-width: 767px) {
+  .booking-checkout-shell .booking-step-actions {
+    position: static;
+    bottom: auto;
+    margin-top: 0.5rem;
+    margin-bottom: -1.25rem;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .booking-checkout-shell .booking-step-content,
+  .booking-checkout-shell .booking-step-content > *,
+  .booking-checkout-shell .booking-step-content fieldset,
+  .booking-checkout-shell .booking-step-content label {
+    min-width: 0;
+  }
+}
+
 @media (max-width: 640px) {
   .booking-checkout-shell .booking-workspace {
     border-radius: 1rem;
   }
 
   .booking-checkout-shell .booking-workspace-header {
-    min-height: 4.25rem;
+    min-height: 0;
+    padding: 0.85rem 1rem;
+  }
+
+  .booking-checkout-shell .booking-workspace-header > div.relative {
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .booking-checkout-shell .booking-workspace-header > div.relative > div:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .booking-checkout-shell .booking-workspace-header > div.relative > div:last-child {
+    flex: none;
+    max-width: 100%;
+    white-space: nowrap;
+  }
+
+  .booking-checkout-shell .booking-step-column {
+    padding-right: 1rem;
+    padding-left: 1rem;
+  }
+
+  .booking-checkout-shell .booking-step-column nav[aria-label='Booking progress'] ol {
+    gap: 0.35rem;
+  }
+
+  .booking-checkout-shell .booking-step-column nav[aria-label='Booking progress'] li {
+    min-width: 0;
+  }
+
+  .booking-checkout-shell .booking-step-column nav[aria-label='Booking progress'] li > div:first-child {
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    text-align: center;
+  }
+
+  .booking-checkout-shell .booking-step-column nav[aria-label='Booking progress'] li > div:first-child > span:first-child {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .booking-checkout-shell .booking-step-column nav[aria-label='Booking progress'] li > div:first-child > span:last-child {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.625rem;
+    line-height: 1.2;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .booking-checkout-shell .booking-step-column nav[aria-label='Booking progress'] li > div:last-child {
+    margin-top: 0.4rem;
+  }
+
+  .booking-checkout-shell .booking-step-content > div:first-child h2 {
+    max-width: none;
+    font-size: clamp(1.5rem, 7.2vw, 1.85rem);
+    line-height: 1.08;
   }
 
   .booking-checkout-shell .booking-step-actions {
-    margin-inline: -1.25rem;
-    padding-inline: 1.25rem;
+    margin-right: -1rem;
+    margin-left: -1rem;
+    padding: 0.8rem 1rem calc(0.8rem + env(safe-area-inset-bottom));
+  }
+
+  .booking-checkout-shell .booking-step-actions > button {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.25;
+    text-align: center;
+  }
+
+  .booking-checkout-shell .booking-step-actions > button:last-child:not(:only-child) {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .booking-checkout-shell .booking-workspace-header > div.relative {
+    flex-direction: column;
+  }
+
+  .booking-checkout-shell .booking-workspace-header > div.relative > div:first-child,
+  .booking-checkout-shell .booking-workspace-header > div.relative > div:last-child {
+    width: 100%;
+  }
+
+  .booking-checkout-shell .booking-workspace-header > div.relative > div:last-child {
+    justify-content: center;
+  }
+
+  .booking-checkout-shell .booking-step-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.55rem;
+  }
+
+  .booking-checkout-shell .booking-step-actions > button {
+    width: 100%;
+  }
+
+  .booking-checkout-shell .booking-service-choice {
+    padding-right: 3rem !important;
+  }
+
+  .booking-checkout-shell .booking-service-choice__top {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.45rem;
+  }
+
+  .booking-checkout-shell .booking-service-choice__price {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem;
+    text-align: left;
+  }
+
+  .booking-checkout-shell .booking-service-choice__price s,
+  .booking-checkout-shell .booking-service-choice__price strong {
+    display: inline;
+  }
+}
+
+@media (max-width: 360px) {
+  .booking-checkout-shell .booking-step-column {
+    padding-right: 0.85rem;
+    padding-left: 0.85rem;
+  }
+
+  .booking-checkout-shell .booking-step-column nav[aria-label='Booking progress'] ol {
+    gap: 0.2rem;
+  }
+
+  .booking-checkout-shell .booking-step-column nav[aria-label='Booking progress'] li > div:first-child > span:first-child {
+    width: 1.65rem;
+    height: 1.65rem;
+  }
+
+  .booking-checkout-shell .availability-calendar__weekdays {
+    padding-right: 0.35rem;
+    padding-left: 0.35rem;
+  }
+
+  .booking-checkout-shell .availability-calendar__weekdays span {
+    font-size: 0.56rem;
+  }
+
+  .booking-checkout-shell .availability-calendar__grid {
+    padding-right: 0.3rem;
+    padding-left: 0.3rem;
+  }
+
+  .booking-checkout-shell .availability-calendar__grid button {
+    min-height: 2.35rem;
+    font-size: 0.72rem;
   }
 }
