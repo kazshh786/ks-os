@@ -113,26 +113,6 @@ export class EmailService {
       return { queued: false, reason: 'INVALID_IDEMPOTENCY_KEY' as const };
     }
 
-    if (
-      params.templateKey === 'booking-confirmed'
-      && params.relatedEntityType === 'appointment'
-      && params.relatedEntityId
-    ) {
-      const [paymentConfirmation] = await dbOrTx.select({ id: emailOutbox.id })
-        .from(emailOutbox)
-        .where(and(
-          params.tenantId ? eq(emailOutbox.tenantId, params.tenantId) : undefined,
-          eq(emailOutbox.relatedEntityType, 'appointment'),
-          eq(emailOutbox.relatedEntityId, params.relatedEntityId),
-          eq(emailOutbox.templateKey, 'payment-confirmed'),
-          inArray(emailOutbox.status, ['PENDING', 'DELAYED', 'PROCESSING', 'SENT']),
-        ))
-        .limit(1);
-      if (paymentConfirmation) {
-        return { queued: false, reason: 'PAYMENT_CONFIRMATION_COVERS_BOOKING' as const };
-      }
-    }
-
     const templateDataJson = prepareEmailTemplateData(params.templateKey, params.templateDataJson);
     if (production) {
       const templateValidation = validateEmailTemplateData(params.templateKey, templateDataJson, true);
