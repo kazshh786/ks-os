@@ -1,0 +1,175 @@
+@media (max-width: 767px) {
+  .booking-checkout-shell {
+    gap: 0;
+  }
+
+  /* Mobile starts with progress, not duplicate business chrome. */
+  .booking-checkout-shell .booking-workspace-header,
+  .booking-checkout-shell .booking-summary-column {
+    display: none;
+  }
+
+  .booking-checkout-shell .booking-workspace {
+    min-height: 100dvh;
+  }
+
+  .booking-checkout-shell .booking-workspace-body {
+    display: block;
+  }
+
+  .booking-checkout-shell .booking-step-column {
+    min-height: 100dvh;
+    padding-top: 0;
+    padding-bottom: calc(6.5rem + env(safe-area-inset-bottom));
+  }
+
+  /* Make progress the mobile header and keep context visible while scrolling. */
+  .booking-checkout-shell .booking-step-column nav[aria-label='Booking progress'] {
+    position: sticky;
+    z-index: 55;
+    top: 0;
+    margin: 0 -1rem 1.25rem;
+    border-bottom: 1px solid rgb(226 232 240);
+    background: rgba(255, 255, 255, 0.97);
+    padding: max(0.8rem, env(safe-area-inset-top)) 1rem 0.8rem;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    backdrop-filter: blur(18px);
+  }
+
+  /* A true viewport dock: always available, never stranded mid-step. */
+  .booking-checkout-shell .booking-step-actions {
+    position: fixed !important;
+    z-index: 70;
+    right: 0;
+    bottom: 0 !important;
+    left: 0;
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0 !important;
+    border-top: 1px solid rgb(226 232 240);
+    background: rgba(255, 255, 255, 0.98);
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+    box-shadow: 0 -12px 32px rgba(15, 23, 42, 0.12);
+    backdrop-filter: blur(20px);
+  }
+
+  .booking-checkout-shell .booking-step-actions > button {
+    min-width: 0;
+    white-space: normal;
+    line-height: 1.2;
+  }
+
+  .booking-checkout-shell .booking-step-actions > button:only-child {
+    width: 100%;
+  }
+
+  .booking-checkout-shell .booking-step-actions > button:first-child:not(:only-child) {
+    flex: 0 0 auto;
+  }
+
+  .booking-checkout-shell .booking-step-actions > button:last-child:not(:only-child) {
+    width: auto;
+    flex: 1 1 auto;
+  }
+
+  /* Review & confirm adopts the lighter, glanceable summary-card treatment. */
+  .booking-checkout-shell .booking-step-content > dl {
+    display: grid;
+    overflow: visible;
+    gap: 0.55rem;
+    margin-top: 0.5rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .booking-checkout-shell .booking-step-content > dl > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1rem;
+    border: 1px solid rgb(226 232 240) !important;
+    border-radius: 1rem;
+    background: white;
+    padding: 0.85rem 1rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  .booking-checkout-shell .booking-step-content > dl dt {
+    color: rgb(100 116 139);
+    font-size: 0.67rem;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    line-height: 1.25;
+    text-transform: uppercase;
+  }
+
+  .booking-checkout-shell .booking-step-content > dl dd {
+    min-width: 0;
+    max-width: 58vw;
+    color: rgb(15 23 42);
+    font-weight: 900;
+    line-height: 1.35;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  .booking-checkout-shell .booking-step-content > dl > div:last-child {
+    border-color: var(--booking-primary-border) !important;
+    background: var(--booking-primary-soft);
+  }
+
+  .booking-checkout-shell .booking-step-content > dl > div:last-child dt,
+  .booking-checkout-shell .booking-step-content > dl > div:last-child dd {
+    color: rgb(15 23 42);
+  }
+
+  /* Keep the confidence cues, but make them compact rather than another summary. */
+  .booking-checkout-shell .booking-step-content > dl + div {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .booking-checkout-shell .booking-step-content > dl + div > div {
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.65rem 0.4rem;
+    text-align: center;
+    line-height: 1.2;
+  }
+}
+
+@media (max-width: 480px) {
+  .booking-checkout-shell .booking-step-column {
+    padding-bottom: calc(6.75rem + env(safe-area-inset-bottom));
+  }
+
+  /* Override the older stacked action rule: keep the dock compact and usable. */
+  .booking-checkout-shell .booking-step-actions {
+    display: flex;
+    grid-template-columns: none;
+    gap: 0.55rem;
+  }
+
+  .booking-checkout-shell .booking-step-actions > button {
+    width: auto;
+  }
+
+  .booking-checkout-shell .booking-step-actions > button:only-child {
+    width: 100%;
+  }
+
+  .booking-checkout-shell .booking-step-actions > button:last-child:not(:only-child) {
+    width: auto;
+    flex: 1 1 0%;
+  }
+
+  .booking-checkout-shell .booking-step-content > dl dd {
+    max-width: 52vw;
+    font-size: 0.82rem;
+  }
+}
