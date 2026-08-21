@@ -11,6 +11,7 @@ import './BookingServiceStaffReveal.css';
 import './BookingServiceTeamMotion.css';
 import './BookingWorkspaceViewport.css';
 import './BookingCheckoutLayout.css';
+import './BookingMobileRefinement.css';
 
 export function BookingWizardPage() {
   const { subdomain } = useParams();
