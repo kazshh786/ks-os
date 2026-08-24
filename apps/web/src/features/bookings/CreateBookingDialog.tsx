@@ -22,6 +22,10 @@ const walkInRecentWindowMs = 30 * 60_000;
 const calendarVisibilityFilterKeys = ['staff', 'service', 'location', 'status', 'payment', 'intake', 'attention'] as const;
 
 function errorMessage(message: string, code: string, reference?: string) {
+  const alreadyCoded = /\bError code:\s*[A-Z0-9_-]+\.?\s*$/i.test(message);
+  if (alreadyCoded) {
+    return reference && !/\bReference:\s*/i.test(message) ? `${message} Reference: ${reference}.` : message;
+  }
   return `${message} Error code: ${code}.${reference ? ` Reference: ${reference}.` : ''}`;
 }
 
@@ -116,7 +120,7 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
       if (!active) return;
       const notice = latestApiErrorNotice();
       const causeMessage = cause instanceof Error ? cause.message : '';
-      const matchingNotice = notice && (!causeMessage || causeMessage === notice.message || causeMessage === notice.code) ? notice : null;
+      const matchingNotice = notice && (!causeMessage || causeMessage === notice.message || causeMessage.startsWith(`${notice.message} Error code:`) || causeMessage === notice.code) ? notice : null;
       setError(matchingNotice
         ? errorMessage(matchingNotice.message, matchingNotice.code, matchingNotice.requestId)
         : errorMessage(causeMessage || 'The selected customer could not be prefilled. You can still enter their details manually.', 'CLIENT_PREFILL_FAILED'));
@@ -186,6 +190,7 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
       const matchingNotice = notice && (
         !causeMessage ||
         causeMessage === notice.message ||
+        causeMessage.startsWith(`${notice.message} Error code:`) ||
         causeMessage === notice.code ||
         (causeMessage === 'SLOT_UNAVAILABLE' && notice.code === 'SLOT_UNAVAILABLE')
       ) ? notice : null;
