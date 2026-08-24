@@ -19,6 +19,7 @@ interface CreateBookingDialogProps {
 }
 
 const walkInRecentWindowMs = 30 * 60_000;
+const calendarVisibilityFilterKeys = ['staff', 'service', 'location', 'status', 'payment', 'intake', 'attention'] as const;
 
 function localDateTime(value: Date, timezone: string) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -27,6 +28,16 @@ function localDateTime(value: Date, timezone: string) {
   }).formatToParts(value);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(item => item.type === type)?.value || '';
   return { date: `${part('year')}-${part('month')}-${part('day')}`, time: `${part('hour')}:${part('minute')}` };
+}
+
+function revealCreatedBooking(startTime: Date, timezone: string) {
+  if (typeof window === 'undefined') return;
+  const createdDate = localDateTime(startTime, timezone).date;
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set('date', createdDate);
+  for (const key of calendarVisibilityFilterKeys) nextUrl.searchParams.delete(key);
+  window.history.replaceState(window.history.state, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+  window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
 function nextBookableTime(timezone: string) {
@@ -136,6 +147,7 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
         confirmPastBooking,
         walkIn: mode === 'walk-in',
       });
+      revealCreatedBooking(startTime, timezone);
       onCreated();
       onClose();
       setName(''); setEmail(''); setPhone(''); setNotes(''); setConfirmPastBooking(false); setIntakeFormIds([]);
