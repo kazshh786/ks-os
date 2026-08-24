@@ -115,17 +115,19 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
     }).catch(cause => {
       if (!active) return;
       const notice = latestApiErrorNotice();
-      setError(notice
-        ? errorMessage(notice.message, notice.code, notice.requestId)
-        : errorMessage(cause instanceof Error ? cause.message : 'The selected customer could not be prefilled. You can still enter their details manually.', 'CLIENT_PREFILL_FAILED'));
+      const causeMessage = cause instanceof Error ? cause.message : '';
+      const matchingNotice = notice && (!causeMessage || causeMessage === notice.message || causeMessage === notice.code) ? notice : null;
+      setError(matchingNotice
+        ? errorMessage(matchingNotice.message, matchingNotice.code, matchingNotice.requestId)
+        : errorMessage(causeMessage || 'The selected customer could not be prefilled. You can still enter their details manually.', 'CLIENT_PREFILL_FAILED'));
     }).finally(() => { if (active) setLoadingClient(false); });
     return () => { active = false; };
   }, [initialClientId, open]);
 
   if (!open) return null;
-  const selectedStart = fromZonedTime(`${date}T${time}:00`, timezone);
+  const selectedStart = date && time ? fromZonedTime(`${date}T${time}:00`, timezone) : null;
   const historicalCutoff = Date.now() - (mode === 'walk-in' ? walkInRecentWindowMs : 0);
-  const isPastBooking = selectedStart.getTime() < historicalCutoff;
+  const isPastBooking = selectedStart ? selectedStart.getTime() < historicalCutoff : false;
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -180,12 +182,19 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
       setName(''); setEmail(''); setPhone(''); setNotes(''); setConfirmPastBooking(false); setIntakeFormIds([]);
     } catch (cause) {
       const notice = latestApiErrorNotice();
-      if (notice) {
-        setError(errorMessage(notice.message, notice.code, notice.requestId));
-      } else if (cause instanceof Error && cause.message === 'SLOT_UNAVAILABLE') {
+      const causeMessage = cause instanceof Error ? cause.message : '';
+      const matchingNotice = notice && (
+        !causeMessage ||
+        causeMessage === notice.message ||
+        causeMessage === notice.code ||
+        (causeMessage === 'SLOT_UNAVAILABLE' && notice.code === 'SLOT_UNAVAILABLE')
+      ) ? notice : null;
+      if (matchingNotice) {
+        setError(errorMessage(matchingNotice.message, matchingNotice.code, matchingNotice.requestId));
+      } else if (causeMessage === 'SLOT_UNAVAILABLE') {
         setError(errorMessage('That time is no longer available. Choose another time.', 'SLOT_UNAVAILABLE'));
       } else {
-        setError(errorMessage(cause instanceof Error ? cause.message : 'The booking could not be created.', 'BOOKING_CREATION_FAILED'));
+        setError(errorMessage(causeMessage || 'The booking could not be created.', 'BOOKING_CREATION_FAILED'));
       }
     } finally {
       setSaving(false);
