@@ -151,7 +151,7 @@ export async function fetchWithAuth(url: string, options: AuthenticatedRequestIn
         response = await makeRequest(token);
       }
     }
-  } catch (cause) {
+  } catch {
     const notice: ApiErrorNotice = {
       code: 'NETWORK_REQUEST_FAILED',
       message: 'The server could not be reached. Check your connection and try again.',
