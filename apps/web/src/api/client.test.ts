@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiRequestError, fetchWithAuth } from './client';
+import { fetchWithAuth } from './client';
 
 const { getSession, refreshSession, signOut } = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -126,7 +126,7 @@ describe('fetchWithAuth', () => {
   it('turns network failures into a stable error code', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
 
-    await expect(fetchWithAuth('/api/v1/bookings')).rejects.toMatchObject<ApiRequestError>({
+    await expect(fetchWithAuth('/api/v1/bookings')).rejects.toMatchObject({
       code: 'NETWORK_REQUEST_FAILED',
       statusCode: 0,
     });
