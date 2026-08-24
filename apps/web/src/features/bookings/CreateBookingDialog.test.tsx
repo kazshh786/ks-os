@@ -92,12 +92,13 @@ describe('CreateBookingDialog walk-in mode', () => {
     fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Phone Customer' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create booking' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Add either an email address or a phone number');
+    expect(screen.getByRole('alert')).toHaveTextContent('Add either an email address or a phone number');
     expect(screen.getByRole('alert')).toHaveTextContent('Error code: CUSTOMER_CONTACT_REQUIRED');
     expect(createStaffBooking).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText(/Phone/), { target: { value: '07123456789' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create booking' }));
+    await Promise.resolve();
     await Promise.resolve();
 
     expect(createStaffBooking).toHaveBeenCalledWith(expect.objectContaining({
