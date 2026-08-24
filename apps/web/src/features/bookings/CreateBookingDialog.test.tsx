@@ -75,7 +75,7 @@ describe('CreateBookingDialog walk-in mode', () => {
     }));
   });
 
-  it('continues to require contact details for a standard appointment', () => {
+  it('requires email or phone for a standard appointment and shows an error code', async () => {
     render(<CreateBookingDialog
       open
       timezone="UTC"
@@ -86,8 +86,23 @@ describe('CreateBookingDialog walk-in mode', () => {
       onCreated={vi.fn()}
     />);
 
-    expect(screen.getByLabelText('Email')).toBeRequired();
-    expect(screen.getByLabelText('Phone')).toBeRequired();
+    expect(screen.getByLabelText(/Email/)).not.toBeRequired();
+    expect(screen.getByLabelText(/Phone/)).not.toBeRequired();
+
+    fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Phone Customer' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create booking' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Add either an email address or a phone number');
+    expect(screen.getByRole('alert')).toHaveTextContent('Error code: CUSTOMER_CONTACT_REQUIRED');
+    expect(createStaffBooking).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText(/Phone/), { target: { value: '07123456789' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create booking' }));
+    await Promise.resolve();
+
+    expect(createStaffBooking).toHaveBeenCalledWith(expect.objectContaining({
+      client: { name: 'Phone Customer', email: '', phone: '07123456789' },
+    }));
   });
 
   it('reveals a newly created appointment date and clears filters that could hide it', async () => {
@@ -108,8 +123,8 @@ describe('CreateBookingDialog walk-in mode', () => {
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-08-05' } });
     fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '10:00' } });
     fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Customer Test' } });
-    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'customer@example.com' } });
-    fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '07123456789' } });
+    fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'customer@example.com' } });
+    fireEvent.change(screen.getByLabelText(/Phone/), { target: { value: '07123456789' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create booking' }));
 
     await Promise.resolve();
