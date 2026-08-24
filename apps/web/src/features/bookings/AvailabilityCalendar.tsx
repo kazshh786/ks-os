@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  addDays,
   addMonths,
   eachDayOfInterval,
   endOfMonth,
@@ -54,7 +55,10 @@ export function AvailabilityCalendar({
   onChange,
 }: AvailabilityCalendarProps) {
   const selectedServiceIds = useMemo(() => serviceIds?.length ? serviceIds : [serviceId], [serviceId, serviceIds]);
-  const minimum = useMemo(() => localDate(minimumDate), [minimumDate]);
+  // PublicBookingFlow historically passes tomorrow as its baseline date. Include the
+  // preceding calendar day so same-day availability and date overrides are decided by
+  // the live API's minimum-notice and availability rules rather than blocked in the UI.
+  const minimum = useMemo(() => addDays(localDate(minimumDate), -1), [minimumDate]);
   const maximum = useMemo(() => localDate(maximumDate), [maximumDate]);
   const selected = useMemo(() => localDate(value), [value]);
   const [visibleMonth, setVisibleMonth] = useState(startOfMonth(selected));
