@@ -64,6 +64,12 @@ function dispatchApiError(notice: ApiErrorNotice) {
   window.dispatchEvent(new CustomEvent<ApiErrorNotice>('ks-api-error', { detail: notice }));
 }
 
+function isExpectedSignedOutProbe(requestUrl: string, statusCode: number) {
+  if (typeof window === 'undefined' || statusCode !== 401) return false;
+  const pathname = new URL(requestUrl, window.location.origin).pathname;
+  return pathname === '/api/v1/agency/session' && window.location.pathname.startsWith('/agency/login');
+}
+
 export function latestApiErrorNotice(maxAgeMs = 3_000): ApiErrorNotice | null {
   if (!lastApiError || Date.now() - lastApiError.occurredAt > maxAgeMs) return null;
   return lastApiError.notice;
@@ -169,7 +175,9 @@ export async function fetchWithAuth(url: string, options: AuthenticatedRequestIn
 
   if (!response.ok) {
     const error = await apiErrorFromResponse(response);
-    dispatchApiError({ code: error.code, message: error.message, requestId: error.requestId, statusCode: error.statusCode });
+    if (!isExpectedSignedOutProbe(requestUrl, response.status)) {
+      dispatchApiError({ code: error.code, message: error.message, requestId: error.requestId, statusCode: error.statusCode });
+    }
   }
 
   return response;
