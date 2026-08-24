@@ -3,6 +3,7 @@ import type { ApplicationContext } from '@ks-os/contracts';
 
 let refreshPromise: Promise<string | null> | null = null;
 let defaultContextOverride: ApplicationContext | null = null;
+let lastApiError: { notice: ApiErrorNotice; occurredAt: number } | null = null;
 
 export type AuthenticatedRequestInit = RequestInit & { authContext?: ApplicationContext };
 
@@ -54,8 +55,14 @@ function fallbackErrorMessage(statusCode: number) {
 }
 
 function dispatchApiError(notice: ApiErrorNotice) {
+  lastApiError = { notice, occurredAt: Date.now() };
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent<ApiErrorNotice>('ks-api-error', { detail: notice }));
+}
+
+export function latestApiErrorNotice(maxAgeMs = 3_000): ApiErrorNotice | null {
+  if (!lastApiError || Date.now() - lastApiError.occurredAt > maxAgeMs) return null;
+  return lastApiError.notice;
 }
 
 export async function apiErrorFromResponse(response: Response, fallbackMessage?: string): Promise<ApiRequestError> {
