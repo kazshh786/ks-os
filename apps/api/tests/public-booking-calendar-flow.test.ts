@@ -28,3 +28,17 @@ test('public booking calendar transitions from dates to times and shows real ava
   assert.match(availabilityRoute, /slotCount: liveSlots\.length/);
   assert.match(availabilityRoute, /availableDates, availabilityByDate/);
 });
+
+test('public booking calendar includes the same day and leaves minimum notice to the live API', () => {
+  const calendarSource = fs.readFileSync(path.resolve(process.cwd(), '../web/src/features/bookings/AvailabilityCalendar.tsx'), 'utf8');
+  const publicFlowSource = fs.readFileSync(path.resolve(process.cwd(), '../web/src/features/bookings/PublicBookingFlow.tsx'), 'utf8');
+  const availabilityRoute = fs.readFileSync(path.resolve(process.cwd(), 'src/routes/public/availability-summary.ts'), 'utf8');
+
+  // PublicBookingFlow currently uses tomorrow as its baseline. The calendar deliberately
+  // includes the preceding day so a same-day override can be surfaced when the API says
+  // that a live slot remains after the configured minimum-notice window.
+  assert.match(publicFlowSource, /const firstBookableDate = addDays\(new Date\(\), 1\)/);
+  assert.match(calendarSource, /addDays\(localDate\(minimumDate\), -1\)/);
+  assert.match(availabilityRoute, /minimumNoticeMinutes/);
+  assert.match(availabilityRoute, /start >= earliest/);
+});
