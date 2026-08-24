@@ -40,11 +40,6 @@ function defaultCodeForStatus(statusCode: number) {
   return `HTTP_${statusCode}`;
 }
 
-function withErrorCode(message: string, code: string) {
-  if (/\bError code:\s*[A-Z0-9_-]+\.?$/i.test(message)) return message;
-  return `${message.replace(/\s+$/, '')} Error code: ${code}.`;
-}
-
 function validationReason(error: ZodError) {
   const first = error.issues[0];
   if (!first) return 'Check the information provided and try again.';
@@ -123,12 +118,11 @@ export default function registerErrorHandler(fastify: FastifyInstance) {
         : typeof parsed.code === 'string' && parsed.code.trim()
           ? parsed.code.trim()
           : defaultCodeForStatus(reply.statusCode);
-      const rawMessage = typeof existing.message === 'string' && existing.message.trim()
+      const message = typeof existing.message === 'string' && existing.message.trim()
         ? existing.message.trim()
         : typeof parsed.message === 'string' && parsed.message.trim()
           ? parsed.message.trim()
           : publicErrorMessage({ method: request.method, statusCode: reply.statusCode, requestId: request.id });
-      const message = withErrorCode(rawMessage, code);
       const details = {
         ...objectDetails(existing.details),
         requestId: request.id,
