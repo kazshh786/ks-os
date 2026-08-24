@@ -54,6 +54,10 @@ function fallbackErrorMessage(statusCode: number) {
   return 'The request could not be completed.';
 }
 
+function stripEmbeddedErrorCode(message: string) {
+  return message.replace(/\s*Error code:\s*[A-Z0-9_-]+\.?\s*$/i, '').trim();
+}
+
 function dispatchApiError(notice: ApiErrorNotice) {
   lastApiError = { notice, occurredAt: Date.now() };
   if (typeof window === 'undefined') return;
@@ -69,9 +73,11 @@ export async function apiErrorFromResponse(response: Response, fallbackMessage?:
   const body = await response.clone().json().catch(() => ({}));
   const payload = body && typeof body === 'object' ? body as any : {};
   const details = payload.error?.details && typeof payload.error.details === 'object' ? payload.error.details : {};
+  const code = String(payload.error?.code || payload.code || `HTTP_${response.status}`);
+  const rawMessage = String(payload.error?.message || payload.message || fallbackMessage || fallbackErrorMessage(response.status));
   const notice: ApiErrorNotice = {
-    code: String(payload.error?.code || payload.code || `HTTP_${response.status}`),
-    message: String(payload.error?.message || payload.message || fallbackMessage || fallbackErrorMessage(response.status)),
+    code,
+    message: stripEmbeddedErrorCode(rawMessage),
     requestId: typeof details.requestId === 'string' ? details.requestId : undefined,
     statusCode: response.status,
   };
