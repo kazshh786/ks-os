@@ -156,6 +156,7 @@ jobs:
           git status --short
           DEPLOY_BRANCH=main pnpm deploy:vps:dry-run
           DEPLOY_BRANCH=main APPLY_MIGRATIONS="$APPLY_MIGRATIONS" bash scripts/deploy/deploy-vps.sh
+          node scripts/deploy/provision-bare-beauty-domain.mjs
 
           sudo systemctl is-active --quiet ks-os-api
           sudo systemctl is-active --quiet ks-os-site-worker
@@ -220,6 +221,16 @@ jobs:
 
             if ! grep -q '"status":"OK"' "$RUNNER_TEMP/api_health.json" && ! grep -q '"status": "OK"' "$RUNNER_TEMP/api_health.json"; then
               echo "Error: https://api.kasimshah.com/health did not return status OK."
+              exit 1
+            fi
+
+            curl --fail --silent --show-error --location \
+              --retry 20 --retry-delay 4 --retry-all-errors \
+              --header 'Cache-Control: no-cache' \
+              https://barebeautykeighley.kasimshah.com/ > "$RUNNER_TEMP/bare_beauty_index.html"
+
+            if ! grep -q "BARE BEAUTY" "$RUNNER_TEMP/bare_beauty_index.html" || ! grep -q "Book your appointment" "$RUNNER_TEMP/bare_beauty_index.html"; then
+              echo "Error: Bare Beauty public site did not return expected content."
               exit 1
             fi
 
