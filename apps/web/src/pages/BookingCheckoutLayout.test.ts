@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const css = readFileSync(new URL('./BookingCheckoutLayout.css', import.meta.url), 'utf8');
+const css = readFileSync(resolve(process.cwd(), 'src/pages/BookingCheckoutLayout.css'), 'utf8');
 
 describe('mobile booking checkout layout', () => {
   it('anchors the mobile action bar to the bottom of the viewport without removing it from layout flow', () => {
