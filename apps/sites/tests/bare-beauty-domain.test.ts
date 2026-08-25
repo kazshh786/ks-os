@@ -51,6 +51,6 @@ test('unrelated hostnames are ignored', async () => {
       return new Response('unexpected');
     },
   );
-  assert.equal(response, null);
+  assert.ok(response == null);
   assert.equal(handled, false);
 });
