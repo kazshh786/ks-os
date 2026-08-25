@@ -257,7 +257,7 @@ export async function loadBareBeautyLiveData(): Promise<BareBeautyLiveData> {
       and page.enabled = true
       and page.published = true
       and schedule.booking_channel = 'in_shop'
-    order by schedule.day_of_week, schedule.start_time
+    order by schedule.day_of_week, schedule.start_time::text
   `);
   const legalResult = await database.execute(sql<LegalDatabaseRow>`
     select
