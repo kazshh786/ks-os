@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const css = readFileSync(new URL('./BookingMobileRefinement.css', import.meta.url), 'utf8');
+const css = readFileSync(resolve(process.cwd(), 'src/pages/BookingMobileRefinement.css'), 'utf8');
 
 describe('mobile booking refinement', () => {
   it('removes duplicate mobile header and summary chrome', () => {
