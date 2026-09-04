@@ -1,10 +1,11 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { CircleHelp, Clipboard, ExternalLink, Plus, Store } from 'lucide-react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router';
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router';
 import { AccountMenu } from '../components/navigation/AccountMenu';
 import { AppSidebar } from '../components/navigation/AppSidebar';
 import { MobileNavigation } from '../components/navigation/MobileNavigation';
 import { PageHeader } from '../components/navigation/PageHeader';
+import { useBusinessProfile } from '../auth/useBusinessProfile';
 import { useAuth } from '../auth/useAuth';
 import { SupportModeBanner } from '../features/agency/SupportModeBanner';
 import { useOperationsSummary } from '../features/operations/useOperationsSummary';
@@ -16,6 +17,7 @@ const collapsedStorageKey = 'ks-os-business-sidebar-collapsed';
 
 export const StaffWorkspaceLayout: React.FC = () => {
   const auth = useAuth();
+  const profile = useBusinessProfile();
   const location = useLocation();
   const navigate = useNavigate();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -24,11 +26,12 @@ export const StaffWorkspaceLayout: React.FC = () => {
   const [copyMessage, setCopyMessage] = useState('');
   const { summary: planSummary } = useWorkspacePlan();
   const groups = useMemo(() => resolveNavigation(businessNavigation, {
-    portal: 'business', role: auth.role, permissions: auth.permissions, entitlements: planSummary?.entitlements,
-  }), [auth.permissions, auth.role, planSummary?.entitlements]);
+    portal: 'business', businessProfile: auth.businessProfile, role: auth.role, permissions: auth.permissions, entitlements: planSummary?.entitlements,
+  }), [auth.permissions, auth.role, auth.businessProfile, planSummary?.entitlements]);
   const activeItem = findActiveNavigationItem(groups, location.pathname);
   const operationsCount = useOperationsSummary(groups.some(group => group.items.some(item => item.id === 'operations')));
-  const canCreateBooking = auth.role === 'owner' || auth.permissions.includes('BOOKINGS_CREATE');
+  const hasBookings = profile.enabledModules.includes('bookings');
+  const canCreateBooking = hasBookings && (auth.role === 'owner' || auth.permissions.includes('BOOKINGS_CREATE'));
   const publicBookingUrl = `${window.location.origin}/book/${auth.tenantSubdomain}`;
   const accountName = auth.email?.split('@')[0] || 'Business account';
   const isCalendarWorkspace = location.pathname === '/app/calendar';
@@ -52,12 +55,12 @@ export const StaffWorkspaceLayout: React.FC = () => {
   const switchWorkspace = async (businessReference: string) => {
     if (businessReference === auth.businessReference) return;
     await auth.selectWorkspace(businessReference);
-    navigate('/app/calendar', { replace: true });
+    navigate('/app', { replace: true });
   };
 
   const primaryAction = canCreateBooking
     ? <div className="space-y-2"><Link to="/app/calendar?create=1" className={`flex min-h-11 items-center justify-center rounded-xl bg-indigo-600 font-black text-white shadow-sm hover:bg-indigo-700 ${collapsed ? 'px-0' : 'gap-2 px-4 text-sm'}`} title={collapsed ? 'Create booking' : undefined}><Plus aria-hidden="true" className="h-5 w-5" />{!collapsed && 'Create booking'}</Link>{auth.role === 'owner' && !collapsed && <Link to="/app/services?add=1" className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 hover:bg-slate-50"><Plus aria-hidden="true" className="h-4 w-4" />Add service</Link>}</div>
-    : auth.role === 'owner' ? <Link to="/app/services?add=1" className={`flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white font-black text-slate-700 shadow-sm hover:bg-slate-50 ${collapsed ? 'px-0' : 'gap-2 px-4 text-sm'}`} title={collapsed ? 'Add service' : undefined}><Plus aria-hidden="true" className="h-5 w-5" />{!collapsed && 'Add service'}</Link> : undefined;
+    : auth.role === 'owner' && hasBookings ? <Link to="/app/services?add=1" className={`flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white font-black text-slate-700 shadow-sm hover:bg-slate-50 ${collapsed ? 'px-0' : 'gap-2 px-4 text-sm'}`} title={collapsed ? 'Add service' : undefined}><Plus aria-hidden="true" className="h-5 w-5" />{!collapsed && 'Add service'}</Link> : undefined;
   const secondaryActions = <div className="space-y-1">
     {auth.role === 'owner' && planSummary && <div className={`mb-3 rounded-xl border p-3 ${planSummary.usage.bookings.warning ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
       <div className="flex items-center justify-between gap-2"><p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{planSummary.plan.name} plan</p><span className="text-[10px] font-black text-slate-600">{Math.min(100, planSummary.usage.bookings.percentage)}%</span></div>
@@ -80,7 +83,7 @@ export const StaffWorkspaceLayout: React.FC = () => {
     collapsible={!isMobile}
     badges={{ operations: operationsCount }}
     primaryAction={isMobile && canCreateBooking ? <div className="space-y-2"><Link to="/app/calendar?create=1" onClick={() => setMobileOpen(false)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white"><Plus aria-hidden="true" className="h-5 w-5" />Create booking</Link>{auth.role === 'owner' && <Link to="/app/services?add=1" onClick={() => setMobileOpen(false)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700"><Plus aria-hidden="true" className="h-4 w-4" />Add service</Link>}</div> : primaryAction}
-    secondaryActions={secondaryActions}
+    secondaryActions={hasBookings ? secondaryActions : undefined}
     footer={isMobile ? <div className="space-y-1"><a href="mailto:support@ks-os.com" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-xs font-bold text-slate-500 hover:bg-slate-100"><CircleHelp aria-hidden="true" className="h-[18px] w-[18px]" />Help and support</a><AccountMenu displayName={accountName} email={auth.email} roleLabel={auth.role === 'owner' ? 'Business owner' : 'Team member'} settingsHref="/app/settings/security" onSignOut={() => void auth.signOut()} /></div> : account}
     onToggleCollapsed={toggleCollapsed}
     onNavigate={isMobile ? closeMobile : undefined}
@@ -97,6 +100,7 @@ export const StaffWorkspaceLayout: React.FC = () => {
     actions={<>{auth.memberships.length > 1 && <label className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 sm:flex"><Store aria-hidden="true" className="h-4 w-4 text-slate-500" /><span className="sr-only">Switch business</span><select value={auth.businessReference} onChange={event => void switchWorkspace(event.target.value)} className="max-w-40 border-0 bg-transparent py-2 text-xs font-bold focus:shadow-none">{auth.memberships.map(membership => <option key={membership.businessReference} value={membership.businessReference}>{membership.businessName}</option>)}</select></label>}</>}
   />;
 
+  if (auth.onboardingRequired && auth.role === 'owner' && location.pathname !== '/app/onboarding') return <Navigate to="/app/onboarding" replace />;
   return <div
     className="flex h-dvh min-h-0 overflow-hidden bg-slate-50 font-sans text-slate-950 antialiased"
     style={{ '--workspace-sidebar-width': collapsed ? '76px' : '272px' } as React.CSSProperties}

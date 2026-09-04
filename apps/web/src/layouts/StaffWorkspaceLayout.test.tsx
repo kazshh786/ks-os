@@ -1,4 +1,5 @@
 import React from 'react';
+import { resolveBusinessProfile } from '@ks-os/contracts';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -6,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StaffWorkspaceLayout } from './StaffWorkspaceLayout';
 
 let auth = makeAuth('owner', []);
+vi.mock('../auth/useBusinessProfile', () => ({ useBusinessProfile: () => auth.businessProfile ?? resolveBusinessProfile(null) }));
 vi.mock('../auth/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('../features/operations/useOperationsSummary', () => ({ useOperationsSummary: () => 3 }));
 vi.mock('../features/agency/SupportModeBanner', () => ({ SupportModeBanner: () => null }));

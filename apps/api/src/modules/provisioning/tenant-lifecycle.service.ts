@@ -288,6 +288,7 @@ export class TenantLifecycleService {
         name: 'Deleted workspace',
         legalBusinessName: null,
         businessType: null,
+        businessProfile: null,
         subdomain: deletedSubdomain,
         customDomain: null,
         primaryContactName: null,

@@ -3,6 +3,7 @@ import {
   FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors,
   Mail, Plug, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
 } from 'lucide-react';
+import type { ModuleKey } from '@ks-os/contracts';
 import type { NavigationGroup } from './navigation.types';
 
 export const businessNavigation: NavigationGroup[] = [
@@ -66,3 +67,13 @@ export const businessSecondaryActions = [
   { id: 'booking-page', label: 'View booking page', icon: Building2 },
   { id: 'copy-booking-page', label: 'Copy booking link', icon: ClipboardList },
 ] as const;
+
+/** Map established navigation IDs onto canonical engines without changing routes. */
+export const navigationModule: Readonly<Record<string, ModuleKey>> = {
+  dashboard:'dashboard',services:'services',calendar:'calendar',tasks:'tasks',operations:'operations',
+  customers:'crm',forms:'forms',pos:'pos',payments:'payments',finance:'finance',analytics:'analytics',
+  reports:'reports',reviews:'reputation','email-marketing':'email-marketing',inventory:'inventory',
+  automations:'automations',team:'team',locations:'locations','booking-page':'booking-page',
+  'stripe-payments':'payments',integrations:'integrations',communications:'communications',
+  'business-settings':'settings',security:'security',
+};

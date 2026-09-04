@@ -1,4 +1,6 @@
 import React from 'react';
+import ProductOnboardingPage from './features/onboarding/ProductOnboardingPage';
+import { useBusinessProfile } from './auth/useBusinessProfile';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { WorkspaceProvider } from './context/WorkspaceContext.js';
 import { AuthProvider, useAuth } from './auth';
@@ -110,7 +112,9 @@ function StaffWorkspaceWithPlan() {
 }
 
 const AppContent: React.FC = () => {
-  const { authUserId, role } = useAuth();
+  const { authUserId, role, permissions } = useAuth();
+  const profile = useBusinessProfile();
+  const staffHome = profile.enabledModules.includes('bookings') && permissions.some(permission => permission === 'BOOKINGS_VIEW_OWN' || permission === 'BOOKINGS_VIEW_ALL') ? '/app/calendar' : permissions.some(permission => permission === 'TASKS_VIEW_OWN' || permission === 'TASKS_VIEW_ALL') ? '/app/tasks/my' : '/app/settings/security';
 
   return (
     <BrowserRouter>
@@ -174,7 +178,8 @@ const AppContent: React.FC = () => {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to={role === 'owner' ? '/app/dashboard' : '/app/calendar'} replace />} />
+          <Route index element={<Navigate to={role === 'owner' ? '/app/dashboard' : staffHome} replace />} />
+          <Route path="onboarding" element={<RoleRoute allowedRoles={['owner']}><ProductOnboardingPage /></RoleRoute>} />
           <Route path="dashboard" element={<RoleRoute allowedRoles={['owner']}><SaaSDashboardPage /></RoleRoute>} />
           <Route path="services" element={<RoleRoute allowedRoles={['owner']}><ServicesPage /></RoleRoute>} />
           <Route path="reports" element={<RoleRoute allowedRoles={['owner']}><ReportsHome /></RoleRoute>} />

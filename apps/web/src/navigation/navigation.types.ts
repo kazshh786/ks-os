@@ -1,5 +1,5 @@
 import type { Permission } from '@ks-os/auth';
-import type { AgencyCapability } from '@ks-os/contracts';
+import type { BusinessProfile, AgencyCapability } from '@ks-os/contracts';
 import type { LucideIcon } from 'lucide-react';
 
 export type PortalKind = 'business' | 'agency' | 'managed-business';
@@ -29,6 +29,7 @@ export interface NavigationGroup {
 
 export interface NavigationContext {
   portal: PortalKind;
+  businessProfile?: BusinessProfile;
   role?: 'owner' | 'staff';
   permissions?: Permission[];
   agencyCapabilities?: AgencyCapability[];
