@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BusinessProfileSchema, BusinessTypeSchema, ProductOnboardingConfigurationSchema } from './business-profile.js';
 
 export const ApplicationContextSchema = z.enum(['AGENCY', 'TENANT', 'CUSTOMER']);
 export type ApplicationContext = z.infer<typeof ApplicationContextSchema>;
@@ -50,6 +51,10 @@ export const WorkspaceSessionSchema = z.object({
     primaryColor: z.string(),
     secondaryColor: z.string(),
     accentColor: z.string(),
+    businessType: BusinessTypeSchema.nullable().optional(),
+    profile: BusinessProfileSchema.optional(),
+    productOnboarding: ProductOnboardingConfigurationSchema.nullable().optional(),
+    onboardingRequired: z.boolean().optional(),
   }).nullable(),
   memberships: z.array(WorkspaceMembershipSchema),
 });

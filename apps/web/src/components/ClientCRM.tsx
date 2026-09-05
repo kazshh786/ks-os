@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { useBusinessProfile } from '../auth/useBusinessProfile';
+import { SalonCareDetails } from './SalonCareDetails';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { Search, User, Award, CreditCard, BookOpen, Clock, Heart, Sliders, Calendar, AlertTriangle, RefreshCw, CheckCircle2 } from 'lucide-react';
@@ -14,6 +16,7 @@ interface ClientCRMProps {
 }
 
 export default function ClientCRM({ tenant }: ClientCRMProps) {
+  const businessProfile = useBusinessProfile();
   const { clientId } = useParams();
   const navigate = useNavigate();
 
@@ -111,7 +114,7 @@ export default function ClientCRM({ tenant }: ClientCRMProps) {
         {/* Left column: Directory */}
         <div className="bg-white rounded-2xl p-5 border border-slate-200/60 shadow-sm flex flex-col h-[650px]">
           <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
-            <User className="w-4 h-4 text-slate-500" /> Client Directory
+            <User className="w-4 h-4 text-slate-500" /> {businessProfile.compatibilityMode ? 'Client Directory' : businessProfile.terminology.customers}
           </h3>
 
           <div className="relative mb-4">
@@ -188,7 +191,7 @@ export default function ClientCRM({ tenant }: ClientCRMProps) {
             <div className="h-full flex flex-col items-center justify-center text-slate-400">
               <User className="w-12 h-12 text-slate-300 mx-auto mb-4" />
               <h4 className="font-bold text-slate-800 text-lg">No client selected</h4>
-              <p className="text-sm mt-1 max-w-sm text-center">Select a client from the directory to view their appointment history, medical details, and profile metrics.</p>
+              <p className="text-sm mt-1 max-w-sm text-center">Select a record from the directory to view contact details and activity.</p>
             </div>
           ) : (
             <div className="space-y-8">
@@ -229,37 +232,7 @@ export default function ClientCRM({ tenant }: ClientCRMProps) {
                 </div>
               </div>
 
-              {/* Medical & Notes */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
-                    <Heart className="w-4 h-4 text-rose-500" /> Medical & Authorized Notes
-                  </h4>
-                  <div className="bg-slate-50 border border-slate-100 p-5 rounded-xl text-sm min-h-[120px]">
-                    {profileData.medicalNotes ? (
-                      <p className="text-slate-800 whitespace-pre-wrap leading-relaxed">{profileData.medicalNotes}</p>
-                    ) : (
-                      <p className="text-slate-400 italic">No medical notes on file.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
-                    <Sliders className="w-4 h-4 text-slate-500" /> Operational Data
-                  </h4>
-                  <div className="bg-slate-50 border border-slate-100 p-5 rounded-xl text-sm space-y-4 min-h-[120px]">
-                    <div>
-                      <span className="text-xs text-slate-400 block font-bold uppercase mb-1">Patch Test Date</span>
-                      <span className="font-bold text-slate-900">{profileData.profile.patchTestDate ? formatFriendlyDate(profileData.profile.patchTestDate) : 'Not recorded'}</span>
-                    </div>
-                    <div>
-                      <span className="text-xs text-slate-400 block font-bold uppercase mb-1">Last Visit</span>
-                      <span className="font-medium text-slate-800">{formatFriendlyDate(profileData.profile.lastVisitDate)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {businessProfile.crmExtensions.includes('salon-care') && <SalonCareDetails profileData={profileData} formatFriendlyDate={formatFriendlyDate}/>}
 
               {/* Booking History */}
               <div className="space-y-6">

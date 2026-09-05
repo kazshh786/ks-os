@@ -7,6 +7,7 @@ import registerPublicServiceCatalogOrder from './plugins/public-service-catalog-
 import registerRoutes from './routes/health.js';
 import authPlugin from './plugins/auth.js';
 import sessionRoutes from './routes/session.js';
+import { productOnboardingRoutes } from './modules/business-profile/product-onboarding.routes.js';
 import workspaceRoutes from './routes/workspace.js';
 import servicesRoutes from './routes/services.js';
 import staffRoutes from './routes/staff.js';
@@ -196,6 +197,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(registerRoutes);
   fastify.register(sessionRoutes);
   fastify.register(workspaceRoutes);
+  fastify.register(productOnboardingRoutes);
   fastify.register(servicesRoutes);
   fastify.register(staffRoutes);
   fastify.register(bookingsRoutes);

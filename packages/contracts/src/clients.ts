@@ -80,3 +80,19 @@ export const ClientNotFoundResponseSchema = z.object({
   })
 });
 export type ClientNotFoundResponse = z.infer<typeof ClientNotFoundResponseSchema>;
+
+/** Classification for future extensions. Storage and existing response fields stay compatible. */
+export const CRM_FIELD_GROUPS = {
+  core: ['id','name','email','phone','createdAt','updatedAt'],
+  engagement: ['lastVisitDate','loyaltyPoints'],
+  salonCare: ['medicalNotes','patchTestDate'],
+  futureCore: ['address','notes','relationships','status','source','owner','activity','tags'],
+} as const;
+/** Future extension values must be validated by a tenant-owned field definition and capability policy.
+ * This contract does not expose an arbitrary custom-field write endpoint. */
+export const BusinessFieldDefinitionSchema = z.object({
+  key:z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),label:z.string().min(1).max(100),
+  namespace:z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/),
+  kind:z.enum(['text','number','date','boolean','choice']),sensitive:z.boolean(),
+  requiredCapability:z.string().min(1),options:z.array(z.string().max(100)).max(100).optional(),
+}).strict();

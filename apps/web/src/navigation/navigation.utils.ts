@@ -1,3 +1,5 @@
+import { canUseProfileModule } from '@ks-os/contracts';
+import { navigationModule } from './business-navigation';
 import type { NavigationContext, NavigationGroup, NavigationItem, ResolvedNavigationGroup } from './navigation.types';
 
 export function resolveNavigation(groups: NavigationGroup[], context: NavigationContext): ResolvedNavigationGroup[] {
@@ -5,12 +7,18 @@ export function resolveNavigation(groups: NavigationGroup[], context: Navigation
     ...group,
     items: group.items.filter(item => isNavigationItemVisible(item, context)).map(item => ({
       ...item,
+      label: context.portal === 'business' && context.businessProfile && item.id === 'customers'
+        ? context.businessProfile.terminology.customers : item.label,
       locked: Boolean(item.requiredEntitlement && context.entitlements && context.entitlements[item.requiredEntitlement]?.enabled !== true),
     })),
   })).filter(group => group.items.length > 0);
 }
 
 export function isNavigationItemVisible(item: NavigationItem, context: NavigationContext): boolean {
+  if (context.portal === 'business' && context.businessProfile && !context.businessProfile.compatibilityMode) {
+    const moduleKey = navigationModule[item.id];
+    if (!moduleKey || !canUseProfileModule(context.businessProfile, moduleKey, context)) return false;
+  }
   const expectedPrefix = context.portal === 'business' ? '/app/' : '/agency/';
   if (!item.href.startsWith(expectedPrefix)) return false;
   if (item.featureFlag && !context.featureFlags?.[item.featureFlag]) return false;

@@ -4,13 +4,13 @@ import {
   getDatabase, tenants, users,
 } from '@ks-os/database';
 import type { FastifyRequest } from 'fastify';
-import type { ApplicationContext } from '@ks-os/contracts';
+import { resolveBusinessProfile, parseProductOnboardingConfiguration, ProductOnboardingConfigurationSchema, type ApplicationContext } from '@ks-os/contracts';
 import { effectiveCapabilities, type Permission } from '@ks-os/auth';
 
 const fail = (statusCode: number, code: string, message: string) => Object.assign(new Error(message), { statusCode, code });
 
 export class AuthenticationService {
-  private db = getDatabase();
+  constructor(private db: ReturnType<typeof getDatabase> = getDatabase()) {}
 
   private sessionIsCurrent(identity: { issuedAt: string | null }, validAfter: Date | null) {
     if (!validAfter) return true;
@@ -87,6 +87,10 @@ export class AuthenticationService {
         businessReference: selected.tenant.businessReference, name: selected.tenant.name,
         slug: selected.tenant.subdomain, primaryColor: selected.tenant.primaryColor,
         secondaryColor: selected.tenant.secondaryColor, accentColor: selected.tenant.accentColor,
+        businessType: resolveBusinessProfile(selected.tenant.businessType, selected.tenant.businessProfile).businessType,
+        profile: resolveBusinessProfile(selected.tenant.businessType, selected.tenant.businessProfile),
+        productOnboarding: parseProductOnboardingConfiguration(selected.tenant.businessProfile),
+        onboardingRequired: selected.membership.role === 'owner' && selected.tenant.lifecycleStatus === 'ONBOARDING' && !ProductOnboardingConfigurationSchema.safeParse(selected.tenant.businessProfile).success,
       } : null,
       memberships: rows.map(row => ({
         membershipReference: row.membership.publicReference,

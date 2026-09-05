@@ -17,6 +17,8 @@ export const tenants = pgTable('tenants', {
   lifecycleStatus: varchar('lifecycle_status', { length: 30 }).default('PROSPECT').notNull(),
   legalBusinessName: varchar('legal_business_name', { length: 255 }),
   businessType: varchar('business_type', { length: 80 }),
+  // Product configuration belongs to the tenant; agency onboarding is a separate workflow.
+  businessProfile: jsonb('business_profile'),
   primaryContactName: varchar('primary_contact_name', { length: 255 }),
   primaryContactEmail: varchar('primary_contact_email', { length: 255 }),
   contractStartAt: timestamp('contract_start_at', { withTimezone: true }),

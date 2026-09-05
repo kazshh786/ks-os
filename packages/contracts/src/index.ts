@@ -119,3 +119,5 @@ export * from './site-design.js';
 export * from './template-intelligence.js';
 export * from './template-import.js';
 export * from './site-blueprints.js';
+
+export * from './business-profile.js';

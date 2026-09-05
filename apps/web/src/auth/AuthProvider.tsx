@@ -50,6 +50,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         permissions: Object.keys(workspace.user.permissions || {}).filter(key => workspace.user.permissions[key]) as Permission[],
         workspaceSelectionRequired: workspace.selectionRequired,
         memberships: workspace.memberships,
+        businessProfile: business?.profile,
+        productOnboarding: business?.productOnboarding ?? null,
+        onboardingRequired: business?.onboardingRequired === true,
       });
     } catch {
       if (isInitialLoad) setAuthState(null);

@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { useEffect, useState, type FormEvent } from 'react';
 import { CheckCircle2, Loader2, Save, Settings } from 'lucide-react';
 import type { BusinessTenant, PaymentPolicy } from '../../data/types.js';
@@ -69,6 +70,7 @@ export default function BusinessProfileSettings({ tenant, onSaved }: BusinessPro
         <p className="mt-1 text-sm text-slate-400">Update the details customers see in bookings, forms and business communications.</p>
       </header>
 
+      <div className="px-6 pt-6"><Link to="/app/onboarding" className="font-bold text-indigo-600 underline">Business type and how you work</Link></div>
       <form onSubmit={save} className="space-y-7 p-6 md:p-8">
         {success && (
           <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">

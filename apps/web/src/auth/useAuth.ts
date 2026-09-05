@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import type { BusinessProfile, ProductOnboardingConfiguration } from '@ks-os/contracts';
 import { Permission } from '@ks-os/auth';
 
 export interface AuthContextType {
@@ -7,6 +8,9 @@ export interface AuthContextType {
   tenantId: string;
   tenantName: string;
   tenantSubdomain: string;
+  businessProfile?: BusinessProfile;
+  productOnboarding?: ProductOnboardingConfiguration | null;
+  onboardingRequired?: boolean;
   role: 'owner' | 'staff';
   permissions: Permission[];
   membershipReference: string;
