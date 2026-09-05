@@ -15,7 +15,7 @@ export function resolveNavigation(groups: NavigationGroup[], context: Navigation
 }
 
 export function isNavigationItemVisible(item: NavigationItem, context: NavigationContext): boolean {
-  if (context.portal === 'business' && context.businessProfile) {
+  if (context.portal === 'business' && context.businessProfile && !context.businessProfile.compatibilityMode) {
     const moduleKey = navigationModule[item.id];
     if (!moduleKey || !canUseProfileModule(context.businessProfile, moduleKey, context)) return false;
   }
