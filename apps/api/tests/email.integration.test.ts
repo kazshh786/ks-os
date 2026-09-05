@@ -62,7 +62,7 @@ test('Resend webhook keeps raw-body verification, idempotency and suppressions',
   const routes = read('modules/webhooks/resend/resend-webhook.routes.ts');
   const service = read('modules/webhooks/resend/resend-webhook.service.ts');
 
-  assert.match(app, /routes: \['\/api\/v1\/webhooks\/resend'/);
+  assert.match(app, /routes:\s*\[\s*'\/api\/v1\/webhooks\/resend'/);
   assert.match(routes, /request\.rawBody/);
   assert.match(service, /new Webhook\(secret\)\.verify\(payload/);
   assert.match(service, /onConflictDoNothing\(\{ target: emailWebhookEvents\.eventId \}\)/);

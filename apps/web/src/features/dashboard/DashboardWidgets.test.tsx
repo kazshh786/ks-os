@@ -14,7 +14,7 @@ describe('profile dashboard composition',()=>{
   it('keeps salon booking and service widgets',()=>{
     render(<DashboardWidgets data={data} profile={resolveBusinessProfile('SALON')}/>);
     expect(screen.getByRole('heading',{name:'Top services'})).toBeInTheDocument();
-    expect(screen.getByText('Bookings')).toBeInTheDocument();
+    expect(screen.getByText('Bookings',{selector:'p'})).toBeInTheDocument();
   });
   it('shows real shared data with agency terminology and no invented delivery metrics',()=>{
     render(<DashboardWidgets data={data} profile={resolveBusinessProfile('AGENCY')}/>);
