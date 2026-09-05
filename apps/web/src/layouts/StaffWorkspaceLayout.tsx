@@ -109,6 +109,7 @@ export const StaffWorkspaceLayout: React.FC = () => {
     <MobileNavigation open={mobileOpen} title="Business navigation" onClose={closeMobile} triggerRef={menuButtonRef}>{sidebar(true)}</MobileNavigation>
     <div className="flex min-w-0 flex-1 flex-col">
       <SupportModeBanner />
+      {auth.businessProfile && auth.role === 'owner' && !auth.productOnboarding && location.pathname !== '/app/onboarding' && <div className="border-b border-indigo-100 bg-indigo-50 px-6 py-3 text-sm"><Link to="/app/onboarding" className="font-bold text-indigo-700 underline">Set up KSOS for the way your business works</Link></div>}
       {isImmersiveWorkspace ? <div className="lg:hidden">{workspaceHeader}</div> : workspaceHeader}
       <main id="main-content" className={`min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain ${usesFullBleedContent ? 'p-0' : 'p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-6 lg:p-8'}`}><Outlet /></main>
     </div>

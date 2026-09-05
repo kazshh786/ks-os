@@ -108,7 +108,7 @@ const ReputationRoute: React.FC<{ children: React.ReactNode; ownerOnly?: boolean
 
 function StaffWorkspaceWithPlan() {
   const { businessReference } = useAuth();
-  return <WorkspacePlanProvider businessReference={businessReference}><StaffWorkspaceLayout /></WorkspacePlanProvider>;
+  return <WorkspacePlanProvider key={businessReference} businessReference={businessReference}><StaffWorkspaceLayout /></WorkspacePlanProvider>;
 }
 
 const AppContent: React.FC = () => {

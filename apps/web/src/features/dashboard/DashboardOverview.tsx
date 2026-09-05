@@ -1,8 +1,8 @@
 import {useBusinessProfile} from '../../auth/useBusinessProfile';
 import {DashboardWidgets} from './DashboardWidgets';
 import React,{useCallback,useEffect,useState} from 'react';
-import { AlertCircle,CalendarDays,CheckCircle2,Clock3,CreditCard,RefreshCw,TrendingDown,TrendingUp,Users } from 'lucide-react';
-import type { AnalyticsPreset,DashboardOverviewQuery,DashboardOverviewResponse,KpiValue } from '@ks-os/contracts';
+import { AlertCircle,RefreshCw } from 'lucide-react';
+import type { AnalyticsPreset,DashboardOverviewQuery,DashboardOverviewResponse } from '@ks-os/contracts';
 import { getDataProvider } from '../../data/data-provider.js';
 
 const presets:{value:AnalyticsPreset;label:string}[]=[{value:'TODAY',label:'Today'},{value:'LAST_7_DAYS',label:'Last 7 days'},{value:'LAST_30_DAYS',label:'Last 30 days'},{value:'THIS_MONTH',label:'This month'},{value:'CUSTOM',label:'Custom'}];

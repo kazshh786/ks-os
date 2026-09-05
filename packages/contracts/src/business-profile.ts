@@ -461,7 +461,7 @@ export const MODULE_REGISTRY = Object.fromEntries(ModuleKeySchema.options.map(ke
   const value = implemented[key];
   return [key, {
     key, defaultLabel: value?.[0] ?? key.charAt(0).toUpperCase() + key.slice(1),
-    status: value ? 'implemented' : key === 'documents' || key === 'work' ? 'foundation' : 'planned',
+    status: (value ? 'implemented' : key === 'documents' || key === 'work' ? 'foundation' : 'planned') as ModuleDefinition['status'],
     route: value?.[1] ?? null, capabilities: value?.[2] ?? [], ownerOnly: value?.[3] ?? false,
     entitlements: value?.[4] ?? [],
     recommendedBusinessTypes: BusinessTypeSchema.options.filter(type => [...core, ...modelModules[profileSeeds[type].operatingModel]].includes(key)),
@@ -526,7 +526,7 @@ export function resolveBusinessProfile(businessType: unknown, configuration?: un
   const configured = parsed.success ? parsed.data.answers : undefined;
   const type = normalized;
   // Unknown legacy businesses retain their existing working navigation until an owner configures them.
-  const seed = profileSeeds[type ?? 'SALON_BARBER'];
+  const seed = profileSeeds[type ?? (configured ? 'PROFESSIONAL_SERVICES' : 'SALON_BARBER')];
   const recommendation = [...new Set([...core, ...modelModules[seed.operatingModel]])];
   const enabled = configured ? onboardingModules(configured) : recommendation;
   const salonCare = type === 'SALON_BARBER' || type === 'BEAUTY_AESTHETICS' || (!type && !configured);
@@ -542,7 +542,7 @@ export function resolveBusinessProfile(businessType: unknown, configuration?: un
     compatibilityMode:!type&&!configured, terminology:{...seed.terminology},
     enabledModules:enabled,recommendedModules:recommendation,navigation:enabled,
     dashboard:hasBookings ? ['booking-summary','customer-summary','revenue-summary','operations','daily-trend','top-services','staff-utilisation'] : ['customer-summary','revenue-summary','operations'],
-    recommendedOperatingModel:seed.operatingModel,
+    recommendedOperatingModel:configured?.delivery[0] ?? seed.operatingModel,
     optionalEngines:enabled.filter(key=>!core.includes(key)),
     pipelineMetadata:{status:'planned',workLabel:seed.terminology.work},
     onboardingDefaults:configured ? {teamSize:configured.teamSize,buying:configured.buying,delivery:configured.delivery,resources:configured.resources,payment:configured.payment,manage:configured.manage} : defaults,
@@ -552,7 +552,7 @@ export function resolveBusinessProfile(businessType: unknown, configuration?: un
 export function terminology(profile: BusinessProfile, key: keyof BusinessProfile['terminology']): string { return profile.terminology[key]; }
 export function canUseProfileModule(profile: BusinessProfile, key: ModuleKey, access: {role?:string;permissions?:readonly string[];entitlements?:Record<string,{enabled?:boolean}>}): boolean {
   const module = MODULE_REGISTRY[key];
-  return module.status === 'implemented' && profile.enabledModules.includes(key)
+  return module.status === 'implemented' && profile.enabledModules.includes(key) && profile.navigation.includes(key)
     && (!module.ownerOnly || access.role === 'owner')
     && (access.role === 'owner' || !module.capabilities.length || module.capabilities.some(capability=>access.permissions?.includes(capability)))
     && module.entitlements.every(entitlement=>access.entitlements?.[entitlement]?.enabled === true);
