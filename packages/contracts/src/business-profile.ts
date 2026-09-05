@@ -457,16 +457,21 @@ const profileSeeds = {
   }
 } as const;
 
-export const MODULE_REGISTRY = Object.fromEntries(ModuleKeySchema.options.map(key => {
+function buildModuleRegistry(): Record<ModuleKey, ModuleDefinition> {
+  const registry = {} as Record<ModuleKey, ModuleDefinition>;
+  for (const key of ModuleKeySchema.options) {
   const value = implemented[key];
-  return [key, {
+  registry[key] = {
     key, defaultLabel: value?.[0] ?? key.charAt(0).toUpperCase() + key.slice(1),
     status: (value ? 'implemented' : key === 'documents' || key === 'work' ? 'foundation' : 'planned') as ModuleDefinition['status'],
     route: value?.[1] ?? null, capabilities: value?.[2] ?? [], ownerOnly: value?.[3] ?? false,
     entitlements: value?.[4] ?? [],
     recommendedBusinessTypes: BusinessTypeSchema.options.filter(type => [...core, ...modelModules[profileSeeds[type].operatingModel]].includes(key)),
-  }];
-})) as Record<ModuleKey, ModuleDefinition>;
+  };
+  }
+  return registry;
+}
+export const MODULE_REGISTRY = buildModuleRegistry();
 
 export const ProductOnboardingAnswersSchema = z.object({
   businessName: z.string().trim().min(2).max(255),
