@@ -7,8 +7,13 @@ export function resolveNavigation(groups: NavigationGroup[], context: Navigation
     ...group,
     items: group.items.filter(item => isNavigationItemVisible(item, context)).map(item => ({
       ...item,
-      label: context.portal === 'business' && context.businessProfile && item.id === 'customers'
-        ? context.businessProfile.terminology.customers : item.label,
+      label: context.portal === 'business' && context.businessProfile
+        ? item.id === 'customers'
+          ? context.businessProfile.terminology.customers
+          : item.id === 'work'
+            ? context.businessProfile.terminology.works
+            : item.label
+        : item.label,
       locked: Boolean(item.requiredEntitlement && context.entitlements && context.entitlements[item.requiredEntitlement]?.enabled !== true),
     })),
   })).filter(group => group.items.length > 0);
