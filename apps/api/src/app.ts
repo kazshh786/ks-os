@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import rateLimit from '@fastify/rate-limit';
 import registerSecurity from './plugins/security.js';
 import registerRequestContext from './plugins/request-context.js';
@@ -73,6 +74,8 @@ import { agencyDeploymentRoutes } from './modules/deployments/deployment.routes.
 
 export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => void } = {}) {
   const fastify = Fastify({
+    genReqId: () => randomUUID(),
+    requestIdHeader: false,
     logger: {
       level: env.LOG_LEVEL,
       redact: [
