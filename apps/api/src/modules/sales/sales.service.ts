@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gt, ilike, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import {
   clientSalesProfiles,
   clients,
@@ -261,7 +261,10 @@ export class SalesService {
     if (query.stageReference) conditions.push(eq(salesPipelineStages.publicReference, query.stageReference));
     if (query.ownerUserId) conditions.push(eq(salesOpportunities.ownerUserId, query.ownerUserId));
     if (query.state) conditions.push(eq(salesPipelineStages.category, query.state));
-    if (query.search) conditions.push(or(ilike(salesOpportunities.title, `%${query.search.replace(/[%_]/g, '\\$&')}%`), ilike(clients.name, `%${query.search.replace(/[%_]/g, '\\$&')}%`))!);
+    if (query.search) conditions.push(or(
+      sql`strpos(lower(${salesOpportunities.title}), lower(${query.search})) > 0`,
+      sql`strpos(lower(${clients.name}), lower(${query.search})) > 0`,
+    )!);
     const rows = await this.db.select(opportunitySelection).from(salesOpportunities)
       .innerJoin(clients, and(eq(clients.id, salesOpportunities.clientId), eq(clients.tenantId, actor.tenantId)))
       .innerJoin(salesPipelines, and(eq(salesPipelines.id, salesOpportunities.pipelineId), eq(salesPipelines.tenantId, actor.tenantId)))
