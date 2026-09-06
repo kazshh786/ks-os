@@ -84,4 +84,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260815090000_governed_site_asset_projection.sql', order: 77, description: 'Bind site assets to governed Asset Library uploads and preserve generator asset semantics without duplicating private bytes' },
   { filename: '20260818203000_multiple_service_bookings.sql', order: 78, description: 'Store ordered service lines and atomically create configurable multi-service public bookings while preserving the primary service contract' },
   { filename: '20260905120000_business_profile_foundation.sql', order: 79, description: 'Add tenant-owned product onboarding configuration without rewriting legacy business types' },
+  { filename: '20260906120000_universal_sales_foundation.sql', order: 80, description: 'Add tenant-isolated sales pipelines, opportunities, CRM sales lifecycle extensions, quotes, and secure public quote acceptance' },
 ];
