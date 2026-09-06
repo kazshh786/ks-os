@@ -8,6 +8,7 @@ import registerRoutes from './routes/health.js';
 import authPlugin from './plugins/auth.js';
 import sessionRoutes from './routes/session.js';
 import { productOnboardingRoutes } from './modules/business-profile/product-onboarding.routes.js';
+import { publicSalesQuoteRoutes, salesRoutes } from './modules/sales/sales.routes.js';
 import workspaceRoutes from './routes/workspace.js';
 import servicesRoutes from './routes/services.js';
 import staffRoutes from './routes/staff.js';
@@ -156,6 +157,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(publicCalendarRoutes, { prefix: '/api/v1/public' });
   fastify.register(publicFormRoutes, { prefix: '/api/v1/public/forms' });
   fastify.register(publicReputationRoutes, { prefix: '/api/v1/public/review-invitations' });
+  fastify.register(publicSalesQuoteRoutes, { prefix: '/api/v1/public/quotes' });
   fastify.register(reviewOauthCallbackRoutes, { prefix: '/api/v1/reputation/connections' });
   fastify.register(teamInvitationAcceptanceRoutes, { prefix: '/api/v1/team/invitations' });
   fastify.register(publicSiteReviewRoutes, { prefix: '/api/v1/site-review' });
@@ -198,6 +200,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(sessionRoutes);
   fastify.register(workspaceRoutes);
   fastify.register(productOnboardingRoutes);
+  fastify.register(salesRoutes, { prefix: '/api/v1/sales' });
   fastify.register(servicesRoutes);
   fastify.register(staffRoutes);
   fastify.register(bookingsRoutes);
