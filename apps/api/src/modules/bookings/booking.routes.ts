@@ -15,6 +15,13 @@ import { EntitlementService } from '../agency/agency.service.js';
 
 const bookingIdSchema = z.string().uuid();
 
+function validationReason(error: z.ZodError) {
+  const issue = error.issues[0];
+  if (!issue) return 'Check the information provided and try again.';
+  const field = issue.path.length ? issue.path.join('.') : 'request';
+  return `${field}: ${issue.message}`;
+}
+
 const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
   const bookingService = new BookingService();
   const bookingDetailService = new BookingDetailService();
@@ -27,7 +34,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     if (!parsed.success) {
       return reply.code(400).send({
         success: false,
-        error: { code: 'INVALID_QUERY', message: parsed.error.message }
+        error: { code: 'INVALID_QUERY', message: validationReason(parsed.error) }
       });
     }
 
@@ -37,7 +44,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (err: any) {
       fastify.log.error(err);
       if (err.statusCode) return reply.code(err.statusCode).send({ success: false, error: { code: err.code || 'BOOKING_ACCESS_DENIED', message: err.message } });
-      return reply.code(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Could not fetch bookings' } });
+      return reply.code(500).send({ success: false, error: { code: 'BOOKING_LIST_FAILED', message: 'The booking calendar could not be loaded because the server hit an unexpected error.' } });
     }
   });
 
@@ -47,7 +54,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(403).send({ success: false, error: { code: 'BOOKING_EXPORT_ACCESS_DENIED', message: 'Booking export permission is required.' } });
     }
     const parsed = BookingOperationsQuerySchema.safeParse(request.query);
-    if (!parsed.success) return reply.code(400).send({ success: false, error: { code: 'INVALID_QUERY', message: parsed.error.message } });
+    if (!parsed.success) return reply.code(400).send({ success: false, error: { code: 'INVALID_QUERY', message: validationReason(parsed.error) } });
     const result = await bookingService.getOperationalBookings(request.auth!, { ...parsed.data, page: 1, limit: 250 });
     const csvValue = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const rows = [
@@ -61,7 +68,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/api/v1/bookings/:id', async (request, reply) => {
     request.requireAuth();
     const parsed = bookingIdSchema.safeParse((request.params as { id: string }).id);
-    if (!parsed.success) return reply.code(400).send({ success: false, error: { code: 'INVALID_BOOKING_ID', message: 'Invalid booking ID.' } });
+    if (!parsed.success) return reply.code(400).send({ success: false, error: { code: 'INVALID_BOOKING_ID', message: 'The booking ID is not valid.' } });
     try {
       return reply.send({ success: true, data: await bookingDetailService.get(request.auth!, parsed.data) });
     } catch (error: any) {
@@ -75,7 +82,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
 
     const parsed = StaffCreateBookingRequestSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ success: false, error: { code: ERROR_CODES.INVALID_BOOKING_REQUEST, message: 'Invalid booking data' } });
+      return reply.code(400).send({ success: false, error: { code: ERROR_CODES.INVALID_BOOKING_REQUEST, message: validationReason(parsed.error) } });
     }
 
     const tenantId = request.auth!.tenantId;
@@ -113,14 +120,26 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
       if (err.code === 'ENTITLEMENT_USAGE_EXCEEDED') {
         return reply.code(409).send({ success: false, error: { code: err.code, message: err.message } });
       }
-      const message = err.message || '';
+      const message = String(err?.message || '');
+      if (/past bookings require confirmation/i.test(message)) {
+        return reply.code(400).send({ success: false, error: { code: ERROR_CODES.PAST_BOOKING_CONFIRMATION_REQUIRED, message: 'This appointment is in the past. Confirm that it should be saved as a historical booking.' } });
+      }
+      if (/^UNAUTHORIZED:/i.test(message)) {
+        return reply.code(403).send({ success: false, error: { code: ERROR_CODES.BOOKING_ACCESS_DENIED, message: message.replace(/^UNAUTHORIZED:\s*/i, '') || 'You do not have permission to create bookings.' } });
+      }
+      if (/tenant or service not found|service_not_available/i.test(message)) {
+        return reply.code(400).send({ success: false, error: { code: ERROR_CODES.SERVICE_NOT_AVAILABLE, message: 'The selected service is no longer active or does not belong to this business.' } });
+      }
+      if (/staff member not found|staff_not_available/i.test(message)) {
+        return reply.code(400).send({ success: false, error: { code: ERROR_CODES.STAFF_NOT_AVAILABLE, message: 'The selected team member is no longer active or available for this business.' } });
+      }
       if (/invalid booking time/i.test(message)) {
-        return reply.code(400).send({ success: false, error: { code: 'INVALID_BOOKING_TIME', message: 'Choose a booking time at least five minutes from now and no more than 180 days ahead.' } });
+        return reply.code(400).send({ success: false, error: { code: ERROR_CODES.INVALID_BOOKING_TIME, message: 'Choose a booking time at least five minutes from now and no more than 180 days ahead.' } });
       }
-      if (/no longer available|outside booking channel schedule/i.test(message)) {
-        return reply.code(409).send({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'Slot unavailable' } });
+      if (/no longer available|outside booking channel schedule|slot_unavailable/i.test(message)) {
+        return reply.code(409).send({ success: false, error: { code: ERROR_CODES.SLOT_UNAVAILABLE, message: 'That time is no longer available. Choose another time and try again.' } });
       }
-      return reply.code(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Could not create booking' } });
+      return reply.code(500).send({ success: false, error: { code: ERROR_CODES.BOOKING_CREATION_FAILED, message: 'The booking could not be saved because the server hit an unexpected error. Try again; if it repeats, use the reference shown with this error.' } });
     }
   });
 
@@ -128,16 +147,16 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     request.requireAuth();
     const parsed = CreateBlockedTimeRequestSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ success: false, error: { code: 'INVALID_BLOCKED_TIME', message: 'Check the team member, time, duration and reason.' } });
+      return reply.code(400).send({ success: false, error: { code: 'INVALID_BLOCKED_TIME', message: validationReason(parsed.error) } });
     }
     try {
       const block = await bookingService.createBlockedTime(request.auth!, parsed.data, request.id);
       return reply.code(201).send({ success: true, bookingId: block.id });
     } catch (err: any) {
       if (err.message === 'SLOT_UNAVAILABLE') return reply.code(409).send({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'That time overlaps an existing booking or block.' } });
-      if (err.message?.startsWith('UNAUTHORIZED')) return reply.code(403).send({ success: false, error: { code: 'UNAUTHORIZED', message: err.message } });
+      if (err.message?.startsWith('UNAUTHORIZED')) return reply.code(403).send({ success: false, error: { code: 'BOOKING_ACCESS_DENIED', message: err.message.replace(/^UNAUTHORIZED:\s*/i, '') } });
       fastify.log.error(err, 'Blocked time creation failed');
-      return reply.code(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Could not block this time.' } });
+      return reply.code(500).send({ success: false, error: { code: 'BLOCKED_TIME_CREATION_FAILED', message: 'The blocked time could not be saved because the server hit an unexpected error.' } });
     }
   });
 
@@ -148,10 +167,10 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
       await bookingService.removeBlockedTime(request.auth!, id, request.id);
       return reply.send({ success: true });
     } catch (err: any) {
-      if (err.message === 'NOT_FOUND') return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Blocked time not found.' } });
-      if (err.message?.startsWith('UNAUTHORIZED')) return reply.code(403).send({ success: false, error: { code: 'UNAUTHORIZED', message: err.message } });
+      if (err.message === 'NOT_FOUND') return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'The blocked time no longer exists.' } });
+      if (err.message?.startsWith('UNAUTHORIZED')) return reply.code(403).send({ success: false, error: { code: 'BOOKING_ACCESS_DENIED', message: err.message.replace(/^UNAUTHORIZED:\s*/i, '') } });
       fastify.log.error(err, 'Blocked time removal failed');
-      return reply.code(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Could not remove this blocked time.' } });
+      return reply.code(500).send({ success: false, error: { code: 'BLOCKED_TIME_REMOVAL_FAILED', message: 'The blocked time could not be removed because the server hit an unexpected error.' } });
     }
   });
 
@@ -161,7 +180,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     const { id } = request.params as { id: string };
     const parsed = UpdateBookingStatusRequestSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ success: false, error: { code: ERROR_CODES.INVALID_BOOKING_STATUS, message: 'Invalid status' } });
+      return reply.code(400).send({ success: false, error: { code: ERROR_CODES.INVALID_BOOKING_STATUS, message: validationReason(parsed.error) } });
     }
 
     try {
@@ -169,13 +188,16 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ success: true });
     } catch (err: any) {
       if (err.message === 'NOT_FOUND') {
-        return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Booking not found' } });
+        return reply.code(404).send({ success: false, error: { code: ERROR_CODES.BOOKING_NOT_FOUND, message: 'The booking no longer exists.' } });
       }
-      if (err.message.startsWith('INVALID_TRANSITION') || err.message.startsWith('UNAUTHORIZED')) {
-        return reply.code(400).send({ success: false, error: { code: 'INVALID_TRANSITION', message: err.message } });
+      if (err.message.startsWith('INVALID_TRANSITION')) {
+        return reply.code(400).send({ success: false, error: { code: 'INVALID_BOOKING_TRANSITION', message: err.message.replace(/^INVALID_TRANSITION:?\s*/i, '') || 'That status change is not allowed from the booking’s current state.' } });
+      }
+      if (err.message.startsWith('UNAUTHORIZED')) {
+        return reply.code(403).send({ success: false, error: { code: ERROR_CODES.BOOKING_ACCESS_DENIED, message: err.message.replace(/^UNAUTHORIZED:?\s*/i, '') || 'You do not have permission to change this booking.' } });
       }
       fastify.log.error(err);
-      return reply.code(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Update failed' } });
+      return reply.code(500).send({ success: false, error: { code: ERROR_CODES.BOOKING_UPDATE_FAILED, message: 'The booking status could not be updated because the server hit an unexpected error.' } });
     }
   });
 
@@ -185,7 +207,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     const { id } = request.params as { id: string };
     const parsed = RescheduleBookingRequestSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ success: false, error: { code: ERROR_CODES.INVALID_BOOKING_REQUEST, message: 'Invalid parameters' } });
+      return reply.code(400).send({ success: false, error: { code: ERROR_CODES.INVALID_BOOKING_REQUEST, message: validationReason(parsed.error) } });
     }
 
     const { startTime, staffId } = parsed.data;
@@ -201,19 +223,22 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ success: true });
     } catch (err: any) {
       if (err.message === 'NOT_FOUND') {
-        return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Booking not found' } });
+        return reply.code(404).send({ success: false, error: { code: ERROR_CODES.BOOKING_NOT_FOUND, message: 'The booking no longer exists.' } });
       }
-      if (err.message.startsWith('INVALID_STATUS') || err.message.startsWith('UNAUTHORIZED')) {
-        return reply.code(400).send({ success: false, error: { code: 'INVALID_STATUS', message: err.message } });
+      if (err.message.startsWith('INVALID_STATUS')) {
+        return reply.code(400).send({ success: false, error: { code: ERROR_CODES.INVALID_BOOKING_STATUS, message: err.message.replace(/^INVALID_STATUS:?\s*/i, '') || 'This booking cannot be rescheduled in its current status.' } });
+      }
+      if (err.message.startsWith('UNAUTHORIZED')) {
+        return reply.code(403).send({ success: false, error: { code: ERROR_CODES.BOOKING_ACCESS_DENIED, message: err.message.replace(/^UNAUTHORIZED:?\s*/i, '') || 'You do not have permission to reschedule this booking.' } });
       }
       if (err.message.startsWith('INVALID_SERVICE')) {
-        return reply.code(400).send({ success: false, error: { code: 'INVALID_SERVICE', message: err.message } });
+        return reply.code(400).send({ success: false, error: { code: ERROR_CODES.SERVICE_NOT_AVAILABLE, message: err.message.replace(/^INVALID_SERVICE:?\s*/i, '') || 'The service is not available for this booking.' } });
       }
       if (err.message === 'SLOT_UNAVAILABLE') {
-        return reply.code(409).send({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'Slot unavailable' } });
+        return reply.code(409).send({ success: false, error: { code: ERROR_CODES.SLOT_UNAVAILABLE, message: 'That time is no longer available. Choose another time.' } });
       }
       fastify.log.error(err);
-      return reply.code(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Reschedule failed' } });
+      return reply.code(500).send({ success: false, error: { code: ERROR_CODES.BOOKING_UPDATE_FAILED, message: 'The booking could not be rescheduled because the server hit an unexpected error.' } });
     }
   });
 
@@ -225,13 +250,16 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ success: true });
     } catch (err: any) {
       if (err.message === 'NOT_FOUND') {
-        return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Booking not found' } });
+        return reply.code(404).send({ success: false, error: { code: ERROR_CODES.BOOKING_NOT_FOUND, message: 'The booking no longer exists.' } });
       }
-      if (err.message.startsWith('INVALID_STATUS') || err.message.startsWith('UNAUTHORIZED')) {
-        return reply.code(400).send({ success: false, error: { code: 'INVALID_STATUS', message: err.message } });
+      if (err.message.startsWith('INVALID_STATUS')) {
+        return reply.code(400).send({ success: false, error: { code: ERROR_CODES.INVALID_BOOKING_STATUS, message: err.message.replace(/^INVALID_STATUS:?\s*/i, '') || 'This booking cannot be cancelled in its current status.' } });
+      }
+      if (err.message.startsWith('UNAUTHORIZED')) {
+        return reply.code(403).send({ success: false, error: { code: ERROR_CODES.BOOKING_ACCESS_DENIED, message: err.message.replace(/^UNAUTHORIZED:?\s*/i, '') || 'You do not have permission to cancel this booking.' } });
       }
       fastify.log.error(err);
-      return reply.code(500).send({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Cancellation failed' } });
+      return reply.code(500).send({ success: false, error: { code: ERROR_CODES.BOOKING_UPDATE_FAILED, message: 'The booking could not be cancelled because the server hit an unexpected error.' } });
     }
   });
 };
