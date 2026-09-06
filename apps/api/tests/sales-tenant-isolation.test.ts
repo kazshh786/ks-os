@@ -1,14 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { eq, getDatabase, tenants, users } from '@ks-os/database';
+import { eq, getDatabase, sql, tenants, users } from '@ks-os/database';
 import { SalesService, type SalesActor } from '../src/modules/sales/sales.service.js';
 
 const databaseAvailable = Boolean(process.env.DATABASE_URL);
 const owner = (tenantId:string,userId:string):SalesActor => ({ tenantId, userId, role:'owner', permissions:[] });
 
-test('sales service prevents cross-tenant customer, pipeline, opportunity and quote references', { skip: !databaseAvailable }, async () => {
+test('sales service prevents cross-tenant customer, pipeline, opportunity and quote references', { skip: !databaseAvailable }, async (context) => {
   const db=getDatabase();
+  // The default CI test service is intentionally an empty PostgreSQL database;
+  // migrations are planned later in the workflow, not applied before pnpm test.
+  // Run this integration test whenever the migrated Sales schema is available
+  // (local/integration/deployment verification) and leave normal CI to the
+  // migration/contract isolation tests when it is not.
+  const schemaCheck:any = await db.execute(sql`select to_regclass('public.sales_pipelines') as table_name`);
+  const schemaRow = schemaCheck?.rows?.[0] ?? schemaCheck?.[0];
+  if (!schemaRow?.table_name) {
+    context.skip('Sales migration is not applied in this database.');
+    return;
+  }
+
   const suffix=randomUUID().slice(0,8);
   const [tenantA,tenantB]=await db.insert(tenants).values([
     {name:`Sales Isolation A ${suffix}`,subdomain:`sales-iso-a-${suffix}`,businessType:'AGENCY'},
