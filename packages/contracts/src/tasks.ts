@@ -2,7 +2,7 @@ import {z} from 'zod';
 
 export const TaskStatusSchema=z.enum(['OPEN','IN_PROGRESS','COMPLETED','CANCELLED']);
 export const TaskPrioritySchema=z.enum(['LOW','NORMAL','HIGH','URGENT']);
-export const TaskSourceTypeSchema=z.enum(['MANUAL','OPERATIONS_ISSUE','APPOINTMENT','CLIENT','FORM_ASSIGNMENT','PAYMENT','REFUND','AUTOMATION','PRODUCT']);
+export const TaskSourceTypeSchema=z.enum(['MANUAL','OPERATIONS_ISSUE','APPOINTMENT','CLIENT','FORM_ASSIGNMENT','PAYMENT','REFUND','AUTOMATION','PRODUCT','WORK_ITEM']);
 export const TaskActivityTypeSchema=z.enum(['CREATED','ASSIGNED','REASSIGNED','STARTED','COMPLETED','REOPENED','CANCELLED','DUE_DATE_CHANGED','PRIORITY_CHANGED']);
 
 const NullableUuid=z.string().uuid().nullable();
