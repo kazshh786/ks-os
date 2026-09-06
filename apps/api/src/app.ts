@@ -9,6 +9,7 @@ import authPlugin from './plugins/auth.js';
 import sessionRoutes from './routes/session.js';
 import { productOnboardingRoutes } from './modules/business-profile/product-onboarding.routes.js';
 import { publicSalesQuoteRoutes, salesRoutes } from './modules/sales/sales.routes.js';
+import { workRoutes } from './modules/work/work.routes.js';
 import workspaceRoutes from './routes/workspace.js';
 import servicesRoutes from './routes/services.js';
 import staffRoutes from './routes/staff.js';
@@ -201,6 +202,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(workspaceRoutes);
   fastify.register(productOnboardingRoutes);
   fastify.register(salesRoutes, { prefix: '/api/v1/sales' });
+  fastify.register(workRoutes, { prefix: '/api/v1/work' });
   fastify.register(servicesRoutes);
   fastify.register(staffRoutes);
   fastify.register(bookingsRoutes);
