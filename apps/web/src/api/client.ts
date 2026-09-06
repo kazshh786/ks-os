@@ -1,10 +1,12 @@
+import { tracedFetch, createCorrelationId, responseError, readJsonResponse } from '../diagnostics/http';
+export { responseError } from '../diagnostics/http';
 import { supabase } from '../lib/supabase';
 import type { ApplicationContext } from '@ks-os/contracts';
 
 let refreshPromise: Promise<string | null> | null = null;
 let defaultContextOverride: ApplicationContext | null = null;
 
-export type AuthenticatedRequestInit = RequestInit & { authContext?: ApplicationContext };
+export type AuthenticatedRequestInit = RequestInit & { authContext?: ApplicationContext; timeoutMs?: number };
 
 function resolveApiUrl(url: string): string {
   if (!url.startsWith('/api/')) return url;
@@ -46,23 +48,24 @@ async function recoverAccessToken(previousToken: string | null): Promise<string 
       return currentAccessToken();
     })();
     refreshPromise = pendingRefresh;
-    void pendingRefresh.finally(() => {
-      if (refreshPromise === pendingRefresh) refreshPromise = null;
-    });
+    const clearRefresh = () => { if (refreshPromise === pendingRefresh) refreshPromise = null; };
+    void pendingRefresh.then(clearRefresh, clearRefresh);
   }
 
   return refreshPromise;
 }
 
 export async function fetchWithAuth(url: string, options: AuthenticatedRequestInit = {}): Promise<Response> {
-  const { authContext, ...fetchOptions } = options;
+  const { authContext, timeoutMs = 120_000, ...fetchOptions } = options;
   const context = requestContext(url, authContext);
   const requestUrl = resolveApiUrl(url);
+  const correlationId = createCorrelationId(fetchOptions.headers);
   let token = await currentAccessToken();
 
   const makeRequest = async (accessToken: string | null) => {
     const headers = new Headers(fetchOptions.headers);
     headers.set('X-KS-Application-Context', context);
+    headers.set('X-Correlation-ID', correlationId);
     if (fetchOptions.body == null) {
       headers.delete('Content-Type');
     } else if (typeof fetchOptions.body === 'string' && !headers.has('Content-Type')) {
@@ -73,7 +76,7 @@ export async function fetchWithAuth(url: string, options: AuthenticatedRequestIn
     }
     const supportToken = sessionStorage.getItem('ks-os-support-session');
     if (supportToken) headers.set('X-KS-Support-Session', supportToken);
-    return fetch(requestUrl, { ...fetchOptions, headers });
+    return tracedFetch(requestUrl, { ...fetchOptions, headers }, correlationId, timeoutMs);
   };
 
   let response = await makeRequest(token);
@@ -100,7 +103,7 @@ export async function getClients(params?: { search?: string; limit?: number; cur
   }
   const response = await fetchWithAuth(url.toString());
   if (!response.ok) {
-    throw new Error('Failed to fetch clients');
+    throw responseError(response, 'Clients could not be loaded.', await readJsonResponse(response).catch(() => undefined));
   }
   return response.json();
 }
@@ -108,10 +111,19 @@ export async function getClients(params?: { search?: string; limit?: number; cur
 export async function getClientProfile(clientId: string) {
   const response = await fetchWithAuth(`/api/v1/clients/${clientId}`);
   if (!response.ok) {
-    if (response.status === 404) throw new Error('Client not found');
-    if (response.status === 403) throw new Error('Access denied');
-    throw new Error('Failed to fetch client profile');
+    throw responseError(response, response.status === 404 ? 'Client not found' : response.status === 403 ? 'Access denied' : 'Client profile could not be loaded.', await readJsonResponse(response).catch(() => undefined));
   }
   const data = await response.json();
   return { data };
+}
+
+/** JSON consumer with bounded decoding and structured error evidence. */
+export async function requestJson<T>(path: string, options: AuthenticatedRequestInit = {}): Promise<T> {
+  const response = await fetchWithAuth(path, options);
+  if (response.status === 204) return undefined as T;
+  const body = await readJsonResponse(response);
+  const envelope = body as { error?: { message?: unknown } } | null;
+  if (!response.ok) throw responseError(response,
+    typeof envelope?.error?.message === 'string' ? envelope.error.message : 'The request could not be completed.', body);
+  return body as T;
 }

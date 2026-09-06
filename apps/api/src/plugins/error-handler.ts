@@ -1,10 +1,15 @@
+import { EvidenceBudget } from '../modules/errors/evidence-budget.js';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { ApiError } from '@ks-os/contracts';
+import { isSafeReadRetry, recoveryFor, type ApiError } from '@ks-os/contracts';
 import { ZodError } from 'zod';
 import { CustomerPortalError } from '../modules/customer-portal/customer-portal.errors.js';
-import { PlatformErrorLogService } from '../modules/errors/platform-error-log.service.js';
+import { PlatformErrorLogService, redactErrorText, errorCauseChain, shouldPersistError } from '../modules/errors/platform-error-log.service.js';
 
 type ErrorWithStatus = Error & { statusCode?: number; code?: string };
+
+declare module 'fastify' {
+  interface FastifyRequest { errorEvidenceRecorded?: boolean; }
+}
 
 type PublicErrorContext = {
   method: string;
@@ -52,20 +57,55 @@ export function publicErrorMessage({ method, statusCode, requestId }: PublicErro
 
 export default function registerErrorHandler(fastify: FastifyInstance) {
   const errorLog = new PlatformErrorLogService();
+  const evidenceBudget = new EvidenceBudget();
+  fastify.decorateRequest('errorEvidenceRecorded', false);
+
+  // Domain routes sometimes send a failure directly instead of throwing.
+  // Preserve their response contract while capturing the same operational evidence.
+  fastify.addHook('onSend', async (request, reply, payload) => {
+    if (reply.statusCode < 400 || request.errorEvidenceRecorded || !shouldPersistError(request, reply.statusCode)) return payload;
+    request.errorEvidenceRecorded = true;
+    let code = `HTTP_RESPONSE_${reply.statusCode}`;
+    let message = 'The route returned a failure response.';
+    if (typeof payload === 'string' && payload.length <= 65_536) {
+      try {
+        const body = JSON.parse(payload);
+        if (typeof body?.error?.code === 'string') code = body.error.code;
+        if (typeof body?.error?.message === 'string') message = body.error.message;
+      } catch { /* Do not store HTML or arbitrary response bodies. */ }
+    }
+    const error = new Error(message);
+    error.name = 'HandledResponseError';
+    error.stack = undefined; // The capture site is not the failure's source location.
+    const evidenceStatus = await evidenceBudget.run(() => errorLog.capture(request, error, reply.statusCode, code, isSafeReadRetry(request.method, reply.statusCode)));
+    if (evidenceStatus !== 'saved') request.log.error({
+      event: 'ERROR_EVIDENCE_UNAVAILABLE', evidenceStatus, requestId: request.id,
+      correlationId: request.correlationId || request.id, code: redactErrorText(code, 120),
+      message: redactErrorText(message, 2_000), statusCode: reply.statusCode,
+    }, 'platform error evidence could not be persisted');
+    return payload;
+  });
 
   fastify.setErrorHandler(async (error: ErrorWithStatus, request: FastifyRequest, reply: FastifyReply) => {
+    request.errorEvidenceRecorded = true;
     const isValidation = error instanceof ZodError;
-    const statusCode = isValidation ? 400 : (error.statusCode || 500);
+    const suppliedStatus = error.statusCode;
+    const statusCode = isValidation ? 400 : (Number.isInteger(suppliedStatus) && suppliedStatus! >= 400 && suppliedStatus! <= 599 ? suppliedStatus! : 500);
     const errorCode = isValidation ? 'FORM_INVALID_SCHEMA' : (error.code || 'INTERNAL_SERVER_ERROR');
-    const retryable = statusCode === 409 || statusCode === 429 || statusCode >= 500;
+    const retryable = isSafeReadRetry(request.method, statusCode);
+    const recovery = recoveryFor(request.method, statusCode);
+    const correlationId = request.correlationId || request.id;
 
-    try {
-      await errorLog.capture(request, error, statusCode, errorCode, retryable);
-    } catch (captureError) {
-      fastify.log.error(
-        { err: captureError, requestId: request.id, correlationId: request.correlationId },
-        'platform error evidence could not be persisted',
-      );
+    const evidenceStatus = shouldPersistError(request, statusCode)
+      ? await evidenceBudget.run(() => errorLog.capture(request, error, statusCode, errorCode, retryable))
+      : 'excluded';
+    if (evidenceStatus !== 'saved' && evidenceStatus !== 'excluded') {
+      fastify.log.error({
+        event: 'ERROR_EVIDENCE_UNAVAILABLE', evidenceStatus,
+        requestId: request.id, correlationId, errorCode, statusCode,
+        message: redactErrorText(error.message, 2_000), stack: redactErrorText(error.stack, 8_000),
+        causes: errorCauseChain(error),
+      }, 'platform error evidence could not be persisted');
     }
 
     // CustomerPortalError carries a domain-specific statusCode and stable code.
@@ -76,15 +116,15 @@ export default function registerErrorHandler(fastify: FastifyInstance) {
         error: {
           code: error.code,
           message: error.message,
-          details: { requestId: request.id, retryable },
+          details: { requestId: request.id, correlationId, retryable, recovery, evidenceStatus },
         },
       };
       reply.status(error.statusCode).send(response);
       return;
     }
 
-    fastify.log.error(
-      { err: error, requestId: request.id, correlationId: request.correlationId, route: request.routeOptions.url },
+    fastify.log[statusCode >= 500 ? 'error' : 'warn'](
+      { errorCode, message: redactErrorText(error.message, 2_000), stack: redactErrorText(error.stack, 8_000), requestId: request.id, correlationId, route: request.routeOptions.url },
       'request failed',
     );
 
@@ -102,6 +142,9 @@ export default function registerErrorHandler(fastify: FastifyInstance) {
         details: {
           requestId: request.id,
           retryable,
+          correlationId,
+          recovery,
+          evidenceStatus,
         },
       },
     };

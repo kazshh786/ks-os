@@ -62,6 +62,7 @@ async function registerSecurity(fastify: FastifyInstance) {
     credentials: true,
     strictPreflight: true,
     maxAge: 600,
+    exposedHeaders: ['x-request-id', 'x-correlation-id', 'retry-after'],
   };
 
   // 2. First-party and exact widget origins keep their configured access.
