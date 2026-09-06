@@ -64,6 +64,7 @@ import { ServicesPage } from './features/services/ServicesPage.js';
 import { OperationIssueDetailPage } from './features/operations/OperationIssueDetailPage.js';
 import {TasksPage} from './features/tasks/TasksPage.js';
 import {TaskDetailPage} from './features/tasks/TaskDetailPage.js';
+import { PublicQuotePage, SalesOpportunityPage, SalesWorkspacePage } from './features/sales/SalesPages.js';
 import {
   CustomerLoginPage,
   CustomerAuthCallbackPage,
@@ -157,6 +158,7 @@ const AppContent: React.FC = () => {
         <Route path="/forms/complete/:token" element={<PublicFormCompletionPage />} />
         <Route path="/forms/complete/:token/success" element={<PublicFormSuccessPage />} />
         <Route path="/review/:token" element={<PublicReviewInvitationPage />} />
+        <Route path="/quote/:token" element={<PublicQuotePage />} />
         <Route path="/fact-finding" element={<ClientFactFindingPage />} />
         <Route path="/pos-payment-complete" element={<PosPaymentCompletePage />} />
 
@@ -199,6 +201,8 @@ const AppContent: React.FC = () => {
           <Route path="bookings" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL']}><BookingListPage /></RoleRoute>} />
           <Route path="reception" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="BOOKINGS_CREATE"><ReceptionPage /></RoleRoute>} />
           <Route path="clients/*" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="CLIENTS_VIEW_BASIC"><ClientCRMPage /></RoleRoute>} />
+          <Route path="sales" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['SALES_VIEW_OWN','SALES_VIEW_ALL']}><SalesWorkspacePage /></RoleRoute>} />
+          <Route path="sales/:reference" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['SALES_VIEW_OWN','SALES_VIEW_ALL']}><SalesOpportunityPage /></RoleRoute>} />
           <Route path="pos" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="POS_USE"><POSCheckoutPage /></RoleRoute>} />
           <Route path="forms" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE']}><ConsentFormsPage /></RoleRoute>} />
           <Route path="forms/new" element={<RoleRoute allowedRoles={['owner']}><FormEditorPage /></RoleRoute>} />
