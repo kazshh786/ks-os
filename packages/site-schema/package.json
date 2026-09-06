@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@ks-os/contracts": "workspace:*",
-    "zod": "^3.23.8"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@ks-os/config": "workspace:*",
