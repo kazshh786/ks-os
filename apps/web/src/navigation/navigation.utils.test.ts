@@ -17,7 +17,7 @@ describe('navigation resolution', () => {
     const primary = businessNavigation.find(group => group.id === 'primary');
     expect(primary?.items.map(item => item.label)).toEqual(['Dashboard', 'Services', 'Booking Calendar', 'Tasks']);
     expect(businessNavigation.find(group => group.id === 'customer-operations')?.items.map(item => item.label)).toEqual(['Inbox', 'Customers', 'Forms']);
-    expect(businessNavigation.find(group => group.id === 'work')?.items.map(item => item.label)).toEqual(['Automations']);
+    expect(businessNavigation.find(group => group.id === 'work')?.items.map(item => item.label)).toEqual(['Work', 'Automations']);
   });
 
   it('only shows staff destinations granted by capabilities and removes empty groups', () => {
