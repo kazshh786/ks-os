@@ -93,7 +93,8 @@ const STAGE_DEFAULTS: Record<string, SalesStageTemplate[]> = {
 
 export function defaultSalesStagesForBusinessType(value: unknown): SalesStageTemplate[] {
   const type = normalizeBusinessType(value);
-  return (type ? STAGE_DEFAULTS[type] : undefined ?? DEFAULT_SALES_STAGES).map(stage => ({ ...stage }));
+  const templates = type ? STAGE_DEFAULTS[type] : undefined;
+  return (templates ?? DEFAULT_SALES_STAGES).map(stage => ({ ...stage }));
 }
 
 export const SalesPipelineStageSchema = z.object({
