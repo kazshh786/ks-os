@@ -202,6 +202,7 @@ export type ModuleDefinition = {
 const implemented: Partial<Record<ModuleKey, [string, string, string[], boolean, string[]]>> = {
   dashboard: ['Dashboard','/app/dashboard',[],true,[]],
   crm: ['Customers','/app/clients',['CLIENTS_VIEW_BASIC'],false,[]],
+  sales: ['Sales','/app/sales',['SALES_VIEW_OWN','SALES_VIEW_ALL'],false,[]],
   bookings: ['Bookings','/app/bookings',['BOOKINGS_VIEW_OWN','BOOKINGS_VIEW_ALL'],false,[]],
   calendar: ['Booking Calendar','/app/calendar',['BOOKINGS_VIEW_OWN','BOOKINGS_VIEW_ALL'],false,[]],
   services: ['Services','/app/services',[],true,[]],
@@ -228,9 +229,9 @@ const implemented: Partial<Record<ModuleKey, [string, string, string[], boolean,
 const core: ModuleKey[] = ['dashboard','crm','tasks','operations','forms','communications','payments','finance','team','reports','automations','integrations','settings','security'];
 const appointmentModules: ModuleKey[] = ['services','bookings','calendar','pos','analytics','reputation','email-marketing','inventory','locations','booking-page'];
 const modelModules: Record<string, ModuleKey[]> = {
-  appointments: appointmentModules, jobs: ['work','calendar','documents','assets','inventory'],
+  appointments: appointmentModules, jobs: ['sales','work','calendar','documents','assets','inventory'],
   projects: ['projects','sales','documents','email-marketing'],
-  deliveries: ['work','dispatch','fleet','routes','documents'],
+  deliveries: ['sales','work','dispatch','fleet','routes','documents'],
   classes: ['bookings','calendar','services','documents','locations'],
   orders: ['pos','inventory','sales','documents'], cases: ['sales','documents'],
 };
@@ -497,7 +498,7 @@ export const BusinessProfileSchema = z.object({
   navigation: z.array(ModuleKeySchema),
   dashboard: z.array(z.enum(['booking-summary','customer-summary','revenue-summary','operations','daily-trend','top-services','staff-utilisation'])),
   recommendedOperatingModel: z.string(), optionalEngines: z.array(ModuleKeySchema),
-  pipelineMetadata: z.object({ status:z.literal('planned'), workLabel:z.string() }),
+  pipelineMetadata: z.object({ status:z.enum(['planned','implemented']), workLabel:z.string() }),
   onboardingDefaults: ProductOnboardingAnswersSchema.omit({ businessName:true, businessType:true }),
   crmExtensions: z.array(z.enum(['salon-care'])),
 });
@@ -549,7 +550,7 @@ export function resolveBusinessProfile(businessType: unknown, configuration?: un
     dashboard:hasBookings ? ['booking-summary','customer-summary','revenue-summary','operations','daily-trend','top-services','staff-utilisation'] : ['customer-summary','revenue-summary','operations'],
     recommendedOperatingModel:configured?.delivery[0] ?? seed.operatingModel,
     optionalEngines:enabled.filter(key=>!core.includes(key)),
-    pipelineMetadata:{status:'planned',workLabel:seed.terminology.work},
+    pipelineMetadata:{status:enabled.includes('sales')?'implemented':'planned',workLabel:seed.terminology.work},
     onboardingDefaults:configured ? {teamSize:configured.teamSize,buying:configured.buying,delivery:configured.delivery,resources:configured.resources,payment:configured.payment,manage:configured.manage} : defaults,
     crmExtensions:salonCare?['salon-care']:[],
   };
