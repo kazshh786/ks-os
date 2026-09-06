@@ -91,6 +91,8 @@ export class AgencySiteJobService {
         sourceReference: siteJobs.sourceReference,
         payloadSchemaVersion: siteJobs.payloadSchemaVersion,
         resultJson: siteJobs.resultJson,
+        leaseExpiresAt: siteJobs.leaseExpiresAt,
+        heartbeatAt: siteJobs.heartbeatAt,
       })
       .from(siteJobs)
       .innerJoin(tenants, eq(siteJobs.tenantId, tenants.id))
@@ -147,6 +149,19 @@ export class AgencySiteJobService {
         eq(siteJobAttempts.tenantId, job.tenantId),
       ))
       .orderBy(asc(siteJobAttempts.attemptNumber));
+  }
+
+  async recentDiagnosticEvents(jobReference: string) {
+    const job = await this.jobContext(jobReference);
+    return this.database.select({
+      eventType: siteJobEvents.eventType,
+      statusFrom: siteJobEvents.statusFrom,
+      statusTo: siteJobEvents.statusTo,
+      occurredAt: siteJobEvents.occurredAt,
+      attemptNumber: siteJobEvents.attemptNumber,
+    }).from(siteJobEvents).where(and(
+      eq(siteJobEvents.jobId, job.id), eq(siteJobEvents.tenantId, job.tenantId),
+    )).orderBy(desc(siteJobEvents.occurredAt), desc(siteJobEvents.id)).limit(20);
   }
 
   async events(jobReference: string) {

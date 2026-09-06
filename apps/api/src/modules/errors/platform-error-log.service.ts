@@ -44,6 +44,22 @@ export function redactErrorText(input: unknown, maximumLength = 8_000): string {
   return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').slice(0, maximumLength);
 }
 
+/** Only standard Error cause fields are retained; arbitrary properties are never serialized. */
+export function errorCauseChain(error: unknown): Array<{ type: string; message: string }> {
+  const causes: Array<{ type: string; message: string }> = [];
+  const seen = new Set<unknown>([error]);
+  let next = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
+  while (next !== undefined && next !== null && causes.length < 5 && !seen.has(next)) {
+    seen.add(next);
+    causes.push({
+      type: redactErrorText(next instanceof Error ? next.name : 'UnknownCause', 160),
+      message: redactErrorText(next instanceof Error ? next.message : typeof next === 'string' ? next : 'Non-error cause', 1_000),
+    });
+    next = next instanceof Error ? (next as Error & { cause?: unknown }).cause : undefined;
+  }
+  return causes;
+}
+
 function normaliseOriginFile(value: string): string {
   const normalised = value.replace(/^file:\/\//, '').replace(/\\/g, '/');
   for (const marker of ['/apps/', '/packages/', '/scripts/', '/tests/']) {
@@ -62,7 +78,7 @@ export function deriveErrorOrigin(stack: string | undefined): {
   if (!stack) return { file: null, functionName: null, line: null, column: null };
   for (const rawLine of stack.split('\n').slice(1)) {
     const line = rawLine.trim();
-    if (!line.startsWith('at ') || line.includes('node:internal') || line.includes('/node_modules/')) continue;
+    if (!line.startsWith('at ') || line.includes('node:internal') || line.replace(/\\/g, '/').includes('/node_modules/')) continue;
     const match = line.match(/^at\s+(?:(.*?)\s+\()?(.+?):(\d+):(\d+)\)?$/);
     if (!match) continue;
     return {
@@ -97,7 +113,8 @@ function safeObjectKeys(value: unknown): string[] {
 function routeFor(request: FastifyRequest): string {
   const configuredRoute = request.routeOptions?.url;
   if (typeof configuredRoute === 'string' && configuredRoute) return configuredRoute.slice(0, 500);
-  return String(request.url || '/').split('?')[0].slice(0, 500);
+  // Unmatched URLs can contain customer identifiers or invitation credentials.
+  return '/[unmatched-route]';
 }
 
 function sourceComponentFor(route: string): string {
@@ -181,6 +198,11 @@ export class PlatformErrorLogService {
         queryKeys: safeObjectKeys(request.query),
         bodyKeys: safeObjectKeys(request.body),
         supportMode: request.auth?.supportMode === true,
+        causes: errorCauseChain(error),
+        release: redactErrorText(process.env.GIT_SHA || process.env.COMMIT_SHA || 'unknown', 100),
+        expected: ['GET', 'HEAD'].includes(request.method) ? 'Requested information is returned.' : 'The requested action has a confirmed outcome.',
+        actual: 'The request failed. A failed response does not establish whether a write took effect.',
+        recovery: ['GET', 'HEAD'].includes(request.method) ? 'Refresh the information.' : 'Reconcile the current state before repeating the action.',
       },
     });
   }
@@ -199,6 +221,7 @@ export class PlatformErrorLogService {
         ilike(platformErrorEvents.message, pattern),
         ilike(platformErrorEvents.route, pattern),
         ilike(platformErrorEvents.requestId, pattern),
+        ilike(platformErrorEvents.correlationId, pattern),
         ilike(platformErrorEvents.fingerprint, pattern),
       ));
     }

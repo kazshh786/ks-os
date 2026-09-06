@@ -1,3 +1,6 @@
+import { requestJson } from '../api/client';
+import { ReaderDiagnostics } from '../diagnostics/ReaderDiagnostics';
+import { useStripeReaderAvailability } from '../diagnostics/useStripeReaderAvailability';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -71,28 +74,13 @@ const money = (amountInCents: number, currency = 'GBP') => new Intl.NumberFormat
   currency,
 }).format(amountInCents / 100);
 
-const safeJson = async (response: Response) => response.json().catch(() => ({}));
-
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetchWithAuth(path, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-  });
-  const body = await safeJson(response);
-  if (!response.ok) {
-    throw new Error(body?.error?.message || body?.error || 'The request could not be completed.');
-  }
-  return body as T;
-}
+const apiRequest = requestJson;
 
 export default function POSCheckout({ tenant, preloadedBooking, onCheckoutCompleted }: POSCheckoutProps) {
   const [config, setConfig] = useState<PosConfig | null>(null);
   const [candidates, setCandidates] = useState<CheckoutCandidate[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [readers, setReaders] = useState<PosStripeReader[]>([]);
+  const { readers, loading: readersLoading, error: readersError, checkedAt: readersCheckedAt, load: refreshReaders } = useStripeReaderAvailability(tenant.id);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(preloadedBooking?.id || null);
   const [selectedReaderId, setSelectedReaderId] = useState('');
   const [cart, setCart] = useState<POSItem[]>([]);
@@ -123,8 +111,9 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
   const finalisingRef = useRef(false);
   const checkoutIdempotencyRef = useRef(crypto.randomUUID());
 
-  useEffect(() => () => {
-    mountedRef.current = false;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
   }, []);
 
   const selectedCandidate = useMemo(
@@ -154,15 +143,10 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
 
   const loadReaders = async () => {
     if (!config?.stripe.ready) return;
-    try {
-      const response = await apiRequest<{ success: true; data: PosStripeReader[] }>('/api/v1/pos/stripe/readers');
-      if (!mountedRef.current) return;
-      setReaders(response.data);
-      const preferred = response.data.find(reader => reader.online && reader.supportsServerDriven);
-      setSelectedReaderId(current => current || preferred?.id || '');
-    } catch (readerError) {
-      if (mountedRef.current) setPaymentMessage(readerError instanceof Error ? readerError.message : 'Stripe readers are unavailable.');
-    }
+    const available = await refreshReaders();
+    if (!mountedRef.current) return;
+    setSelectedReaderId(current => available?.some(reader => reader.id === current && reader.online && reader.supportsServerDriven)
+      ? current : available?.find(reader => reader.online && reader.supportsServerDriven)?.id || '');
   };
 
   useEffect(() => {
@@ -188,10 +172,10 @@ export default function POSCheckout({ tenant, preloadedBooking, onCheckoutComple
         }
 
         if (configResponse.data.stripe.ready) {
-          const readerResponse = await apiRequest<{ success: true; data: PosStripeReader[] }>('/api/v1/pos/stripe/readers').catch(() => null);
+          const readerResponse = await refreshReaders();
           if (mountedRef.current && readerResponse) {
-            setReaders(readerResponse.data);
-            const preferred = readerResponse.data.find(reader => reader.online && reader.supportsServerDriven);
+
+            const preferred = readerResponse.find(reader => reader.online && reader.supportsServerDriven);
             setSelectedReaderId(preferred?.id || '');
           }
         }
@@ -777,7 +761,9 @@ const startOnlinePayment = async (presentation: 'EMBEDDED' | 'HOSTED') => {
                   <div><h3 className="font-black text-slate-950">How will the customer pay?</h3><p className="mt-1 text-sm text-slate-500">All card payments use the business's existing Stripe Connect account.</p></div>
 
                   <div className="space-y-3">
-                    <button type="button" onClick={() => setPaymentChoice('READER')} disabled={onlineReaders.length === 0} className={`flex min-h-[92px] w-full items-center gap-4 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${paymentChoice === 'READER' ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}>
+                    {readersError && <p role="alert" className="text-sm text-rose-700">{readersError}</p>}
+<ReaderDiagnostics onRefresh={() => void loadReaders()} enabled={config ? config.stripe.ready : null} loading={readersLoading} error={readersError} checkedAt={readersCheckedAt} total={readers.length} usable={onlineReaders.length} />
+<button type="button" onClick={() => setPaymentChoice('READER')} disabled={onlineReaders.length === 0} className={`flex min-h-[92px] w-full items-center gap-4 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${paymentChoice === 'READER' ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}>
                       <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-indigo-600 text-white"><CreditCard className="h-5 w-5" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-900">Send to Stripe Terminal</p><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700">Automatic</span></div><p className="mt-1 text-xs leading-5 text-slate-500">The POS sends the exact amount to a supported online Stripe reader and confirms it directly with Stripe.</p></div>{paymentChoice === 'READER' && <CheckCircle2 className="h-5 w-5 shrink-0 text-indigo-600" />}
                     </button>
 

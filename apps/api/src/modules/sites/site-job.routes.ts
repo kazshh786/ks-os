@@ -8,6 +8,7 @@ import {
 import type { AgencyCapability } from '@ks-os/contracts';
 import type { AgencyActor } from '../agency/agency.service.js';
 import { AgencySiteJobService } from './site-job.service.js';
+import { diagnoseSiteJob } from './site-job-diagnostics.js';
 
 const JobParamsSchema = z.object({
   jobReference: z.string().uuid(),
@@ -54,6 +55,15 @@ export async function agencySiteJobRoutes(app: FastifyInstance) {
     actor(request, 'sites.jobs.read');
     const { jobReference } = JobParamsSchema.parse(request.params);
     return { data: await service.attempts(jobReference) };
+  });
+
+  app.get('/site-jobs/:jobReference/diagnostics', async request => {
+    actor(request, 'sites.jobs.read');
+    const { jobReference } = JobParamsSchema.parse(request.params);
+    const [job, events] = await Promise.all([
+      service.get(jobReference), service.recentDiagnosticEvents(jobReference),
+    ]);
+    return { data: { reference: jobReference, diagnosis: diagnoseSiteJob(job), events } };
   });
 
   app.get('/site-jobs/:jobReference/events', async request => {

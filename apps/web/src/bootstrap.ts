@@ -1,3 +1,4 @@
+import { isDeploymentAssetError, recordDiagnostic, recordRuntimeDiagnostic } from './diagnostics/store';
 import { isPublicSitePath, normalisePublicPath } from './public-route';
 
 const root = document.getElementById('root');
@@ -38,14 +39,17 @@ function requestLatestDeployment(reason: unknown): boolean {
 
 window.addEventListener('vite:preloadError', (event: Event) => {
   event.preventDefault();
+  recordDiagnostic({ kind: 'asset', operation: 'browser', outcome: 'failed' });
   requestLatestDeployment('Vite preload error');
 });
 
+window.addEventListener('error', event => recordRuntimeDiagnostic(event.error));
+
 window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
   const message = event.reason instanceof Error ? event.reason.message : String(event.reason);
-  const isDeploymentAssetError = /dynamically imported module|module script failed|failed to fetch/i.test(message);
+  recordRuntimeDiagnostic(event.reason);
 
-  if (isDeploymentAssetError && requestLatestDeployment(message)) {
+  if (isDeploymentAssetError(message) && requestLatestDeployment('Deployment asset unavailable')) {
     event.preventDefault();
   }
 });
