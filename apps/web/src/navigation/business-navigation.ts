@@ -1,5 +1,5 @@
 import {
-  BarChart3, Boxes, Building2, CalendarDays, ClipboardList, CreditCard,
+  BadgePoundSterling, BarChart3, Boxes, Building2, CalendarDays, ClipboardList, CreditCard,
   FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors,
   Mail, Plug, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
 } from 'lucide-react';
@@ -27,6 +27,7 @@ export const businessNavigation: NavigationGroup[] = [
   {
     id: 'sales-money', label: 'Sales and Money',
     items: [
+      { id: 'sales', label: 'Sales', href: '/app/sales', icon: BadgePoundSterling, permissionsAny: ['SALES_VIEW_OWN', 'SALES_VIEW_ALL'], activePrefixes: ['/app/sales/'] },
       { id: 'pos', label: 'Point of Sale', href: '/app/pos', icon: ShoppingCart, permissionsAny: ['POS_USE'] },
       { id: 'payments', label: 'Payments', href: '/app/payments', icon: CreditCard, roles: ['owner'], activePrefixes: ['/app/payments/'] },
       { id: 'finance', label: 'Finance', href: '/app/finance', icon: Landmark, roles: ['owner'], activePrefixes: ['/app/finance/'] },
@@ -71,7 +72,7 @@ export const businessSecondaryActions = [
 /** Map established navigation IDs onto canonical engines without changing routes. */
 export const navigationModule: Readonly<Record<string, ModuleKey>> = {
   dashboard:'dashboard',services:'services',calendar:'calendar',tasks:'tasks',operations:'operations',
-  customers:'crm',forms:'forms',pos:'pos',payments:'payments',finance:'finance',analytics:'analytics',
+  customers:'crm',forms:'forms',sales:'sales',pos:'pos',payments:'payments',finance:'finance',analytics:'analytics',
   reports:'reports',reviews:'reputation','email-marketing':'email-marketing',inventory:'inventory',
   automations:'automations',team:'team',locations:'locations','booking-page':'booking-page',
   'stripe-payments':'payments',integrations:'integrations',communications:'communications',
