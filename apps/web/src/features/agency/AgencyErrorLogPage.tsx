@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CircleAlert, Info, RefreshCw, Search, Wrench } from 'lucide-react';
 import { agencyFetch } from './AgencyAuth';
+import { WorkflowInspector } from '../../diagnostics/WorkflowInspector';
 
 interface ErrorLogRow {
   id: string;
@@ -31,7 +32,7 @@ interface ErrorLogDetail extends ErrorLogRow {
   applicationContext: string | null;
   supportSessionId: string | null;
   sessionId: string | null;
-  context: { parameterKeys?: string[]; queryKeys?: string[]; bodyKeys?: string[]; supportMode?: boolean };
+  context: { parameterKeys?: string[]; queryKeys?: string[]; bodyKeys?: string[]; supportMode?: boolean; expected?: string; actual?: string; recovery?: string; release?: string; causes?: Array<{ type: string; message: string }> };
 }
 
 type IssueExplanation = {
@@ -69,7 +70,7 @@ export function explainAgencyIssue(issue: Pick<ErrorLogRow, 'errorCode' | 'messa
   if (issue.statusCode >= 500) return {
     title: 'KS OS could not complete this action',
     summary: issue.retryable ? 'The action failed unexpectedly, but it may succeed when retried.' : 'The action failed unexpectedly and needs investigation.',
-    nextStep: issue.retryable ? 'Retry the action once. If it fails again, use the technical details below for support.' : 'Review the technical details below and investigate the affected service before retrying.',
+    nextStep: issue.retryable ? 'Retry loading the information once. For payments or saved changes, confirm the current state before repeating the action.' : 'Review the technical details below and investigate the affected service before retrying.',
     kind: 'problem',
   };
   return {
@@ -143,6 +144,7 @@ export const AgencyErrorLogPage: React.FC = () => {
   const workspaces = new Set(rows.map(row => row.tenantId).filter(Boolean)).size;
 
   return <div className="space-y-6">
+    <WorkflowInspector />
     <header className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
       <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-300">Platform</p>
       <h1 className="mt-2 text-3xl font-black text-white">System issues</h1>
@@ -183,7 +185,7 @@ export const AgencyErrorLogPage: React.FC = () => {
 
     {selected ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="System issue details"><section className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">{(() => {
       const explanation = explainAgencyIssue(selected);
-      return <><div className="flex items-start justify-between gap-4"><div className="flex min-w-0 items-start gap-3"><IssueIcon kind={explanation.kind} /><div><p className="text-xs font-black uppercase tracking-[0.16em] text-violet-300">What happened</p><h2 className="mt-2 text-2xl font-black text-white">{explanation.title}</h2><p className="mt-2 text-sm leading-6 text-slate-400">{explanation.summary}</p></div></div><button type="button" onClick={() => setSelected(null)} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-300 hover:text-white">Close</button></div><div className="mt-5 rounded-2xl border border-violet-800/50 bg-violet-950/20 p-4"><p className="text-xs font-black uppercase tracking-wide text-violet-300">What to do next</p><p className="mt-2 text-sm text-slate-200">{explanation.nextStep}</p></div><details className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/70 p-4"><summary className="cursor-pointer text-sm font-black text-slate-300">Technical details</summary><p className="mt-3 text-[11px] text-slate-500">Only field names are retained. Values are never stored here.</p><dl className="mt-4 grid gap-3 sm:grid-cols-2"><Detail label="Error code" value={selected.errorCode} /><Detail label="HTTP status" value={selected.statusCode} /><Detail label="Request ID" value={selected.requestId} /><Detail label="Correlation ID" value={selected.correlationId} /><Detail label="Route" value={`${selected.method} ${selected.route}`} /><Detail label="Affected user" value={`${selected.affectedUser.displayName} · ${selected.affectedUser.type}`} /><Detail label="Workspace" value={selected.tenantName || 'Platform-wide'} /><Detail label="Source" value={selected.originFile ? `${selected.originFile}:${selected.originLine || '?'}` : selected.sourceComponent} /><Detail label="Fingerprint" value={selected.fingerprint} /><Detail label="Session" value={selected.sessionId} /></dl>{selected.stack ? <div className="mt-4"><p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Sanitised stack</p><pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-xl border border-slate-800 bg-slate-950 p-3 text-[11px] leading-5 text-slate-500">{selected.stack}</pre></div> : null}</details></>;
+      return <><div className="flex items-start justify-between gap-4"><div className="flex min-w-0 items-start gap-3"><IssueIcon kind={explanation.kind} /><div><p className="text-xs font-black uppercase tracking-[0.16em] text-violet-300">What happened</p><h2 className="mt-2 text-2xl font-black text-white">{explanation.title}</h2><p className="mt-2 text-sm leading-6 text-slate-400">{explanation.summary}</p></div></div><button type="button" onClick={() => setSelected(null)} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-300 hover:text-white">Close</button></div><div className="mt-5 rounded-2xl border border-violet-800/50 bg-violet-950/20 p-4"><p className="text-xs font-black uppercase tracking-wide text-violet-300">What to do next</p><p className="mt-2 text-sm text-slate-200">{explanation.nextStep}</p></div><details className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/70 p-4"><summary className="cursor-pointer text-sm font-black text-slate-300">Technical details</summary><p className="mt-3 text-[11px] text-slate-500">Only field names are retained. Values are never stored here.</p><dl className="mt-4 grid gap-3 sm:grid-cols-2"><Detail label="Error code" value={selected.errorCode} /><Detail label="HTTP status" value={selected.statusCode} /><Detail label="Request ID" value={selected.requestId} /><Detail label="Correlation ID" value={selected.correlationId} /><Detail label="Expected" value={selected.context?.expected || "Inspect the affected workflow for its expected result."} /><Detail label="Actual" value={selected.context?.actual || "A failure was recorded."} /><Detail label="Recovery" value={selected.context?.recovery || "Check the current state before repeating an action."} /><Detail label="Release" value={selected.context?.release || "unknown"} /><Detail label="Route" value={`${selected.method} ${selected.route}`} /><Detail label="Affected user" value={`${selected.affectedUser.displayName} · ${selected.affectedUser.type}`} /><Detail label="Workspace" value={selected.tenantName || 'Platform-wide'} /><Detail label="Source" value={selected.originFile ? `${selected.originFile}:${selected.originLine || '?'}` : selected.sourceComponent} /><Detail label="Fingerprint" value={selected.fingerprint} /><Detail label="Session" value={selected.sessionId} /></dl>{selected.context?.causes?.length ? <div className="mt-4"><p className="font-bold">Underlying causes</p><ol>{selected.context.causes.map((cause, index) => <li key={index}>{cause.type}: {cause.message}</li>)}</ol></div> : null}{selected.stack ? <div className="mt-4"><p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Sanitised stack</p><pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-xl border border-slate-800 bg-slate-950 p-3 text-[11px] leading-5 text-slate-500">{selected.stack}</pre></div> : null}</details></>;
     })()}</section></div> : null}
   </div>;
 };

@@ -1,22 +1,23 @@
+import { responseError, fetchPublicApi } from '../diagnostics/http';
 import { fetchWithAuth } from '../api/client.js';
 import { DataProvider } from './data-provider.js';
-import { 
-  BusinessTenant, 
-  Service, 
-  Staff, 
-  ClientProfile, 
-  Product, 
-  Booking, 
-  OutboxEvent, 
-  AutomationEvent 
+import {
+  BusinessTenant,
+  Service,
+  Staff,
+  ClientProfile,
+  Product,
+  Booking,
+  OutboxEvent,
+  AutomationEvent
 } from './types.js';
-import { 
-  AvailabilityQuery, 
-  AvailabilityResult, 
-  CreateBookingRequest, 
-  CreateBookingResponse, 
+import {
+  AvailabilityQuery,
+  AvailabilityResult,
+  CreateBookingRequest,
+  CreateBookingResponse,
   BookingStatusResponse,
-  StaffCreateBookingRequest, 
+  StaffCreateBookingRequest,
   RescheduleBookingRequest,
   CheckoutCandidate,
   CheckoutPreviewRequest,
@@ -55,7 +56,7 @@ import {
 } from '@ks-os/contracts';
 /**
  * PRODUCTION API DATA PROVIDER
- * 
+ *
  * In later phases, this provider will query the Fastify backend server.
  * Currently returns mock data/throws stubs to facilitate bootstrap verification.
  */
@@ -63,7 +64,7 @@ export class ApiDataProvider implements DataProvider {
   private async reputationRequest(path: string, init?: RequestInit) {
     const response = await fetchWithAuth('/api/v1/reputation' + path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } });
     const body = response.status === 204 ? null : await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body?.error?.message || body?.error?.code || body?.error || 'Reputation operation failed.');
+    if (!response.ok) throw responseError(response, body?.error?.message || body?.error?.code || body?.error || 'Reputation operation failed.', body);
     return body?.data;
   }
   getReputationOverview(){return this.reputationRequest('/overview');}
@@ -98,7 +99,7 @@ export class ApiDataProvider implements DataProvider {
     const params=new URLSearchParams();
     for(const [key,value] of Object.entries(query))if(value!==undefined&&value!==null&&value!=='')params.set(key,String(value));
     const response=await fetchWithAuth(`${path}?${params}`);const body=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(body.error?.message||'The report is unavailable.');return body.data as T;
+    if (!response.ok) throw responseError(response, body.error?.message||'The report is unavailable.', body);return body.data as T;
   }
   getAppointmentsReport(query:AppointmentsReportQuery){return this.reportRequest<AppointmentsReportResponse>('/api/v1/reports/appointments',query);}
   getClientsReport(query:ClientsReportQuery){return this.reportRequest<ClientsReportResponse>('/api/v1/reports/clients',query);}
@@ -113,7 +114,7 @@ export class ApiDataProvider implements DataProvider {
   async getDashboardOverview(query:DashboardOverviewQuery):Promise<DashboardOverviewResponse>{
     const params=new URLSearchParams({preset:query.preset});if(query.from)params.set('from',query.from);if(query.to)params.set('to',query.to);
     const response=await fetchWithAuth(`/api/v1/dashboard/overview?${params}`);const body=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(body.error?.message||'Dashboard analytics are unavailable.');return body.data;
+    if (!response.ok) throw responseError(response, body.error?.message||'Dashboard analytics are unavailable.', body);return body.data;
   }
   async getTenants(): Promise<BusinessTenant[]> {
     throw new Error('API Method not implemented: getTenants');
@@ -124,7 +125,7 @@ export class ApiDataProvider implements DataProvider {
 
   async getServices(tenantId: string): Promise<Service[]> {
     const res = await fetchWithAuth('/api/v1/services');
-    if (!res.ok) throw new Error('Failed to fetch services');
+    if (!res.ok) throw responseError(res, 'Failed to fetch services');
     const { data } = await res.json();
     return data.map((s: any) => ({
       id: s.id,
@@ -148,7 +149,7 @@ export class ApiDataProvider implements DataProvider {
       }),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error?.message || 'Could not create service');
+    if (!res.ok) throw responseError(res, body.error?.message || 'Could not create service', body);
     const created = body.data;
     return {
       id: created.id,
@@ -165,7 +166,7 @@ export class ApiDataProvider implements DataProvider {
 
   async getStaff(tenantId: string): Promise<Staff[]> {
     const res = await fetchWithAuth('/api/v1/staff');
-    if (!res.ok) throw new Error('Failed to fetch staff');
+    if (!res.ok) throw responseError(res, 'Failed to fetch staff');
     const { data } = await res.json();
     return data.map((s: any) => ({
       id: s.id,
@@ -193,7 +194,7 @@ export class ApiDataProvider implements DataProvider {
   async searchClients(query: any): Promise<any> {
     const params = new URLSearchParams(query as Record<string, string>).toString();
     const res = await fetchWithAuth(`/api/v1/clients?${params}`);
-    if (!res.ok) throw new Error('Failed to search clients');
+    if (!res.ok) throw responseError(res, 'Failed to search clients');
     const { data, meta } = await res.json();
     return { data, meta };
   }
@@ -252,14 +253,14 @@ export class ApiDataProvider implements DataProvider {
     }
     const res = await fetchWithAuth(`/api/v1/bookings?${params}`);
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error?.message || 'Bookings could not be loaded.');
+    if (!res.ok) throw responseError(res, body.error?.message || 'Bookings could not be loaded.', body);
     return { items: body.data, meta: body.meta, summary: body.summary };
   }
 
   async getBookingDetail(bookingId: string): Promise<BookingOperationsItem> {
     const res = await fetchWithAuth(`/api/v1/bookings/${encodeURIComponent(bookingId)}`);
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error?.message || 'Booking could not be loaded.');
+    if (!res.ok) throw responseError(res, body.error?.message || 'Booking could not be loaded.', body);
     return body.data;
   }
 
@@ -270,31 +271,31 @@ export class ApiDataProvider implements DataProvider {
 
   // Public Booking Methods
   async getPublicCatalog(subdomain: string): Promise<any> {
-    const res = await fetch(`/api/v1/public/${subdomain}/catalog`);
-    if (!res.ok) throw new Error('Failed to load catalog');
+    const res = await fetchPublicApi(`/api/v1/public/${subdomain}/catalog`);
+    if (!res.ok) throw responseError(res, 'Failed to load catalog');
     return res.json();
   }
 
   async getPublicAvailability(subdomain: string, input: AvailabilityQuery): Promise<AvailabilityResult> {
     const params = new URLSearchParams(input as any).toString();
-    const res = await fetch(`/api/v1/public/${subdomain}/availability?${params}`);
-    if (!res.ok) throw new Error('Failed to load availability');
+    const res = await fetchPublicApi(`/api/v1/public/${subdomain}/availability?${params}`);
+    if (!res.ok) throw responseError(res, 'Failed to load availability');
     return res.json();
   }
 
   async getPublicBookingStatus(subdomain: string, reference: string): Promise<BookingStatusResponse> {
-    const res = await fetch(`/api/v1/public/${subdomain}/bookings/${reference}`);
-    if (!res.ok) throw new Error('Failed to fetch booking status');
+    const res = await fetchPublicApi(`/api/v1/public/${subdomain}/bookings/${reference}`);
+    if (!res.ok) throw responseError(res, 'Failed to fetch booking status');
     return res.json();
   }
 
   async createPublicBooking(subdomain: string, input: CreateBookingRequest): Promise<CreateBookingResponse> {
-    const res = await fetch(`/api/v1/public/${subdomain}/bookings`, {
+    const res = await fetchPublicApi(`/api/v1/public/${subdomain}/bookings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input)
     });
-    
+
     const data = await res.json();
     if (!res.ok) {
       if (res.status === 409) throw new Error('SLOT_UNAVAILABLE');
@@ -308,13 +309,13 @@ export class ApiDataProvider implements DataProvider {
     subdomain: string,
     input: CreatePublicWaitlistRequest,
   ): Promise<PublicWaitlistResponse> {
-    const res = await fetch(`/api/v1/public/${encodeURIComponent(subdomain)}/waitlist`, {
+    const res = await fetchPublicApi(`/api/v1/public/${encodeURIComponent(subdomain)}/waitlist`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error?.message || 'Unable to join the waitlist.');
+    if (!res.ok) throw responseError(res, data.error?.message || 'Unable to join the waitlist.', data);
     return data as PublicWaitlistResponse;
   }
 
@@ -323,26 +324,26 @@ export class ApiDataProvider implements DataProvider {
     input: PublicWaitlistContext,
   ): Promise<PublicWaitlistEligibilityResponse> {
     const query = new URLSearchParams(Object.entries(input).filter((entry): entry is [string, string] => Boolean(entry[1])));
-    const res = await fetch(`/api/v1/public/${encodeURIComponent(subdomain)}/waitlist-eligibility?${query}`);
+    const res = await fetchPublicApi(`/api/v1/public/${encodeURIComponent(subdomain)}/waitlist-eligibility?${query}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { waitlistEligible: false };
     return data as PublicWaitlistEligibilityResponse;
   }
 
   async createBookingHold(subdomain: string, input: CreateBookingHold): Promise<BookingHoldResponse> {
-    const res = await fetch(`/api/v1/public/${encodeURIComponent(subdomain)}/holds`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const res = await fetchPublicApi(`/api/v1/public/${encodeURIComponent(subdomain)}/holds`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error?.code || body.error?.message || 'SLOT_UNAVAILABLE');
+    if (!res.ok) throw responseError(res, body.error?.code || body.error?.message || 'SLOT_UNAVAILABLE', body);
     return body.hold;
   }
 
   async releaseBookingHold(subdomain: string, holdId: string, token: string): Promise<void> {
-    const res = await fetch(`/api/v1/public/${encodeURIComponent(subdomain)}/holds/${encodeURIComponent(holdId)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
+    const res = await fetchPublicApi(`/api/v1/public/${encodeURIComponent(subdomain)}/holds/${encodeURIComponent(holdId)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
     if (!res.ok && res.status !== 404) throw new Error('The slot reservation could not be released.');
   }
 
   async recordPublicBookingEvent(subdomain: string, input: Record<string, unknown>): Promise<void> {
-    await fetch(`/api/v1/public/${encodeURIComponent(subdomain)}/analytics-events`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), keepalive: true });
+    await fetchPublicApi(`/api/v1/public/${encodeURIComponent(subdomain)}/analytics-events`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), keepalive: true });
   }
 
   // Staff Booking Methods
@@ -362,13 +363,13 @@ export class ApiDataProvider implements DataProvider {
   async createBlockedTime(input: { staffId: string; startTime: string; durationMinutes: number; reason: string }): Promise<any> {
     const res = await fetchWithAuth('/api/v1/bookings/blocked-time', { method: 'POST', body: JSON.stringify(input) });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(res.status === 409 ? 'SLOT_UNAVAILABLE' : data.error?.message || 'Could not block this time.');
+    if (!res.ok) throw responseError(res, res.status === 409 ? 'SLOT_UNAVAILABLE' : data.error?.message || 'Could not block this time.', data);
     return data;
   }
 
   async removeBlockedTime(bookingId: string): Promise<void> {
     const res = await fetchWithAuth(`/api/v1/bookings/${bookingId}/blocked-time`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Could not remove this blocked time.');
+    if (!res.ok) throw responseError(res, 'Could not remove this blocked time.');
   }
 
   async updateBookingStatus(bookingId: string, status: string): Promise<void> {
@@ -376,7 +377,7 @@ export class ApiDataProvider implements DataProvider {
       method: 'PATCH',
       body: JSON.stringify({ status })
     });
-    if (!res.ok) throw new Error('Failed to update status');
+    if (!res.ok) throw responseError(res, 'Failed to update status');
   }
 
   async rescheduleBooking(bookingId: string, input: RescheduleBookingRequest): Promise<void> {
@@ -394,41 +395,41 @@ export class ApiDataProvider implements DataProvider {
     const res = await fetchWithAuth(`/api/v1/bookings/${bookingId}/cancel`, {
       method: 'POST'
     });
-    if (!res.ok) throw new Error('Failed to cancel booking');
+    if (!res.ok) throw responseError(res, 'Failed to cancel booking');
   }
 
   async getBookingPageSettings(): Promise<BookingPageResponse> {
     const res = await fetchWithAuth('/api/v1/booking-page');
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error?.message || 'Booking-page settings could not be loaded.');
+    if (!res.ok) throw responseError(res, body.error?.message || 'Booking-page settings could not be loaded.', body);
     return body.data;
   }
 
   async updateBookingPageSettings(input: BookingPageUpdate): Promise<BookingPageResponse> {
     const res = await fetchWithAuth('/api/v1/booking-page', { method: 'PATCH', body: JSON.stringify(input) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error?.message || 'Booking-page settings could not be saved.');
+    if (!res.ok) throw responseError(res, body.error?.message || 'Booking-page settings could not be saved.', body);
     return body.data;
   }
 
   async setBookingPagePublished(published: boolean): Promise<BookingPageResponse> {
     const res = await fetchWithAuth(`/api/v1/booking-page/${published ? 'publish' : 'unpublish'}`, { method: 'POST' });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error?.message || 'Booking-page publication status could not be changed.');
+    if (!res.ok) throw responseError(res, body.error?.message || 'Booking-page publication status could not be changed.', body);
     return body.data;
   }
 
   async configureBookingCustomDomain(domain: string | null): Promise<any> {
     const res = await fetchWithAuth('/api/v1/booking-page/custom-domain', { method: 'PUT', body: JSON.stringify({ domain }) });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error?.message || 'Custom domain could not be saved.');
+    if (!res.ok) throw responseError(res, body.error?.message || 'Custom domain could not be saved.', body);
     return body.data;
   }
 
   async getBookingPageAnalytics(days = 30): Promise<any> {
     const res = await fetchWithAuth(`/api/v1/booking-page/analytics?days=${days}`);
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error?.message || 'Booking analytics could not be loaded.');
+    if (!res.ok) throw responseError(res, body.error?.message || 'Booking analytics could not be loaded.', body);
     return body.data;
   }
 
@@ -478,13 +479,13 @@ export class ApiDataProvider implements DataProvider {
   // POS Methods
   async getCheckoutAppointments(): Promise<{ data: CheckoutCandidate[] }> {
     const response = await fetchWithAuth('/api/v1/pos/appointments');
-    if (!response.ok) throw new Error('Failed to fetch checkout candidates');
+    if (!response.ok) throw responseError(response, 'Failed to fetch checkout candidates');
     return response.json();
   }
 
   async searchProducts(query?: string): Promise<{ data: ContractsProduct[] }> {
     const response = await fetchWithAuth('/api/v1/products');
-    if (!response.ok) throw new Error('Failed to fetch products');
+    if (!response.ok) throw responseError(response, 'Failed to fetch products');
     return response.json();
   }
 
@@ -517,25 +518,25 @@ export class ApiDataProvider implements DataProvider {
   // Stripe Connect Methods
   async getStripeConnection(): Promise<any> {
     const res = await fetchWithAuth('/api/v1/stripe/connection');
-    if (!res.ok) throw new Error('Failed to get Stripe connection');
+    if (!res.ok) throw responseError(res, 'Failed to get Stripe connection');
     return res.json();
   }
 
   async connectStripe(): Promise<any> {
     const res = await fetchWithAuth('/api/v1/stripe/connect', { method: 'POST' });
-    if (!res.ok) throw new Error('Failed to connect Stripe');
+    if (!res.ok) throw responseError(res, 'Failed to connect Stripe');
     return res.json();
   }
 
   async generateOnboardingLink(): Promise<any> {
     const res = await fetchWithAuth('/api/v1/stripe/onboarding-link', { method: 'POST' });
-    if (!res.ok) throw new Error('Failed to generate onboarding link');
+    if (!res.ok) throw responseError(res, 'Failed to generate onboarding link');
     return res.json();
   }
 
   async syncStripe(): Promise<any> {
     const res = await fetchWithAuth('/api/v1/stripe/sync', { method: 'POST' });
-    if (!res.ok) throw new Error('Failed to sync Stripe');
+    if (!res.ok) throw responseError(res, 'Failed to sync Stripe');
     return res.json();
   }
 
@@ -544,13 +545,13 @@ export class ApiDataProvider implements DataProvider {
     const params = new URLSearchParams(query as any).toString();
     const response = await fetchWithAuth(`/api/v1/payments?${params}`);
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body?.error?.message || body?.error || 'Failed to fetch payment history');
+    if (!response.ok) throw responseError(response, body?.error?.message || body?.error || 'Failed to fetch payment history', body);
     return { data: Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : [], nextCursor: body?.nextCursor };
   }
 
   async getPaymentDetail(transactionId: string): Promise<PaymentDetailResponse> {
     const response = await fetchWithAuth(`/api/v1/payments/${transactionId}`);
-    if (!response.ok) throw new Error('Failed to fetch payment details');
+    if (!response.ok) throw responseError(response, 'Failed to fetch payment details');
     return response.json();
   }
 
@@ -570,50 +571,50 @@ export class ApiDataProvider implements DataProvider {
   // Finance Methods
   async getStripeBalance(): Promise<StripeBalance> {
     const res = await fetchWithAuth('/api/v1/finance/balance');
-    if (!res.ok) throw new Error('Failed to fetch stripe balance');
+    if (!res.ok) throw responseError(res, 'Failed to fetch stripe balance');
     return res.json();
   }
 
   async getPayouts(query: PayoutListQuery): Promise<{ data: PayoutListItem[], nextCursor?: string }> {
     const params = new URLSearchParams(query as any).toString();
     const res = await fetchWithAuth(`/api/v1/finance/payouts?${params}`);
-    if (!res.ok) throw new Error('Failed to fetch payouts');
+    if (!res.ok) throw responseError(res, 'Failed to fetch payouts');
     return res.json();
   }
 
   async getPayoutDetail(id: string): Promise<PayoutDetailResponse> {
     const res = await fetchWithAuth(`/api/v1/finance/payouts/${id}`);
-    if (!res.ok) throw new Error('Failed to fetch payout detail');
+    if (!res.ok) throw responseError(res, 'Failed to fetch payout detail');
     return res.json();
   }
 
   async getDisputes(query: DisputeListQuery): Promise<{ data: DisputeListItem[], nextCursor?: string }> {
     const params = new URLSearchParams(query as any).toString();
     const res = await fetchWithAuth(`/api/v1/finance/disputes?${params}`);
-    if (!res.ok) throw new Error('Failed to fetch disputes');
+    if (!res.ok) throw responseError(res, 'Failed to fetch disputes');
     return res.json();
   }
 
   async getDisputeDetail(id: string): Promise<DisputeDetailResponse> {
     const res = await fetchWithAuth(`/api/v1/finance/disputes/${id}`);
-    if (!res.ok) throw new Error('Failed to fetch dispute detail');
+    if (!res.ok) throw responseError(res, 'Failed to fetch dispute detail');
     return res.json();
   }
 
   // Communications
   async getCommunicationsSettings(): Promise<CommunicationsSettingsResponse> {
     const res = await fetchWithAuth('/api/v1/communications/settings');
-    if (!res.ok) throw new Error('Failed to fetch communications settings');
+    if (!res.ok) throw responseError(res, 'Failed to fetch communications settings');
     return res.json();
   }
 
-  async listAutomations(){const r=await fetchWithAuth('/api/v1/automations');if(!r.ok)throw new Error('Failed to load automations');return r.json();}
-  async getAutomation(id:string){const r=await fetchWithAuth(`/api/v1/automations/${id}`);if(!r.ok)throw new Error('Failed to load automation');return r.json();}
-  async createAutomation(input:any){const r=await fetchWithAuth('/api/v1/automations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});if(!r.ok)throw new Error('Failed to create automation');return r.json();}
-  async updateAutomation(id:string,input:any){const r=await fetchWithAuth(`/api/v1/automations/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});if(!r.ok)throw new Error('Failed to update automation');return r.json();}
-  async automationCommand(id:string,command:'activate'|'pause'|'archive'){const r=await fetchWithAuth(`/api/v1/automations/${id}/${command}`,{method:'POST'});if(!r.ok)throw new Error(`Failed to ${command} automation`);return r.status===204?{}:r.json();}
-  async getAutomationRuns(id:string){const r=await fetchWithAuth(`/api/v1/automations/${id}/runs`);if(!r.ok)throw new Error('Failed to load runs');return r.json();}
-  async getAutomationRun(id:string){const r=await fetchWithAuth(`/api/v1/automation-runs/${id}`);if(!r.ok)throw new Error('Failed to load run');return r.json();}
+  async listAutomations(){const r=await fetchWithAuth('/api/v1/automations');if (!r.ok) throw responseError(r, 'Failed to load automations');return r.json();}
+  async getAutomation(id:string){const r=await fetchWithAuth(`/api/v1/automations/${id}`);if (!r.ok) throw responseError(r, 'Failed to load automation');return r.json();}
+  async createAutomation(input:any){const r=await fetchWithAuth('/api/v1/automations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});if (!r.ok) throw responseError(r, 'Failed to create automation');return r.json();}
+  async updateAutomation(id:string,input:any){const r=await fetchWithAuth(`/api/v1/automations/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});if (!r.ok) throw responseError(r, 'Failed to update automation');return r.json();}
+  async automationCommand(id:string,command:'activate'|'pause'|'archive'){const r=await fetchWithAuth(`/api/v1/automations/${id}/${command}`,{method:'POST'});if (!r.ok) throw responseError(r, `Failed to ${command} automation`);return r.status===204?{}:r.json();}
+  async getAutomationRuns(id:string){const r=await fetchWithAuth(`/api/v1/automations/${id}/runs`);if (!r.ok) throw responseError(r, 'Failed to load runs');return r.json();}
+  async getAutomationRun(id:string){const r=await fetchWithAuth(`/api/v1/automation-runs/${id}`);if (!r.ok) throw responseError(r, 'Failed to load run');return r.json();}
 
   async updateCommunicationsSettings(settings: UpdateCommunicationsSettingsRequest): Promise<void> {
     const res = await fetchWithAuth('/api/v1/communications/settings', {
@@ -621,7 +622,7 @@ export class ApiDataProvider implements DataProvider {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings)
     });
-    if (!res.ok) throw new Error('Failed to update communications settings');
+    if (!res.ok) throw responseError(res, 'Failed to update communications settings');
   }
 
   async renderAutomatedEmailPreview(input: EmailPreviewRequest): Promise<EmailPreviewResponse> {
@@ -631,14 +632,14 @@ export class ApiDataProvider implements DataProvider {
       body: JSON.stringify(input),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error?.message || body?.error || 'Failed to render email preview');
+    if (!res.ok) throw responseError(res, body?.error?.message || body?.error || 'Failed to render email preview', body);
     return body;
   }
 
   async getEmailHistory(query: EmailHistoryQuery): Promise<{ data: EmailHistoryItem[], nextCursor?: string }> {
     const params = new URLSearchParams(query as any).toString();
     const res = await fetchWithAuth(`/api/v1/communications/email-history?${params}`);
-    if (!res.ok) throw new Error('Failed to fetch email history');
+    if (!res.ok) throw responseError(res, 'Failed to fetch email history');
     return res.json();
   }
 }

@@ -1,3 +1,5 @@
+import { ApplicationErrorBoundary } from './diagnostics/ApplicationErrorBoundary';
+import { DiagnosticsPanel } from './diagnostics/DiagnosticsPanel';
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
@@ -8,8 +10,11 @@ import './accessible-selects.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <DiagnosticsPanel />
+    <ApplicationErrorBoundary>
     <CalendarActionEnhancer />
     <BookingPaymentExperienceEnhancer />
     <App />
+    </ApplicationErrorBoundary>
   </StrictMode>,
 );
