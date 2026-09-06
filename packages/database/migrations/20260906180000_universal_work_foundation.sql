@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS work_item_activity (
 
 CREATE INDEX IF NOT EXISTS work_item_activity_work_created_idx ON work_item_activity(tenant_id, work_item_id, created_at);
 
+-- Extend, rather than replace, the canonical task source vocabulary so Work can
+-- reuse the mature task lifecycle, permissions, notifications and activity log.
+ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_source_type_check;
+ALTER TABLE tasks ADD CONSTRAINT tasks_source_type_check CHECK (
+  source_type IN ('MANUAL','OPERATIONS_ISSUE','APPOINTMENT','CLIENT','FORM_ASSIGNMENT','PAYMENT','REFUND','AUTOMATION','PRODUCT','WORK_ITEM')
+);
+
 CREATE TABLE IF NOT EXISTS work_task_links (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
