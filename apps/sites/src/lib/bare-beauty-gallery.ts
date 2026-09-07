@@ -54,10 +54,6 @@ const RESULT_ALTS = [
   'Detailed brow styling result at Bare Beauty Keighley',
 ];
 
-function photo(index: number, src: string, alt: string, extraClass = ''): string {
-  return `<figure class="bb-photo-frame ${extraClass}"><img src="${src}" alt="${alt}" loading="${index === 8 ? 'eager' : 'lazy'}" decoding="async"></figure>`;
-}
-
 function gallerySection(images: Array<string | null>): string {
   const cards = images.slice(0, 10).map((src, index) => {
     if (!src) return '';
