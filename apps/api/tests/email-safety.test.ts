@@ -116,6 +116,30 @@ test('legacy appointment payload aliases are prepared before rendering', () => {
   assert.match(String(prepared.newDateTime), /10 Aug 2026/);
 });
 
+test('an absent optional booking location cannot suppress a payment confirmation', () => {
+  const prepared = prepareEmailTemplateData('payment-confirmed', {
+    ...validTemplatePayloads['payment-confirmed'],
+    locationName: undefined,
+    staffName: undefined,
+  });
+
+  assert.equal('locationName' in prepared, false);
+  assert.equal('staffName' in prepared, false);
+  assert.deepEqual(validateEmailTemplateData('payment-confirmed', prepared, true), { valid: true });
+});
+
+test('unsafe nested template values identify the failing field and reason', () => {
+  const result = validateEmailTemplateData('payment-confirmed', {
+    ...validTemplatePayloads['payment-confirmed'],
+    booking: { locationName: undefined },
+  }, true);
+
+  assert.equal(result.valid, false);
+  if (!result.valid) {
+    assert.ok(result.invalidTokens.includes('templateDataJson.booking.locationName:UNSUPPORTED_UNDEFINED'));
+  }
+});
+
 test('appointment messages are cancelled when stale, superseded or inconsistent', () => {
   const confirmed = { exists: true, status: 'CONFIRMED', startTime: futureIso };
   assert.equal(appointmentNotificationCancellationCode(confirmed, {

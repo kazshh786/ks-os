@@ -10,6 +10,7 @@ import {
   emailBrandingTemplateData,
   renderAutomatedEmailCopy,
 } from '../email/email-settings.service.js';
+import { OperationsIssueReporter } from '../operations/operations.issue-service.js';
 
 function mapPaymentSource(method: string, purpose: string): PaymentSource {
   if (method === 'STRIPE_ONLINE' || (method === 'CARD' && purpose === 'booking_payment')) return 'STRIPE_ONLINE';
@@ -31,6 +32,7 @@ export class PaymentsService {
   private businessEvents = new BusinessEventsService();
   private email = new EmailService();
   private emailSettings = new EmailSettingsService();
+  private issues = new OperationsIssueReporter();
   constructor(private readonly repository = new PaymentsRepository()) {}
 
   async enqueuePaymentEmail(tx: any, tenantId: string, transactionId: string, templateKey: 'payment-confirmed' | 'refund-updated', idempotencyKey: string, extra: Record<string, unknown> = {}) {
@@ -111,6 +113,8 @@ export class PaymentsService {
       ...extra,
     };
     let customerQueued = false;
+    let customerFailureReason: string | null = row.clientEmail ? null : 'RECIPIENT_NOT_CONFIGURED';
+    let customerInvalidTokens: string[] | undefined;
     if (row.clientEmail && (templateKey === 'payment-confirmed' || row.paymentConfirmationEnabled)) {
       const result = await this.email.enqueueEmail({
         tenantId,
@@ -124,6 +128,37 @@ export class PaymentsService {
         relatedEntityId: row.appointmentId || row.transactionId,
       }, tx);
       customerQueued = result.queued;
+      if (!result.queued) {
+        customerFailureReason = result.reason;
+        customerInvalidTokens = 'invalidTokens' in result ? result.invalidTokens : undefined;
+      }
+    }
+
+    const issueKey = `EMAIL_FAILED:${templateKey.toUpperCase()}:${transactionId}`;
+    if (!customerQueued && customerFailureReason) {
+      await this.issues.report({
+        tenantId,
+        category: 'EMAIL',
+        issueType: 'EMAIL_FAILED',
+        severity: 'WARNING',
+        title: templateKey === 'payment-confirmed'
+          ? 'Payment confirmation email was not queued'
+          : 'Refund update email was not queued',
+        message: 'The payment was recorded, but the customer email could not enter the delivery queue.',
+        sourceType: row.appointmentId ? 'APPOINTMENT' : 'SYSTEM',
+        sourceId: row.appointmentId || row.transactionId,
+        deduplicationKey: issueKey,
+        relatedAppointmentId: row.appointmentId,
+        metadata: {
+          stage: 'ENQUEUE',
+          templateKey,
+          transactionId,
+          reason: customerFailureReason,
+          invalidTokens: customerInvalidTokens,
+        },
+      }, tx).catch(() => undefined);
+    } else if (customerQueued) {
+      await this.issues.resolve(tenantId, issueKey, tx).catch(() => undefined);
     }
 
     let businessRecipients = 0;
@@ -141,7 +176,7 @@ export class PaymentsService {
         currency,
       };
       for (const recipient of recipients) {
-        await this.email.enqueueEmail({
+        const result = await this.email.enqueueEmail({
           tenantId,
           recipientEmail: recipient.email,
           recipientName: recipient.name,
@@ -156,10 +191,10 @@ export class PaymentsService {
           relatedEntityType: row.appointmentId ? 'appointment' : 'payment',
           relatedEntityId: row.appointmentId || row.transactionId,
         }, tx);
-        businessRecipients += 1;
+        if (result.queued) businessRecipients += 1;
       }
     }
-    return { queued: customerQueued, businessRecipients };
+    return { queued: customerQueued, reason: customerFailureReason, businessRecipients };
   }
 
   async getPaymentHistory(tenantId: string, query: PaymentHistoryQuery): Promise<PaymentHistoryItem[]> {
