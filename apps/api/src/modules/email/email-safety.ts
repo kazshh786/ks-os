@@ -131,26 +131,43 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function isSafeTemplateValue(value: unknown, depth: number, seen: WeakSet<object>): boolean {
-  if (depth > MAX_TEMPLATE_DEPTH) return false;
-  if (value === null || typeof value === 'boolean') return true;
-  if (typeof value === 'number') return Number.isFinite(value);
-  if (typeof value === 'string') return value.length <= MAX_TEMPLATE_STRING_LENGTH;
-  if (typeof value !== 'object') return false;
-  if (seen.has(value)) return false;
+type UnsafeTemplateValue = { path: string; reason: string };
+
+function findUnsafeTemplateValue(
+  value: unknown,
+  path: string,
+  depth: number,
+  seen: WeakSet<object>,
+): UnsafeTemplateValue | null {
+  if (depth > MAX_TEMPLATE_DEPTH) return { path, reason: 'MAX_DEPTH_EXCEEDED' };
+  if (value === null || typeof value === 'boolean') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? null : { path, reason: 'NON_FINITE_NUMBER' };
+  if (typeof value === 'string') {
+    return value.length <= MAX_TEMPLATE_STRING_LENGTH ? null : { path, reason: 'STRING_TOO_LONG' };
+  }
+  if (typeof value !== 'object') return { path, reason: `UNSUPPORTED_${(typeof value).toUpperCase()}` };
+  if (seen.has(value)) return { path, reason: 'REPEATED_OR_CYCLIC_OBJECT' };
   seen.add(value);
 
   if (Array.isArray(value)) {
-    return value.length <= 100 && value.every(item => isSafeTemplateValue(item, depth + 1, seen));
+    if (value.length > 100) return { path, reason: 'ARRAY_TOO_LONG' };
+    for (let index = 0; index < value.length; index += 1) {
+      const issue = findUnsafeTemplateValue(value[index], `${path}[${index}]`, depth + 1, seen);
+      if (issue) return issue;
+    }
+    return null;
   }
-  if (!isPlainRecord(value)) return false;
+  if (!isPlainRecord(value)) return { path, reason: 'NON_PLAIN_OBJECT' };
   const entries = Object.entries(value);
-  if (entries.length > 100) return false;
-  return entries.every(([key, child]) => (
-    key.length <= 100
-    && !DANGEROUS_OBJECT_KEYS.has(key)
-    && isSafeTemplateValue(child, depth + 1, seen)
-  ));
+  if (entries.length > 100) return { path, reason: 'TOO_MANY_KEYS' };
+  for (const [key, child] of entries) {
+    const childPath = path ? `${path}.${key}` : key;
+    if (key.length > 100) return { path: childPath, reason: 'KEY_TOO_LONG' };
+    if (DANGEROUS_OBJECT_KEYS.has(key)) return { path: childPath, reason: 'DANGEROUS_KEY' };
+    const issue = findUnsafeTemplateValue(child, childPath, depth + 1, seen);
+    if (issue) return issue;
+  }
+  return null;
 }
 
 const text = (data: Record<string, unknown>, key: string): string => {
@@ -203,8 +220,13 @@ export function validateEmailTemplateData(
   } catch {
     invalid('templateDataJson');
   }
-  if (!serialized || Buffer.byteLength(serialized, 'utf8') > MAX_TEMPLATE_BYTES || !isSafeTemplateValue(payload, 0, new WeakSet())) {
+  if (!serialized || Buffer.byteLength(serialized, 'utf8') > MAX_TEMPLATE_BYTES) {
     invalid('templateDataJson');
+  }
+  const unsafeValue = findUnsafeTemplateValue(payload, '', 0, new WeakSet());
+  if (unsafeValue) {
+    const location = unsafeValue.path ? `.${unsafeValue.path}` : '';
+    invalid(`templateDataJson${location}:${unsafeValue.reason}`);
   }
 
   const requireText = (key: string) => { if (!hasText(payload, key)) invalid(key); };
@@ -354,7 +376,10 @@ function formatAppointmentDateTime(value: string, timezone: string): string {
 }
 
 export function prepareEmailTemplateData(templateKey: string, data: Record<string, unknown>): Record<string, unknown> {
-  const prepared = { ...data };
+  // Optional template fields are commonly represented as `undefined` by query
+  // results. JSON objects omit those values, so remove them before enforcing the
+  // production safety contract instead of rejecting the entire notification.
+  const prepared = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
   if (!hasText(prepared, 'customerName') && hasText(prepared, 'clientName')) prepared.customerName = text(prepared, 'clientName');
   if (!hasText(prepared, 'clientName') && hasText(prepared, 'customerName')) prepared.clientName = text(prepared, 'customerName');
 

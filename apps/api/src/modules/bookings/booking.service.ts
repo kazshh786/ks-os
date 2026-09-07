@@ -454,7 +454,7 @@ export class BookingService {
     };
 
     if (settings.bookingConfirmationEnabled && booking.clientEmail) {
-      await this.emailService.enqueueEmail({
+      const result = await this.emailService.enqueueEmail({
         tenantId,
         recipientEmail: booking.clientEmail,
         recipientName: booking.clientName || booking.clientNameFallback,
@@ -476,6 +476,29 @@ export class BookingService {
         relatedEntityType: 'appointment',
         relatedEntityId: bookingId,
       }, db);
+      const issueKey = `EMAIL_FAILED:BOOKING_CONFIRMATION:${bookingId}`;
+      if (!result.queued) {
+        await this.issues.report({
+          tenantId,
+          category: 'EMAIL',
+          issueType: 'EMAIL_FAILED',
+          severity: 'WARNING',
+          title: 'Booking confirmation email was not queued',
+          message: 'The booking was confirmed, but the customer email could not enter the delivery queue.',
+          sourceType: 'APPOINTMENT',
+          sourceId: bookingId,
+          deduplicationKey: issueKey,
+          relatedAppointmentId: bookingId,
+          metadata: {
+            stage: 'ENQUEUE',
+            templateKey: 'booking-confirmed',
+            reason: result.reason,
+            invalidTokens: 'invalidTokens' in result ? result.invalidTokens : undefined,
+          },
+        }, db).catch(() => undefined);
+      } else {
+        await this.issues.resolve(tenantId, issueKey, db).catch(() => undefined);
+      }
     }
     await this.enqueueEmailReminders(db, tenant, booking, bookingId, booking.startTime, 'public-confirmed');
 
