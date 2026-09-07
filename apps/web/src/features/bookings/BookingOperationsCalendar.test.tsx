@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BookingOperationsCalendar } from './BookingOperationsCalendar';
@@ -15,6 +15,16 @@ vi.mock('./BookingQuickView', () => ({ BookingQuickView: () => null }));
 
 describe('BookingOperationsCalendar resilience', () => {
   beforeEach(() => { sessionStorage.clear(); getBookingOperations.mockReset(); });
+
+  it('loads every page including appointment 251', async () => {
+    const item = (id: number) => ({ id: String(id), startTime: '2026-09-06T10:00:00Z', endTime: '2026-09-06T11:00:00Z', status: 'CONFIRMED',
+      location: { id: null, name: null }, staff: { id: 'staff', name: 'Sam' }, customer: { name: 'Customer' }, service: { name: 'Service' }, attentionReasons: [] });
+    getBookingOperations.mockResolvedValueOnce({ ...empty, items: Array.from({ length: 250 }, (_, i) => item(i)), meta: { page: 1, limit: 250, total: 251, hasMore: true } })
+      .mockResolvedValueOnce({ ...empty, items: [item(250)], meta: { page: 2, limit: 250, total: 251, hasMore: false } });
+    render(<MemoryRouter><BookingOperationsCalendar /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Booking schedule' })).toHaveTextContent('251 bookings shown'));
+    expect(getBookingOperations).toHaveBeenNthCalledWith(2, expect.objectContaining({ page: 2 }));
+  });
 
   it('renders a focused calendar workspace with search, filters, views and anchored footer stats', async () => {
     getBookingOperations.mockResolvedValue(empty);

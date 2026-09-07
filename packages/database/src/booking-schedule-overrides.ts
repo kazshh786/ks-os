@@ -14,11 +14,12 @@ export const bookingScheduleOverrides = pgTable('booking_schedule_overrides', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, table => ({
-  memberChannelDateUnique: uniqueIndex('booking_schedule_overrides_member_channel_date_unique').on(
+  memberChannelDateUnique: uniqueIndex('booking_schedule_overrides_member_channel_date_start_unique').on(
     table.tenantId,
     table.userId,
     table.bookingChannel,
     table.overrideDate,
+    table.startTime,
   ),
   tenantDateIndex: index('booking_schedule_overrides_tenant_date_idx').on(table.tenantId, table.overrideDate),
 }));

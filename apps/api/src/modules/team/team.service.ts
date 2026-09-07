@@ -62,6 +62,7 @@ export class TeamService {
     return {
       ...member,
       id: member.publicReference,
+      staffUserId: member.id,
       assignedServices,
       schedule,
       bookingChannels: channels,

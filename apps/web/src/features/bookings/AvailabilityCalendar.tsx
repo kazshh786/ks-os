@@ -58,7 +58,7 @@ export function AvailabilityCalendar({
   // PublicBookingFlow historically passes tomorrow as its baseline date. Include the
   // preceding calendar day so same-day availability and date overrides are decided by
   // the live API's minimum-notice and availability rules rather than blocked in the UI.
-  const minimum = useMemo(() => addDays(localDate(minimumDate), -1), [minimumDate]);
+  const minimum = useMemo(() => localDate(minimumDate), [minimumDate]);
   const maximum = useMemo(() => localDate(maximumDate), [maximumDate]);
   const selected = useMemo(() => localDate(value), [value]);
   const [visibleMonth, setVisibleMonth] = useState(startOfMonth(selected));

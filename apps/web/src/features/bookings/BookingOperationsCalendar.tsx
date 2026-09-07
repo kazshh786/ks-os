@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { eachDayOfInterval, format } from 'date-fns';
 import { fromZonedTime } from 'date-fns-tz';
@@ -96,16 +96,29 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
     requiresAttention: params.get('attention') === 'true' || undefined,
   }), [intakeFilter, params, range.from, range.to, statusFilter]);
 
+  const loadSequence = useRef(0);
   const load = useCallback(async (silent = false) => {
     if (!activeTenant) return;
+    const sequence = ++loadSequence.current;
     if (!silent) setLoading(true);
     setError('');
-    try { setResponse(await getDataProvider().getBookingOperations(query)); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'The calendar could not be loaded.'); }
-    finally { if (!silent) setLoading(false); }
+    try {
+      const first = await getDataProvider().getBookingOperations(query);
+      const items = [...first.items];
+      let page = first;
+      while (page.meta.hasMore) {
+        page = await getDataProvider().getBookingOperations({ ...query, page: page.meta.page + 1 });
+        if (!page.items.length && page.meta.hasMore) throw new Error('The calendar returned an incomplete page. Please refresh.');
+        items.push(...page.items);
+      }
+      if (sequence !== loadSequence.current) return;
+      setResponse({ ...first, items: Array.from(new Map(items.map(item => [item.id, item])).values()), meta: { ...first.meta, hasMore: false } });
+    }
+    catch (cause) { if (sequence === loadSequence.current) setError(cause instanceof Error ? cause.message : 'The calendar could not be loaded.'); }
+    finally { if (!silent && sequence === loadSequence.current) setLoading(false); }
   }, [activeTenant, query]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); return () => { loadSequence.current++; }; }, [load]);
   useEffect(() => {
     if (!activeTenant) return;
     let active = true;
@@ -200,7 +213,7 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
   };
 
   const dragReschedule = (booking: BookingOperationsItem, target: ScheduleDropTarget) => {
-    if (booking.status === 'BLOCKED') return;
+    if (booking.status === 'BLOCKED' || view === 'location') return;
     const currentDay = localDayKey(booking.startTime, booking.timezone);
     const currentTime = new Intl.DateTimeFormat('en-GB', {
       timeZone: booking.timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',

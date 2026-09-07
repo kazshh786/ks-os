@@ -143,7 +143,7 @@ describe('guest token and lifecycle security invariants', () => {
     assert.doesNotMatch(source, /refunds\.create|stripeClient\.refund/i);
     assert.match(availability, /excludeAppointmentId/);
     assert.match(availability, /existingBufferTime/);
-    assert.match(availability, /gt\(appointments\.endTime, dayStartUtc\)/);
+    assert.match(availability, /gt\(appointments\.occupiedEnd, dayStartUtc\)/);
   });
 
   it('issues a one-booking management link after public booking without storing the raw URL', () => {

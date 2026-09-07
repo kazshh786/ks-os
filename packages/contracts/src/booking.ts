@@ -71,6 +71,8 @@ export const AvailabilityQuerySchema = z.object({
 export type AvailabilityQuery = z.infer<typeof AvailabilityQuerySchema>;
 
 export const AvailabilitySlotSchema = z.object({
+  occupiedStart: z.string().datetime().optional(),
+  occupiedEnd: z.string().datetime().optional(),
   start: z.string().datetime(), // ISO string
   end: z.string().datetime(),
   staffId: z.string(),

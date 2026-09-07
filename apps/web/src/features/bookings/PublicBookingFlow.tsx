@@ -191,10 +191,12 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
   const [locationId, setLocationId] = useState('');
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [staffId, setStaffId] = useState('any');
-  const [date, setDate] = useState(format(addDays(new Date(), 1), 'yyyy-MM-dd'));
+  const [date, setDate] = useState('');
   const [slot, setSlot] = useState<Slot | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState(false);
+  const [availabilityRetry, setAvailabilityRetry] = useState(0);
   const [hold, setHold] = useState<BookingHoldResponse | null>(null);
   const [remaining, setRemaining] = useState(0);
   const [name, setName] = useState('');
@@ -212,6 +214,7 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
   const [confirmation, setConfirmation] = useState<CreateBookingResponse | null>(null);
   const analyticsSessionId = useRef(crypto.randomUUID());
   const idempotencyKey = useRef(crypto.randomUUID());
+  const submittedIntent = useRef<string | null>(null);
   const holdConsumed = useRef(false);
   const stepColumnRef = useRef<HTMLElement | null>(null);
 
@@ -258,11 +261,17 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
     : [tenant.businessAddress?.name, businessAddress].filter(Boolean).join(' · ') || 'Primary location';
   const selectedStaff = catalog?.staff.find(item => item.id === (slot?.staffId || staffId));
   const relevantIntakeForms = useMemo(() => catalog?.intakeForms?.filter(form => (!form.serviceId || serviceIds.includes(form.serviceId)) && (!form.staffId || form.staffId === slot?.staffId) && (!form.locationId || form.locationId === locationId)) || [], [catalog?.intakeForms, locationId, serviceIds, slot?.staffId]);
-  const maximumFutureDays = Math.max(minimumFutureDays, Math.min(730, page?.bookingRules.maximumFutureDays || minimumFutureDays));
-  const firstBookableDate = addDays(new Date(), 1);
+  const maximumFutureDays = Math.max(1, Math.min(730, page?.bookingRules.maximumFutureDays || minimumFutureDays));
+  const tenantToday = new Intl.DateTimeFormat('en-CA', { timeZone: tenant.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const firstBookableDate = localDate(tenantToday);
   const dateMinimum = format(firstBookableDate, 'yyyy-MM-dd');
-  const dateMaximum = format(addDays(firstBookableDate, maximumFutureDays - 1), 'yyyy-MM-dd');
-  const selectedDateLabel = format(localDate(date), 'EEEE, d MMMM yyyy');
+  const calendarTimezone = useRef(tenant.timezone);
+  useEffect(() => {
+    if (calendarTimezone.current !== tenant.timezone || date < tenantToday) setDate(tenantToday);
+    calendarTimezone.current = tenant.timezone;
+  }, [tenantToday, tenant.timezone, date]);
+  const dateMaximum = format(addDays(firstBookableDate, maximumFutureDays), 'yyyy-MM-dd');
+  const selectedDateLabel = format(localDate(date || tenantToday), 'EEEE, d MMMM yyyy');
   const canChooseAnyStaff = staffId !== 'any' && page?.bookingRules.allowAnyStaff !== false;
   const enabledChannels: BookingChannel[] = page?.bookingRules.enabledBookingChannels?.length ? page.bookingRules.enabledBookingChannels : ['in_shop'];
   const catalogChannels = catalog?.bookingChannels?.length ? catalog.bookingChannels : [{ id: 'in_shop' as const, label: 'At the business' }, { id: 'mobile' as const, label: 'Mobile appointment' }];
@@ -334,10 +343,11 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
     if (!serviceId || !date) { setSlots([]); return; }
     let active = true;
     setSlotsLoading(true);
+    setSlotsError(false);
     setSlot(null);
-    provider.getPublicAvailability(slug, { serviceId, serviceIds, staffId, date, bookingChannel, locationId: locationId || undefined }).then(result => { if (active) setSlots(result.slots); }).catch(() => { if (active) setSlots([]); }).finally(() => { if (active) setSlotsLoading(false); });
+    provider.getPublicAvailability(slug, { serviceId, serviceIds, staffId, date, bookingChannel, locationId: locationId || undefined }).then(result => { if (active) setSlots(result.slots); }).catch(() => { if (active) { setSlots([]); setSlotsError(true); } }).finally(() => { if (active) setSlotsLoading(false); });
     return () => { active = false; };
-  }, [bookingChannel, date, locationId, serviceId, serviceIds, slug, staffId]);
+  }, [bookingChannel, date, locationId, serviceId, serviceIds, slug, staffId, availabilityRetry]);
   useEffect(() => { if (!hold) return; const update = () => setRemaining(Math.max(0, Math.ceil((new Date(hold.expiresAt).getTime() - Date.now()) / 1_000))); update(); const timer = window.setInterval(update, 1_000); return () => window.clearInterval(timer); }, [hold]);
   useEffect(() => () => { if (hold && !holdConsumed.current) void provider.releaseBookingHold(slug, hold.id, hold.token); }, [hold, slug]);
 
@@ -383,9 +393,16 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
     if (preview) { setError('Preview mode never creates a real booking.'); return; }
     if (remaining <= 0) { setError('Your slot reservation expired. Choose the time again.'); goToStep(1); return; }
     setSubmitting(true); setError(''); track('CHECKOUT_STARTED', { serviceId, staffId: slot.staffId, locationId: locationId || undefined });
+    const intent = JSON.stringify({ serviceIds, staffId: slot.staffId, start: slot.start, locationId, bookingChannel, name, email, phone, addressLine1, addressLine2, addressCity, addressPostcode, accessNotes, notes, effectivePaymentMode });
+    if (submittedIntent.current && submittedIntent.current !== intent) idempotencyKey.current = crypto.randomUUID();
+    submittedIntent.current = intent;
     try {
       const result = await provider.createPublicBooking(slug, { serviceId, serviceIds, staffId: slot.staffId, locationId: locationId || null, startTime: slot.start, client: { name, email, phone }, bookingChannel, mobileAddress: bookingChannel === 'mobile' ? { line1: addressLine1, line2: addressLine2 || null, city: addressCity, postcode: addressPostcode, accessNotes: accessNotes || null } : null, paymentMode: effectivePaymentMode, payNow: effectivePaymentMode !== 'pay_later', idempotencyKey: idempotencyKey.current, holdId: hold.id, holdToken: hold.token, source: trackedSource().source, sourceMedium: trackedSource().sourceMedium, sourceCampaign: trackedSource().sourceCampaign, intakeSubmissionIds: [], analyticsSessionId: analyticsSessionId.current, customerNotes: notes || undefined });
       holdConsumed.current = true;
+      if (result.payment.required && !result.payment.checkoutUrl) {
+        window.location.assign(`/book/${encodeURIComponent(slug)}/payment/cancel?reference=${encodeURIComponent(result.booking.reference)}`);
+        return;
+      }
       if (result.payment.required && result.payment.checkoutUrl) { track('PAYMENT_REDIRECTED', { amount: result.payment.amount, currency: tenant.currency }); window.location.assign(result.payment.checkoutUrl); return; }
       setConfirmation(result); onBookingSuccess?.({ booking: result.booking, customerName: name.trim(), customerEmail: email.trim() }); track('BOOKING_COMPLETED', { bookingReference: result.booking.reference });
     } catch (cause) {
@@ -428,7 +445,7 @@ export function PublicBookingFlow({ slug, preview = false, pageOverride, onBooki
 
       {step === 1 && <div className="booking-step-content"><SectionHeading eyebrow="Step 2" title="Choose a date and time" description={`Only days with live availability can be selected. Times are shown in ${tenant.timezone}.`} />
         <AvailabilityCalendar slug={slug} serviceId={serviceId} serviceIds={serviceIds} staffId={staffId} locationId={locationId || undefined} bookingChannel={bookingChannel} value={date} minimumDate={dateMinimum} maximumDate={dateMaximum} primary={primary} onChange={nextDate => { setDate(nextDate); setError(''); track('DATE_SELECTED', { serviceId, staffId: staffId === 'any' ? undefined : staffId }); }} />
-        {slotsLoading ? <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-7 text-center"><div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-slate-200" style={{ borderTopColor: primary }} /><p className="mt-4 text-sm font-black text-slate-600">Checking live appointment times…</p></div> : slotGroups.length ? <div className="mt-5 space-y-5">{slotGroups.map(group => <section key={group.label}><h3 className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{group.label}</h3><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">{group.slots.map(item => <button type="button" key={`${item.start}-${item.staffId}`} onClick={() => void chooseSlot(item)} className="min-h-12 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-950 transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900" onMouseEnter={event => { event.currentTarget.style.borderColor = primary; event.currentTarget.style.backgroundColor = rgba(primary, 0.045); }} onMouseLeave={event => { event.currentTarget.style.borderColor = ''; event.currentTarget.style.backgroundColor = ''; }}>{timeOnly(item.start)}<span className="mt-0.5 block truncate text-[10px] font-bold text-slate-500">{item.staffName}</span></button>)}</div></section>)}</div> : <div aria-live="polite" className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-7 text-center"><CalendarDays className="mx-auto h-9 w-9 text-slate-400" /><h3 className="mt-3 font-black text-slate-950">No availability on {selectedDateLabel}</h3><p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-500">Choose another enabled day in the calendar.{canChooseAnyStaff ? ' You can also check availability across the whole team.' : ''}</p>{canChooseAnyStaff && <button type="button" onClick={() => { setStaffId('any'); setError(''); track('STAFF_SELECTED', { serviceId, staffId: 'any' }); }} className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"><Sparkles className="h-4 w-4" style={{ color: primary }} />See anyone available</button>}</div>}
+        {slotsError ? <div role="alert" className="mt-5 rounded-2xl border p-5"><p>We couldn’t check availability. Please try again.</p><button type="button" onClick={() => setAvailabilityRetry(value => value + 1)}>Retry availability</button></div> : slotsLoading ? <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-7 text-center"><div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-slate-200" style={{ borderTopColor: primary }} /><p className="mt-4 text-sm font-black text-slate-600">Checking live appointment times…</p></div> : slotGroups.length ? <div className="mt-5 space-y-5">{slotGroups.map(group => <section key={group.label}><h3 className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{group.label}</h3><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">{group.slots.map(item => <button type="button" key={`${item.start}-${item.staffId}`} onClick={() => void chooseSlot(item)} className="min-h-12 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-950 transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900" onMouseEnter={event => { event.currentTarget.style.borderColor = primary; event.currentTarget.style.backgroundColor = rgba(primary, 0.045); }} onMouseLeave={event => { event.currentTarget.style.borderColor = ''; event.currentTarget.style.backgroundColor = ''; }}>{timeOnly(item.start)}<span className="mt-0.5 block truncate text-[10px] font-bold text-slate-500">{item.staffName}</span></button>)}</div></section>)}</div> : <div aria-live="polite" className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-7 text-center"><CalendarDays className="mx-auto h-9 w-9 text-slate-400" /><h3 className="mt-3 font-black text-slate-950">No availability on {selectedDateLabel}</h3><p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-500">Choose another enabled day in the calendar.{canChooseAnyStaff ? ' You can also check availability across the whole team.' : ''}</p>{canChooseAnyStaff && <button type="button" onClick={() => { setStaffId('any'); setError(''); track('STAFF_SELECTED', { serviceId, staffId: 'any' }); }} className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"><Sparkles className="h-4 w-4" style={{ color: primary }} />See anyone available</button>}</div>}
         {error && <p role="alert" className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800">{error}</p>}<div className="booking-step-actions"><button type="button" onClick={() => goToStep(0)} className="inline-flex min-h-12 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50"><ArrowLeft className="h-4 w-4" />Back</button></div>
       </div>}
 

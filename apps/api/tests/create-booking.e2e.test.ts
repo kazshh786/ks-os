@@ -50,7 +50,8 @@ test('Booking Creation endpoints', async (t) => {
   };
 
   const dbStub = sinon.stub(getDatabase() as any, 'select').callsFake((selection: any) =>
-    selection && Object.prototype.hasOwnProperty.call(selection, 'requiresDeposit')
+    !selection ? { from: () => ({ where: () => ({ limit: async () => [] }) }) } as any
+    : Object.prototype.hasOwnProperty.call(selection, 'requiresDeposit')
       ? serviceQueryBuilder as any
       : queryBuilder as any,
   );
@@ -63,6 +64,7 @@ test('Booking Creation endpoints', async (t) => {
   updateResult.where = sinon.stub().returns(updateResult);
   sinon.stub(getDatabase() as any, 'update').returns(updateResult);
   sinon.stub(getDatabase() as any, 'transaction').callsFake(async (callback: any) => callback(getDatabase()));
+  sinon.stub(getDatabase() as any, 'execute').resolves({ rows: [] });
 
   sinon.stub(BookingPageService.prototype, 'resolvePublicPage').resolves({
     tenant: { ...mockTenant, currency: 'GBP' },

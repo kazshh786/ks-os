@@ -42,26 +42,10 @@ export function resolveEffectiveAvailabilityWindows(
   dateOverrides: AvailabilityDateOverride[],
 ): EffectiveAvailabilityWindow[] {
   return members.flatMap<EffectiveAvailabilityWindow>(member => {
-    const override = dateOverrides.find(item => item.userId === member.userId);
-    if (override) {
-      if (!override.enabled) return [];
-      return [{
-        userId: member.userId,
-        userName: member.userName,
-        startTime: override.startTime,
-        endTime: override.endTime,
-        source: 'override',
-      }];
-    }
-
-    const weekly = weeklyWindows.find(item => item.userId === member.userId);
-    if (!weekly) return [];
-    return [{
-      userId: member.userId,
-      userName: member.userName,
-      startTime: weekly.startTime,
-      endTime: weekly.endTime,
-      source: 'weekly',
-    }];
+    const overrides = dateOverrides.filter(item => item.userId === member.userId);
+    if (overrides.some(item => !item.enabled)) return [];
+    const windows = overrides.length ? overrides : weeklyWindows.filter(item => item.userId === member.userId);
+    return windows.map(window => ({ userId: member.userId, userName: member.userName,
+      startTime: window.startTime, endTime: window.endTime, source: overrides.length ? 'override' as const : 'weekly' as const }));
   });
 }

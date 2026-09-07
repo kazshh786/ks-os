@@ -86,4 +86,7 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260905120000_business_profile_foundation.sql', order: 79, description: 'Add tenant-owned product onboarding configuration without rewriting legacy business types' },
   { filename: '20260906120000_universal_sales_foundation.sql', order: 80, description: 'Add tenant-isolated sales pipelines, opportunities, CRM sales lifecycle extensions, quotes, and secure public quote acceptance' },
   { filename: '20260906180000_universal_work_foundation.sql', order: 81, description: 'Add tenant-isolated universal work items, activity history, Sales provenance, and canonical task links' },
+  { filename: '20260906100000_booking_payment_obligation.sql', order: 82, description: 'Persist original booking payment obligations and request intent hashes' },
+  { filename: '20260906101000_booking_occupied_ranges.sql', order: 83, description: 'Persist buffered occupancy and serialize appointment writes against bookings and holds' },
+  { filename: '20260906102000_split_weekly_schedules.sql', order: 84, description: 'Allow multiple weekly and date-specific windows per staff member and channel' },
 ];

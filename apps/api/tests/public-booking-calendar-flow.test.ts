@@ -37,8 +37,8 @@ test('public booking calendar includes the same day and leaves minimum notice to
   // PublicBookingFlow currently uses tomorrow as its baseline. The calendar deliberately
   // includes the preceding day so a same-day override can be surfaced when the API says
   // that a live slot remains after the configured minimum-notice window.
-  assert.match(publicFlowSource, /const firstBookableDate = addDays\(new Date\(\), 1\)/);
-  assert.match(calendarSource, /addDays\(localDate\(minimumDate\), -1\)/);
+  assert.match(publicFlowSource, /const firstBookableDate = localDate\(tenantToday\)/);
+  assert.match(calendarSource, /localDate\(minimumDate\)/);
   assert.match(availabilityRoute, /minimumNoticeMinutes/);
   assert.match(availabilityRoute, /start >= earliest/);
 });

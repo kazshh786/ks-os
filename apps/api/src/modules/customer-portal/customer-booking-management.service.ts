@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
   appointments,
+  appointmentServices,
   automationActionRuns,
   checkoutTransactions,
   clients,
@@ -176,6 +177,13 @@ export class CustomerBookingManagementService {
     return this.evaluate(row, await this.paymentContext(row.tenantId, row.appointmentId));
   }
 
+  private async compositionServiceIds(row: AccessRow, db: any = getDatabase()): Promise<string[]> {
+    const lines = await db.select({ serviceId: appointmentServices.serviceId }).from(appointmentServices)
+      .where(and(eq(appointmentServices.tenantId, row.tenantId), eq(appointmentServices.appointmentId, row.appointmentId)))
+      .orderBy(appointmentServices.position);
+    return lines.length ? lines.map((line: { serviceId: string }) => line.serviceId) : [row.serviceId!];
+  }
+
   async availability(access: CustomerBookingAccess, query: CustomerRescheduleAvailabilityQuery) {
     const row = await this.resolveAccess(access);
     const policy = this.evaluate(row, await this.paymentContext(row.tenantId, row.appointmentId));
@@ -185,6 +193,7 @@ export class CustomerBookingManagementService {
     const result = await calculateAvailability({
       tenantId: row.tenantId,
       serviceId: row.serviceId,
+      serviceIds: await this.compositionServiceIds(row),
       staffId: 'any',
       date: query.date,
       bookingChannel: row.bookingChannel,
@@ -247,6 +256,7 @@ export class CustomerBookingManagementService {
       const availability = await calculateAvailability({
         tenantId: row.tenantId,
         serviceId: row.serviceId,
+        serviceIds: await this.compositionServiceIds(row, tx),
         staffId: requestedStaff.id,
         date,
         bookingChannel: row.bookingChannel,

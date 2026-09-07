@@ -62,4 +62,18 @@ describe('CalendarAvailabilityDialog', () => {
       }),
     ));
   });
+
+  it('preserves both saved shifts when the weekly calendar is edited', async () => {
+    mocks.getTeamMember.mockResolvedValue({...member,schedule:[
+      {dayOfWeek:1,startTime:'09:00',endTime:'12:00'},
+      {dayOfWeek:1,startTime:'14:00',endTime:'18:00'},
+    ]});
+    render(<CalendarAvailabilityDialog open initialDate="2026-08-05" onClose={vi.fn()} />);
+    await waitFor(()=>expect(screen.getAllByLabelText('Monday at the business starts')).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button',{name:'Save weekly hours'}));
+    await waitFor(()=>expect(mocks.updateTeamMemberBookingChannels).toHaveBeenCalledWith('owner-1',expect.objectContaining({schedule:expect.arrayContaining([
+      expect.objectContaining({dayOfWeek:1,startTime:'09:00',endTime:'12:00'}),
+      expect.objectContaining({dayOfWeek:1,startTime:'14:00',endTime:'18:00'}),
+    ])})));
+  });
 });

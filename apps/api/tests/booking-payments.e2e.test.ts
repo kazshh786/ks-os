@@ -127,6 +127,7 @@ test('Integration: Booking Payments E2E', async (t) => {
       })
     } as any);
 
+    dbSelectStub.onCall(1).returns({ from: () => ({ where: () => ({ limit: async () => [] }) }) } as any);
     mockStripe.checkout.sessions.create.resolves({
       id: 'cs_test_123',
       url: 'https://checkout.stripe.com/pay/cs_test_123'
@@ -158,6 +159,7 @@ test('Integration: Booking Payments E2E', async (t) => {
     assert.strictEqual(response.statusCode, 201);
     const body = JSON.parse(response.body);
     assert.strictEqual(body.payment.checkoutUrl, 'https://checkout.stripe.com/pay/cs_test_123');
+    dbSelectStub.resetBehavior();
   });
 
   await t.test('POST /api/v1/webhooks/stripe/payments handles checkout.session.completed', async () => {

@@ -80,6 +80,28 @@ describe('PublicBookingFlow', () => {
     });
   });
 
+  it('starts on the tenant date across the international date boundary', async () => {
+    const catalog = await provider.getPublicCatalog();
+    provider.getPublicCatalog.mockResolvedValue({ ...catalog, tenant: { ...catalog.tenant, timezone: 'Pacific/Kiritimati' } });
+    const expected = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Kiritimati', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const user = userEvent.setup();
+    render(<PublicBookingFlow slug="test-studio" />);
+    await user.click(await screen.findByRole('button', { name: /Consultation/ }));
+    await waitFor(() => expect(provider.getPublicAvailability).toHaveBeenLastCalledWith('test-studio', expect.objectContaining({ date: expected })));
+  });
+
+  it('distinguishes availability failure from a fully booked day and retries', async () => {
+    provider.getPublicAvailability.mockRejectedValueOnce(new Error('Network failure'));
+    const user = userEvent.setup();
+    render(<PublicBookingFlow slug="test-studio" />);
+    await user.click(await screen.findByRole('button', { name: /Consultation/ }));
+    await user.click(screen.getByRole('button', { name: /See available times/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('We couldn’t check availability');
+    expect(screen.queryByText(/No availability on/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry availability' }));
+    await screen.findByRole('button', { name: /Alex Owner/ });
+  });
+
   it('completes the public mobile booking journey and renders a resilient confirmation', async () => {
     const user = userEvent.setup();
     render(<PublicBookingFlow slug="test-studio" />);

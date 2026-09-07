@@ -267,6 +267,8 @@ export const appointments = pgTable('appointments', {
     .references(() => services.id, { onDelete: 'cascade' }),
   startTime: timestamp('start_time', { withTimezone: true }).notNull(),
   endTime: timestamp('end_time', { withTimezone: true }).notNull(),
+  occupiedStart: timestamp('occupied_start', { withTimezone: true }).notNull(),
+  occupiedEnd: timestamp('occupied_end', { withTimezone: true }).notNull(),
   status: text('status', { enum: ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'IN_SERVICE', 'AWAITING_PAYMENT', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'BLOCKED'] })
     .default('PENDING')
     .notNull(),
@@ -276,6 +278,9 @@ export const appointments = pgTable('appointments', {
   paymentMode: varchar('payment_mode', { length: 30 }).default('pay_later').notNull(),
   paymentStatus: varchar('payment_status', { length: 30 }).default('NOT_REQUIRED').notNull(),
   quotedAmount: integer('quoted_amount').default(0).notNull(),
+  paymentAmountDue: integer('payment_amount_due'),
+  paymentCurrency: varchar('payment_currency', { length: 3 }),
+  bookingIntentHash: varchar('booking_intent_hash', { length: 64 }),
   holdExpiresAt: timestamp('hold_expires_at', { withTimezone: true }),
   bookingChannel: text('booking_channel', { enum: ['in_shop', 'mobile'] }).default('in_shop').notNull(),
   mobileAddress: jsonb('mobile_address'),
@@ -395,6 +400,8 @@ export const bookingHolds = pgTable('booking_holds', {
   customerSessionHash: varchar('customer_session_hash', { length: 64 }).notNull(),
   startTime: timestamp('start_time', { withTimezone: true }).notNull(),
   endTime: timestamp('end_time', { withTimezone: true }).notNull(),
+  occupiedStart: timestamp('occupied_start', { withTimezone: true }).notNull(),
+  occupiedEnd: timestamp('occupied_end', { withTimezone: true }).notNull(),
   status: varchar('status', { length: 20 }).default('ACTIVE').notNull(),
   idempotencyKey: uuid('idempotency_key').notNull(),
   consumedAppointmentId: uuid('consumed_appointment_id').references(() => appointments.id, { onDelete: 'set null' }),

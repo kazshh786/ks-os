@@ -48,11 +48,10 @@ const defaultSchedule = (): ScheduleRow[] => days.map((_, dayOfWeek) => ({
 const normaliseSchedule = (member: Member, channel: BookingChannel): ScheduleRow[] => {
   const channelRows = member.bookingChannels.filter(row => row.bookingChannel === channel);
   const persisted = channelRows.length ? channelRows : channel === 'in_shop' ? member.schedule : [];
-  return defaultSchedule().map(fallback => {
-    const row = persisted.find(item => item.dayOfWeek === fallback.dayOfWeek);
-    return row
-      ? { dayOfWeek: row.dayOfWeek, enabled: true, startTime: row.startTime.slice(0, 5), endTime: row.endTime.slice(0, 5) }
-      : { ...fallback, enabled: false };
+  return defaultSchedule().flatMap(fallback => {
+    const rows = persisted.filter(item => item.dayOfWeek === fallback.dayOfWeek);
+    return rows.length ? rows.map(row => ({ dayOfWeek: row.dayOfWeek, enabled: true, startTime: row.startTime.slice(0,5), endTime: row.endTime.slice(0,5) }))
+      : [{ ...fallback, enabled: false }];
   });
 };
 
@@ -179,7 +178,7 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
       note: overrideDraft.note.trim() || null,
     };
     const existing = member.bookingOverrides || [];
-    const next = [...existing.filter(item => !(item.date === nextOverride.date && item.channel === channel)), nextOverride];
+    const next = [...existing.filter(item => !(item.date === nextOverride.date && item.channel === channel && (!nextOverride.enabled || !item.enabled || item.startTime?.slice(0,5) === nextOverride.startTime))), nextOverride];
     try {
       await persistOverrides(next);
       setOverrideState('saved');
@@ -193,7 +192,7 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
     if (!member) return;
     setOverrideState('saving');
     try {
-      await persistOverrides((member.bookingOverrides || []).filter(item => !(item.date === target.date && item.channel === target.channel)));
+      await persistOverrides((member.bookingOverrides || []).filter(item => !(item.date === target.date && item.channel === target.channel && item.startTime === target.startTime)));
       setOverrideState('saved');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Override could not be removed.');
@@ -239,11 +238,13 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
             <input aria-label="Allow appointments to finish after closing time" type="checkbox" checked={allowAppointmentsPastClosingTime} onChange={event => { setAllowAppointmentsPastClosingTime(event.target.checked); setWeeklyState('idle'); }} className="mt-0.5 h-5 w-5 shrink-0" />
           </label>
           <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 px-4">
-            {schedule.map((row, index) => <div key={row.dayOfWeek} className="grid items-center gap-3 py-3 sm:grid-cols-[8rem_7rem_1fr_1fr]">
+            {schedule.map((row, index) => <div key={index} className="grid items-center gap-3 py-3 sm:grid-cols-[8rem_7rem_1fr_1fr]">
               <span className="text-sm font-black text-slate-900">{days[row.dayOfWeek]}</span>
               <label className="flex items-center gap-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={row.enabled} onChange={event => updateSchedule(index, { enabled: event.target.checked })} />{row.enabled ? 'Available' : 'Unavailable'}</label>
               <label className="text-xs font-bold text-slate-500">From<input aria-label={`${days[row.dayOfWeek]} ${channelLabel.toLowerCase()} starts`} type="time" disabled={!row.enabled} value={row.startTime} onChange={event => updateSchedule(index, { startTime: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 p-2 text-sm text-slate-950 disabled:bg-slate-100" /></label>
               <label className="text-xs font-bold text-slate-500">Until<input aria-label={`${days[row.dayOfWeek]} ${channelLabel.toLowerCase()} ends`} type="time" disabled={!row.enabled} value={row.endTime} onChange={event => updateSchedule(index, { endTime: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 p-2 text-sm text-slate-950 disabled:bg-slate-100" /></label>
+              <button type="button" onClick={() => { setWeeklyState('idle'); setSchedule(current => [...current.filter(item => item.dayOfWeek !== row.dayOfWeek || item.enabled), { dayOfWeek: row.dayOfWeek, enabled: true, startTime: '14:00', endTime: '18:00' }]); }}>Add another shift</button>
+              <button type="button" onClick={() => { setWeeklyState('idle'); setSchedule(current => current.filter((_, i) => i !== index)); }}>Remove shift</button>
             </div>)}
           </div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -269,9 +270,9 @@ export function CalendarAvailabilityDialog({ open, initialDate, onClose }: { ope
           </section>
 
           <section className="rounded-2xl border border-slate-200 p-4">
-            <h3 className="font-black text-slate-950">Scheduled exceptions</h3><p className="mt-1 text-sm text-slate-500">Overrides take priority over the normal weekly hours.</p>
+            <h3 className="font-black text-slate-950">Scheduled exceptions</h3><p className="mt-1 text-sm text-slate-500">Overrides replace the weekly hours for that day. Add separate time windows for a split shift.</p>
             <div className="mt-4 space-y-2">
-              {channelOverrides.map(item => <article key={`${item.channel}-${item.date}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
+              {channelOverrides.map(item => <article key={`${item.channel}-${item.date}-${item.startTime}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
                 <div><p className="text-sm font-black text-slate-950">{new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${item.date}T12:00:00Z`))}</p><p className={`mt-1 text-xs font-bold ${item.enabled ? 'text-emerald-700' : 'text-rose-700'}`}>{item.enabled ? `${item.startTime?.slice(0, 5)}–${item.endTime?.slice(0, 5)} · Available` : 'Unavailable all day'}</p>{item.note && <p className="mt-1 text-xs text-slate-500">{item.note}</p>}</div>
                 <button type="button" onClick={() => void removeOverride(item)} aria-label={`Remove override for ${item.date}`} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>
               </article>)}

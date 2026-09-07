@@ -5,6 +5,7 @@ import {
   bookingChannelSchedules,
   bookingScheduleOverrides,
   appointments,
+  bookingHolds,
   staffServiceAssignments,
   staffTimeOff,
   staffLocations,
@@ -20,6 +21,8 @@ import { normaliseSelectedServiceIds } from '../bookings/service-selection.js';
 
 export type AvailabilityCalculationOptions = {
   excludeAppointmentId?: string;
+  excludeHoldId?: string;
+  slotIntervalMinutes?: number;
   locationId?: string | null;
   resourceId?: string | null;
   database?: any;
@@ -42,6 +45,7 @@ export async function calculateAvailability(
     id: tenants.id,
     timezone: tenants.timezone,
     currency: tenants.currency,
+    slotIntervalMinutes: sql<number>`coalesce((select (booking_rules->>'slotIntervalMinutes')::int from booking_pages where tenant_id=${tenantId!}::uuid limit 1),30)`,
     allowAppointmentsPastClosingTime: sql<boolean>`coalesce(${tenants}.allow_appointments_past_closing_time, false)`,
   }).from(tenants).where(eq(tenants.id, tenantId!)).limit(1);
   if (!tenant) throw new Error('Tenant not found');
@@ -163,8 +167,8 @@ export async function calculateAvailability(
     id: appointments.id,
     userId: appointments.userId,
     resourceId: appointments.resourceId,
-    startTime: appointments.startTime,
-    endTime: appointments.endTime,
+    startTime: appointments.occupiedStart,
+    endTime: appointments.occupiedEnd,
     existingBufferTime: services.bufferTime,
     status: appointments.status,
     paymentStatus: appointments.paymentStatus,
@@ -173,12 +177,17 @@ export async function calculateAvailability(
     .leftJoin(services, and(eq(services.id, appointments.serviceId), eq(services.tenantId, appointments.tenantId)))
     .where(and(
       eq(appointments.tenantId, tenantId!),
-      lt(appointments.startTime, dayEndUtc),
-      gt(appointments.endTime, dayStartUtc),
+      lt(appointments.occupiedStart, dayEndUtc),
+      gt(appointments.occupiedEnd, dayStartUtc),
       notInArray(appointments.status, ['CANCELLED', 'NO_SHOW']),
       options.excludeAppointmentId ? ne(appointments.id, options.excludeAppointmentId) : undefined,
     ));
 
+  const activeHolds = await db.select().from(bookingHolds).where(and(
+    eq(bookingHolds.tenantId, tenantId!), eq(bookingHolds.status, 'ACTIVE'), gt(bookingHolds.expiresAt, new Date()),
+    lt(bookingHolds.occupiedStart, dayEndUtc), gt(bookingHolds.occupiedEnd, dayStartUtc),
+    options.excludeHoldId ? ne(bookingHolds.id, options.excludeHoldId) : undefined,
+  ));
   const approvedTimeOff = await db.select({
     staffUserId: staffTimeOff.staffUserId,
     startsAt: staffTimeOff.startsAt,
@@ -216,15 +225,16 @@ export async function calculateAvailability(
     const startMinutes = startHour * 60 + startMinute;
     const endMinutes = endHour * 60 + endMinute;
 
+    const interval = Math.max(1, options.slotIntervalMinutes || tenant.slotIntervalMinutes || 30);
     for (
-      let minute = startMinutes;
+      let minute = Math.ceil(startMinutes / interval) * interval;
       canOfferSlotWithinSchedule({
         startMinute: minute,
         totalDurationMinutes: totalDurationWithBuffer,
         scheduleEndMinute: endMinutes,
         allowAppointmentsPastClosingTime: tenant.allowAppointmentsPastClosingTime,
       });
-      minute += 30
+      minute += interval
     ) {
       const hour = Math.floor(minute / 60).toString().padStart(2, '0');
       const minutePart = (minute % 60).toString().padStart(2, '0');
@@ -234,19 +244,17 @@ export async function calculateAvailability(
 
       const overlaps = activeAppointments.some((appointment: any) => {
         if (appointment.userId !== schedule.userId && (!options.resourceId || appointment.resourceId !== options.resourceId)) return false;
-        if (
-          appointment.status === 'PENDING'
-          && appointment.paymentStatus === 'PENDING'
-          && appointment.holdExpiresAt
-          && appointment.holdExpiresAt.getTime() < now
-        ) return false;
-        const existingEndWithBuffer = new Date(appointment.endTime.getTime() + (appointment.existingBufferTime ?? 0) * 60_000);
+        const existingEndWithBuffer = appointment.endTime;
         return slotStart < existingEndWithBuffer && slotEnd > appointment.startTime;
       });
 
       const onLeave = approvedTimeOff.some((leave: any) => leave.staffUserId === schedule.userId && slotStart < leave.endsAt && slotEnd > leave.startsAt);
-      if (!overlaps && !onLeave) {
+      const held = activeHolds.some((hold: any) => (hold.staffUserId === schedule.userId || (options.resourceId && hold.resourceId === options.resourceId))
+        && slotStart < hold.occupiedEnd && slotEnd > hold.occupiedStart);
+      if (!overlaps && !onLeave && !held) {
         slots.push({
+          occupiedStart: slotStart.toISOString(),
+          occupiedEnd: slotEnd.toISOString(),
           start: slotStart.toISOString(),
           end: new Date(slotStart.getTime() + duration * 60_000).toISOString(),
           staffId: schedule.userId,

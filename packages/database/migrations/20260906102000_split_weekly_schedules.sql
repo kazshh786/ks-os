@@ -1,0 +1,8 @@
+-- Weekly schedules can have several non-overlapping windows per day.
+DROP INDEX IF EXISTS staff_schedules_user_day_unique;
+DROP INDEX IF EXISTS booking_channel_schedules_user_channel_day_unique;
+CREATE UNIQUE INDEX staff_schedules_user_day_start_unique ON staff_schedules(tenant_id,user_id,day_of_week,start_time);
+CREATE UNIQUE INDEX booking_channel_schedules_user_channel_day_start_unique ON booking_channel_schedules(tenant_id,user_id,booking_channel,day_of_week,start_time);
+
+DROP INDEX IF EXISTS booking_schedule_overrides_member_channel_date_unique;
+CREATE UNIQUE INDEX booking_schedule_overrides_member_channel_date_start_unique ON booking_schedule_overrides(tenant_id,user_id,booking_channel,override_date,start_time);
