@@ -21,7 +21,7 @@ test('profiles are validated, independent, and distinguish enabled engines from 
   assert.ok(salon.enabledModules.includes('services'));
   assert.ok(logistics.enabledModules.includes('fleet'));
   assert.ok(!logistics.enabledModules.includes('services'));
-  assert.ok(agency.enabledModules.includes('projects'));
+  assert.ok(agency.enabledModules.includes('work'));
   assert.equal(agency.terminology.customers,'Clients');
   assert.equal(logistics.terminology.staff,'Driver');
   assert.ok(!logistics.dashboard.includes('booking-summary'));

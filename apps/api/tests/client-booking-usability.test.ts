@@ -90,13 +90,13 @@ test('booking-page contracts persist enabled appointment channels', () => {
   assert.equal(parsed.bookingRules.maximumFutureDays, 42);
 });
 
-test('customer booking UI enforces six weeks, filters disabled channels and uses live available dates', () => {
+test('customer booking UI honors configured horizon, filters disabled channels and uses live available dates', () => {
   const source = fs.readFileSync(path.resolve(process.cwd(), '../web/src/features/bookings/PublicBookingFlow.tsx'), 'utf8');
   const calendarSource = fs.readFileSync(path.resolve(process.cwd(), '../web/src/features/bookings/AvailabilityCalendar.tsx'), 'utf8');
   const availabilityRoute = fs.readFileSync(path.resolve(process.cwd(), 'src/routes/public/availability-summary.ts'), 'utf8');
 
   assert.match(source, /const minimumFutureDays = 42/);
-  assert.match(source, /maximumFutureDays = Math\.max\(minimumFutureDays/);
+  assert.match(source, /maximumFutureDays = Math\.max\(1, Math\.min\(730, page\?\.bookingRules\.maximumFutureDays \|\| minimumFutureDays\)\)/);
   assert.match(source, /visibleChannels/);
   assert.match(source, /<AvailabilityCalendar/);
   assert.match(source, /minimumDate=\{dateMinimum\}/);
