@@ -10,10 +10,26 @@ export const UpdateStaffProfileRequestSchema=z.object({name:z.string().trim().mi
 export const UpdateStaffServicesRequestSchema=z.object({serviceIds:z.array(z.string().uuid()).max(200)}).strict().superRefine((v,c)=>{if(new Set(v.serviceIds).size!==v.serviceIds.length)c.addIssue({code:z.ZodIssueCode.custom,message:'Duplicate service assignment'});});
 const TimeSchema=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const ScheduleIntervalSchema=z.object({dayOfWeek:z.number().int().min(0).max(6),enabled:z.boolean(),startTime:TimeSchema,endTime:TimeSchema}).strict().superRefine((v,c)=>{if(v.enabled&&v.startTime>=v.endTime)c.addIssue({code:z.ZodIssueCode.custom,message:'Start must precede end'});});
-export const UpdateStaffScheduleRequestSchema=z.object({schedule:z.array(ScheduleIntervalSchema).max(7)}).strict().superRefine((v,c)=>{const days=v.schedule.map(x=>x.dayOfWeek);if(new Set(days).size!==days.length)c.addIssue({code:z.ZodIssueCode.custom,message:'Only one interval per day is supported'});});
-export const UpdateBookingChannelScheduleRequestSchema=z.object({channel:z.enum(['in_shop','mobile']),schedule:z.array(ScheduleIntervalSchema).max(7)}).strict().superRefine((v,c)=>{const days=v.schedule.map(x=>x.dayOfWeek);if(new Set(days).size!==days.length)c.addIssue({code:z.ZodIssueCode.custom,message:'Only one interval per channel/day is supported'});});
+function validateSplitSchedule(value: { schedule: Array<{dayOfWeek: number; enabled: boolean; startTime: string; endTime: string}> }, context: z.RefinementCtx) {
+  for (let day=0; day<7; day++) {
+    const rows=value.schedule.filter(row=>row.dayOfWeek===day);
+    const windows=rows.filter(row=>row.enabled).sort((a,b)=>a.startTime.localeCompare(b.startTime));
+    if (windows.some((row,index)=>index>0 && row.startTime<windows[index-1].endTime))
+      context.addIssue({code:z.ZodIssueCode.custom,message:'Enabled schedule windows must not overlap'});
+  }
+}
+export const UpdateStaffScheduleRequestSchema=z.object({schedule:z.array(ScheduleIntervalSchema).max(42)}).strict().superRefine(validateSplitSchedule);
+export const UpdateBookingChannelScheduleRequestSchema=z.object({channel:z.enum(['in_shop','mobile']),schedule:z.array(ScheduleIntervalSchema).max(42)}).strict().superRefine(validateSplitSchedule);
 const BookingScheduleOverrideSchema=z.object({date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),channel:z.enum(['in_shop','mobile']),enabled:z.boolean(),startTime:TimeSchema.nullable().optional(),endTime:TimeSchema.nullable().optional(),note:z.string().trim().max(160).nullable().optional()}).strict().superRefine((v,c)=>{if(v.enabled){if(!v.startTime||!v.endTime)c.addIssue({code:z.ZodIssueCode.custom,message:'Open overrides require start and end times'});else if(v.startTime>=v.endTime)c.addIssue({code:z.ZodIssueCode.custom,message:'Start must precede end'});}else if(v.startTime||v.endTime)c.addIssue({code:z.ZodIssueCode.custom,message:'Closed overrides cannot include times'});});
-export const UpdateBookingScheduleOverridesRequestSchema=z.object({overrides:z.array(BookingScheduleOverrideSchema).max(366)}).strict().superRefine((v,c)=>{const keys=v.overrides.map(x=>`${x.channel}:${x.date}`);if(new Set(keys).size!==keys.length)c.addIssue({code:z.ZodIssueCode.custom,message:'Only one override per channel/date is supported'});});
+export const UpdateBookingScheduleOverridesRequestSchema=z.object({overrides:z.array(BookingScheduleOverrideSchema).max(366)}).strict().superRefine((value,context)=>{
+  const groups=new Map<string, typeof value.overrides>();
+  for(const row of value.overrides){const key=row.channel+':'+row.date;groups.set(key,[...(groups.get(key)||[]),row]);}
+  for(const rows of groups.values()){
+    const windows=rows.filter(row=>row.enabled).sort((a,b)=>a.startTime!.localeCompare(b.startTime!));
+    if((rows.some(row=>!row.enabled)&&rows.length>1)||windows.some((row,index)=>index>0&&row.startTime!<windows[index-1].endTime!))
+      context.addIssue({code:z.ZodIssueCode.custom,message:'Date windows must not overlap or mix open and closed intervals'});
+  }
+});
 export const ApplyStaffLifecycleRequestSchema=z.object({action:StaffLifecycleActionSchema,confirmed:z.literal(true)}).strict();
 export type CreateTeamInvitationRequest=z.infer<typeof CreateTeamInvitationRequestSchema>;
 export type UpdateStaffProfileRequest=z.infer<typeof UpdateStaffProfileRequestSchema>;

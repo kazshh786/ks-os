@@ -164,7 +164,7 @@ export class BookingService {
       incompleteForms: Number(result.aggregate.incompleteForms || 0),
       requiresAttention: Number(result.aggregate.requiresAttention || 0),
     };
-    return { items, meta: { page: query.page, limit: query.limit, total: summary.total, hasMore: query.page * query.limit < summary.total }, summary };
+    return { items, meta: { page: query.page, limit: query.limit, total: Number(result.aggregate.rowCount ?? summary.total), hasMore: query.page * query.limit < Number(result.aggregate.rowCount ?? summary.total) }, summary };
   }
 
   async getOperationalBooking(auth: BookingAuthContext, bookingId: string, now = new Date()) {
@@ -636,8 +636,8 @@ export class BookingService {
 
       const newStart = new Date(startTimeStr);
       const targetStaffId = staffId || booking.userId;
-      const newEnd = new Date(newStart.getTime() + service.duration * 60000);
-      const endWithBuffer = new Date(newStart.getTime() + (service.duration + service.bufferTime) * 60000);
+      const newEnd = new Date(newStart.getTime() + booking.endTime.getTime() - booking.startTime.getTime());
+      const endWithBuffer = new Date(newEnd.getTime() + (booking.occupiedEnd ? booking.occupiedEnd.getTime() - booking.endTime.getTime() : service.bufferTime * 60000));
 
       const overlaps = await this.repository.getOverlappingAppointments(
         auth.tenantId,

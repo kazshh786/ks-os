@@ -8,6 +8,16 @@ export type BookingOperationsScope = {
   ownStaffUserId?: string;
 };
 
+// Assignment state is authoritative after forms have been issued; the booking
+// snapshot covers the interval before asynchronous assignment has completed.
+const operationalIntakeStatus = sql<string>`coalesce((select case
+  when bool_or(f.status not in ('SUBMITTED','CANCELLED') and f.expires_at < now()) then 'OVERDUE'
+  when bool_or(f.status in ('OPENED','IN_PROGRESS')) then 'IN_PROGRESS'
+  when bool_or(f.status not in ('SUBMITTED','CANCELLED')) then 'PENDING'
+  when bool_or(f.status = 'SUBMITTED') then 'COMPLETED'
+  else null end from form_assignments f
+  where f.tenant_id=${appointments.tenantId} and f.appointment_id=${appointments.id}), ${appointments.intakeStatus})`;
+
 export class BookingRepository {
   private operationalConditions(scope: BookingOperationsScope, query: BookingOperationsQuery) {
     const conditions: any[] = [
@@ -17,13 +27,16 @@ export class BookingRepository {
     ];
     if (scope.ownStaffUserId) conditions.push(eq(appointments.userId, scope.ownStaffUserId));
     if (query.staffIds?.length) conditions.push(inArray(appointments.userId, query.staffIds));
-    if (query.serviceIds?.length) conditions.push(inArray(appointments.serviceId, query.serviceIds));
+    if (query.serviceIds?.length) conditions.push(or(inArray(appointments.serviceId, query.serviceIds),
+      sql`exists (select 1 from appointment_services x where x.appointment_id=${appointments.id} and x.tenant_id=${appointments.tenantId} and x.service_id in (${sql.join(query.serviceIds.map(id => sql`${id}::uuid`), sql`, `)}))`));
     if (query.locationIds?.length) conditions.push(inArray(appointments.locationId, query.locationIds));
     if (query.statuses?.length) conditions.push(inArray(appointments.status, query.statuses));
     if (query.paymentStatuses?.length) conditions.push(inArray(appointments.paymentStatus, query.paymentStatuses));
-    if (query.intakeStatuses?.length && !query.intakeStatuses.includes('NOT_REQUIRED')) conditions.push(sql`false`);
-    if (query.sources?.length && !query.sources.includes('STAFF_CREATED')) conditions.push(sql`false`);
+    if (query.intakeStatuses?.length) conditions.push(inArray(operationalIntakeStatus, query.intakeStatuses));
+    if (query.sources?.length) conditions.push(inArray(appointments.bookingSource, query.sources));
     if (query.requiresAttention) conditions.push(or(
+      inArray(operationalIntakeStatus, ['PENDING','IN_PROGRESS','OVERDUE']),
+      sql`${appointments.attentionReason} IS NOT NULL`,
       eq(appointments.status, 'PENDING'),
       inArray(appointments.paymentStatus, ['FAILED', 'PENDING', 'PARTIALLY_PAID']),
       sql`(${appointments.endTime} < now() AND ${appointments.status} NOT IN ('COMPLETED','CANCELLED','NO_SHOW'))`,
@@ -57,8 +70,8 @@ export class BookingRepository {
       clientPhone: clients.phone,
       clientNameFallback: appointments.clientName,
       serviceId: services.id,
-      serviceName: services.name,
-      serviceDuration: services.duration,
+      serviceName: sql<string>`coalesce((select string_agg(x.service_name, ', ' order by x.position) from appointment_services x where x.appointment_id=${appointments.id} and x.tenant_id=${appointments.tenantId}), ${services.name})`,
+      serviceDuration: sql<number>`extract(epoch from (${appointments.endTime}-${appointments.startTime}))::int / 60`,
       staffId: users.id,
       staffName: users.name,
       locationId: locations.id,
@@ -66,11 +79,11 @@ export class BookingRepository {
       bookingChannel: appointments.bookingChannel,
       paymentStatus: appointments.paymentStatus,
       quotedAmount: appointments.quotedAmount,
-      intakeStatus: sql<string>`'NOT_REQUIRED'`,
-      bookingSource: sql<string>`'STAFF_CREATED'`,
+      intakeStatus: operationalIntakeStatus,
+      bookingSource: appointments.bookingSource,
       notes: appointments.notes,
-      customerNotes: sql<string | null>`null`,
-      attentionReason: sql<string | null>`null`,
+      customerNotes: appointments.customerNotes,
+      attentionReason: appointments.attentionReason,
       createdAt: appointments.createdAt,
     })
       .from(appointments)
@@ -91,14 +104,15 @@ export class BookingRepository {
       .limit(query.limit)
       .offset((query.page - 1) * query.limit);
     const [aggregate] = await db.select({
+      rowCount: sql<number>`count(*)::int`,
       total: sql<number>`count(*) filter (where ${appointments.status} <> 'BLOCKED')::int`,
       confirmed: sql<number>`count(*) filter (where ${appointments.status} = 'CONFIRMED')::int`,
       completed: sql<number>`count(*) filter (where ${appointments.status} = 'COMPLETED')::int`,
       cancelled: sql<number>`count(*) filter (where ${appointments.status} = 'CANCELLED')::int`,
       noShow: sql<number>`count(*) filter (where ${appointments.status} = 'NO_SHOW')::int`,
       awaitingPayment: sql<number>`count(*) filter (where ${appointments.status} = 'AWAITING_PAYMENT' or ${appointments.paymentStatus} in ('PENDING','FAILED','PARTIALLY_PAID'))::int`,
-      incompleteForms: sql<number>`0::int`,
-      requiresAttention: sql<number>`count(*) filter (where ${appointments.status} <> 'BLOCKED' and (${appointments.status} = 'PENDING' or ${appointments.paymentStatus} in ('PENDING','FAILED','PARTIALLY_PAID') or (${appointments.endTime} < now() and ${appointments.status} not in ('COMPLETED','CANCELLED','NO_SHOW'))))::int`,
+      incompleteForms: sql<number>`count(*) filter (where ${operationalIntakeStatus} in ('PENDING','IN_PROGRESS','OVERDUE'))::int`,
+      requiresAttention: sql<number>`count(*) filter (where ${appointments.status} <> 'BLOCKED' and (${operationalIntakeStatus} in ('PENDING','IN_PROGRESS','OVERDUE') or ${appointments.attentionReason} is not null or ${appointments.status} = 'PENDING' or ${appointments.paymentStatus} in ('PENDING','FAILED','PARTIALLY_PAID') or (${appointments.endTime} < now() and ${appointments.status} not in ('COMPLETED','CANCELLED','NO_SHOW'))))::int`,
     })
       .from(appointments)
       .leftJoin(services, and(eq(appointments.serviceId, services.id), eq(services.tenantId, scope.tenantId)))
@@ -128,7 +142,7 @@ export class BookingRepository {
       startTime: appointments.startTime,
       endTime: appointments.endTime,
       status: appointments.status,
-      serviceName: services.name,
+      serviceName: sql<string>`coalesce((select string_agg(x.service_name, ', ' order by x.position) from appointment_services x where x.appointment_id=${appointments.id} and x.tenant_id=${appointments.tenantId}), ${services.name})`,
       staffName: users.name,
       clientNameFallback: appointments.clientName,
       crmClientName: clients.name
@@ -156,6 +170,8 @@ export class BookingRepository {
       status: appointments.status,
       startTime: appointments.startTime,
       endTime: appointments.endTime,
+      occupiedStart: appointments.occupiedStart,
+      occupiedEnd: appointments.occupiedEnd,
       userId: appointments.userId,
       tenantId: appointments.tenantId,
       clientName: clients.name,
@@ -163,7 +179,7 @@ export class BookingRepository {
       clientId: clients.id,
       clientPhone: clients.phone,
       clientNameFallback: appointments.clientName,
-      serviceName: services.name,
+      serviceName: sql<string>`coalesce((select string_agg(x.service_name, ', ' order by x.position) from appointment_services x where x.appointment_id=${appointments.id} and x.tenant_id=${appointments.tenantId}), ${services.name})`,
       staffName: users.name,
       bookingChannel: appointments.bookingChannel,
       mobileAddress: appointments.mobileAddress,
@@ -171,11 +187,11 @@ export class BookingRepository {
       resourceId: appointments.resourceId,
       paymentStatus: appointments.paymentStatus,
       quotedAmount: appointments.quotedAmount,
-      intakeStatus: sql<string>`'NOT_REQUIRED'`,
-      bookingSource: sql<string>`'STAFF_CREATED'`,
+      intakeStatus: operationalIntakeStatus,
+      bookingSource: appointments.bookingSource,
       publicReference: appointments.publicReference,
       notes: appointments.notes,
-      customerNotes: sql<string | null>`null`,
+      customerNotes: appointments.customerNotes,
       createdAt: appointments.createdAt,
     })
     .from(appointments)
@@ -259,8 +275,8 @@ export class BookingRepository {
         eq(appointments.tenantId, tenantId),
         eq(appointments.userId, staffId),
         sql`${appointments.id} != ${excludeBookingId}::uuid`,
-        sql`${appointments.startTime} < ${endTime.toISOString()}::timestamptz`,
-        sql`${appointments.endTime} > ${startTime.toISOString()}::timestamptz`,
+        sql`${appointments.occupiedStart} < ${endTime.toISOString()}::timestamptz`,
+        sql`${appointments.occupiedEnd} > ${startTime.toISOString()}::timestamptz`,
         sql`${appointments.status} NOT IN ('CANCELLED', 'NO_SHOW')`
       )).limit(1);
   }

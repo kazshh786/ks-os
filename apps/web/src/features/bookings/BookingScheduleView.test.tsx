@@ -1,7 +1,10 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { BookingOperationsItem } from '@ks-os/contracts';
 import { BookingScheduleView } from './BookingScheduleView.js';
+import { fetchWithAuth } from '../../api/client.js';
+
+vi.mock('../../api/client.js', () => ({ fetchWithAuth: vi.fn(async (url: string) => ({ ok: true, json: async () => url === '/api/v1/booking-page' ? { data: { bookingRules: { slotIntervalMinutes: 20 } } } : { data: { members: [] } } })) }));
 
 const booking: BookingOperationsItem = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -60,6 +63,20 @@ function overlapBooking({ id, customerId, name, startTime, endTime }: { id: stri
 }
 
 describe('BookingScheduleView time grid', () => {
+  it('uses internal staff identity after a rename and hides unverified location availability', async () => {
+    vi.mocked(fetchWithAuth).mockImplementation(async (url) => ({ ok: true, json: async () => url === '/api/v1/booking-page'
+      ? { data: { bookingRules: { slotIntervalMinutes: 20 } } }
+      : url === '/api/v1/team' ? { data: { members: [{ userId: 'public-id', accountStatus: 'ACTIVE' }] } }
+        : { data: { id: 'public-id', staffUserId: booking.staff.id, name: 'Same name', schedule: [], bookingChannels: [{ bookingChannel: 'in_shop', dayOfWeek: 3, startTime: '09:00', endTime: '12:00' }], bookingOverrides: [] } } } as Response));
+    const props = { columns: [{ id: booking.staff.id, label: 'Renamed member' }], days: [days[0]], bookings: [booking], density: 'comfortable' as const,
+      timezone: 'UTC', onOpen: vi.fn(), onCreate: vi.fn(), onReschedule: vi.fn() };
+    const { rerender } = render(<BookingScheduleView {...props} groupBy="staff" />);
+    const lane = screen.getByRole('gridcell', { name: 'Wed 29 · Renamed member time grid' });
+    await waitFor(() => expect(within(lane).getByLabelText('At-business availability 09:00 to 12:00')).toBeInTheDocument());
+    rerender(<BookingScheduleView {...props} columns={[{ id: booking.location.id!, label: 'Studio' }]} groupBy="location" />);
+    expect(screen.queryByLabelText('At-business availability 09:00 to 12:00')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Alice Jones/ }).every(card => card.getAttribute('draggable') !== 'true')).toBe(true);
+  });
   it('shows a full-day grid, core hours and the selected day', () => {
     render(<BookingScheduleView
       columns={days}
@@ -84,7 +101,7 @@ describe('BookingScheduleView time grid', () => {
     expect(screen.getByRole('button', { name: /09:00.*Alice Jones.*Consultation/i })).toBeInTheDocument();
   });
 
-  it('snaps a day drop to an exact 15-minute time', () => {
+  it('snaps a day drop to the configured 20-minute interval', async () => {
     const onReschedule = vi.fn();
     render(<BookingScheduleView
       columns={days}
@@ -101,19 +118,20 @@ describe('BookingScheduleView time grid', () => {
     />);
 
     const card = screen.getByRole('button', { name: /09:00.*Alice Jones.*Consultation/i });
+    await waitFor(() => expect(card).toHaveAttribute('draggable', 'true'));
     const target = screen.getByRole('gridcell', { name: 'Thu 30 time grid' });
     setGridBounds(target);
     const transfer = dataTransfer();
 
     fireEvent.dragStart(card, { dataTransfer: transfer });
     dispatchDrag(target, 'dragover', 567, transfer);
-    expect(screen.getByText('Move to 10:30')).toBeInTheDocument();
+    expect(screen.getByText('Move to 10:40')).toBeInTheDocument();
     dispatchDrag(target, 'drop', 567, transfer);
 
     expect(onReschedule).toHaveBeenCalledWith(booking, expect.objectContaining({
       id: '2026-07-30',
       day: '2026-07-30',
-      time: '10:30',
+      time: '10:40',
       label: 'Thu 30',
     }));
   });

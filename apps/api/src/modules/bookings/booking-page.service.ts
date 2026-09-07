@@ -371,13 +371,15 @@ export class BookingPageService {
     const sessionHash = hashPublicToken(rawToken, tokenSecret());
     const holdMinutes = env.BOOKING_SLOT_HOLD_MINUTES;
     return db.transaction(async tx => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenant.id}:${input.staffId}:${input.startTime}`}::text, 0))`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenant.id}:${input.staffId}`}::text, 0))`);
+      if (input.resourceId) await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenant.id}:resource:${input.resourceId}`}::text, 0))`);
       await tx.update(bookingHolds).set({ status: 'EXPIRED', releasedAt: new Date() }).where(and(eq(bookingHolds.status, 'ACTIVE'), lt(bookingHolds.expiresAt, new Date())));
       const [existing] = await tx.select().from(bookingHolds).where(and(eq(bookingHolds.bookingPageId, page.id), eq(bookingHolds.idempotencyKey, input.idempotencyKey))).limit(1);
       if (existing) {
-        if (existing.serviceIds.join(',') !== selectedServiceIds.join(',')) {
+        if (existing.serviceIds.join(',') !== selectedServiceIds.join(',') || existing.staffUserId !== input.staffId || existing.startTime.getTime() !== new Date(input.startTime).getTime() || (existing.locationId || null) !== (input.locationId || null) || (existing.resourceId || null) !== (input.resourceId || null)) {
           throw Object.assign(new Error('This reservation key was already used for another service selection.'), { code: 'HOLD_MISMATCH', statusCode: 409 });
         }
+        if (existing.status !== 'ACTIVE' || existing.expiresAt <= new Date()) throw Object.assign(new Error('The slot reservation has expired.'), { code: 'HOLD_EXPIRED', statusCode: 409 });
         return this.holdResponse(existing, rawToken);
       }
       const localDateParts = new Intl.DateTimeFormat('en-GB', {
@@ -393,7 +395,7 @@ export class BookingPageService {
         throw Object.assign(new Error('The selected appointment date could not be read.'), { code: 'INVALID_HOLD_REQUEST', statusCode: 400 });
       }
       const localDate = `${year}-${month}-${day}`;
-      const availability = await calculateAvailability({ tenantId: tenant.id, serviceId: input.serviceId, serviceIds: selectedServiceIds, staffId: input.staffId, date: localDate, bookingChannel: input.bookingChannel }, { locationId: input.locationId, resourceId: input.resourceId, database: tx });
+      const availability = await calculateAvailability({ tenantId: tenant.id, serviceId: input.serviceId, serviceIds: selectedServiceIds, staffId: input.staffId, date: localDate, bookingChannel: input.bookingChannel }, { locationId: input.locationId, resourceId: input.resourceId, database: tx, slotIntervalMinutes: (page.bookingRules as any).slotIntervalMinutes });
       const requestedStart = new Date(input.startTime).getTime();
       const slot = availability.slots.find(item => item.staffId === input.staffId && new Date(item.start).getTime() === requestedStart);
       if (!slot) throw Object.assign(new Error('That time is no longer available.'), { code: 'SLOT_UNAVAILABLE', statusCode: 409 });
@@ -404,7 +406,7 @@ export class BookingPageService {
       const [hold] = await tx.insert(bookingHolds).values({
         tenantId: tenant.id, bookingPageId: page.id, serviceId: input.serviceId, serviceIds: selectedServiceIds, staffUserId: input.staffId,
         locationId: input.locationId || null, resourceId: input.resourceId || null, customerSessionHash: sessionHash,
-        startTime: new Date(slot.start), endTime: new Date(slot.end), idempotencyKey: input.idempotencyKey,
+        startTime: new Date(slot.start), endTime: new Date(slot.end), occupiedStart: new Date(slot.occupiedStart || slot.start), occupiedEnd: new Date(slot.occupiedEnd || slot.end), idempotencyKey: input.idempotencyKey,
         expiresAt: new Date(Date.now() + holdMinutes * 60_000),
       }).returning();
       return this.holdResponse(hold, rawToken);
@@ -424,7 +426,7 @@ export class BookingPageService {
     return Boolean(released);
   }
 
-  async validateHoldForBooking(tx: DatabaseLike, pageId: string, input: { holdId?: string; holdToken?: string; serviceId: string; serviceIds?: string[]; staffId: string; startTime: string; locationId?: string | null }) {
+  async validateHoldForBooking(tx: DatabaseLike, pageId: string, input: { holdId?: string; holdToken?: string; serviceId: string; serviceIds?: string[]; staffId: string; startTime: string; locationId?: string | null; resourceId?: string | null; bookingChannel?: string }) {
     if (!input.holdId && !input.holdToken) return null;
     if (!input.holdId || !input.holdToken) throw Object.assign(new Error('The slot reservation is incomplete.'), { code: 'INVALID_HOLD', statusCode: 400 });
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.holdId}::text, 0))`);
@@ -432,9 +434,10 @@ export class BookingPageService {
     if (!hold || hold.customerSessionHash !== hashPublicToken(input.holdToken, tokenSecret())) throw Object.assign(new Error('The slot reservation is invalid.'), { code: 'INVALID_HOLD', statusCode: 409 });
     if (hold.status !== 'ACTIVE' || hold.expiresAt <= new Date()) throw Object.assign(new Error('The slot reservation has expired.'), { code: 'HOLD_EXPIRED', statusCode: 409 });
     const selectedServiceIds = normaliseSelectedServiceIds(input.serviceId, input.serviceIds);
-    if (hold.serviceId !== input.serviceId || hold.serviceIds.join(',') !== selectedServiceIds.join(',') || hold.staffUserId !== input.staffId || hold.startTime.toISOString() !== input.startTime || (hold.locationId || null) !== (input.locationId || null)) {
+    if (hold.serviceId !== input.serviceId || hold.serviceIds.join(',') !== selectedServiceIds.join(',') || hold.staffUserId !== input.staffId || hold.startTime.toISOString() !== input.startTime || (hold.locationId || null) !== (input.locationId || null) || (hold.resourceId || null) !== (input.resourceId || null)) {
       throw Object.assign(new Error('The booking does not match the reserved slot.'), { code: 'HOLD_MISMATCH', statusCode: 409 });
     }
+    await tx.execute(sql`select set_config('ks.validated_hold_id', ${hold.id}, true)`);
     return hold;
   }
 

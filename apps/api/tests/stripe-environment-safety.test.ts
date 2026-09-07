@@ -69,8 +69,8 @@ test('Stripe minimum charge validation runs before booking or POS payment creati
   const bookingRoute = source('src/routes/public/booking.ts');
   assert.ok(
     bookingRoute.indexOf('assertBookingPaymentAmount(expectedAmountDue')
-      < bookingRoute.indexOf('const booking = await db.transaction'),
-    'Stripe amount validation must happen before the booking transaction',
+      < bookingRoute.indexOf('const created = await bookingService.createPublicBooking('),
+    'Stripe amount validation must happen before creating a new booking, after idempotent replay',
   );
 });
 

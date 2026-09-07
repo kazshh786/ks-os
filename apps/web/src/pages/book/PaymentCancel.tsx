@@ -33,11 +33,11 @@ export default function PaymentCancel() {
         throw new Error(body.error?.message || 'A new secure payment session could not be created.');
       }
 
-      if (typeof body.checkoutUrl !== 'string' || !body.checkoutUrl) {
+      if (typeof body.payment?.checkoutUrl !== 'string' || !body.payment?.checkoutUrl) {
         throw new Error('The payment provider did not return a secure checkout address.');
       }
 
-      window.location.assign(body.checkoutUrl);
+      window.location.assign(body.payment?.checkoutUrl);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Payment could not be restarted. Please try again.');
     } finally {

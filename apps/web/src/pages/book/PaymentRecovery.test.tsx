@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PaymentCancel from './PaymentCancel';
@@ -22,6 +22,15 @@ afterEach(() => {
 });
 
 describe('public booking payment recovery', () => {
+  it('clicking retry navigates to the nested payment checkout URL', async () => {
+    const assign = vi.fn();
+    const original = window;
+    vi.stubGlobal('window', new Proxy(original, { get(target, key) { return key === 'location' ? { ...target.location, assign } : Reflect.get(target, key); } }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ payment: { checkoutUrl: 'https://checkout.stripe.com/test' } }) }));
+    renderRoute('/book/studio/payment-cancel?reference=ref', '/book/:subdomain/payment-cancel', <PaymentCancel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry secure payment' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.com/test'));
+  });
   it('explains that a cancelled payment retry keeps the same booking', () => {
     renderRoute(
       '/book/north-star/payment-cancel?reference=KS-1234',

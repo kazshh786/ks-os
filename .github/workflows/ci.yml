@@ -63,4 +63,6 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+        env:
+          BOOKING_INTEGRITY_TEST_DATABASE_URL: postgresql://postgres_ci:postgres_ci_password@127.0.0.1:5432/ks_os_ci
       - run: pnpm db:migrations:plan

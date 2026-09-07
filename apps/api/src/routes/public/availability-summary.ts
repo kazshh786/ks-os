@@ -122,7 +122,7 @@ export default async function publicAvailabilitySummaryRoutes(fastify: FastifyIn
             resourceId: query.resourceId,
             bookingChannel: query.bookingChannel,
             date,
-          }, { locationId: query.locationId, resourceId: query.resourceId });
+          }, { locationId: query.locationId, resourceId: query.resourceId, slotIntervalMinutes: (resolved.page.bookingRules as any).slotIntervalMinutes });
           const liveSlots = availability.slots.filter(slot => {
             const start = new Date(slot.start).getTime();
             return start >= earliest && start <= latest;
@@ -139,7 +139,7 @@ export default async function publicAvailabilitySummaryRoutes(fastify: FastifyIn
       }
 
       return reply
-        .header('cache-control', 'private, max-age=15')
+        .header('cache-control', 'no-store')
         .send({ from: query.from, to: query.to, availableDates, availabilityByDate });
     } catch (error) {
       fastify.log.error(error);

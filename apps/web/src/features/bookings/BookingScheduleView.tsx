@@ -52,6 +52,7 @@ type TeamOverride = {
   note: string | null;
 };
 type AvailabilityMember = {
+  staffUserId: string;
   id: string;
   name: string;
   role: string;
@@ -72,7 +73,7 @@ type ColumnAvailability = {
   memberCount: number;
 };
 
-const slotMinutes = 15;
+const slotMinutes = 30;
 const dayStartMinute = 0;
 const dayEndMinute = 24 * 60;
 const hourHeightByDensity = { compact: 42, comfortable: 54, detailed: 68 } as const;
@@ -179,30 +180,24 @@ function memberAvailability(member: AvailabilityMember, date: string) {
   const overrides: TeamOverride[] = [];
 
   for (const channel of ['in_shop', 'mobile'] as const) {
-    const override = member.bookingOverrides.find(item => item.date === date && item.channel === channel);
-    if (override) {
-      overrides.push(override);
-      const startMinute = scheduleMinute(override.startTime);
-      const endMinute = scheduleMinute(override.endTime);
-      if (override.enabled && startMinute !== null && endMinute !== null && endMinute > startMinute) {
-        windows.push({
-          channel,
-          startMinute,
-          endMinute,
-          source: 'override',
-          notes: override.note ? [override.note] : [],
-        });
+    const dateOverrides = member.bookingOverrides.filter(item => item.date === date && item.channel === channel);
+    if (dateOverrides.length) {
+      overrides.push(...dateOverrides);
+      if (!dateOverrides.some(item => !item.enabled)) for (const override of dateOverrides) {
+        const startMinute=scheduleMinute(override.startTime), endMinute=scheduleMinute(override.endTime);
+        if(startMinute!==null && endMinute!==null && endMinute>startMinute) windows.push({channel,startMinute,endMinute,source:'override',notes:override.note?[override.note]:[]});
       }
       continue;
     }
 
     const channelRows = member.bookingChannels.filter(item => item.bookingChannel === channel);
     const rows = channelRows.length ? channelRows : channel === 'in_shop' ? member.schedule : [];
-    const row = rows.find(item => item.dayOfWeek === dayOfWeek);
+    for (const row of rows.filter(item => item.dayOfWeek === dayOfWeek)) {
     const startMinute = scheduleMinute(row?.startTime);
     const endMinute = scheduleMinute(row?.endTime);
     if (row && startMinute !== null && endMinute !== null && endMinute > startMinute) {
       windows.push({ channel, startMinute, endMinute, source: 'weekly', notes: [] });
+    }
     }
   }
 
@@ -217,6 +212,8 @@ function channelName(channel: BookingChannel, compact = false) {
 export function BookingScheduleView({
   columns, days, bookings, groupBy, density, timezone, selectedDay, onSelectDay, onOpen, onCreate, onReschedule,
 }: BookingScheduleViewProps) {
+  const [configuredInterval, setConfiguredInterval] = useState<number | null>(null);
+  const slotMinutes = configuredInterval || 30;
   const [dragging, setDragging] = useState<BookingOperationsItem | null>(null);
   const [dropPreview, setDropPreview] = useState<{ key: string; minute: number } | null>(null);
   const [availabilityMembers, setAvailabilityMembers] = useState<AvailabilityMember[]>([]);
@@ -252,7 +249,11 @@ export function BookingScheduleView({
 
   const loadAvailability = useCallback(async () => {
     try {
-      const listResponse = await fetchWithAuth('/api/v1/team');
+      const [listResponse, settingsResponse] = await Promise.all([fetchWithAuth('/api/v1/team'), fetchWithAuth('/api/v1/booking-page')]);
+      if (settingsResponse.ok) {
+        const settings = await settingsResponse.json();
+        setConfiguredInterval(settings.data?.bookingRules?.slotIntervalMinutes || 30);
+      } else setConfiguredInterval(null);
       if (!listResponse.ok) throw new Error('Availability is not accessible for this role.');
       const listBody = await listResponse.json();
       const activeMembers = (listBody.data?.members || []).filter((member: { accountStatus: string }) => member.accountStatus === 'ACTIVE');
@@ -276,8 +277,8 @@ export function BookingScheduleView({
 
   const availabilityForColumn = useCallback((column: RenderColumn): ColumnAvailability => {
     const relevantMembers = groupBy === 'staff'
-      ? availabilityMembers.filter(member => member.name === column.resourceLabel)
-      : availabilityMembers;
+      ? availabilityMembers.filter(member => member.staffUserId === column.id)
+      : groupBy === 'location' ? [] : availabilityMembers;
     const resolved = relevantMembers.map(member => memberAvailability(member, column.day));
     return {
       windows: mergeAvailabilityWindows(resolved.flatMap(item => item.windows)),
@@ -411,7 +412,7 @@ export function BookingScheduleView({
 
           {renderColumns.map(column => {
             const columnBookings = overlappingLayout(bookingsForColumn(column), timezone);
-            const canDrop = groupBy !== 'location';
+            const canDrop = groupBy !== 'location' && configuredInterval !== null;
             const showNow = column.day === today && nowMinute >= visibleRange.startMinute && nowMinute <= visibleRange.endMinute;
             const isSelected = column.day === selectedDay;
             const availability = availabilityForColumn(column);
@@ -499,7 +500,7 @@ export function BookingScheduleView({
     </div>
 
     <footer className="flex flex-col justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 sm:flex-row sm:items-center">
-      <p><strong className="text-slate-800">Availability:</strong> indigo shows at-business hours, amber shows mobile hours, and a green outline marks a date override. Drag bookings to reschedule in 15-minute intervals.</p>
+      {groupBy === 'location' ? <p>Location lanes show booked appointments. View working hours in the staff calendar; moving between locations is unavailable here.</p> : <p><strong className="text-slate-800">Working hours:</strong> indigo shows at-business hours, amber shows mobile hours, and a green outline marks a date override. {configuredInterval ? 'Drag bookings to reschedule in ' + configuredInterval + '-minute intervals.' : 'Drag rescheduling is unavailable until calendar settings load.'}</p>}
       <button type="button" onClick={onCreate} className="min-h-11 shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 font-black text-slate-800 hover:border-indigo-300 hover:text-indigo-700">Add to calendar</button>
     </footer>
     </section>

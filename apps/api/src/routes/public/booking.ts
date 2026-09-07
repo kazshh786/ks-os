@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getDatabase, tenants, services, users, appointments, tenantActivationMilestones, clientFormSubmissions, formAssignments } from '@ks-os/database';
 import { EntitlementService } from '../../modules/agency/agency.service.js';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import { calculateAvailability } from '../../modules/availability/availability.service.js';
 import { BookingService } from '../../modules/bookings/booking.service.js';
 import { CustomerClaimsService } from '../../modules/customer-portal/customer-claims.service.js';
@@ -158,11 +159,11 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       if (resolved.page.allowedServiceIds.length && selectedServiceIds.some(serviceId => !resolved.page.allowedServiceIds.includes(serviceId))) {
         return reply.code(404).send({ error: { code: 'SERVICE_NOT_AVAILABLE', message: 'One or more services are not available for online booking.' } });
       }
-      const availability = await calculateAvailability({ ...parseResult.data, serviceIds: selectedServiceIds }, { locationId: parseResult.data.locationId, resourceId: parseResult.data.resourceId });
+      const availability = await calculateAvailability({ ...parseResult.data, serviceIds: selectedServiceIds }, { locationId: parseResult.data.locationId, resourceId: parseResult.data.resourceId, slotIntervalMinutes: (resolved.page.bookingRules as any).slotIntervalMinutes });
       const rules = resolved.page.bookingRules as { minimumNoticeMinutes?: number; maximumFutureDays?: number };
       const earliest = Date.now() + Math.max(0, rules.minimumNoticeMinutes || 0) * 60_000;
       const latest = Date.now() + Math.max(1, rules.maximumFutureDays || 90) * 86_400_000;
-      return reply.header('cache-control', 'private, max-age=15').send({ ...availability, slots: availability.slots.filter(slot => {
+      return reply.header('cache-control', 'no-store').send({ ...availability, slots: availability.slots.filter(slot => {
         const start = new Date(slot.start).getTime();
         return start >= earliest && start <= latest;
       }) });
@@ -205,7 +206,10 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       bookingChannel: appointments.bookingChannel,
       serviceName: services.name,
       staffName: users.name,
-      quotedAmount: appointments.quotedAmount
+      quotedAmount: appointments.quotedAmount,
+      paymentAmountDue: appointments.paymentAmountDue,
+      paymentCurrency: appointments.paymentCurrency,
+      paymentStatus: appointments.paymentStatus,
     })
     .from(appointments)
     .leftJoin(services, eq(appointments.serviceId, services.id))
@@ -264,6 +268,8 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
     if (page.allowedStaffIds.length && !page.allowedStaffIds.includes(data.staffId)) return reply.code(404).send({ error: { code: 'STAFF_NOT_AVAILABLE', message: 'This team member is not available for online booking.' } });
     if (data.locationId && page.allowedLocationIds.length && !page.allowedLocationIds.includes(data.locationId)) return reply.code(404).send({ error: { code: 'LOCATION_NOT_AVAILABLE', message: 'This location is not available for online booking.' } });
 
+    let committedBooking: any;
+    let committedAmountDue = 0;
     try {
       const selectedServiceIds = normaliseSelectedServiceIds(data.serviceId, data.serviceIds);
       assertServiceSelectionAllowed(page.bookingRules as any, selectedServiceIds);
@@ -305,13 +311,28 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       const expectedAmountDue = verifiedPaymentMode === 'deposit_required'
         ? calculateDepositAmount(baseServiceAmount, paymentSettings)
         : baseServiceAmount;
+      const intentHash = createHash('sha256').update(JSON.stringify({
+        serviceIds: selectedServiceIds, staffId: data.staffId, startTime: new Date(data.startTime).toISOString(),
+        locationId: data.locationId || null, resourceId: data.resourceId || null,
+        bookingChannel: data.bookingChannel, mobileAddress: data.mobileAddress || null,
+        paymentMode: data.paymentMode, client: data.client, customerNotes: data.customerNotes || null,
+      })).digest('hex');
+      const booking = await db.transaction(async tx => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${tenant.id + ':intent:' + data.idempotencyKey}, 0))`);
+        const [existing] = await tx.select().from(appointments).where(and(eq(appointments.tenantId, tenant.id), eq(appointments.idempotencyKey, data.idempotencyKey))).limit(1);
+        if (existing) {
+          if (existing.bookingIntentHash !== intentHash) throw Object.assign(new Error('This booking key belongs to a different booking intent.'), { code: 'IDEMPOTENCY_INTENT_MISMATCH', statusCode: 409 });
+          committedAmountDue = existing.paymentAmountDue ?? 0;
+          return { appointment_id: existing.id, booking_reference: existing.publicReference, appointment_status: existing.status,
+            start_time: existing.startTime.toISOString(), end_time: existing.endTime.toISOString(), booking_channel: existing.bookingChannel,
+            quoted_amount: existing.quotedAmount, payment_status: existing.paymentStatus, payment_currency: existing.paymentCurrency, replayed: true };
+        }
       if (verifiedPaymentMode !== 'pay_later' && baseServiceAmount > 0) {
         const { StripeService } = await import('../../modules/integrations/stripe/stripe.service.js');
         const stripeService = new StripeService();
         stripeService.assertBookingPaymentAmount(expectedAmountDue, tenant.currency || 'GBP');
         await stripeService.assertBookingPaymentsReady(tenant.id);
       }
-      const booking = await db.transaction(async tx => {
         const hold = await bookingPageService.validateHoldForBooking(tx, page.id, data);
         const created = await bookingService.createPublicBooking(
           tenant.id,
@@ -336,7 +357,12 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         }
         const intakeRequired = applicableForms.some(form => form.required)
           || Boolean((page.intakeFormSettings as { requiredBeforeConfirmation?: boolean }).requiredBeforeConfirmation);
+        committedAmountDue = verifiedPaymentMode === 'pay_later' ? 0 : verifiedPaymentMode === 'deposit_required'
+          ? calculateDepositAmount(created.quoted_amount || 0, paymentSettings) : created.quoted_amount || 0;
         await tx.update(appointments).set({
+          paymentAmountDue: committedAmountDue,
+          paymentCurrency: tenant.currency || 'GBP',
+          bookingIntentHash: intentHash,
           locationId: data.locationId || null,
           bookingSource: data.source,
           sourceMedium: data.sourceMedium,
@@ -351,6 +377,16 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         if (hold) await bookingPageService.consumeHold(tx, hold.id, appointmentId);
         return created;
       });
+      committedBooking = booking;
+      if (booking.replayed) {
+        const paid = ['PAID', 'PARTIALLY_PAID', 'SUCCEEDED'].includes(booking.payment_status);
+        return reply.code(200).send({
+          booking: { reference: booking.booking_reference, status: booking.appointment_status,
+            startTime: booking.start_time, endTime: booking.end_time, bookingChannel: booking.booking_channel },
+          payment: { required: committedAmountDue > 0 && !paid, status: paid ? 'COMPLETED' : committedAmountDue > 0 ? 'FAILED' : 'NOT_REQUIRED',
+            amount: committedAmountDue, currency: booking.payment_currency || tenant.currency || 'GBP' },
+        });
+      }
       try {
         await entitlementService.recordUsageOverage(tenant.id, 'bookings.monthly', booking.appointment_id || booking.id, 'PUBLIC_BOOKING_PAGE', request.id);
       } catch (auditError) {
@@ -432,9 +468,7 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       let paymentStatus = 'NOT_REQUIRED';
       let checkoutUrl = undefined;
       const quotedAmount = booking.quoted_amount || 0;
-      const amountDue = verifiedPaymentMode === 'deposit_required'
-        ? calculateDepositAmount(quotedAmount, paymentSettings)
-        : quotedAmount;
+      const amountDue = committedAmountDue;
       
       if (amountDue > 0 && verifiedPaymentMode !== 'pay_later') {
         const { StripeService } = await import('../../modules/integrations/stripe/stripe.service.js');
@@ -469,6 +503,15 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         }
       });
     } catch (err: any) {
+      if (committedBooking) {
+        fastify.log.error(err, 'Booking exists; post-commit work needs recovery');
+        return reply.code(201).send({
+          booking: { reference: committedBooking.booking_reference, status: committedBooking.appointment_status || committedBooking.status,
+            startTime: committedBooking.start_time, endTime: committedBooking.end_time, bookingChannel: committedBooking.booking_channel },
+          payment: { required: committedAmountDue > 0, status: committedAmountDue > 0 ? 'FAILED' : 'NOT_REQUIRED',
+            amount: committedAmountDue, currency: tenant.currency || 'GBP' },
+        });
+      }
       fastify.log.error(err, 'Booking creation failed');
       if (err.code === 'ENTITLEMENT_USAGE_EXCEEDED') {
         return reply.code(409).send({ error: { code: err.code, message: err.message } });
@@ -485,7 +528,10 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         || ['STRIPE_ACCOUNT_NOT_READY', 'STRIPE_NOT_CONFIGURED', 'STRIPE_KEY_MODE_MISMATCH'].includes(message)) {
         return reply.code(402).send({ error: { code: 'PAYMENTS_NOT_AVAILABLE', message: 'Payments are not currently available for this shop.' } });
       }
-      if (/no longer available|outside booking channel schedule/i.test(message)) {
+      if (message === 'IDEMPOTENCY_INTENT_MISMATCH') {
+        return reply.code(409).send({ error: { code: message, message: 'This booking key belongs to a different booking intent.' } });
+      }
+      if (/SLOT_UNAVAILABLE|no longer available|outside booking channel schedule/i.test(message)) {
         return reply.code(409).send({ error: { code: ERROR_CODES.SLOT_UNAVAILABLE, message: 'The selected slot is no longer available' } });
       }
       return reply.code(500).send({ error: { code: ERROR_CODES.BOOKING_CREATION_FAILED, message: 'The booking could not be created' } });
@@ -537,7 +583,10 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
     const [booking] = await db.select({
       id: appointments.id,
       status: appointments.status,
-      quotedAmount: appointments.quotedAmount
+      quotedAmount: appointments.quotedAmount,
+      paymentAmountDue: appointments.paymentAmountDue,
+      paymentCurrency: appointments.paymentCurrency,
+      paymentStatus: appointments.paymentStatus,
     })
     .from(appointments)
     .where(and(eq(appointments.tenantId, tenant.id), eq(appointments.publicReference, reference)))
@@ -551,7 +600,13 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: { code: 'INVALID_BOOKING_STATUS', message: 'Cannot initiate payment for completed or cancelled bookings' } });
     }
 
-    if (booking.quotedAmount <= 0) {
+    if (['PAID', 'PARTIALLY_PAID', 'SUCCEEDED'].includes(booking.paymentStatus)) {
+      return reply.code(409).send({ error: { code: 'PAYMENT_ALREADY_RECORDED', message: 'Payment has already been recorded. Contact the business about any balance.' } });
+    }
+    if (booking.paymentAmountDue == null) {
+      return reply.code(409).send({ error: { code: 'PAYMENT_OBLIGATION_UNKNOWN', message: 'The original payment amount needs review by the business.' } });
+    }
+    if (booking.paymentAmountDue <= 0) {
       return reply.code(400).send({ error: { code: 'NO_PAYMENT_REQUIRED', message: 'No payment required for this booking' } });
     }
 
@@ -565,16 +620,16 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         booking.id,
         reference,
         idempotencyKey,
-        booking.quotedAmount,
-        tenant.currency || 'GBP'
+        booking.paymentAmountDue,
+        booking.paymentCurrency || tenant.currency || 'GBP'
       );
 
       return reply.send({
         payment: {
           required: true,
           status: paymentResult.attempt.status,
-          amount: booking.quotedAmount,
-          currency: tenant.currency || 'GBP',
+          amount: booking.paymentAmountDue,
+          currency: booking.paymentCurrency || tenant.currency || 'GBP',
           checkoutUrl: paymentResult.url
         }
       });
