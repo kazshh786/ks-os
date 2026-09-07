@@ -2,7 +2,7 @@
 
 Prepared 7 September 2026. Local branch: `fix/booking-calendar-integrity`.
 Base: latest fetched `origin/main`, `56b3490d7047355820737f3dbe8a772881334cab` (universal Work foundation, #230).
-The patch is local; it has not been pushed, deployed, or applied to a production database.
+The patch is prepared for a GitHub pull request against main. No deployment or production database migration has been performed. GitHub main was rechecked before publication and still matched the base above.
 
 ## Changes, in audit priority order
 
@@ -65,7 +65,7 @@ API tests used a deliberately unreachable dummy DATABASE_URL and mocks. They are
 
 ## Remaining release blockers and limits
 
-- **Database validation remains required.** No disposable PostgreSQL instance is configured locally. Set BOOKING_INTEGRITY_TEST_DATABASE_URL to a disposable database and run the opt-in occupancy test; it creates and removes its own fixture schema. It tests the occupancy migration's trigger portion, not the complete migration sequence or full public SQL function. Also apply all three migrations on staging and exercise concurrent hold/create/move/resource conflicts there.
+- **Database validation remains required.** No disposable PostgreSQL instance is configured locally. The GitHub CI test step now sets BOOKING_INTEGRITY_TEST_DATABASE_URL to its PostgreSQL service so this test runs on the PR; its result must be checked before merging. Set BOOKING_INTEGRITY_TEST_DATABASE_URL to a disposable database and run the opt-in occupancy test; it creates and removes its own fixture schema. It tests the occupancy migration's trigger portion, not the complete migration sequence or full public SQL function. Also apply all three migrations on staging and exercise concurrent hold/create/move/resource conflicts there.
 - **Historical data needs review.** Unknown legacy deposit obligations intentionally cannot retry. Reconstructed historical buffers need validation against existing bookings; migration cannot restore unavailable historical service settings.
 - **Stripe recovery needs staging end-to-end verification.** No real Stripe session/webhook or browser-to-live-DB journey was executed. This patch corrects the response/amount/booking-commit semantics; it does not add a durable Stripe outbox or prove remote-session creation exactly once under ambiguous network failures or concurrent retries.
 - **Location-specific capacity is still not modeled by generic staff hours.** Location lanes now avoid asserting availability they cannot substantiate; dragging between location lanes remains disabled.
