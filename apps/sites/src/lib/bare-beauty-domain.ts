@@ -1,3 +1,5 @@
+import { enhanceBareBeautyHtml } from './bare-beauty-gallery.js';
+
 export const BARE_BEAUTY_PRIMARY_HOSTNAME = 'barebeautykeighley.co.uk';
 export const BARE_BEAUTY_WWW_HOSTNAME = `www.${BARE_BEAUTY_PRIMARY_HOSTNAME}`;
 export const BARE_BEAUTY_LEGACY_HOSTNAME = 'barebeautykeighley.kasimshah.com';
@@ -42,10 +44,15 @@ async function rewriteCanonicalHost(response: Response): Promise<Response> {
     || contentType.includes('text/plain');
   if (!textual) return response;
 
-  const body = (await response.text()).replaceAll(
+  let body = (await response.text()).replaceAll(
     BARE_BEAUTY_LEGACY_HOSTNAME,
     BARE_BEAUTY_PRIMARY_HOSTNAME,
   );
+
+  if (contentType.includes('text/html')) {
+    body = await enhanceBareBeautyHtml(body);
+  }
+
   const headers = new Headers(response.headers);
   headers.delete('content-length');
   return new Response(body, {
