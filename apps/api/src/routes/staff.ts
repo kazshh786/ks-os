@@ -7,13 +7,16 @@ const staffRoutes: FastifyPluginAsync = async (fastify) => {
     request.requireAuth();
 
     const db = getDatabase();
-    // Only owner and staff roles are permitted for staff directory in Phase 2
+    // Appointment creation only accepts active, booking-enabled owners/staff.
+    // Keep the directory aligned so stale memberships cannot be selected in the UI.
     const tenantStaff = await db.select()
       .from(users)
       .where(
         and(
           eq(users.tenantId, request.auth!.tenantId),
-          inArray(users.role, ['owner', 'staff'])
+          inArray(users.role, ['owner', 'staff']),
+          eq(users.accountStatus, 'ACTIVE'),
+          eq(users.bookingEnabled, true)
         )
       );
 
