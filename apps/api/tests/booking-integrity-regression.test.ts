@@ -95,6 +95,13 @@ test('booking integrity HTTP regressions', async t => {
     assert.equal(create.callCount, creates);
     assert.equal(validate.callCount, validations);
   });
+  await t.test('a database occupied-range conflict is a recoverable slot conflict', async () => {
+    existing=[];
+    create.rejects(Object.assign(new Error('SLOT_UNAVAILABLE'),{code:'P0001'}));
+    const response=await app.inject({method:'POST',url:'/studio/bookings',payload:request});
+    assert.equal(response.statusCode,409);
+    assert.equal(response.json().error.code,'SLOT_UNAVAILABLE');
+  });
 });
 
 test('different hold start times acquire the same staff inventory lock', async () => {

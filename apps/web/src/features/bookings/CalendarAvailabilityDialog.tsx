@@ -48,7 +48,7 @@ const defaultSchedule = (): ScheduleRow[] => days.map((_, dayOfWeek) => ({
 const normaliseSchedule = (member: Member, channel: BookingChannel): ScheduleRow[] => {
   const channelRows = member.bookingChannels.filter(row => row.bookingChannel === channel);
   const persisted = channelRows.length ? channelRows : channel === 'in_shop' ? member.schedule : [];
-  return defaultSchedule().flatMap(fallback => {
+  return defaultSchedule().flatMap<ScheduleRow>(fallback => {
     const rows = persisted.filter(item => item.dayOfWeek === fallback.dayOfWeek);
     return rows.length ? rows.map(row => ({ dayOfWeek: row.dayOfWeek, enabled: true, startTime: row.startTime.slice(0,5), endTime: row.endTime.slice(0,5) }))
       : [{ ...fallback, enabled: false }];

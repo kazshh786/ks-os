@@ -528,7 +528,10 @@ export default async function publicBookingRoutes(fastify: FastifyInstance) {
         || ['STRIPE_ACCOUNT_NOT_READY', 'STRIPE_NOT_CONFIGURED', 'STRIPE_KEY_MODE_MISMATCH'].includes(message)) {
         return reply.code(402).send({ error: { code: 'PAYMENTS_NOT_AVAILABLE', message: 'Payments are not currently available for this shop.' } });
       }
-      if (/no longer available|outside booking channel schedule/i.test(message)) {
+      if (message === 'IDEMPOTENCY_INTENT_MISMATCH') {
+        return reply.code(409).send({ error: { code: message, message: 'This booking key belongs to a different booking intent.' } });
+      }
+      if (/SLOT_UNAVAILABLE|no longer available|outside booking channel schedule/i.test(message)) {
         return reply.code(409).send({ error: { code: ERROR_CODES.SLOT_UNAVAILABLE, message: 'The selected slot is no longer available' } });
       }
       return reply.code(500).send({ error: { code: ERROR_CODES.BOOKING_CREATION_FAILED, message: 'The booking could not be created' } });
