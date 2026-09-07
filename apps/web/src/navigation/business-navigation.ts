@@ -1,5 +1,5 @@
 import {
-  BadgePoundSterling, BarChart3, Boxes, Building2, CalendarDays, ClipboardList, CreditCard,
+  BadgePoundSterling, BarChart3, Boxes, BriefcaseBusiness, Building2, CalendarDays, ClipboardList, CreditCard,
   FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors,
   Mail, Plug, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
 } from 'lucide-react';
@@ -46,6 +46,7 @@ export const businessNavigation: NavigationGroup[] = [
   {
     id: 'work', label: 'Work Management',
     items: [
+      { id: 'work', label: 'Work', href: '/app/work', icon: BriefcaseBusiness, permissionsAny: ['WORK_VIEW_OWN', 'WORK_VIEW_ALL'], activePrefixes: ['/app/work/'] },
       { id: 'automations', label: 'Automations', href: '/app/automations', icon: Workflow, roles: ['owner'], activePrefixes: ['/app/automations/', '/app/automation-runs/'], requiredEntitlement: 'automations.enabled', requiredPlan: 'GROWTH', lockedBenefit: 'Automate confirmations, reminders, forms, rebooking and follow-up work.' },
     ],
   },
@@ -74,7 +75,7 @@ export const navigationModule: Readonly<Record<string, ModuleKey>> = {
   dashboard:'dashboard',services:'services',calendar:'calendar',tasks:'tasks',operations:'operations',
   customers:'crm',forms:'forms',sales:'sales',pos:'pos',payments:'payments',finance:'finance',analytics:'analytics',
   reports:'reports',reviews:'reputation','email-marketing':'email-marketing',inventory:'inventory',
-  automations:'automations',team:'team',locations:'locations','booking-page':'booking-page',
+  work:'work',automations:'automations',team:'team',locations:'locations','booking-page':'booking-page',
   'stripe-payments':'payments',integrations:'integrations',communications:'communications',
   'business-settings':'settings',security:'security',
 };

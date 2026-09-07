@@ -65,6 +65,7 @@ import { OperationIssueDetailPage } from './features/operations/OperationIssueDe
 import {TasksPage} from './features/tasks/TasksPage.js';
 import {TaskDetailPage} from './features/tasks/TaskDetailPage.js';
 import { PublicQuotePage, SalesOpportunityPage, SalesWorkspacePage } from './features/sales/SalesPages.js';
+import { WorkDetailPage, WorkWorkspacePage } from './features/work/WorkPages.js';
 import {
   CustomerLoginPage,
   CustomerAuthCallbackPage,
@@ -115,7 +116,13 @@ function StaffWorkspaceWithPlan() {
 const AppContent: React.FC = () => {
   const { authUserId, role, permissions } = useAuth();
   const profile = useBusinessProfile();
-  const staffHome = profile.enabledModules.includes('bookings') && permissions.some(permission => permission === 'BOOKINGS_VIEW_OWN' || permission === 'BOOKINGS_VIEW_ALL') ? '/app/calendar' : permissions.some(permission => permission === 'TASKS_VIEW_OWN' || permission === 'TASKS_VIEW_ALL') ? '/app/tasks/my' : '/app/settings/security';
+  const staffHome = profile.enabledModules.includes('bookings') && permissions.some(permission => permission === 'BOOKINGS_VIEW_OWN' || permission === 'BOOKINGS_VIEW_ALL')
+    ? '/app/calendar'
+    : profile.enabledModules.includes('work') && permissions.some(permission => permission === 'WORK_VIEW_OWN' || permission === 'WORK_VIEW_ALL')
+      ? '/app/work'
+      : permissions.some(permission => permission === 'TASKS_VIEW_OWN' || permission === 'TASKS_VIEW_ALL')
+        ? '/app/tasks/my'
+        : '/app/settings/security';
 
   return (
     <BrowserRouter>
@@ -123,23 +130,14 @@ const AppContent: React.FC = () => {
       {import.meta.env.DEV && (
         <div className="bg-amber-500 text-slate-950 text-xs px-6 py-2 flex items-center justify-between font-bold shadow-xs select-none">
           <div className="flex items-center gap-2">
-            <span className="bg-slate-950 text-amber-400 text-[9px] font-black uppercase px-2 py-0.5 rounded">
-              DEV MODE ACTIVE
-            </span>
-            <span>
-              Supabase connected. Live API queries active. Current user role: <span className="underline">{authUserId ? role : 'None (Unauthenticated)'}</span>
-            </span>
+            <span className="bg-slate-950 text-amber-400 text-[9px] font-black uppercase px-2 py-0.5 rounded">DEV MODE ACTIVE</span>
+            <span>Supabase connected. Live API queries active. Current user role: <span className="underline">{authUserId ? role : 'None (Unauthenticated)'}</span></span>
           </div>
-          {!authUserId && (
-            <span className="text-[10px] text-slate-900 font-mono">
-              {window.location.pathname.startsWith('/agency') ? 'Agency identity required' : 'Tenant identity required'}
-            </span>
-          )}
+          {!authUserId && <span className="text-[10px] text-slate-900 font-mono">{window.location.pathname.startsWith('/agency') ? 'Agency identity required' : 'Tenant identity required'}</span>}
         </div>
       )}
 
       <Routes>
-        {/* Core Entry / Session login */}
         <Route path="/login" element={<Login />} />
         <Route path="/agency/login" element={<AgencyLoginPage />} />
         <Route path="/forgot-password" element={<PasswordRecoveryPage context="TENANT" mode="request" />} />
@@ -162,7 +160,6 @@ const AppContent: React.FC = () => {
         <Route path="/fact-finding" element={<ClientFactFindingPage />} />
         <Route path="/pos-payment-complete" element={<PosPaymentCompletePage />} />
 
-        {/* Public Booking Widgets */}
         <Route element={<PublicBookingLayout />}>
           <Route path="/book/:subdomain" element={<BookingWizardPage />} />
           <Route path="/waitlist/:subdomain" element={<WaitlistPage />} />
@@ -171,15 +168,7 @@ const AppContent: React.FC = () => {
           <Route path="/book/:subdomain/payment/cancel" element={<PaymentCancel />} />
         </Route>
 
-        {/* Staff Operations Workspace */}
-        <Route
-          path="/app"
-          element={
-            <ProtectedRoute>
-              <StaffWorkspaceWithPlan />
-            </ProtectedRoute>
-          }
-        >
+        <Route path="/app" element={<ProtectedRoute><StaffWorkspaceWithPlan /></ProtectedRoute>}>
           <Route index element={<Navigate to={role === 'owner' ? '/app/dashboard' : staffHome} replace />} />
           <Route path="onboarding" element={<RoleRoute allowedRoles={['owner']}><ProductOnboardingPage /></RoleRoute>} />
           <Route path="dashboard" element={<RoleRoute allowedRoles={['owner']}><SaaSDashboardPage /></RoleRoute>} />
@@ -203,6 +192,8 @@ const AppContent: React.FC = () => {
           <Route path="clients/*" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="CLIENTS_VIEW_BASIC"><ClientCRMPage /></RoleRoute>} />
           <Route path="sales" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['SALES_VIEW_OWN','SALES_VIEW_ALL']}><SalesWorkspacePage /></RoleRoute>} />
           <Route path="sales/:reference" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['SALES_VIEW_OWN','SALES_VIEW_ALL']}><SalesOpportunityPage /></RoleRoute>} />
+          <Route path="work" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['WORK_VIEW_OWN','WORK_VIEW_ALL']}><WorkWorkspacePage /></RoleRoute>} />
+          <Route path="work/:reference" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['WORK_VIEW_OWN','WORK_VIEW_ALL']}><WorkDetailPage /></RoleRoute>} />
           <Route path="pos" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="POS_USE"><POSCheckoutPage /></RoleRoute>} />
           <Route path="forms" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['FORMS_VIEW_ASSIGNED', 'FORMS_VIEW_ALL', 'FORMS_MANAGE']}><ConsentFormsPage /></RoleRoute>} />
           <Route path="forms/new" element={<RoleRoute allowedRoles={['owner']}><FormEditorPage /></RoleRoute>} />
@@ -250,15 +241,7 @@ const AppContent: React.FC = () => {
           <Route path="finance/disputes/:disputeId" element={<RoleRoute allowedRoles={['owner']}><DisputeDetailPage /></RoleRoute>} />
         </Route>
 
-        {/* Agency Management Control Plane */}
-        <Route
-          path="/agency"
-          element={
-            <AgencyGuard>
-              <AgencyLayout />
-            </AgencyGuard>
-          }
-        >
+        <Route path="/agency" element={<AgencyGuard><AgencyLayout /></AgencyGuard>}>
           <Route index element={<Navigate to="/agency/tenants" replace />} />
           <Route path="overview" element={<AgencyCapabilityRoute capabilities={['analytics.read']}><AgencyOverviewPage /></AgencyCapabilityRoute>} />
           <Route path="tenants" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantsPage /></AgencyCapabilityRoute>} />
@@ -293,7 +276,6 @@ const AppContent: React.FC = () => {
           <Route path="settings/security" element={<SecuritySettingsPage context="AGENCY" />} />
         </Route>
 
-        {/* Customer Self-Service Portal — completely separate from staff /app workspace */}
         <Route path="/customer/login" element={<CustomerLoginPage />} />
         <Route path="/customer/auth/callback" element={<CustomerAuthCallbackPage />} />
         <Route path="/customer/claim/:token" element={<CustomerClaimPage />} />
@@ -313,7 +295,6 @@ const AppContent: React.FC = () => {
           <Route path="profile" element={<CustomerProfilePage />} />
         </Route>
 
-        {/* Global Fallback Redirects */}
         <Route path="/" element={<Navigate to="/app/calendar" replace />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
@@ -321,16 +302,14 @@ const AppContent: React.FC = () => {
   );
 };
 
-export const App: React.FC = () => {
-  return (
-    <AuthProvider>
-      <AgencyAuthProvider>
-        <WorkspaceProvider>
-          <AppContent />
-        </WorkspaceProvider>
-      </AgencyAuthProvider>
-    </AuthProvider>
-  );
-};
+export const App: React.FC = () => (
+  <AuthProvider>
+    <AgencyAuthProvider>
+      <WorkspaceProvider>
+        <AppContent />
+      </WorkspaceProvider>
+    </AgencyAuthProvider>
+  </AuthProvider>
+);
 
 export default App;

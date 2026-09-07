@@ -1,5 +1,6 @@
 export * from './schema.js';
 export * from './sales-schema.js';
+export * from './work-schema.js';
 export * from './error-schema.js';
 export * from './design-library-schema.js';
 export * from './booking-schedule-overrides.js';
@@ -12,6 +13,7 @@ import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as coreSchema from './schema.js';
 import * as salesSchema from './sales-schema.js';
+import * as workSchema from './work-schema.js';
 import * as errorSchema from './error-schema.js';
 import * as designLibrarySchema from './design-library-schema.js';
 import * as bookingScheduleOverrideSchema from './booking-schedule-overrides.js';
@@ -19,9 +21,10 @@ import * as conversationSchema from './conversation-schema.js';
 import * as searchResearchSchema from './search-research-schema.js';
 import { resolveDatabasePoolMax } from './pool-config.js';
 
-const schema: typeof coreSchema & typeof salesSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema & typeof searchResearchSchema = {
+const schema: typeof coreSchema & typeof salesSchema & typeof workSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema & typeof searchResearchSchema = {
   ...coreSchema,
   ...salesSchema,
+  ...workSchema,
   ...errorSchema,
   ...designLibrarySchema,
   ...bookingScheduleOverrideSchema,
