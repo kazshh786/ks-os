@@ -52,6 +52,9 @@ export class PaymentsService {
       clientName: clients.name,
       appointmentClientName: appointments.clientName,
       appointmentStartTime: appointments.startTime,
+      quotedAmount: appointments.quotedAmount,
+      bookingChannel: appointments.bookingChannel,
+      mobileAddress: appointments.mobileAddress,
       bookingReference: appointments.publicReference,
       serviceName: services.name,
       staffName: users.name,
@@ -94,7 +97,10 @@ export class PaymentsService {
       locationName = primaryLocation?.name || undefined;
       locationAddress = [primaryLocation?.address, primaryLocation?.postcode].filter(Boolean).join(', ');
     }
-    const locationSummary = [locationName, locationAddress].filter(Boolean).join(' · ') || undefined;
+    const mobileAddress = row.mobileAddress as { line1?: string; line2?: string; city?: string; postcode?: string } | null;
+    const locationSummary = row.bookingChannel === 'mobile'
+      ? [mobileAddress?.line1, mobileAddress?.line2, mobileAddress?.city, mobileAddress?.postcode].filter(Boolean).join(', ') || undefined
+      : [locationName, locationAddress].filter(Boolean).join(' · ') || undefined;
     const commonData = {
       ...emailBrandingTemplateData(settings.branding),
       tenantPrimaryColor: row.tenantPrimaryColor,
@@ -111,6 +117,10 @@ export class PaymentsService {
       amount,
       currency,
       ...extra,
+      ...(extra.bookingConfirmed === true ? {
+        emailSubject: "Booking confirmed — payment received",
+        balanceDue: (Math.max(0, (row.quotedAmount ?? row.amount) - row.amount) / 100).toFixed(2),
+      } : {}),
     };
     let customerQueued = false;
     let customerFailureReason: string | null = row.clientEmail ? null : 'RECIPIENT_NOT_CONFIGURED';

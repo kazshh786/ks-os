@@ -89,4 +89,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260906100000_booking_payment_obligation.sql', order: 82, description: 'Persist original booking payment obligations and request intent hashes' },
   { filename: '20260906101000_booking_occupied_ranges.sql', order: 83, description: 'Persist buffered occupancy and serialize appointment writes against bookings and holds' },
   { filename: '20260906102000_split_weekly_schedules.sql', order: 84, description: 'Allow multiple weekly and date-specific windows per staff member and channel' },
+  { filename: '20260908055223_booking_customer_email_identity.sql', order: 85, description: 'Prevent shared phones from routing public booking emails to a different customer' },
 ];

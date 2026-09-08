@@ -14,6 +14,8 @@ export interface PaymentConfirmedProps extends EmailBrandingProps {
   clientName?: string;
   customerName?: string;
   amount: string;
+  bookingConfirmed?: boolean;
+  balanceDue?: string;
   currency?: string;
   status?: string;
   serviceName?: string;
@@ -42,15 +44,15 @@ export const PaymentConfirmedEmail = (props: PaymentConfirmedProps) => {
     : undefined;
 
   return (
-    <BaseEmailLayout {...props} previewText={props.emailPreview || 'Payment received and booking confirmed · ' + (props.serviceName || businessName)}>
+    <BaseEmailLayout {...props} previewText={props.emailPreview || (props.bookingConfirmed ? 'Payment received and booking confirmed · ' : 'Payment received · ') + (props.serviceName || businessName)}>
       <StatusHero
-        eyebrow="PAYMENT & BOOKING CONFIRMED"
-        heading={"You're booked, " + customerName}
-        description={props.amount + ' ' + (props.currency || 'GBP') + ' has been received securely. Your appointment is confirmed.'}
+        eyebrow={props.bookingConfirmed ? "PAYMENT & BOOKING CONFIRMED" : "PAYMENT CONFIRMED"}
+        heading={(props.bookingConfirmed ? "You're booked, " : "Payment received, ") + customerName}
+        description={props.amount + ' ' + (props.currency || 'GBP') + ' has been received securely.' + (props.bookingConfirmed ? ' Your appointment is confirmed.' : '')}
         design={design}
       />
       <Text style={{ color: design.tokens.body, fontSize: '16px', lineHeight: '25px', margin: '20px 0 0' }}>
-        Hi {customerName}, your payment is complete and your booking with {businessName} is confirmed. Keep this email for your appointment and payment records.
+        Hi {customerName}, your payment to {businessName} has been received.{props.bookingConfirmed ? " Your booking is confirmed. Keep this email for your appointment and payment records." : " Keep this email as your payment receipt."}
       </Text>
       <AppointmentSummaryCard
         title={props.serviceName || 'Your booking'}
@@ -71,6 +73,9 @@ export const PaymentConfirmedEmail = (props: PaymentConfirmedProps) => {
         paymentReference={props.paymentReference}
         design={design}
       />
+      {props.bookingConfirmed && props.balanceDue && Number(props.balanceDue) > 0 ? (
+        <Text style={{ color: design.tokens.body }}>Remaining balance: {props.balanceDue} {props.currency || 'GBP'}. Your booking is confirmed; this is the amount still to pay.</Text>
+      ) : null}
       {props.managementUrl ? (
         <Section style={{ margin: '22px 0', textAlign: 'center' }}>
           <PrimaryEmailButton href={props.managementUrl} label="Manage booking" design={design} />
