@@ -26,7 +26,7 @@ test('payment and refund lifecycle queues outbox emails idempotently', () => {
   const stripe = read('modules/webhooks/stripe/stripe-webhook.service.ts');
 
   assert.match(pos, /enqueuePaymentEmail\(tx, tenantId, transaction\.id, 'payment-confirmed', `payment-confirmed:\$\{transaction\.id\}`\)/);
-  assert.match(stripe, /enqueuePaymentEmail\(tx, attempt\.tenantId, transaction\.id, 'payment-confirmed', `payment-confirmed:\$\{event\.id\}`\)/);
+  assert.match(stripe, /enqueuePaymentEmail\(tx, attempt\.tenantId, transaction\.id, 'payment-confirmed', `payment-confirmed:\$\{transaction\.id\}`, \{ bookingConfirmed: true \}\)/);
   assert.match(payments, /enqueuePaymentEmail\(tx, tenantId, transactionId, 'refund-updated', `refund-updated:\$\{newRefund\.id\}:SUCCEEDED`/);
   assert.match(stripe, /enqueuePaymentEmail\(tx, existingRefund\.tenantId, existingRefund\.checkoutTransactionId, 'refund-updated', `refund-updated:\$\{stripeRefundId\}:SUCCEEDED`/);
 });

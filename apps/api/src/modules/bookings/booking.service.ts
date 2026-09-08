@@ -409,7 +409,7 @@ export class BookingService {
     return booking;
   }
 
-  async notifyPublicBookingConfirmed(tenantId: string, bookingId: string, eventKey: string, tx?: any) {
+  async notifyPublicBookingConfirmed(tenantId: string, bookingId: string, eventKey: string, tx?: any, options: { customerConfirmationCovered?: boolean } = {}) {
     const db = tx || getDatabase();
     const booking = await this.repository.getBookingById(tenantId, bookingId, db);
     if (!booking || booking.status !== 'CONFIRMED') return;
@@ -453,7 +453,7 @@ export class BookingService {
       bookingTime,
     };
 
-    if (settings.bookingConfirmationEnabled && booking.clientEmail) {
+    if (settings.bookingConfirmationEnabled && booking.clientEmail && !options.customerConfirmationCovered) {
       const result = await this.emailService.enqueueEmail({
         tenantId,
         recipientEmail: booking.clientEmail,

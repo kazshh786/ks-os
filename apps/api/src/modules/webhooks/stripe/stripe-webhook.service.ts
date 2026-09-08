@@ -196,9 +196,11 @@ export class StripeWebhookService {
               paymentMethod: 'CARD',
               stripePaymentIntentId: typeof paymentIntentId === 'string' ? paymentIntentId : undefined,
             }).returning({ id: checkoutTransactions.id });
-            if (transaction?.id) await this.payments.enqueuePaymentEmail(tx, attempt.tenantId, transaction.id, 'payment-confirmed', `payment-confirmed:${event.id}`);
+            const paymentEmail = transaction?.id
+              ? await this.payments.enqueuePaymentEmail(tx, attempt.tenantId, transaction.id, 'payment-confirmed', `payment-confirmed:${transaction.id}`, { bookingConfirmed: true })
+              : undefined;
             try {
-              await new BookingService().notifyPublicBookingConfirmed(attempt.tenantId, attempt.appointmentId, `stripe:${event.id}`, tx);
+              await new BookingService().notifyPublicBookingConfirmed(attempt.tenantId, attempt.appointmentId, `stripe:${event.id}`, tx, { customerConfirmationCovered: paymentEmail?.queued === true });
             } catch {
               // Payment confirmation is authoritative and notification delivery
               // must never roll back a paid booking.

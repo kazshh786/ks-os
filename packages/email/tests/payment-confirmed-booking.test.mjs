@@ -5,6 +5,7 @@ import { renderEmail } from '../dist/index.js';
 test('payment confirmation includes booking details, business address and payment receipt in the existing email design system', async () => {
   const rendered = await renderEmail('payment-confirmed', {
     tenantName: 'Glow Studio',
+    bookingConfirmed: true,
     businessName: 'Glow Studio',
     businessEmail: 'hello@example.test',
     customerName: 'Amelia',
@@ -32,4 +33,18 @@ test('payment confirmation includes booking details, business address and paymen
   assert.match(rendered.text, /45\.00 GBP/);
   assert.match(rendered.text, /pi_123456789/);
   assert.match(rendered.html, /data-email-logo-panel="white"/);
+});
+
+test('later payments are receipts and do not reconfirm a booking', async () => {
+  const rendered = await renderEmail('payment-confirmed', { tenantName: 'Studio', amount: '30.00', serviceName: 'Treatment' });
+  assert.match(rendered.text, /PAYMENT CONFIRMED/);
+  assert.doesNotMatch(rendered.text, /booking is confirmed|appointment is confirmed|YOU'RE BOOKED|PAYMENT & BOOKING CONFIRMED/);
+});
+test('deposit confirmations show the amount paid and the remaining balance', async () => {
+  const rendered = await renderEmail('payment-confirmed', { tenantName: 'Studio', amount: '20.00', balanceDue: '60.00', bookingConfirmed: true });
+  assert.match(rendered.text, /20\.00 GBP/);
+  assert.match(rendered.text, /Remaining balance: 60\.00 GBP/);
+  assert.match(rendered.text, /Your booking is confirmed/);
+  const paid = await renderEmail('payment-confirmed', { tenantName: 'Studio', amount: '80.00', balanceDue: '0.00', bookingConfirmed: true });
+  assert.doesNotMatch(paid.text, /Remaining balance/);
 });

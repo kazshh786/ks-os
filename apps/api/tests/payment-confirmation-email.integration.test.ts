@@ -17,12 +17,10 @@ test('payment confirmation email is populated with appointment and payment conte
   assert.match(payments, /templateKey === 'payment-confirmed' \|\| row\.paymentConfirmationEnabled/);
 });
 
-test('paid booking customer gets booking confirmation as well as the payment receipt', () => {
-  const claim = read('modules/customer-portal/customer-claim-email.service.ts');
-  const email = read('modules/email/email.service.ts');
-
-  assert.match(claim, /booking\.status !== 'CONFIRMED'/);
-  assert.match(claim, /BOOKING_NOT_CONFIRMED/);
-  assert.doesNotMatch(email, /PAYMENT_CONFIRMATION_COVERS_BOOKING/);
-  assert.doesNotMatch(email, /eq\(emailOutbox\.templateKey, 'payment-confirmed'\)/);
+test('paid booking suppresses the duplicate only after the combined email is queued', () => {
+  const stripe = read('modules/webhooks/stripe/stripe-webhook.service.ts');
+  const bookings = read('modules/bookings/booking.service.ts');
+  assert.match(stripe, /bookingConfirmed: true/);
+  assert.match(stripe, /customerConfirmationCovered: paymentEmail\?\.queued === true/);
+  assert.match(bookings, /settings.bookingConfirmationEnabled && booking.clientEmail && !options.customerConfirmationCovered/);
 });
