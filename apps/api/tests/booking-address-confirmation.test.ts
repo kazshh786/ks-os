@@ -24,7 +24,8 @@ test('customer booking confirmation emails include a full location with primary-
 
   assert.match(payments, /locationAddress: locations\.address/);
   assert.match(payments, /locationPostcode: locations\.postcode/);
-  assert.match(payments, /const locationSummary = \[locationName, locationAddress\]/);
+  assert.match(payments, /const locationSummary = row\.bookingChannel === 'mobile'/);
+  assert.match(payments, /: \[locationName, locationAddress\]\.filter\(Boolean\)/);
   assert.match(payments, /locationName: locationSummary/);
   assert.match(payments, /eq\(locations\.isPrimary, true\)/);
 
