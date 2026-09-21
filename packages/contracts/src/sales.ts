@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SalesAppointmentSchema } from './sales-booking.js';
 import { normalizeBusinessType } from './business-profile.js';
 
 export const ClientSalesLifecycleSchema = z.enum(['LEAD', 'PROSPECT', 'CUSTOMER', 'FORMER']);
@@ -183,10 +184,11 @@ export const SalesOpportunitySummarySchema = z.object({
 }).strict();
 
 export const SalesOpportunitySchema = z.object({
+  nextAppointment: SalesAppointmentSchema.nullable().optional(),
   reference: ReferenceSchema,
   title: z.string(),
   description: z.string().nullable(),
-  client: z.object({ id: z.string().uuid(), name: z.string(), email: z.string().nullable(), phone: z.string().nullable(), lifecycle: ClientSalesLifecycleSchema }),
+  client: z.object({ reference: z.string().uuid().optional(), id: z.string().uuid(), name: z.string(), email: z.string().nullable(), phone: z.string().nullable(), lifecycle: ClientSalesLifecycleSchema }),
   pipeline: z.object({ reference: ReferenceSchema, name: z.string() }),
   stage: SalesPipelineStageSchema,
   owner: z.object({ id: z.string().uuid(), name: z.string() }).nullable(),

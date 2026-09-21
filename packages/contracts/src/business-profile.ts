@@ -221,6 +221,16 @@ export function resolveBusinessProfile(businessType: unknown, configuration?: un
   };
 }
 
+/** Action language comes from the resolved profile; service names remain appointment purpose. */
+export function salesBookingActionLabel(profile: BusinessProfile): string {
+  switch (profile.businessType) {
+    case 'PLUMBING': case 'ELECTRICAL': return 'Book site visit';
+    case 'AGENCY': return 'Book discovery call';
+    case 'CONSULTANCY': case 'PROFESSIONAL_SERVICES': return 'Schedule consultation';
+    case 'ESTATE_AGENCY': return 'Schedule viewing';
+    default: return 'Schedule appointment';
+  }
+}
 export function terminology(profile: BusinessProfile, key: keyof BusinessProfile['terminology']): string { return profile.terminology[key]; }
 export function canUseProfileModule(profile: BusinessProfile, key: ModuleKey, access: {role?:string;permissions?:readonly string[];entitlements?:Record<string,{enabled?:boolean}>}): boolean {
   const module = MODULE_REGISTRY[key];

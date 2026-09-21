@@ -91,4 +91,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260906102000_split_weekly_schedules.sql', order: 84, description: 'Allow multiple weekly and date-specific windows per staff member and channel' },
   { filename: '20260908055223_booking_customer_email_identity.sql', order: 85, description: 'Prevent shared phones from routing public booking emails to a different customer' },
   { filename: '20260921120000_customer_360_references_indexes.sql', order: 86, description: 'Public source references and tenant customer date indexes for Customer 360 without event duplication' },
+  { filename: '20260921140000_sales_booking_relationship.sql', order: 87, description: 'Optional tenant and customer constrained Sales provenance on canonical appointments' },
 ];

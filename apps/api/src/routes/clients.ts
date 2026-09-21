@@ -62,6 +62,7 @@ const clientsRoutes: FastifyPluginAsync = async (fastify) => {
 
     return reply.send({
       profile: {
+        reference: client.publicReference,
         id: client.id,
         name: client.name,
         email: client.email,

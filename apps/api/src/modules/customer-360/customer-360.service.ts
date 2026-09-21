@@ -50,10 +50,11 @@ export class Customer360Service {
     const attention: CustomerOverview['attention'] = [];
     for (const part of parts) for (const row of part.rows) {
       const item = CustomerNowItemSchema.parse({ key: `${part.source}:${row.reference}`, source: part.source, type: row.type, reference: row.reference,
+        ...(row.related_sale ? { relatedSale: row.related_sale } : {}),
         title: row.title, subtitle: row.status.toLowerCase().replaceAll('_', ' '), status: row.status, occurredAt: iso(row.occurred_at), dueAt: row.due_at ? iso(row.due_at) : null,
         owner: row.owner, amount: row.amount, currency: row.currency, attentionLevel: 'INFO',
         action: row.route ? { key: `view-${row.reference}`, label: 'View details', kind: 'LINK', route: row.route, source: part.source, reference: row.reference, reason: 'Open the source record.' } : null });
-      const signal = attentionFor(item, actor.readOnly ? { ...row, can_update: false, conversion_reference: null } : row, c.now);
+      const signal = attentionFor(item, actor.readOnly ? { ...row, can_update: false, sales_can_update: false, conversion_reference: null } : row, c.now);
       if (signal) { item.attentionLevel = signal.severity; attention.push(signal); }
       nowItems.push(item);
     }

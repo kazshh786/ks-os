@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RelatedSaleSchema } from './sales-booking.js';
 
 export const CustomerSourceSchema = z.enum(['crm', 'sales', 'work', 'tasks', 'bookings', 'communications', 'payments', 'forms', 'reputation', 'operations']);
 export type CustomerSource = z.infer<typeof CustomerSourceSchema>;
@@ -13,6 +14,7 @@ export const CustomerActionSchema = z.object({
 }).strict();
 export type CustomerAction = z.infer<typeof CustomerActionSchema>;
 export const CustomerNowItemSchema = z.object({
+  relatedSale: RelatedSaleSchema.optional(),
   key: z.string().max(150), source: CustomerSourceSchema, type: z.string().max(40), reference,
   title: text, subtitle: z.string().max(255), status: z.string().max(40),
   occurredAt: date, dueAt: date.nullable(), owner: z.string().max(255).nullable(),
@@ -22,7 +24,7 @@ export const CustomerNowItemSchema = z.object({
 export type CustomerNowItem = z.infer<typeof CustomerNowItemSchema>;
 export const CustomerAttentionItemSchema = z.object({
   key: z.string().max(150), severity: z.enum(['INFO', 'ATTENTION', 'IMPORTANT']),
-  code: z.enum(['WORK_BLOCKED', 'WORK_OVERDUE', 'TASK_OVERDUE', 'QUOTE_WAITING', 'SALE_WITHOUT_WORK', 'FORM_PENDING', 'PAYMENT_FAILED', 'UPCOMING_BOOKING', 'UNREAD_CONVERSATION']),
+  code: z.enum(['SALES_BOOKING_CANCELLED', 'SALES_BOOKING_COMPLETED', 'WORK_BLOCKED', 'WORK_OVERDUE', 'TASK_OVERDUE', 'QUOTE_WAITING', 'SALE_WITHOUT_WORK', 'FORM_PENDING', 'PAYMENT_FAILED', 'UPCOMING_BOOKING', 'UNREAD_CONVERSATION']),
   title: text, reason: z.string().max(500), source: CustomerSourceSchema, reference,
   dueAt: date.nullable(), action: CustomerActionSchema.nullable(),
 }).strict();
