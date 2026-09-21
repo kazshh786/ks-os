@@ -124,3 +124,5 @@ export * from './business-profile.js';
 export * from './sales.js';
 export * from './diagnostics.js';
 export * from './work.js';
+
+export * from './customer-360.js';

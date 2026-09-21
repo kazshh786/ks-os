@@ -13,6 +13,7 @@ export const ClientDirectoryQuerySchema = z.object({
 export type ClientDirectoryQuery = z.infer<typeof ClientDirectoryQuerySchema>;
 
 export const ClientDirectoryItemSchema = z.object({
+  reference: z.string().uuid().optional(),
   id: z.string().uuid(),
   name: z.string(),
   email: z.string().nullable(),

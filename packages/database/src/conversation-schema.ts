@@ -22,6 +22,7 @@ export const communicationChannels = pgTable('communication_channels', {
 }));
 
 export const conversations = pgTable('conversations', {
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),

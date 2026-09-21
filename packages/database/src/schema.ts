@@ -179,6 +179,7 @@ export const bookingChannelSchedules = pgTable('booking_channel_schedules', {
 });
 
 export const clients = pgTable('clients', {
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id')
     .notNull()
@@ -593,6 +594,7 @@ export const products = pgTable('products', {
 });
 
 export const checkoutTransactions = pgTable('checkout_transactions', {
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id')
     .notNull()
@@ -832,6 +834,7 @@ export const internalNotifications = pgTable('internal_notifications', {
 });
 
 export const operationsIssues = pgTable('operations_issues', {
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   category: varchar('category', { length: 30 }).notNull(), issueType: varchar('issue_type', { length: 60 }).notNull(),
@@ -854,6 +857,7 @@ export const operationsIssues = pgTable('operations_issues', {
 }));
 
 export const tasks = pgTable('tasks', {
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),
   title:varchar('title',{length:180}).notNull(),description:text('description'),notes:text('notes'),status:varchar('status',{length:20}).default('OPEN').notNull(),priority:varchar('priority',{length:20}).default('NORMAL').notNull(),
   assignedUserId:uuid('assigned_user_id').references(()=>users.id,{onDelete:'set null'}),createdByUserId:uuid('created_by_user_id').notNull().references(()=>users.id,{onDelete:'restrict'}),dueAt:timestamp('due_at',{withTimezone:true}),
@@ -865,6 +869,7 @@ export const tasks = pgTable('tasks', {
 },table=>({tenantDedupUnique:uniqueIndex('tasks_tenant_dedup_unique').on(table.tenantId,table.deduplicationKey),tenantStatusUpdatedIdx:index('tasks_tenant_status_updated_idx').on(table.tenantId,table.status,table.updatedAt,table.id),tenantAssigneeStatusDueIdx:index('tasks_tenant_assignee_status_due_idx').on(table.tenantId,table.assignedUserId,table.status,table.dueAt),appointmentIdx:index('tasks_appointment_idx').on(table.appointmentId),clientIdx:index('tasks_client_idx').on(table.clientId),issueIdx:index('tasks_operations_issue_idx').on(table.operationsIssueId),formAssignmentIdx:index('tasks_form_assignment_idx').on(table.formAssignmentId),automationRunIdx:index('tasks_automation_run_idx').on(table.automationRunId)}));
 
 export const taskActivity = pgTable('task_activity', {
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),taskId:uuid('task_id').notNull().references(()=>tasks.id,{onDelete:'cascade'}),
   activityType:varchar('activity_type',{length:30}).notNull(),actorUserId:uuid('actor_user_id').references(()=>users.id,{onDelete:'set null'}),fromValue:varchar('from_value',{length:255}),toValue:varchar('to_value',{length:255}),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
 },table=>({taskCreatedIdx:index('task_activity_task_created_idx').on(table.taskId,table.createdAt),tenantIdx:index('task_activity_tenant_idx').on(table.tenantId)}));
@@ -913,6 +918,7 @@ export const stripeWebhookEvents = pgTable('stripe_webhook_events', {
 });
 
 export const stripePaymentAttempts = pgTable('stripe_payment_attempts', {
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   appointmentId: uuid('appointment_id').notNull().references(() => appointments.id, { onDelete: 'cascade' }),
@@ -936,6 +942,7 @@ export const stripePaymentAttempts = pgTable('stripe_payment_attempts', {
   }
 });
 export const stripeRefunds = pgTable('stripe_refunds', {
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   checkoutTransactionId: uuid('checkout_transaction_id').notNull().references(() => checkoutTransactions.id, { onDelete: 'cascade' }),
@@ -1038,6 +1045,7 @@ export const stripeDisputes = pgTable('stripe_disputes', {
 });
 
 export const emailOutbox = pgTable('email_outbox', {
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   recipientEmail: varchar('recipient_email', { length: 255 }).notNull(),
@@ -1063,6 +1071,7 @@ export const emailOutbox = pgTable('email_outbox', {
 });
 
 export const smsOutbox = pgTable('sms_outbox', {
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
@@ -1193,6 +1202,7 @@ export const reviewInvitationRules = pgTable('review_invitation_rules', {
 }));
 
 export const reviewInvitations = pgTable('review_invitations', {
+  publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   appointmentId: uuid('appointment_id').notNull().references(() => appointments.id, { onDelete: 'restrict' }),

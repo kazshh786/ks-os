@@ -25,6 +25,7 @@ const clientsRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({
       data: tenantClients.map(c => ({
         id: c.id,
+        reference: c.publicReference,
         name: c.name,
         email: c.email,
         phone: c.phone,

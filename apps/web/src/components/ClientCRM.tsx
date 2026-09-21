@@ -148,7 +148,7 @@ export default function ClientCRM({ tenant }: ClientCRMProps) {
                 {clients.map(c => (
                   <div
                     key={c.id}
-                    onClick={() => navigate(`/app/clients/${c.id}`)}
+                    onClick={() => navigate(`/app/clients/${c.reference ?? c.id}`)}
                     className={`p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between gap-2 ${clientId === c.id ? 'bg-slate-950 text-white' : 'hover:bg-slate-50'}`}
                   >
                     <div className="truncate">
