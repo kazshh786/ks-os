@@ -1,3 +1,4 @@
+import { customer360Routes } from './modules/customer-360/customer-360.routes.js';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import rateLimit from '@fastify/rate-limit';
@@ -212,6 +213,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(bookingPageSettingsRoutes);
   fastify.register(dashboardRoutes);
   fastify.register(clientsRoutes);
+  fastify.register(customer360Routes, { prefix: '/api/v1/clients' });
   fastify.register(posModuleRoutes);
   fastify.register(stripeRoutes, { prefix: '/api/v1/integrations/stripe' });
   fastify.register(stripeAdminRoutes, { prefix: '/api/v1/admin/integrations/stripe' });

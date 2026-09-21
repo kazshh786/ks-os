@@ -67,7 +67,7 @@ export class ClientRepository {
       .from(clients)
       .where(
         and(
-          eq(clients.id, clientId),
+          or(eq(clients.id, clientId), eq(clients.publicReference, clientId)),
           eq(clients.tenantId, tenantId)
         )
       )
@@ -93,7 +93,7 @@ export class ClientRepository {
     .leftJoin(users, eq(appointments.userId, users.id))
     .where(
       and(
-        eq(appointments.clientId, clientId),
+        eq(appointments.clientId, client.id),
         eq(appointments.tenantId, tenantId)
       )
     )

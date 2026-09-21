@@ -119,6 +119,13 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
   }, [activeTenant, query]);
 
   useEffect(() => { void load(); return () => { loadSequence.current++; }; }, [load]);
+  const openedReference = useRef<string | null>(null);
+  useEffect(() => {
+    const reference = params.get('reference');
+    if (!reference || openedReference.current === reference) return;
+    const booking = response.items.find(item => item.reference === reference);
+    if (booking) { openedReference.current = reference; setSelected(booking); }
+  }, [params, response.items]);
   useEffect(() => {
     if (!activeTenant) return;
     let active = true;
@@ -354,7 +361,7 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
       onClose={() => { setCreateMenuOpen(false); if (params.has('create')) updateParams({ create: null }); }}
       onChoose={chooseCreateType}
     />
-    <CreateBookingDialog open={createOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} onClose={() => setCreateOpen(false)} onCreated={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
+    <CreateBookingDialog open={createOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} initialClientId={params.get('clientReference')} onClose={() => setCreateOpen(false)} onCreated={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <CreateBookingDialog mode="walk-in" open={walkInOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} onClose={() => { setWalkInOpen(false); if (params.has('walkin')) updateParams({ walkin: null }); }} onCreated={() => { setNotice('Walk-in checked in and added to the calendar.'); window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <BlockTimeDialog open={blockOpen} timezone={activeTenant.timezone} staff={staff} initialDate={dateValue} onClose={() => { setBlockOpen(false); if (params.has('block')) updateParams({ block: null }); }} onCreated={() => { setNotice('Time blocked successfully.'); window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <BookingQuickView

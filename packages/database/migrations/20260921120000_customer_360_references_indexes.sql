@@ -1,0 +1,38 @@
+-- Additive identifiers on canonical records; no replicated customer/event data.
+-- Existing RLS policies and table privileges are unchanged.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS public_reference uuid NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS public_reference uuid NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE task_activity ADD COLUMN IF NOT EXISTS public_reference uuid NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE checkout_transactions ADD COLUMN IF NOT EXISTS public_reference uuid NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE email_outbox ADD COLUMN IF NOT EXISTS public_reference uuid NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE sms_outbox ADD COLUMN IF NOT EXISTS public_reference uuid NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE review_invitations ADD COLUMN IF NOT EXISTS public_reference uuid NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS public_reference uuid NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE operations_issues ADD COLUMN IF NOT EXISTS public_reference uuid NOT NULL DEFAULT gen_random_uuid();
+CREATE UNIQUE INDEX IF NOT EXISTS clients_public_reference_unique ON clients(public_reference);
+CREATE UNIQUE INDEX IF NOT EXISTS tasks_public_reference_unique ON tasks(public_reference);
+CREATE UNIQUE INDEX IF NOT EXISTS task_activity_public_reference_unique ON task_activity(public_reference);
+CREATE UNIQUE INDEX IF NOT EXISTS checkout_transactions_public_reference_unique ON checkout_transactions(public_reference);
+CREATE UNIQUE INDEX IF NOT EXISTS email_outbox_public_reference_unique ON email_outbox(public_reference);
+CREATE UNIQUE INDEX IF NOT EXISTS sms_outbox_public_reference_unique ON sms_outbox(public_reference);
+CREATE UNIQUE INDEX IF NOT EXISTS review_invitations_public_reference_unique ON review_invitations(public_reference);
+CREATE UNIQUE INDEX IF NOT EXISTS conversations_public_reference_unique ON conversations(public_reference);
+CREATE UNIQUE INDEX IF NOT EXISTS operations_issues_public_reference_unique ON operations_issues(public_reference);
+CREATE INDEX IF NOT EXISTS c360_clients_tenant_reference ON clients(tenant_id,public_reference);
+CREATE INDEX IF NOT EXISTS c360_sales_client_created ON sales_opportunities(tenant_id,client_id,created_at DESC,public_reference);
+CREATE INDEX IF NOT EXISTS c360_quotes_client_created ON sales_quotes(tenant_id,client_id,created_at DESC,public_reference);
+CREATE INDEX IF NOT EXISTS c360_work_client_due ON work_items(tenant_id,client_id,due_at,public_reference);
+CREATE INDEX IF NOT EXISTS c360_tasks_client_due ON tasks(tenant_id,client_id,due_at,public_reference);
+CREATE INDEX IF NOT EXISTS c360_bookings_client_start ON appointments(tenant_id,client_id,start_time,public_reference);
+CREATE INDEX IF NOT EXISTS c360_forms_client_created ON form_assignments(tenant_id,client_id,created_at DESC,public_reference);
+CREATE INDEX IF NOT EXISTS c360_payments_appointment_created ON checkout_transactions(tenant_id,appointment_id,created_at DESC,public_reference);
+CREATE INDEX IF NOT EXISTS c360_email_entity_created ON email_outbox(tenant_id,related_entity_type,related_entity_id,created_at DESC,public_reference);
+CREATE INDEX IF NOT EXISTS c360_sms_client_created ON sms_outbox(tenant_id,client_id,created_at DESC,public_reference);
+CREATE INDEX IF NOT EXISTS c360_reviews_client_created ON review_invitations(tenant_id,client_id,created_at DESC,public_reference);
+CREATE INDEX IF NOT EXISTS c360_issues_appointment_created ON operations_issues(tenant_id,related_appointment_id,occurred_at DESC,public_reference);
+ALTER TABLE stripe_payment_attempts ADD COLUMN IF NOT EXISTS public_reference uuid NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE stripe_refunds ADD COLUMN IF NOT EXISTS public_reference uuid NOT NULL DEFAULT gen_random_uuid();
+CREATE UNIQUE INDEX IF NOT EXISTS stripe_payment_attempts_public_reference_unique ON stripe_payment_attempts(public_reference);
+CREATE UNIQUE INDEX IF NOT EXISTS stripe_refunds_public_reference_unique ON stripe_refunds(public_reference);
+CREATE INDEX IF NOT EXISTS c360_attempts_appointment_created ON stripe_payment_attempts(tenant_id,appointment_id,created_at DESC,public_reference);
+CREATE INDEX IF NOT EXISTS c360_refunds_transaction_created ON stripe_refunds(tenant_id,checkout_transaction_id,created_at DESC,public_reference);
