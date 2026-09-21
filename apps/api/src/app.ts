@@ -1,3 +1,4 @@
+import { invoiceRoutes } from './modules/invoices/invoice.routes.js';
 import { customer360Routes } from './modules/customer-360/customer-360.routes.js';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
@@ -206,6 +207,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(workspaceRoutes);
   fastify.register(productOnboardingRoutes);
   fastify.register(salesRoutes, { prefix: '/api/v1/sales' });
+  fastify.register(invoiceRoutes, { prefix: '/api/v1/invoices' });
   fastify.register(workRoutes, { prefix: '/api/v1/work' });
   fastify.register(servicesRoutes);
   fastify.register(staffRoutes);

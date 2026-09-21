@@ -1,3 +1,4 @@
+import { invoiceCustomerAdapter } from './customer-invoices.adapter.js';
 import { sql, type SQL } from 'drizzle-orm';
 import { canUseProfileModule, type BusinessProfile, type CustomerSource } from '@ks-os/contracts';
 
@@ -19,7 +20,7 @@ export function customerAdapters(c: AdapterContext): CustomerAdapter[] {
   const { actor: a, clientId, profile, now } = c;
   const enabled = (source: CustomerSource) => canUseProfileModule(profile, source === 'crm' ? 'crm' : source, a);
   const scoped = (alias: string) => sql`${raw(alias + '.tenant_id')} = ${a.tenantId}::uuid and ${raw(alias + '.client_id')} = ${clientId}::uuid`;
-  const adapters: CustomerAdapter[] = [];
+  const adapters: CustomerAdapter[] = invoiceCustomerAdapter(c);
   if (enabled('sales')) {
     const base = sql`select o.id, o.public_reference as reference, o.title, s.category as status, o.created_at, o.updated_at,
       o.expected_close_date as due_at, u.name as owner, o.estimated_value as amount, o.currency,

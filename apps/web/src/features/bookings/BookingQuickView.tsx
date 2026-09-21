@@ -1,3 +1,4 @@
+import { SourceInvoices } from '../invoices/InvoicePages';
 import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarClock, CheckCircle2, CircleUserRound, CreditCard, FileText, HeartPulse,
@@ -185,7 +186,7 @@ export function BookingQuickView({ booking, staff, initialReschedule = null, onC
 
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="space-y-4 lg:col-span-2">
-            {record.relatedSale && <Card title="Related sale"><p className="break-words font-semibold text-slate-950">{record.relatedSale.title}</p><p className="mt-1 text-sm text-slate-600">{record.relatedSale.stage}{record.relatedSale.value !== null ? ' · ' + new Intl.NumberFormat('en-GB', { style: 'currency', currency: record.relatedSale.currency }).format(record.relatedSale.value / 100) : ''}</p><a className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-indigo-700" href={'/app/sales/' + record.relatedSale.reference}>View opportunity</a></Card>}
+            <SourceInvoices kind="BOOKING" reference={record.reference}/>{record.relatedSale && <Card title="Related sale"><p className="break-words font-semibold text-slate-950">{record.relatedSale.title}</p><p className="mt-1 text-sm text-slate-600">{record.relatedSale.stage}{record.relatedSale.value !== null ? ' · ' + new Intl.NumberFormat('en-GB', { style: 'currency', currency: record.relatedSale.currency }).format(record.relatedSale.value / 100) : ''}</p><a className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-indigo-700" href={'/app/sales/' + record.relatedSale.reference}>View opportunity</a></Card>}
             <Card title="Appointment details"><div className="grid gap-3 text-sm sm:grid-cols-2">
               <p className="flex items-start gap-2"><CalendarClock className="mt-0.5 h-4 w-4 text-indigo-600" /><span><strong className="block text-slate-950">{formatDateTime(record.startTime)}</strong><span className="text-slate-500">Ends {formatDateTime(record.endTime)} · {record.timezone}</span></span></p>
               <p className="flex items-start gap-2"><UserRound className="mt-0.5 h-4 w-4 text-indigo-600" /><span><strong className="block text-slate-950">{record.service.name}</strong><span className="text-slate-500">{record.staff.name} · {record.service.durationMinutes} minutes</span></span></p>
