@@ -186,6 +186,8 @@ export const StaffCustomerBookingDetailsSchema = z.object({
 export type StaffCustomerBookingDetails = z.infer<typeof StaffCustomerBookingDetailsSchema>;
 
 export const StaffCreateBookingRequestSchema = z.object({
+  clientReference: z.string().uuid().optional(),
+  salesOpportunityReference: z.string().uuid().optional(),
   serviceId: z.string().uuid(),
   staffId: z.string().uuid(),
   startTime: z.string().datetime(),
@@ -202,10 +204,13 @@ export const StaffCreateBookingRequestSchema = z.object({
   confirmPastBooking: z.boolean().default(false),
   walkIn: z.boolean().default(false),
 }).strict().superRefine((value, context) => {
-  if (!value.walkIn && !value.client.email?.trim()) {
+  if (value.salesOpportunityReference && (!value.clientReference || value.walkIn)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['salesOpportunityReference'], message: 'Choose an existing customer and a scheduled appointment for this sale.' });
+  }
+  if (!value.walkIn && !value.clientReference && !value.client.email?.trim()) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['client', 'email'], message: 'An email address is required for an appointment.' });
   }
-  if (!value.walkIn && !value.client.phone?.trim()) {
+  if (!value.walkIn && !value.clientReference && !value.client.phone?.trim()) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['client', 'phone'], message: 'A phone number is required for an appointment.' });
   }
   if (value.bookingChannel === 'mobile' && !value.mobileAddress) {

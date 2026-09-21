@@ -110,3 +110,7 @@ Client-to-client relationship types can later bind canonical clients with tenant
 `Customer360Page.test.tsx` covers loading, empty/partial states, server-authorised actions, keyboard input and focus restoration, strict command bodies, timeline filtering, retry without cursor loss and reading order.
 
 Deployment classification: **VPS only**. No Cloudflare runtime, DNS, Access, routing or Workers change is included. Open the PR for review; do not merge or deploy as part of this task.
+
+## Sales-linked appointments
+
+Migration 87 connects optional appointment provenance to Sales. Visible appointment items show the related sale, and canonical booking history may include its safe title. Completed/cancelled meeting suggestions remain deterministic and permission-aware. See [Sales and booking workflow](../sales/sales-booking-workflow.md) for integrity, composition and deployment details.

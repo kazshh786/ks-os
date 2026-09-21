@@ -122,6 +122,7 @@ export * from './site-blueprints.js';
 
 export * from './business-profile.js';
 export * from './sales.js';
+export * from './sales-booking.js';
 export * from './diagnostics.js';
 export * from './work.js';
 

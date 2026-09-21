@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link2, X } from 'lucide-react';
 import { fromZonedTime } from 'date-fns-tz';
 import type { Service, Staff } from '../../data/types.js';
-import { getClientProfile } from '../../api/client.js';
+import { SalesBookingContextSchema, type RelatedSale } from '@ks-os/contracts';
+import { fetchWithAuth, getClientProfile } from '../../api/client.js';
 import { getDataProvider } from '../../data/data-provider.js';
 import { useModalDialog } from '../../components/overlays/useModalDialog.js';
 
@@ -13,6 +14,7 @@ interface CreateBookingDialogProps {
   staff: Staff[];
   initialDate: string;
   initialClientId?: string | null;
+  initialSalesReference?: string | null;
   onClose: () => void;
   onCreated: () => void;
   mode?: 'booking' | 'walk-in';
@@ -69,7 +71,7 @@ function normalizeWalkInStart(selectedStart: Date) {
   return selectedStart;
 }
 
-export function CreateBookingDialog({ open, timezone, services, staff, initialDate, initialClientId = null, onClose, onCreated, mode = 'booking' }: CreateBookingDialogProps) {
+export function CreateBookingDialog({ open, timezone, services, staff, initialDate, initialClientId = null, initialSalesReference = null, onClose, onCreated, mode = 'booking' }: CreateBookingDialogProps) {
   const dialogRef = useModalDialog<HTMLElement>(open, onClose);
   const [serviceId, setServiceId] = useState('');
   const [staffId, setStaffId] = useState('');
@@ -82,6 +84,10 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
   const [forms, setForms] = useState<Array<{ id: string; title: string; status: string }>>([]);
   const [intakeFormIds, setIntakeFormIds] = useState<string[]>([]);
   const [confirmPastBooking, setConfirmPastBooking] = useState(false);
+  const [clientReference, setClientReference] = useState<string | undefined>();
+  const [relatedSales, setRelatedSales] = useState<RelatedSale[]>([]);
+  const [salesReference, setSalesReference] = useState('');
+  const [contextError, setContextError] = useState('');
   const [loadingClient, setLoadingClient] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -98,20 +104,33 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
   }, [initialDate, mode, onClose, open, services, staff, timezone]);
 
   useEffect(() => {
-    if (!open || !initialClientId) return;
+    if (!open) return;
     let active = true;
+    setClientReference(undefined); setRelatedSales([]); setSalesReference(''); setContextError('');
+    setName(''); setEmail(''); setPhone(''); setLoadingClient(false);
+    if (!initialClientId && !initialSalesReference) return;
     setLoadingClient(true);
-    setError('');
-    getClientProfile(initialClientId).then(result => {
+    async function load() {
+      let customerReference = initialClientId;
+      if (!initialSalesReference && initialClientId) {
+        const result = await getClientProfile(initialClientId);
+        customerReference = result.data.profile.reference || initialClientId;
+      }
+      const query = new URLSearchParams(initialSalesReference ? { opportunityReference: initialSalesReference } : { clientReference: customerReference! });
+      const response = await fetchWithAuth('/api/v1/bookings/sales-context?' + query);
+      if (!response.ok) throw new Error('The selected customer or sale is unavailable. Close this form and try again.');
+      const context = SalesBookingContextSchema.parse((await response.json()).data);
       if (!active) return;
-      const profile = result.data.profile;
-      setName(profile.name || '');
-      setEmail(profile.email || '');
-      setPhone(profile.phone || '');
-    }).catch(() => { if (active) setError('The selected customer could not be prefilled. You can still enter their details manually.'); })
-      .finally(() => { if (active) setLoadingClient(false); });
+      setClientReference(context.customer.reference); setName(context.customer.name); setEmail(context.customer.email || ''); setPhone(context.customer.phone || '');
+      setRelatedSales(context.sales); setSalesReference(context.selectedReference || '');
+      if (context.suggestedStaffId) setStaffId(context.suggestedStaffId);
+    }
+    void load().catch(cause => { if (active) setContextError(cause instanceof Error ? cause.message : 'Could not load this customer.'); }).finally(() => { if (active) setLoadingClient(false); });
     return () => { active = false; };
-  }, [initialClientId, open]);
+  }, [initialClientId, initialSalesReference, open]);
+
+  // Only suggest an owner who is actually present in the calendar's staff options.
+  useEffect(() => { if (staff.length && !staff.some(s => s.id === staffId)) setStaffId(staff[0].id); }, [staff, staffId]);
 
   if (!open) return null;
   const selectedStart = fromZonedTime(`${date}T${time}:00`, timezone);
@@ -134,6 +153,8 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
         return;
       }
       await getDataProvider().createStaffBooking({
+        ...(clientReference ? { clientReference } : {}),
+        ...(salesReference ? { salesOpportunityReference: salesReference } : {}),
         serviceId,
         staffId,
         startTime: startTime.toISOString(),
@@ -161,25 +182,28 @@ export function CreateBookingDialog({ open, timezone, services, staff, initialDa
   return <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-6" role="presentation" data-calendar-dialog-layer="true" onMouseDown={event => { if (event.currentTarget === event.target) onClose(); }}>
     <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="create-booking-title" tabIndex={-1} className="flex max-h-dvh w-full max-w-2xl flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[90dvh] sm:rounded-3xl">
       <header className="flex shrink-0 items-start justify-between gap-4 border-b p-4 sm:p-6">
-        <div className="min-w-0"><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{mode === 'walk-in' ? 'Walk-in desk' : 'Calendar booking'}</p><h2 id="create-booking-title" className="mt-1 text-xl font-black text-slate-950 sm:text-2xl">{mode === 'walk-in' ? 'Add walk-in' : 'Create booking'}</h2><p className="mt-1 text-sm text-slate-500">{mode === 'walk-in' ? 'The customer will be added to the calendar as checked in and ready for service.' : 'Availability is checked again by the server before this is saved.'}</p>{initialClientId && <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-700"><Link2 className="h-3.5 w-3.5" />{loadingClient ? 'Loading customer…' : 'Linked from customer inbox'}</p>}</div>
+        <div className="min-w-0"><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">{mode === 'walk-in' ? 'Walk-in desk' : 'Calendar booking'}</p><h2 id="create-booking-title" className="mt-1 text-xl font-black text-slate-950 sm:text-2xl">{mode === 'walk-in' ? 'Add walk-in' : 'Create booking'}</h2><p className="mt-1 text-sm text-slate-500">{mode === 'walk-in' ? 'The customer will be added to the calendar as checked in and ready for service.' : 'Availability is checked again by the server before this is saved.'}</p>{initialClientId && <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-700"><Link2 className="h-3.5 w-3.5" />{loadingClient ? 'Loading customer…' : 'Customer selected'}</p>}</div>
         <button data-dialog-initial-focus type="button" onClick={onClose} aria-label="Close create booking" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border text-slate-600 hover:bg-slate-50"><X className="h-5 w-5" /></button>
       </header>
       <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
         <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 sm:grid-cols-2 sm:p-6">
+        {relatedSales.length > 0 && mode === 'booking' && <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Related sale<select value={salesReference} onChange={event => setSalesReference(event.target.value)} className="mt-1 min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white p-3"><option value="">General appointment</option>{relatedSales.map(sale => <option key={sale.reference} value={sale.reference}>{sale.title} · {sale.stage}{sale.value !== null ? ' · ' + new Intl.NumberFormat('en-GB', { style: 'currency', currency: sale.currency }).format(sale.value / 100) : ''}</option>)}</select><span className="mt-1 block text-xs font-normal text-slate-500">Optional. This appointment will appear with the selected sale.</span></label>}
+        {contextError && <p role="alert" className="text-sm text-rose-700 sm:col-span-2">{contextError}</p>}
         <label className="text-sm font-semibold text-slate-700">Service<select required value={serviceId} onChange={event => setServiceId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white p-3">{services.map(service => <option key={service.id} value={service.id}>{service.name} · {service.durationMin} min</option>)}</select></label>
         <label className="text-sm font-semibold text-slate-700">Team member<select required value={staffId} onChange={event => setStaffId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white p-3">{staff.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
         <label className="text-sm font-semibold text-slate-700">{mode === 'walk-in' ? 'Arrival date' : 'Date'}<input required type="date" value={date} onChange={event => setDate(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
         <label className="text-sm font-semibold text-slate-700">Start time<input required type="time" value={time} onChange={event => setTime(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
-        <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Customer name<input required minLength={2} value={name} onChange={event => setName(event.target.value)} autoComplete="name" className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
+        <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Customer name<input readOnly={Boolean(clientReference)} required minLength={2} value={name} onChange={event => setName(event.target.value)} autoComplete="name" className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
+        {clientReference && <p className="text-xs text-slate-500 sm:col-span-2">Using the existing customer profile. Contact details can be updated from their customer page.</p>}
         {mode === 'walk-in' && <p className="-mb-1 text-xs text-slate-500 sm:col-span-2">Contact details are optional for walk-ins. Add either one when available so the customer record can be recognised on a future visit.</p>}
-        <label className="text-sm font-semibold text-slate-700">Email{mode === 'walk-in' && <span className="ml-1 text-xs font-medium text-slate-400">Optional</span>}<input required={mode !== 'walk-in'} type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="email" className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
-        <label className="text-sm font-semibold text-slate-700">Phone{mode === 'walk-in' && <span className="ml-1 text-xs font-medium text-slate-400">Optional</span>}<input required={mode !== 'walk-in'} minLength={phone ? 7 : undefined} maxLength={30} type="tel" value={phone} onChange={event => setPhone(event.target.value)} autoComplete="tel" className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
+        <label className="text-sm font-semibold text-slate-700">Email{mode === 'walk-in' && <span className="ml-1 text-xs font-medium text-slate-400">Optional</span>}<input readOnly={Boolean(clientReference)} required={mode !== 'walk-in' && !clientReference} type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="email" className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
+        <label className="text-sm font-semibold text-slate-700">Phone{mode === 'walk-in' && <span className="ml-1 text-xs font-medium text-slate-400">Optional</span>}<input readOnly={Boolean(clientReference)} required={mode !== 'walk-in' && !clientReference} minLength={phone ? 7 : undefined} maxLength={30} type="tel" value={phone} onChange={event => setPhone(event.target.value)} autoComplete="tel" className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
         <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Internal notes<textarea value={notes} onChange={event => setNotes(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-300 p-3" /></label>
         {forms.length > 0 && <fieldset className="rounded-xl border border-slate-200 p-4 sm:col-span-2"><legend className="px-1 text-sm font-black text-slate-800">Intake forms</legend><p className="mb-3 text-xs text-slate-500">Selected forms will be assigned to the customer and linked to this booking.</p><div className="space-y-2">{forms.map(form => <label key={form.id} className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={intakeFormIds.includes(form.id)} onChange={event => setIntakeFormIds(current => event.target.checked ? [...current, form.id] : current.filter(id => id !== form.id))} />{form.title}</label>)}</div></fieldset>}
         {isPastBooking && <label className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 sm:col-span-2"><input required type="checkbox" checked={confirmPastBooking} onChange={event => setConfirmPastBooking(event.target.checked)} className="mt-0.5" /><span><strong className="block">Confirm historical booking</strong>This appointment is in the past. Save it as a completed booking in the customer and business history.</span></label>}
         {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800 sm:col-span-2">{error}</p>}
         </div>
-        <div className="grid shrink-0 grid-cols-2 gap-3 border-t bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex sm:justify-end sm:px-6"><button type="button" onClick={onClose} className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-bold">Cancel</button><button disabled={saving || loadingClient || !services.length || !staff.length} className="min-h-11 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">{saving ? 'Checking availability…' : mode === 'walk-in' ? 'Check in walk-in' : 'Create booking'}</button></div>
+        <div className="grid shrink-0 grid-cols-2 gap-3 border-t bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex sm:justify-end sm:px-6"><button type="button" onClick={onClose} className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-bold">Cancel</button><button disabled={saving || loadingClient || Boolean(contextError) || !services.length || !staff.length} className="min-h-11 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">{saving ? 'Checking availability…' : mode === 'walk-in' ? 'Check in walk-in' : 'Create booking'}</button></div>
       </form>
     </section>
   </div>;

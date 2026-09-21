@@ -63,8 +63,8 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<BookingOperationsItem | null>(null);
   const [pendingReschedule, setPendingReschedule] = useState<ProposedBookingReschedule | null>(null);
-  const [createMenuOpen, setCreateMenuOpen] = useState(params.get('create') === '1');
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createMenuOpen, setCreateMenuOpen] = useState(params.get('create') === '1' && !params.has('salesOpportunityReference') && !params.has('clientReference'));
+  const [createOpen, setCreateOpen] = useState(params.get('create') === '1' && (params.has('salesOpportunityReference') || params.has('clientReference')));
   const [walkInOpen, setWalkInOpen] = useState(params.get('walkin') === '1');
   const [blockOpen, setBlockOpen] = useState(params.get('block') === '1');
   const [filtersOpen, setFiltersOpen] = useState(() => advancedFilterKeys.some(key => params.has(key)));
@@ -361,7 +361,7 @@ export function BookingOperationsCalendar({ initialView = 'week', tenantOverride
       onClose={() => { setCreateMenuOpen(false); if (params.has('create')) updateParams({ create: null }); }}
       onChoose={chooseCreateType}
     />
-    <CreateBookingDialog open={createOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} initialClientId={params.get('clientReference')} onClose={() => setCreateOpen(false)} onCreated={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
+    <CreateBookingDialog open={createOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} initialClientId={params.get('clientReference')} initialSalesReference={params.get('salesOpportunityReference')} onClose={() => { setCreateOpen(false); updateParams({ create: null, salesOpportunityReference: null, clientReference: null }); }} onCreated={() => { window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <CreateBookingDialog mode="walk-in" open={walkInOpen} timezone={activeTenant.timezone} services={services} staff={staff} initialDate={dateValue} onClose={() => { setWalkInOpen(false); if (params.has('walkin')) updateParams({ walkin: null }); }} onCreated={() => { setNotice('Walk-in checked in and added to the calendar.'); window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <BlockTimeDialog open={blockOpen} timezone={activeTenant.timezone} staff={staff} initialDate={dateValue} onClose={() => { setBlockOpen(false); if (params.has('block')) updateParams({ block: null }); }} onCreated={() => { setNotice('Time blocked successfully.'); window.dispatchEvent(new CustomEvent('ks-bookings-updated')); void load(); }} />
     <BookingQuickView

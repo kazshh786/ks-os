@@ -56,6 +56,7 @@ export function BookingCard({ booking, density, onOpen, draggable, onDragStart, 
             <p className={`mt-0.5 text-[11px] font-semibold leading-tight text-slate-600 ${timeGrid ? 'truncate' : 'line-clamp-2 break-words'}`} title={`${booking.service.name} with ${booking.staff.name}`}>{booking.service.name}{density !== 'compact' ? ` · ${booking.staff.name}` : ''}</p>
           </>}
 
+        {detailed && booking.relatedSale && <p className="mt-1 truncate text-xs font-medium text-indigo-700" title={booking.relatedSale.title}>{booking.relatedSale.title} · {booking.relatedSale.stage}</p>}
         {detailed && <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-bold text-slate-500">
           {booking.location.name && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{booking.location.name}</span>}
           <span className="inline-flex items-center gap-1"><Wallet className="h-3 w-3" />{booking.paymentStatus}</span>

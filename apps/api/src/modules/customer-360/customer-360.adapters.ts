@@ -90,17 +90,31 @@ export function customerAdapters(c: AdapterContext): CustomerAdapter[] {
     });
   }
   if (enabled('bookings')) {
-    const base = sql`select b.public_reference as reference,'Appointment'::text as title,b.status,b.created_at,b.cancelled_at,b.start_time as due_at,
+    const base = sql`select b.id,b.public_reference as reference,coalesce(svc.name,'Appointment')::text as title,b.status,b.created_at,b.cancelled_at,b.start_time as due_at,
+      case when o.id is not null then jsonb_build_object('reference',o.public_reference,'title',o.title,'stage',st.name,'state',st.category,'value',o.estimated_value,'currency',o.currency) end as related_sale,
+      not ${can(a,'QUOTES_VIEW')} or exists(select 1 from sales_quotes q where q.tenant_id=b.tenant_id and q.opportunity_id=o.id and q.status in ('DRAFT','SENT','ACCEPTED')) as has_quote,
+      ${can(a,'SALES_UPDATE_ALL')} or (${can(a,'SALES_UPDATE_OWN')} and o.owner_user_id=${a.userId}::uuid) as sales_can_update,
+      not exists(select 1 from appointments later where later.tenant_id=b.tenant_id and later.sales_opportunity_id=b.sales_opportunity_id and later.client_id=b.client_id and later.start_time>b.start_time and later.status not in ('CANCELLED','NO_SHOW') and not later.is_internal and not later.is_test and ${own(a,'BOOKINGS_VIEW_ALL','later.user_id')}) as latest_meeting,
       u.name as owner,'/app/bookings?reference=' || b.public_reference || '&search=' || b.public_reference || '&view=day&date=' || to_char(b.start_time at time zone coalesce(t.timezone,'Europe/London'),'YYYY-MM-DD') as route,
       ${can(a, 'BOOKINGS_UPDATE_ALL')} or (${can(a, 'BOOKINGS_UPDATE_OWN')} and b.user_id=${a.userId}::uuid) as can_update
       from appointments b join tenants t on t.id=b.tenant_id left join users u on u.id=b.user_id and u.tenant_id=${a.tenantId}::uuid
+      left join services svc on svc.id=b.service_id and svc.tenant_id=b.tenant_id
+      left join sales_opportunities o on ${enabled('sales')} and o.id=b.sales_opportunity_id and o.tenant_id=b.tenant_id and o.client_id=b.client_id and ${own(a,'SALES_VIEW_ALL','o.owner_user_id')}
+      left join sales_pipeline_stages st on st.id=o.stage_id and st.tenant_id=o.tenant_id
       where ${scoped('b')} and ${own(a, 'BOOKINGS_VIEW_ALL', 'b.user_id')} and not b.is_internal and not b.is_test`;
+    const history = events(base, "('BOOKING_CREATED','Booking created',b.created_at,false),('BOOKING_CANCELLED','Booking cancelled',b.cancelled_at,true)");
     adapters.push({ source: 'bookings',
-      current: sql`select reference,'APPOINTMENT' as type,title,status,created_at as occurred_at,due_at,owner,null::int as amount,null::text as currency,route,can_update,null::uuid as conversion_reference from (${base}) b where status in ('PENDING','CONFIRMED','CHECKED_IN','IN_SERVICE','AWAITING_PAYMENT') and due_at>=${now.toISOString()}::timestamptz`,
-      timeline: events(base, "('BOOKING_CREATED','Booking created',b.created_at,false),('BOOKING_CANCELLED','Booking cancelled',b.cancelled_at,true)"),
-      metrics: sql`select 'upcoming-bookings' as key,'Upcoming appointments' as label,count(*)::text as value,null::text as currency from (${base}) b where due_at>=${now.toISOString()}::timestamptz and status in ('PENDING','CONFIRMED','CHECKED_IN')`,
+      current: sql`select reference,'APPOINTMENT' as type,title,status,created_at as occurred_at,due_at,owner,null::int as amount,null::text as currency,route,can_update,null::uuid as conversion_reference,related_sale,has_quote,sales_can_update from (${base}) b
+        where (status in ('PENDING','CONFIRMED','CHECKED_IN','IN_SERVICE','AWAITING_PAYMENT') and due_at>=${now.toISOString()}::timestamptz)
+        or (related_sale->>'state'='OPEN' and latest_meeting and status in ('CANCELLED','NO_SHOW','COMPLETED') and due_at>=${new Date(now.getTime()-30*86400000).toISOString()}::timestamptz and (status<>'COMPLETED' or due_at<=${now.toISOString()}::timestamptz))`,
+      timeline: sql`select h.reference,h.type,left(h.title || case when b.related_sale is not null then ' · ' || (b.related_sale->>'title') else '' end,255) as title,h.occurred_at,h.important,h.event_key,h.route from (${history}) h join (${base}) b on b.reference=h.reference
+        union all select b.reference,'BOOKING_COMPLETED',left(b.title || ' completed' || case when b.related_sale is not null then ' · ' || (b.related_sale->>'title') else '' end,255),audit.created_at,true,b.reference::text || ':completed:' || audit.id::text,b.route
+        from (${base}) b join booking_audit_events audit on audit.appointment_id=b.id and audit.tenant_id=${a.tenantId}::uuid
+        where audit.action='STATUS_CHANGED' and audit.new_values->>'status'='COMPLETED'`,
+      metrics: sql`select 'upcoming-bookings' as key,'Upcoming appointments' as label,count(*)::text as value,null::text as currency from (${base}) b where status in ('PENDING','CONFIRMED','CHECKED_IN','IN_SERVICE','AWAITING_PAYMENT') and due_at>=${now.toISOString()}::timestamptz`,
     });
   }
+
   if (enabled('forms')) {
     const base = sql`select f.public_reference as reference,'Customer form'::text as title,f.status,f.created_at,f.opened_at,f.submitted_at,f.expires_at as due_at,
       '/app/forms'::text as route from form_assignments f

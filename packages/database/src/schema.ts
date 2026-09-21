@@ -254,6 +254,8 @@ export const customerAccountClaims = pgTable('customer_account_claims', {
 }));
 
 export const appointments = pgTable('appointments', {
+  // Composite tenant/customer FK is declared in migration 87 (column-specific SET NULL).
+  salesOpportunityId: uuid('sales_opportunity_id'),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id')
     .notNull()

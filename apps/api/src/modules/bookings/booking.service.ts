@@ -1,3 +1,4 @@
+import { SalesBookingService, journeyActor } from './sales-booking.service.js';
 import { BookingRepository } from './booking.repository.js';
 import { appointmentServices, appointments, bookingAuditEvents, clients, getDatabase, internalNotifications, locations, services, tenants, users } from '@ks-os/database';
 import { eq, and, or, gt, lt, notInArray, sql } from 'drizzle-orm';
@@ -153,7 +154,9 @@ export class BookingService {
     const [tenant] = await db.select({ timezone: tenants.timezone }).from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1);
     if (!tenant) throw Object.assign(new Error('Business not found.'), { code: 'TENANT_NOT_FOUND', statusCode: 404 });
     const result = await this.repository.listOperationalBookings(this.bookingReadScope(auth), query);
-    const items = result.rows.map((row: OperationalRow) => mapOperationalBooking(row, tenant.timezone, now));
+    const items: BookingOperationsItem[] = result.rows.map((row: OperationalRow) => mapOperationalBooking(row, tenant.timezone, now));
+    const related = await new SalesBookingService().salesForBookings(journeyActor(auth), items.map(item => item.reference));
+    for (const item of items) { const sale = related.get(item.reference); if (sale) item.relatedSale = sale; }
     const summary = {
       total: Number(result.aggregate.total || 0),
       confirmed: Number(result.aggregate.confirmed || 0),
@@ -172,7 +175,10 @@ export class BookingService {
     const [tenant] = await db.select({ timezone: tenants.timezone }).from(tenants).where(eq(tenants.id, auth.tenantId)).limit(1);
     const row = await this.repository.getOperationalBookingById(this.bookingReadScope(auth), bookingId);
     if (!row || !tenant) throw Object.assign(new Error('Booking not found.'), { code: 'BOOKING_NOT_FOUND', statusCode: 404 });
-    return mapOperationalBooking(row, tenant.timezone, now);
+    const item = mapOperationalBooking(row, tenant.timezone, now);
+    const related = await new SalesBookingService().salesForBookings(journeyActor(auth), [item.reference]);
+    const sale = related.get(item.reference); if (sale) item.relatedSale = sale;
+    return item;
   }
 
   async createManualBooking(
@@ -182,12 +188,13 @@ export class BookingService {
     startTime: string,
     client: { name: string; email?: string; phone?: string },
     bookingChannel: string,
-    options: { locationId?: string | null; internalNote?: string | null; intakeFormIds?: string[]; notifyCustomer?: boolean; confirmPastBooking?: boolean; walkIn?: boolean; requestId?: string } = {},
+    options: { clientReference?: string; salesOpportunityReference?: string; locationId?: string | null; internalNote?: string | null; intakeFormIds?: string[]; notifyCustomer?: boolean; confirmPastBooking?: boolean; walkIn?: boolean; requestId?: string } = {},
   ) {
     if (!canCreateBooking(auth)) {
       throw new Error('UNAUTHORIZED: Cannot create bookings');
     }
 
+    if (options.clientReference && !options.salesOpportunityReference && auth.role !== 'owner' && !auth.permissions?.includes('CLIENTS_VIEW_BASIC')) throw Object.assign(new Error('You cannot use this customer.'), {statusCode:403,code:'CUSTOMER_FORBIDDEN'});
     const idempotencyKey = randomUUID();
     const requestedStart = new Date(startTime);
     const historical = requestedStart.getTime() < Date.now();
@@ -199,6 +206,8 @@ export class BookingService {
     // For manual bookings, payment is defaulted to pay_later
     const db = getDatabase();
     const booking = await db.transaction(async tx => {
+      const sale = options.salesOpportunityReference ? await new SalesBookingService().resolveLink(journeyActor(auth), options.salesOpportunityReference, options.clientReference, tx) : null;
+      if (options.salesOpportunityReference && options.walkIn) throw Object.assign(new Error('Choose a scheduled appointment for this sale.'), { statusCode: 400, code: 'SALES_BOOKING_CONTEXT_INVALID' });
       let created: any;
       {
         const [[service], [staff]] = await Promise.all([
@@ -218,22 +227,27 @@ export class BookingService {
         )).limit(1);
         if (conflict.length) throw new Error('Slot is no longer available');
         const normalizedEmail = client.email?.trim().toLowerCase() || null;
-        let [customer] = normalizedEmail ? await tx.select().from(clients).where(and(eq(clients.tenantId, auth.tenantId), eq(clients.email, normalizedEmail))).limit(1) : [];
-        if (customer) {
+        let [customer] = options.clientReference
+          ? await tx.select().from(clients).where(and(eq(clients.tenantId, auth.tenantId), eq(clients.publicReference, options.clientReference))).limit(1)
+          : normalizedEmail ? await tx.select().from(clients).where(and(eq(clients.tenantId, auth.tenantId), eq(clients.email, normalizedEmail))).limit(1) : [];
+        if (options.clientReference && !customer) throw Object.assign(new Error('Customer not found.'), {statusCode:404,code:'CUSTOMER_NOT_FOUND'});
+        if (sale && customer?.id !== sale.client_id) throw Object.assign(new Error('This sale is not available for this customer.'), {statusCode:400,code:'SALES_CUSTOMER_MISMATCH'});
+        // An explicit canonical customer is never merged or renamed from booking form text.
+        if (customer && !options.clientReference) {
           [customer] = await tx.update(clients).set({ name: client.name.trim(), phone: client.phone?.trim() || null, updatedAt: new Date() }).where(eq(clients.id, customer.id)).returning();
-        } else {
+        } else if (!customer) {
           [customer] = await tx.insert(clients).values({ tenantId: auth.tenantId, name: client.name.trim(), email: normalizedEmail, phone: client.phone?.trim() || null }).returning();
         }
         const inserted = await tx.execute(sql`
           insert into appointments (
             tenant_id, user_id, client_id, client_name, service_id, start_time, end_time,
             status, idempotency_key, payment_mode, payment_status, quoted_amount,
-            booking_channel, location_id, notes
+            booking_channel, location_id, notes, sales_opportunity_id
           ) values (
-            ${auth.tenantId}::uuid, ${staffId}::uuid, ${customer.id}::uuid, ${client.name.trim()},
+            ${auth.tenantId}::uuid, ${staffId}::uuid, ${customer.id}::uuid, ${customer.name},
             ${serviceId}::uuid, ${requestedStart}, ${requestedEnd}, ${historical ? 'COMPLETED' : options.walkIn ? 'CHECKED_IN' : 'CONFIRMED'},
             ${idempotencyKey}::uuid, 'pay_later', 'NOT_REQUIRED', ${Math.max(0, service.price - service.discount)},
-            ${bookingChannel}, ${options.locationId || null}::uuid, ${options.internalNote || null}
+            ${bookingChannel}, ${options.locationId || null}::uuid, ${options.internalNote || null}, ${sale?.id || null}::uuid
           )
           returning id, public_reference, status
         `);

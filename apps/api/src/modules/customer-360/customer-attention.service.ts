@@ -1,6 +1,7 @@
 import type { CustomerAction, CustomerAttentionItem, CustomerNowItem } from '@ks-os/contracts';
 
 export type CurrentRow = {
+  related_sale?: CustomerNowItem['relatedSale']; has_quote?: boolean; sales_can_update?: boolean;
   reference: string; type: string; title: string; status: string; occurred_at: Date | string; due_at: Date | string | null;
   owner: string | null; amount: number | null; currency: string | null; route: string | null; can_update: boolean; conversion_reference: string | null;
 };
@@ -10,7 +11,13 @@ export function attentionFor(item: CustomerNowItem, row: CurrentRow, now: Date):
   let severity: CustomerAttentionItem['severity'] = 'ATTENTION';
   let action: CustomerAction | null = row.can_update ? item.action : null;
   const overdue = item.dueAt !== null && Date.parse(item.dueAt) < now.getTime();
-  if (item.source === 'work' && item.status === 'BLOCKED') { code = 'WORK_BLOCKED'; reason = 'This work is blocked and needs a team member to review it.'; severity = 'IMPORTANT'; }
+  if (item.relatedSale?.state === 'OPEN' && ['CANCELLED','NO_SHOW','COMPLETED'].includes(item.status)) {
+    if (item.status === 'COMPLETED' && row.has_quote) return null;
+    code = item.status === 'COMPLETED' ? 'SALES_BOOKING_COMPLETED' : 'SALES_BOOKING_CANCELLED';
+    reason = item.status === 'COMPLETED' ? 'This appointment is completed and the related sale has no active quote. Review the next step.' : 'This appointment was cancelled or missed while the related sale remains open. Arrange another appointment or contact the customer.';
+    action = row.sales_can_update ? { key: 'review-' + item.relatedSale.reference, label: 'Review next step', kind: 'LINK', route: '/app/sales/' + item.relatedSale.reference, source: 'sales', reference: item.relatedSale.reference, reason } : null;
+  }
+  else if (item.source === 'work' && item.status === 'BLOCKED') { code = 'WORK_BLOCKED'; reason = 'This work is blocked and needs a team member to review it.'; severity = 'IMPORTANT'; }
   else if (item.source === 'work' && overdue) { code = 'WORK_OVERDUE'; reason = 'The due date has passed and this work is still active.'; severity = 'IMPORTANT'; }
   else if (item.source === 'tasks' && overdue) { code = 'TASK_OVERDUE'; reason = 'The due date has passed and this task is still open.'; severity = 'IMPORTANT'; }
   else if (item.source === 'sales' && row.conversion_reference) {

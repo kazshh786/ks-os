@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import {
+  SalesBookingContextQuerySchema,
   StaffCreateBookingRequestSchema,
   CreateBlockedTimeRequestSchema,
   UpdateBookingStatusRequestSchema,
@@ -9,6 +10,7 @@ import {
   BookingOperationsResponseSchema,
   ERROR_CODES
 } from '@ks-os/contracts';
+import { SalesBookingService, journeyActor } from './sales-booking.service.js';
 import { BookingService } from './booking.service.js';
 import { BookingDetailService } from './booking-detail.service.js';
 import { EntitlementService } from '../agency/agency.service.js';
@@ -58,6 +60,11 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.header('content-type', 'text/csv; charset=utf-8').header('content-disposition', 'attachment; filename="bookings.csv"').send(lines.join('\r\n'));
   });
 
+  fastify.get('/api/v1/bookings/sales-context', async request => {
+    request.requireAuth();
+    return { data: await new SalesBookingService().context(journeyActor(request.auth!), SalesBookingContextQuerySchema.parse(request.query)) };
+  });
+
   fastify.get('/api/v1/bookings/:id', async (request, reply) => {
     request.requireAuth();
     const parsed = bookingIdSchema.safeParse((request.params as { id: string }).id);
@@ -91,6 +98,8 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
         client,
         bookingChannel,
         {
+          clientReference: parsed.data.clientReference,
+          salesOpportunityReference: parsed.data.salesOpportunityReference,
           locationId: parsed.data.locationId,
           internalNote: parsed.data.internalNote,
           intakeFormIds: parsed.data.intakeFormIds,
@@ -113,6 +122,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
       if (err.code === 'ENTITLEMENT_USAGE_EXCEEDED') {
         return reply.code(409).send({ success: false, error: { code: err.code, message: err.message } });
       }
+      if (err.statusCode) return reply.code(err.statusCode).send({ success: false, error: { code: err.code, message: err.message } });
       const message = err.message || '';
       if (/invalid booking time/i.test(message)) {
         return reply.code(400).send({ success: false, error: { code: 'INVALID_BOOKING_TIME', message: 'Choose a booking time at least five minutes from now and no more than 180 days ahead.' } });

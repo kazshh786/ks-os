@@ -1,3 +1,4 @@
+import { SalesBookingService } from '../bookings/sales-booking.service.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import {
@@ -81,6 +82,7 @@ const opportunitySelection = {
   closedReason: salesOpportunities.closedReason,
   createdAt: salesOpportunities.createdAt,
   updatedAt: salesOpportunities.updatedAt,
+  clientReference: clients.publicReference,
   clientName: clients.name,
   clientEmail: clients.email,
   clientPhone: clients.phone,
@@ -231,7 +233,7 @@ export class SalesService {
       reference: row.reference,
       title: row.title,
       description: row.description ?? null,
-      client: { id: row.clientId, name: row.clientName, email: row.clientEmail ?? null, phone: row.clientPhone ?? null, lifecycle: row.clientLifecycle ?? 'CUSTOMER' },
+      client: { reference: row.clientReference, id: row.clientId, name: row.clientName, email: row.clientEmail ?? null, phone: row.clientPhone ?? null, lifecycle: row.clientLifecycle ?? 'CUSTOMER' },
       pipeline: { reference: row.pipelineReference, name: row.pipelineName },
       stage: { reference: row.stageReference, name: row.stageName, position: row.stagePosition, category: row.stageCategory, probability: row.stageProbability, isActive: row.stageActive },
       owner: row.ownerUserId ? { id: row.ownerUserId, name: row.ownerName ?? 'Team member' } : null,
@@ -272,7 +274,8 @@ export class SalesService {
       .leftJoin(clientSalesProfiles, and(eq(clientSalesProfiles.clientId, clients.id), eq(clientSalesProfiles.tenantId, actor.tenantId)))
       .leftJoin(users, and(eq(users.id, salesOpportunities.ownerUserId), eq(users.tenantId, actor.tenantId)))
       .where(and(...conditions)).orderBy(desc(salesOpportunities.updatedAt)).limit(query.limit);
-    return rows.map(row => this.serializeOpportunity(row));
+    const appointments = await new SalesBookingService().appointmentsForSales(actor, rows.map(r => r.reference));
+    return rows.map(row => ({ ...this.serializeOpportunity(row), nextAppointment: appointments.get(row.reference)?.[0] ?? null }));
   }
 
   async summary(actor: SalesActor) {
@@ -295,10 +298,17 @@ export class SalesService {
 
   async getOpportunity(actor: SalesActor, reference: string) {
     const row = await this.opportunityRow(actor, reference);
+    const journey = new SalesBookingService();
+    const related = await journey.appointmentsForSales(actor, [reference]);
+    const canBook = can(actor, 'BOOKINGS_CREATE') && row.stageCategory === 'OPEN' && await journey.enabled(actor);
     const activity = await this.db.select().from(salesOpportunityActivity).where(and(eq(salesOpportunityActivity.tenantId, actor.tenantId), eq(salesOpportunityActivity.opportunityId, row.id))).orderBy(desc(salesOpportunityActivity.createdAt));
     const quotes = await this.db.select({ reference: salesQuotes.publicReference, quoteNumber: salesQuotes.quoteNumber, title: salesQuotes.title, status: salesQuotes.status, total: salesQuotes.total, currency: salesQuotes.currency, validUntil: salesQuotes.validUntil, updatedAt: salesQuotes.updatedAt }).from(salesQuotes).where(and(eq(salesQuotes.tenantId, actor.tenantId), eq(salesQuotes.opportunityId, row.id))).orderBy(desc(salesQuotes.createdAt));
     return {
       opportunity: this.serializeOpportunity(row),
+      relatedAppointments: (related.get(reference) ?? []).slice(0, 5),
+      appointmentsHasMore: (related.get(reference)?.length ?? 0) > 5,
+      bookingAction: canBook ? { route: '/app/bookings?create=1&salesOpportunityReference=' + reference } : null,
+      canCreateQuote: can(actor, 'QUOTES_MANAGE') && this.canUpdate(actor, row.ownerUserId),
       activity: activity.map(item => ({ reference: item.publicReference, type: item.activityType, actorUserId: item.actorUserId ?? null, fromValue: item.fromValue ?? null, toValue: item.toValue ?? null, metadata: (item.metadata ?? {}) as Record<string, unknown>, createdAt: item.createdAt.toISOString() })),
       quotes: quotes.map(item => ({ ...item, validUntil: iso(item.validUntil), updatedAt: iso(item.updatedAt) })),
     };

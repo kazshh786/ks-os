@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RelatedSaleSchema } from './sales-booking.js';
 import { DepositTypeSchema } from './booking-payment-policy.js';
 
 export const OperationalBookingStatusSchema = z.enum([
@@ -193,6 +194,7 @@ export const BookingOperationsQuerySchema = z.object({
 export type BookingOperationsQuery = z.infer<typeof BookingOperationsQuerySchema>;
 
 export const BookingOperationsItemSchema = z.object({
+  relatedSale: RelatedSaleSchema.optional(),
   id: z.string().uuid(),
   reference: z.string(),
   startTime: z.string().datetime(),
