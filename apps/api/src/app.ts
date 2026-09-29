@@ -1,3 +1,5 @@
+import websocket from '@fastify/websocket';
+import { communicationsRoutes } from './modules/communications/communications.routes.js';
 import { customer360Routes } from './modules/customer-360/customer-360.routes.js';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
@@ -131,6 +133,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   });
 
   options.beforeRegister?.(fastify);
+  fastify.register(websocket, { options: { maxPayload: 1024 } });
 
   fastify.register(fastifyRawBody, {
     global: false,
@@ -236,6 +239,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(reportsRoutes);
   fastify.register(teamOperationsRoutes, { prefix: '/api/v1' });
   fastify.register(operationsRoutes, { prefix: '/api/v1/operations/issues' });
+  fastify.register(communicationsRoutes, { prefix: '/api/v1/communications/conversations' });
   fastify.register(conversationRoutes, { prefix: '/api/v1/conversations' });
   fastify.register(operationsReconciliationRoutes, { prefix: '/api/v1/internal/operations-reconciliation' });
   fastify.register(reportingRoutes);

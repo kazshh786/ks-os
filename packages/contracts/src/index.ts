@@ -127,3 +127,5 @@ export * from './diagnostics.js';
 export * from './work.js';
 
 export * from './customer-360.js';
+
+export * from './native-communications.js';

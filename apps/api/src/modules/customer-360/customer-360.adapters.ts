@@ -159,7 +159,7 @@ export function customerAdapters(c: AdapterContext): CustomerAdapter[] {
     adapters.push({ source: 'communications',
       current: sql`select c.public_reference as reference,'CONVERSATION' as type,'Unread conversation'::text as title,c.status,c.last_message_at as occurred_at,
         null::timestamptz as due_at,null::text as owner,null::int as amount,null::text as currency,'/app/operations'::text as route,false as can_update,null::uuid as conversion_reference
-        from conversations c where ${scoped('c')} and c.unread_count>0 and c.status='OPEN'`,
+        from conversations c where ${scoped('c')} and c.access_mode='INBOX' and c.unread_count>0 and c.status='OPEN'`,
       timeline: sql`${events(sms, "('SMS_SENT','SMS sent',b.sent_at,false),('SMS_DELIVERED','SMS delivered',b.delivered_at,false),('SMS_FAILED','SMS delivery failed',b.failed_at,true)")} union all ${events(email, "('EMAIL_SENT','Email sent',b.sent_at,false),('EMAIL_DELIVERED','Email delivered',b.delivered_at,false),('EMAIL_FAILED','Email delivery failed',b.failed_at,true)")}`,
     });
   }

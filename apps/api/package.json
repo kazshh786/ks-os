@@ -23,6 +23,7 @@
     "@fastify/helmet": "^13.0.0",
     "@fastify/rate-limit": "^11.0.0",
     "@fastify/sensible": "^6.0.4",
+    "@fastify/websocket": "11.2.0",
     "@ks-os/auth": "workspace:*",
     "@ks-os/contracts": "workspace:*",
     "@ks-os/database": "workspace:*",
@@ -35,8 +36,8 @@
     "@ks-os/site-generation": "workspace:*",
     "@ks-os/site-jobs": "workspace:*",
     "@ks-os/site-knowledge": "workspace:*",
-    "@ks-os/site-quality": "workspace:*",
     "@ks-os/site-publishing": "workspace:*",
+    "@ks-os/site-quality": "workspace:*",
     "@ks-os/site-review": "workspace:*",
     "@ks-os/site-schema": "workspace:*",
     "@ks-os/site-templates": "workspace:*",
@@ -58,9 +59,11 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.3.14",
     "@ks-os/config": "workspace:*",
     "@types/node": "^22.10.1",
     "@types/sinon": "^22.0.0",
+    "@types/ws": "8.18.1",
     "sinon": "^22.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.8.2"
