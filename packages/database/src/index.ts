@@ -1,3 +1,4 @@
+export * from './invoice-schema.js';
 export * from './schema.js';
 export * from './sales-schema.js';
 export * from './work-schema.js';
@@ -12,6 +13,7 @@ export * from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as coreSchema from './schema.js';
+import * as invoiceSchema from './invoice-schema.js';
 import * as salesSchema from './sales-schema.js';
 import * as workSchema from './work-schema.js';
 import * as errorSchema from './error-schema.js';
@@ -21,7 +23,8 @@ import * as conversationSchema from './conversation-schema.js';
 import * as searchResearchSchema from './search-research-schema.js';
 import { resolveDatabasePoolMax } from './pool-config.js';
 
-const schema: typeof coreSchema & typeof salesSchema & typeof workSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema & typeof searchResearchSchema = {
+const schema: typeof invoiceSchema & typeof coreSchema & typeof salesSchema & typeof workSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema & typeof searchResearchSchema = {
+  ...invoiceSchema,
   ...coreSchema,
   ...salesSchema,
   ...workSchema,

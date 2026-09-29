@@ -23,19 +23,19 @@ export class PaymentsRepository {
       clientDisplayName: sql<string>`COALESCE(${clients.name}, ${appointments.clientName})`,
       serviceName: services.name,
       amount: checkoutTransactions.totalAmount,
-      currency: tenants.currency,
+      currency: sql<string>`coalesce(${checkoutTransactions.currency},${tenants.currency})`,
       paymentMethod: checkoutTransactions.paymentMethod,
       purpose: checkoutTransactions.purpose,
       paymentStatus: checkoutTransactions.paymentStatus,
       stripePaymentIntentId: checkoutTransactions.stripePaymentIntentId,
-      refundedAmount: sql<number>`COALESCE(${refundsSq.refundedAmount}, 0)`.mapWith(Number),
-      refundableAmount: sql<number>`${checkoutTransactions.totalAmount} - COALESCE(${refundsSq.pendingOrSuccess}, 0)`.mapWith(Number),
+      refundedAmount: sql<number>`(COALESCE(${refundsSq.refundedAmount}, 0) + COALESCE((select sum(r.amount_minor) from checkout_payment_reversals r where r.tenant_id=${checkoutTransactions.tenantId} and r.payment_id=${checkoutTransactions.id}),0))`.mapWith(Number),
+      refundableAmount: sql<number>`${checkoutTransactions.totalAmount} - (COALESCE(${refundsSq.pendingOrSuccess}, 0) + COALESCE((select sum(r.amount_minor) from checkout_payment_reversals r where r.tenant_id=${checkoutTransactions.tenantId} and r.payment_id=${checkoutTransactions.id}),0))`.mapWith(Number),
       createdAt: checkoutTransactions.createdAt,
     })
     .from(checkoutTransactions)
     .leftJoin(appointments, eq(checkoutTransactions.appointmentId, appointments.id))
     .leftJoin(services, eq(appointments.serviceId, services.id))
-    .leftJoin(clients, eq(appointments.clientId, clients.id))
+    .leftJoin(clients, and(eq(clients.tenantId, checkoutTransactions.tenantId), sql`${clients.id}=coalesce(${checkoutTransactions.clientId},${appointments.clientId})`))
     .leftJoin(tenants, eq(checkoutTransactions.tenantId, tenants.id))
     .leftJoin(refundsSq, eq(checkoutTransactions.id, refundsSq.txId))
     .where(eq(checkoutTransactions.tenantId, tenantId))
@@ -65,19 +65,19 @@ export class PaymentsRepository {
       clientDisplayName: sql<string>`COALESCE(${clients.name}, ${appointments.clientName})`,
       serviceName: services.name,
       amount: checkoutTransactions.totalAmount,
-      currency: tenants.currency,
+      currency: sql<string>`coalesce(${checkoutTransactions.currency},${tenants.currency})`,
       paymentMethod: checkoutTransactions.paymentMethod,
       purpose: checkoutTransactions.purpose,
       paymentStatus: checkoutTransactions.paymentStatus,
       stripePaymentIntentId: checkoutTransactions.stripePaymentIntentId,
-      refundedAmount: sql<number>`COALESCE(${refundsSq.refundedAmount}, 0)`.mapWith(Number),
-      refundableAmount: sql<number>`${checkoutTransactions.totalAmount} - COALESCE(${refundsSq.pendingOrSuccess}, 0)`.mapWith(Number),
+      refundedAmount: sql<number>`(COALESCE(${refundsSq.refundedAmount}, 0) + COALESCE((select sum(r.amount_minor) from checkout_payment_reversals r where r.tenant_id=${checkoutTransactions.tenantId} and r.payment_id=${checkoutTransactions.id}),0))`.mapWith(Number),
+      refundableAmount: sql<number>`${checkoutTransactions.totalAmount} - (COALESCE(${refundsSq.pendingOrSuccess}, 0) + COALESCE((select sum(r.amount_minor) from checkout_payment_reversals r where r.tenant_id=${checkoutTransactions.tenantId} and r.payment_id=${checkoutTransactions.id}),0))`.mapWith(Number),
       createdAt: checkoutTransactions.createdAt,
     })
     .from(checkoutTransactions)
     .leftJoin(appointments, eq(checkoutTransactions.appointmentId, appointments.id))
     .leftJoin(services, eq(appointments.serviceId, services.id))
-    .leftJoin(clients, eq(appointments.clientId, clients.id))
+    .leftJoin(clients, and(eq(clients.tenantId, checkoutTransactions.tenantId), sql`${clients.id}=coalesce(${checkoutTransactions.clientId},${appointments.clientId})`))
     .leftJoin(tenants, eq(checkoutTransactions.tenantId, tenants.id))
     .leftJoin(refundsSq, eq(checkoutTransactions.id, refundsSq.txId))
     .where(and(

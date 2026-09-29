@@ -1,3 +1,4 @@
+import { InvoiceWorkspace, InvoiceDetailPage, InvoiceCreatePage } from './features/invoices/InvoicePages';
 import React from 'react';
 import ProductOnboardingPage from './features/onboarding/ProductOnboardingPage';
 import { useBusinessProfile } from './auth/useBusinessProfile';
@@ -190,6 +191,9 @@ const AppContent: React.FC = () => {
           <Route path="bookings" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermissionsAny={['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL']}><BookingListPage /></RoleRoute>} />
           <Route path="reception" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="BOOKINGS_CREATE"><ReceptionPage /></RoleRoute>} />
           <Route path="clients/*" element={<RoleRoute allowedRoles={['owner', 'staff']} requiredPermission="CLIENTS_VIEW_BASIC"><ClientCRMPage /></RoleRoute>} />
+          <Route path="invoices" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermission="INVOICES_VIEW"><InvoiceWorkspace /></RoleRoute>} />
+          <Route path="invoices/new" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermission="INVOICES_VIEW"><InvoiceCreatePage /></RoleRoute>} />
+          <Route path="invoices/:reference" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermission="INVOICES_VIEW"><InvoiceDetailPage /></RoleRoute>} />
           <Route path="sales" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['SALES_VIEW_OWN','SALES_VIEW_ALL']}><SalesWorkspacePage /></RoleRoute>} />
           <Route path="sales/:reference" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['SALES_VIEW_OWN','SALES_VIEW_ALL']}><SalesOpportunityPage /></RoleRoute>} />
           <Route path="work" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['WORK_VIEW_OWN','WORK_VIEW_ALL']}><WorkWorkspacePage /></RoleRoute>} />

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { RelatedSaleSchema } from './sales-booking.js';
 
-export const CustomerSourceSchema = z.enum(['crm', 'sales', 'work', 'tasks', 'bookings', 'communications', 'payments', 'forms', 'reputation', 'operations']);
+export const CustomerSourceSchema = z.enum(['invoices', 'crm', 'sales', 'work', 'tasks', 'bookings', 'communications', 'payments', 'forms', 'reputation', 'operations']);
 export type CustomerSource = z.infer<typeof CustomerSourceSchema>;
 const reference = z.string().uuid();
 const date = z.string().datetime();
@@ -24,7 +24,7 @@ export const CustomerNowItemSchema = z.object({
 export type CustomerNowItem = z.infer<typeof CustomerNowItemSchema>;
 export const CustomerAttentionItemSchema = z.object({
   key: z.string().max(150), severity: z.enum(['INFO', 'ATTENTION', 'IMPORTANT']),
-  code: z.enum(['SALES_BOOKING_CANCELLED', 'SALES_BOOKING_COMPLETED', 'WORK_BLOCKED', 'WORK_OVERDUE', 'TASK_OVERDUE', 'QUOTE_WAITING', 'SALE_WITHOUT_WORK', 'FORM_PENDING', 'PAYMENT_FAILED', 'UPCOMING_BOOKING', 'UNREAD_CONVERSATION']),
+  code: z.enum(['INVOICE_OVERDUE', 'INVOICE_DUE_SOON', 'SALES_BOOKING_CANCELLED', 'SALES_BOOKING_COMPLETED', 'WORK_BLOCKED', 'WORK_OVERDUE', 'TASK_OVERDUE', 'QUOTE_WAITING', 'SALE_WITHOUT_WORK', 'FORM_PENDING', 'PAYMENT_FAILED', 'UPCOMING_BOOKING', 'UNREAD_CONVERSATION']),
   title: text, reason: z.string().max(500), source: CustomerSourceSchema, reference,
   dueAt: date.nullable(), action: CustomerActionSchema.nullable(),
 }).strict();
@@ -48,17 +48,17 @@ export const CustomerDiagnosticSchema = z.object({
 }).strict();
 export const CustomerTimelinePageSchema = z.object({
   entries: z.array(CustomerTimelineEntrySchema).max(50), nextCursor: z.string().max(1200).nullable(),
-  diagnostics: z.array(CustomerDiagnosticSchema).max(10),
+  diagnostics: z.array(CustomerDiagnosticSchema).max(11),
 }).strict();
 export type CustomerTimelinePage = z.infer<typeof CustomerTimelinePageSchema>;
 export const CustomerOverviewSchema = z.object({
   customer: z.object({ reference, name: text, email: z.string().max(255).nullable(), phone: z.string().max(30).nullable(),
     since: date, terminology: z.string().max(40), workLabel: z.string().max(40), lifecycle: z.string().max(30).nullable(), owner: z.string().max(255).nullable(),
   }).strict(),
-  sources: z.array(CustomerSourceSchema).max(10), now: z.array(CustomerNowItemSchema).max(100),
+  sources: z.array(CustomerSourceSchema).max(11), now: z.array(CustomerNowItemSchema).max(100),
   attention: z.array(CustomerAttentionItemSchema).max(100), actions: z.array(CustomerActionSchema).max(12),
-  summary: z.array(z.object({ key: z.string().max(80), label: text, value: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), currency: z.string().regex(/^[A-Z]{3}$/).nullable() }).strict()).max(30),
-  nowHasMore: z.boolean(), diagnostics: z.array(CustomerDiagnosticSchema).max(10), timeline: CustomerTimelinePageSchema,
+  summary: z.array(z.object({ key: z.string().max(80), label: text, value: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), currency: z.string().regex(/^[A-Z]{3}$/).nullable() }).strict()).max(100),
+  nowHasMore: z.boolean(), diagnostics: z.array(CustomerDiagnosticSchema).max(11), timeline: CustomerTimelinePageSchema,
 }).strict();
 export type CustomerOverview = z.infer<typeof CustomerOverviewSchema>;
 export const CustomerCommandSchema = z.object({

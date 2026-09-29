@@ -73,6 +73,7 @@ export class Customer360Service {
   actions(actor: CustomerActor, c: Awaited<ReturnType<Customer360Service['context']>>): CustomerAction[] {
     if (actor.readOnly) return [];
     const actions: CustomerAction[] = [];
+    if (canUseProfileModule(c.profile, 'invoices', actor) && can(actor,'INVOICES_CREATE')) actions.push({key:'CREATE_INVOICE',kind:'LINK',label:'Create invoice',source:'invoices',reference:c.customer.reference,route:`/app/invoices/new?clientReference=${c.customer.reference}`,reason:'Create an invoice for this customer.'});
     if (canUseProfileModule(c.profile, 'bookings', actor) && can(actor, 'BOOKINGS_CREATE')) actions.push({ key: 'CREATE_BOOKING', kind: 'LINK', label: 'Create booking', source: 'bookings', reference: c.customer.reference, route: `/app/bookings?create=1&clientReference=${c.customer.reference}`, reason: 'Schedule an appointment with this customer’s details prefilled.' });
     const add = (source: 'tasks' | 'work' | 'sales', capability: string, kind: CustomerAction['kind'], label: string) => {
       if (canUseProfileModule(c.profile, source, actor) && can(actor, capability)) actions.push({ key: kind, kind, label, source, reference: c.customer.reference, route: null, reason: `Create a linked record for ${c.customer.name}.` });
