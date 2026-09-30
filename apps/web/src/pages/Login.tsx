@@ -4,6 +4,7 @@ import { AlertCircle, Eye, EyeOff, LogIn } from 'lucide-react';
 import { fetchWithAuth } from '../api/client';
 import { AuthSplitLayout, type AuthHighlight } from '../auth/AuthSplitLayout.js';
 import { supabase } from '../lib/supabase';
+import { signInErrorMessage } from '../auth/sign-in-error';
 
 const safeReturnTo = (value: string | null) => value?.startsWith('/') && !value.startsWith('//') ? value : '/app';
 
@@ -62,7 +63,7 @@ export const Login: React.FC = () => {
     try {
       const result = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (result.error || !result.data.session) {
-        throw new Error('That email and password combination didn’t match. Try again or reset your password.');
+        throw new Error(signInErrorMessage(result.error, 'That email and password combination didn’t match. Try again or reset your password.'));
       }
       const response = await fetchWithAuth('/api/v1/auth/context', { authContext: 'TENANT' });
       const body = await response.json().catch(() => ({}));
