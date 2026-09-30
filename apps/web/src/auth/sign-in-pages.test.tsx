@@ -27,9 +27,9 @@ describe.each([
     render(<MemoryRouter><Page /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'test@example.invalid' } });
     fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'test-password' } });
-    fireEvent.submit(screen.getByRole('button', { name: 'Sign in', exact: true }).closest('form')!);
+    fireEvent.submit(screen.getByRole('button', { name: 'Sign in' }).closest('form')!);
     expect(await screen.findByRole('alert')).toHaveTextContent(expected);
     expect(fetchWithAuth).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
   });
 });

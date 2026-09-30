@@ -1,6 +1,6 @@
-type SignInError = { status?: number; code?: string; name?: string };
+type SignInError = { status?: number; code?: string };
 
-/** Do not mistake a provider outage or quota restriction for invalid credentials. */
+/** Keep provider outages and quota restrictions separate from password failures. */
 export function signInErrorMessage(error: SignInError | null, invalidCredentialsMessage: string): string {
   if (error?.status === 402) {
     return 'Sign-in is temporarily unavailable because the authentication service is restricted. Please contact support. Your password has not been checked.';
