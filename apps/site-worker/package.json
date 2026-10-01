@@ -29,7 +29,7 @@
     "axe-core": "4.12.1",
     "drizzle-orm": "^0.45.2",
     "playwright": "1.62.0",
-    "zod": "^3.23.8"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@ks-os/config": "workspace:*",
