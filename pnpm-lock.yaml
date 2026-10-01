@@ -147,8 +147,8 @@ importers:
         specifier: ^1.21.0
         version: 1.97.0
       twilio:
-        specifier: 5.10.3
-        version: 5.10.3
+        specifier: 6.0.2
+        version: 6.0.2
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -3022,8 +3022,8 @@ packages:
     resolution: {integrity: sha512-s7iGf5GaVMxEG0ENN9x+xTr7GFZCb1ZP/1uATUpCEK2X78nDB3RwbtFCo9pGAf9ru+VwoQ464DkaLEeRM08wJA==}
     engines: {node: '>=4'}
 
-  axios@1.18.1:
-    resolution: {integrity: sha512-3nTvFlvpn9Zu/RkHUqtc7/+al4UpRW5az71ap5zccp6e8RAYEzhMTecX8Dz1wWDYrPpUoB1HAQEGEAEvUr7S9g==}
+  axios@1.19.0:
+    resolution: {integrity: sha512-ht/iuYZXEjFxLH/Hkezgd7m6JKlHHXEUSneaDz8uZe1Gj5QZtCnpyDsckvAiEnT89OEbCLmnte4R4sn7P0EKFw==}
 
   axobject-query@4.1.0:
     resolution: {integrity: sha512-qIj0G9wZbMGNLjLmg1PT6v2mE9AH2zlnADJD/2tC6E00hgmhUOfEB6greHPAfLRSufHqROIUTkw6E+M3lH0PTQ==}
@@ -4875,9 +4875,9 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  twilio@5.10.3:
-    resolution: {integrity: sha512-msve3uADprpG+LRlthOxBUJWZDczGe+mdzotG7Wluaf8nn8fSIK0n2fX3INR26Xedeea/azmAdLK0c2rJhIHpQ==}
-    engines: {node: '>=14.0'}
+  twilio@6.0.2:
+    resolution: {integrity: sha512-RN3TZxUtxLz2HBZVt62+LdZxQbrMVgYKtuzLgwmO7nqKvR+gQS5mCackD9hf4Y7MmoK/bX7tCm7kaJC8kC8zFA==}
+    engines: {node: '>=20.0.0'}
 
   type-detect@4.0.8:
     resolution: {integrity: sha512-0fr/mIH1dlO+x7TlcMy+bIDqKPsw/70tVyeHW787goQjhmqaZe10uwLujubK9q9Lg6Fiho1KUKDYz0Z7k7g5/g==}
@@ -7301,7 +7301,7 @@ snapshots:
 
   axe-core@4.12.1: {}
 
-  axios@1.18.1:
+  axios@1.19.0:
     dependencies:
       follow-redirects: 1.16.0
       form-data: 4.0.6
@@ -9209,9 +9209,9 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
-  twilio@5.10.3:
+  twilio@6.0.2:
     dependencies:
-      axios: 1.18.1
+      axios: 1.19.0
       dayjs: 1.11.21
       https-proxy-agent: 5.0.1
       jsonwebtoken: 9.0.3
