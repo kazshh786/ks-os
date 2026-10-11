@@ -48,8 +48,12 @@ export function connectChat(callbacks: { event: (event: CommunicationsEvent) => 
       retry();
     }
   };
+  // Refresh snapshots after the browser restores networking even if the transport
+  // did not emit close while offline.
+  const online=()=>{if(!stopped && socket){socket.close();}};
+  window.addEventListener('online',online);
   void open();
-  return () => { stopped = true; clearTimeout(timer); if (socket) { socket.onclose = null; socket.close(); } };
+  return () => { stopped = true; window.removeEventListener('online',online); clearTimeout(timer); if (socket) { socket.onclose = null; socket.close(); } };
 }
 
 export function mergeMessages(current: import('@ks-os/contracts').NativeMessage[], incoming: import('@ks-os/contracts').NativeMessage[]) {

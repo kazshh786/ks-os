@@ -128,6 +128,7 @@ export function ChatWorkspace() {
   const status={connecting:'Connecting…',connected:'Connected',reconnecting:'Reconnecting…',unavailable:'Sign-in required'}[connection];
   return <div className={'chat-workspace'+(conversationId?' chat-has-channel':'')+((threadId || details)?' chat-has-panel':'')}>
     <aside className="chat-channel-nav" aria-label="Channel navigation"><header className="chat-nav-header"><div><p className="chat-eyebrow">Your workspace</p><h1 ref={listHeading} tabIndex={-1}>Chat</h1></div>{capabilities?.canCreateChannels && <button type="button" aria-label="Create channel" title="Create channel" onClick={()=>setCreate(true)}><Plus size={20} aria-hidden="true"/></button>}</header>
+      {!conversationId && <>{error && <p role="alert" className="chat-error">{error}</p>}{notice && <p role="status" className="chat-notice">{notice}</p>}</>}
       <label className="chat-search"><Search size={17} aria-hidden="true"/><span className="sr-only">Search channels</span><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Find a channel"/></label>
       <button type="button" className="chat-discover-toggle" aria-expanded={discovering} onClick={()=>setDiscovering(!discovering)}><Search size={15} aria-hidden="true"/>{discovering?'Hide channel discovery':'Discover public channels'}</button>
       <div className="chat-channels-scroll">
@@ -141,9 +142,9 @@ export function ChatWorkspace() {
       <footer className="chat-connection" role="status"><span className={'chat-status-dot '+connection}/>{status}</footer>
     </aside>
     <div className="chat-main">
-      {error && <p role="alert" className="chat-error">{error}</p>}{notice && <p role="status" className="chat-notice">{notice}</p>}
+      {conversationId && <>{error && <p role="alert" className="chat-error">{error}</p>}{notice && <p role="status" className="chat-notice">{notice}</p>}</>}
       {channel && capabilities ? <>
-        <header className="chat-conversation-header"><button type="button" className="chat-mobile-back" aria-label="Back to channels" onClick={()=>navigate('/app/chat')}><ArrowLeft size={20} aria-hidden="true"/></button><div className="chat-channel-title"><div>{channel.type==='PRIVATE_CHANNEL'?<Lock size={21} aria-hidden="true"/>:<Hash size={23} aria-hidden="true"/>}<h2 ref={heading} tabIndex={-1}>{channel.name}</h2></div><p>{channel.archivedAt?'Archived · Read only':channel.description || 'A shared space for your team'}</p></div>
+        <header className="chat-conversation-header"><button type="button" className="chat-mobile-back" aria-label="Back to channels" onClick={()=>navigate('/app/chat')}><ArrowLeft size={20} aria-hidden="true"/></button><div className="chat-channel-title"><div>{channel.type==='PRIVATE_CHANNEL'?<Lock size={21} aria-hidden="true"/>:<Hash size={23} aria-hidden="true"/>}<h2 ref={heading} tabIndex={-1}>{channel.name}</h2></div><p>{channel.archivedAt?'Archived · Read only':channel.description || 'A shared space for your team'}</p>{connection!=='connected' && <small role="status">{status}</small>}</div>
           <button type="button" className="chat-member-count" onClick={()=>setParams({details:'1'})} aria-label={'View '+channel.memberCount+' channel members'}><Users size={17} aria-hidden="true"/>{channel.memberCount}</button>
           <button type="button" aria-label="Channel details" title="Channel details" onClick={()=>setParams({details:'1'})}><Info size={20} aria-hidden="true"/></button>
           {Boolean(channel.unreadCount) && channel.latestMessageId && <button type="button" aria-label="Mark channel and threads as read" title="Mark channel and threads as read" onClick={()=>void run(()=>read(channel.latestMessageId!))}><CheckCheck size={20} aria-hidden="true"/></button>}

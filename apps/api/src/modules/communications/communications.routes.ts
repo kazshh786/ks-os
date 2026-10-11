@@ -86,6 +86,8 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
     return { data: await service.ticket(actor(request), params.parse(request.params).conversationId) };
   });
 
+  // Bound live subscriptions per actor per API process, alongside the existing HTTP limiter.
+  const connectionCounts = new Map<string,number>();
   const subscriptions = new WeakMap<FastifyRequest, { actor: CommunicationsActor; id: string | null; after: string }>();
   for (const path of ['/events','/:conversationId/events']) app.get(path, {
     websocket: true,
@@ -97,12 +99,18 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
     },
   }, (socket, request) => {
     const subscription = subscriptions.get(request)!;
+    const connectionKey=subscription.actor.tenantId+':'+subscription.actor.userId;
+    const count=connectionCounts.get(connectionKey) ?? 0;
+    if(count>=12){socket.close(1013,'Too many open Chat connections');return;}
+    connectionCounts.set(connectionKey,count+1);
+    let released=false;
+    const release=()=>{if(released)return;released=true;const remaining=(connectionCounts.get(connectionKey) ?? 1)-1;if(remaining>0)connectionCounts.set(connectionKey,remaining);else connectionCounts.delete(connectionKey);};
     let after = subscription.after;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
     let alive = true;
     let polls = 0;
-    const stop = () => { stopped = true; if (timer) clearTimeout(timer); };
+    const stop = () => { stopped = true; release(); if (timer) clearTimeout(timer); };
     socket.on('close', stop);
     socket.on('error', stop);
     socket.on('pong', () => { alive = true; });

@@ -52,8 +52,11 @@ export async function verifyChatBrowser({app,service,owner,member}) {
     await service.addMember(owner,cid,{userId:member.userId,role:'MEMBER'});
     await second.goto(origin+'/app/chat/'+cid);
     await second.getByRole('heading',{name:'Browser team',exact:true}).waitFor();
+    await second.goto(origin+'/app/chat');
     await first.getByRole('combobox',{name:'Message Browser team'}).fill('Hello from the first browser');
     await first.getByRole('combobox',{name:'Message Browser team'}).press('Enter');
+    await second.getByRole('link',{name:/Browser team/}).getByLabel('1 unread messages').waitFor();
+    await second.getByRole('link',{name:/Browser team/}).click();
     await second.getByText('Hello from the first browser',{exact:true}).waitFor();
     assert.equal(await second.getByText('Hello from the first browser',{exact:true}).count(),1);
     const rootMessage=second.getByRole('article').filter({hasText:'Hello from the first browser'});
@@ -108,6 +111,14 @@ export async function verifyChatBrowser({app,service,owner,member}) {
     await service.removeMember(owner,cid,member.userId);
     await second.getByText('This channel is no longer available to you.',{exact:true}).waitFor();
     assert.equal(await second.getByText('A threaded reply',{exact:true}).count(),0);
+    const history=String((await service.create(owner,{type:'CHANNEL',name:'Browser history',memberUserIds:[]})).id);
+    for(let n=0;n<75;n++)await service.post(owner,history,{body:'Historical message '+n});
+    await first.goto(origin+'/app/chat/'+history);
+    await first.getByText('Historical message 74',{exact:true}).waitFor();
+    assert.equal(await first.getByRole('article').count(),50);
+    await first.getByRole('button',{name:'Load older messages',exact:true}).click();
+    await first.getByText('Historical message 0',{exact:true}).waitFor();
+    assert.equal(await first.getByRole('article').count(),75);
     assert.deepEqual(errors,[]);
   }catch(error){
     for(let n=0;n<contexts.length;n++)for(const page of contexts[n].pages())await page.screenshot({path:path.join(artifacts,'failure-'+n+'.png')}).catch(()=>{});

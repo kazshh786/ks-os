@@ -122,16 +122,18 @@ export class CommunicationsService {
   }
 
   async people(actor: CommunicationsActor, id: string | null, query: z.infer<typeof ChannelDiscoveryQuerySchema>, candidates = false) {
-    const capabilities = await new CommunicationsAuthorization(this.db).authenticate(actor);
-    if (id) await new CommunicationsAuthorization(this.db).requireConversation(actor,id,candidates ? 'invite' : 'view');
-    else if (!capabilities.canCreateChannels) throw communicationError(403,'COMMUNICATIONS_FORBIDDEN','Workspace owner access required');
-    const rows = await this.db.query<{userId:string}>(sql`SELECT u.id AS "userId",u.name${id && !candidates ? sql`,m.role` : sql``}
+    const queryPeople=async(db:CommunicationsDatabase)=>{
+    const capabilities = await new CommunicationsAuthorization(db).authenticate(actor);
+    if (!id && !capabilities.canCreateChannels) throw communicationError(403,'COMMUNICATIONS_FORBIDDEN','Workspace owner access required');
+    const rows = await db.query<{userId:string}>(sql`SELECT u.id AS "userId",u.name${id && !candidates ? sql`,m.role` : sql``}
       FROM users u ${id && !candidates ? sql`JOIN conversation_members m ON m.user_id=u.id AND m.tenant_id=u.tenant_id AND m.conversation_id=${id} AND m.left_at IS NULL` : sql``}
       WHERE u.tenant_id=${actor.tenantId} AND u.account_status='ACTIVE' AND u.auth_user_id IS NOT NULL
       ${id && candidates ? sql`AND NOT EXISTS(SELECT 1 FROM conversation_members cm WHERE cm.conversation_id=${id} AND cm.user_id=u.id AND cm.left_at IS NULL)` : sql``}
       ${query.search ? sql`AND strpos(lower(u.name),lower(${query.search})) > 0` : sql``}
       ${query.after ? sql`AND u.id > ${query.after}::uuid` : sql``} ORDER BY u.id LIMIT ${query.limit+1}`);
     return {data:rows.slice(0,query.limit),nextCursor:rows.length > query.limit ? rows[query.limit-1].userId : null};
+    };
+    return id ? this.locked(actor,id,candidates?'invite':'view',queryPeople) : queryPeople(this.db);
   }
 
   private async annotate<T extends {id:string}>(db: CommunicationsDatabase, actor: CommunicationsActor, messages: T[]) {

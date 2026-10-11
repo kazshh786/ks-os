@@ -11,7 +11,7 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
   openThread?: (message: NativeMessage) => void; inaccessible: () => void; read: (id: string) => Promise<void>; label?: string;
 }) {
   const [messages,setMessages]=useState<NativeMessage[]>([]),[cursor,setCursor]=useState<string|null>(null),[loading,setLoading]=useState(true),[more,setMore]=useState(false),[error,setError]=useState(''),[newer,setNewer]=useState(false);
-  const scroll=useRef<HTMLDivElement>(null),bottom=useRef(true),live=useRef(true),frozen=useRef(false),seenRead=useRef(channel.lastReadPosition),preserve=useRef<{id:string;offset:number}|null>(null),jump=useRef(true);
+  const scroll=useRef<HTMLDivElement>(null),bottom=useRef(true),live=useRef(true),frozen=useRef(false),reading=useRef(false),seenRead=useRef(channel.lastReadPosition),preserve=useRef<{id:string;offset:number}|null>(null),jump=useRef(true);
   const current=useRef<NativeMessage[]>([]),generation=useRef(0),updates=useRef(new Map<string,{generation:number;message:NativeMessage}>());
   const put=useCallback((rows:NativeMessage[])=>{current.current=rows;setMessages(rows);},[]);
   const reconcile=useCallback((rows:NativeMessage[],started:number)=>{
@@ -78,8 +78,9 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
   },[messages]);
   const markVisible=useCallback(()=>{
     const last=current.current.at(-1),element=scroll.current;
-    if(parent || frozen.current || !bottom.current || !last || channel.latestMessageId!==last.id || !element?.clientHeight || document.visibilityState!=='visible' || !document.hasFocus() || BigInt(last.position)<=BigInt(seenRead.current))return;
-    void read(last.id).then(()=>{seenRead.current=last.position;}).catch(fail);
+    if(reading.current || parent || frozen.current || !bottom.current || !last || channel.latestMessageId!==last.id || !element?.clientHeight || document.visibilityState!=='visible' || !document.hasFocus() || BigInt(last.position)<=BigInt(seenRead.current))return;
+    reading.current=true;
+    void read(last.id).then(()=>{seenRead.current=last.position;}).catch(fail).finally(()=>{reading.current=false;});
   },[channel.latestMessageId,parent,read,fail]);
   useEffect(()=>{const timer=setTimeout(markVisible,1200);window.addEventListener('focus',markVisible);document.addEventListener('visibilitychange',markVisible);return()=>{clearTimeout(timer);window.removeEventListener('focus',markVisible);document.removeEventListener('visibilitychange',markVisible);};},[messages,markVisible]);
   const older=async()=>{
@@ -98,7 +99,7 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
       {messages.map((message,index)=>{
         const previous=messages[index-1],day=new Date(message.createdAt).toLocaleDateString();
         const sameDay=previous && new Date(previous.createdAt).toLocaleDateString()===day;
-        const grouped=Boolean(sameDay && previous.senderId===message.senderId && new Date(message.createdAt).getTime()-new Date(previous.createdAt).getTime()<300000);
+        const grouped=Boolean(sameDay && !message.editedAt && previous.senderId===message.senderId && new Date(message.createdAt).getTime()-new Date(previous.createdAt).getTime()<300000);
         return <div key={message.id} data-message-id={message.id}>{!sameDay && <div className="chat-date"><span>{new Date(message.createdAt).toLocaleDateString([], {weekday:'short',day:'numeric',month:'long'})}</span></div>}<MessageItem message={message} grouped={grouped} userId={userId} archived={Boolean(channel.archivedAt)} thread={openThread} changed={changed}/></div>;
       })}
     </div>
