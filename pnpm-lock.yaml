@@ -145,7 +145,7 @@ importers:
         version: 6.17.2(@react-email/render@2.1.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))
       sharp:
         specifier: 0.35.3
-        version: 0.35.3
+        version: 0.35.3(@types/node@22.20.1)
       stripe:
         specifier: ^22.3.2
         version: 22.3.2(@types/node@22.20.1)

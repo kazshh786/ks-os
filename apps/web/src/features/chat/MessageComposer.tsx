@@ -1,3 +1,4 @@
+import { useChatUploads,UploadControls } from './ChatAttachments';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTyping } from './ChatLive';
 import { Send } from 'lucide-react';
@@ -18,6 +19,7 @@ export function MessageComposer({ channelId, label = 'Message', initial, saveDra
   send: (draft: Draft) => Promise<void>; disabled?: boolean; submitLabel?: string;
 }) {
   const typing=useTyping(channelId);
+  const uploads=useChatUploads(channelId);const attachmentsEnabled=submitLabel==='Send message';
   const [draft,setDraft] = useState<Draft>(initial ?? {body:'',mentions:[]});
   const [caret,setCaret] = useState(0), [suggestions,setSuggestions] = useState<NativePerson[]>([]), [highlight,setHighlight] = useState(0);
   const [dismissed,setDismissed] = useState(''), [busy,setBusy] = useState(false), [error,setError] = useState('');
@@ -45,19 +47,19 @@ export function MessageComposer({ channelId, label = 'Message', initial, saveDra
     requestAnimationFrame(() => { textarea.current?.focus(); textarea.current?.setSelectionRange(next,next); });
   };
   const submit = async () => {
-    if (sending.current || busy || disabled || !draft.body.trim() || draft.body.length > 16000) return;
+    if (sending.current || busy || disabled || (!draft.body.trim() && !uploads.ready) || uploads.blocked || draft.body.length > 16000) return;
     typing(false);
     sending.current = true;
-    const pending = {...draft,clientMessageId:draft.clientMessageId ?? crypto.randomUUID()};
+    const pending = {...draft,...(attachmentsEnabled?{attachmentIds:uploads.ids()}:{}),clientMessageId:draft.clientMessageId ?? crypto.randomUUID()};
     update(pending); setBusy(true); setError('');
     try {
-      await send(pending);
+      await send(pending);uploads.sent();
       saveDraft?.({body:'',mentions:[]},pending);
       if (mounted.current) { setDraft({body:'',mentions:[]}); setCaret(0); textarea.current?.focus(); }
     } catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : 'Message was not sent. Your draft is saved.'); }
     finally { sending.current = false; if (mounted.current) setBusy(false); }
   };
-  return <form className="chat-composer" onSubmit={event => { event.preventDefault(); void submit(); }}>
+  return <form className={'chat-composer'+(uploads.dragging?' chat-dragging':'')} onDragOver={e=>{if(attachmentsEnabled&&!disabled&&!busy){e.preventDefault();uploads.setDragging(true);}}} onDragLeave={()=>uploads.setDragging(false)} onDrop={e=>{if(!attachmentsEnabled||disabled||busy)return;e.preventDefault();uploads.setDragging(false);uploads.add(Array.from(e.dataTransfer.files));}} onPaste={e=>{if(!attachmentsEnabled||disabled||busy)return;const images=Array.from(e.clipboardData.files).filter(f=>f.type.startsWith('image/'));if(images.length){e.preventDefault();uploads.add(images);}}} onSubmit={event => { event.preventDefault(); void submit(); }}>
     <label htmlFor={inputId}>{label}</label>
     <div className="chat-composer-field">
       <textarea role="combobox" aria-haspopup="listbox" id={inputId} ref={textarea} value={draft.body} disabled={disabled || busy} rows={3}
@@ -78,6 +80,7 @@ export function MessageComposer({ channelId, label = 'Message', initial, saveDra
         }} />
       {suggestions.length > 0 && <ul id={listId} role="listbox" aria-label="Mention a channel member" className="chat-mentions">{suggestions.map((person,index) => <li id={`${listId}-${index}`} key={person.userId} role="option" aria-selected={index===highlight} onMouseDown={event => event.preventDefault()} onClick={() => choose(person)}>{person.name}</li>)}</ul>}
     </div>
+    {attachmentsEnabled&&<UploadControls uploads={uploads} disabled={disabled||busy}/>}
     <div className="chat-composer-footer"><small id={`${inputId}-hint`}>Shift + Enter for a new line · {draft.body.length.toLocaleString()}/16,000</small><button type="submit" className="chat-primary" disabled={disabled || busy || !draft.body.trim() || draft.body.length > 16000} aria-label={submitLabel}><Send size={16} aria-hidden="true" />{busy ? 'Saving…' : submitLabel === 'Send message' ? 'Send' : submitLabel}</button></div>
     {draft.body.length > 16000 && <p role="alert" className="chat-error">Your message is too long. The limit is 16,000 characters.</p>}
     {error && <p id={`${inputId}-error`} role="alert" className="chat-error">{error} Your text is retained.</p>}

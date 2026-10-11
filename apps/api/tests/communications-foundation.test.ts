@@ -50,7 +50,9 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
       : work(wrap(connection)),
   });
   const db = wrap(pg);
-  const service = new CommunicationsService(db);
+  const storedFiles=new Map<string,Buffer>();
+  const storage={put:async(key:string,bytes:Buffer)=>{storedFiles.set(key,bytes);},get:async(key:string)=>{const value=storedFiles.get(key);if(!value)throw new Error('Missing file');return value;},remove:async(keys:string[])=>{keys.forEach(key=>storedFiles.delete(key));}};
+  const service = new CommunicationsService(db,{storage});
   async function seed(tenantId = randomUUID()): Promise<CommunicationsActor> {
     const current = { tenantId, userId: randomUUID(), authUserId: randomUUID(), sessionId: randomUUID(),
       issuedAt: new Date(Date.now() - 1000).toISOString(), expiresAt: new Date(Date.now() + 3600000).toISOString() };
@@ -174,7 +176,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     const message = await service.post(owner, id, { body: 'Across processes' });
     const replica = new CommunicationsService(db);
     const replay = await replica.events(member, id, last);
-    assert.equal(replay.length, 1);
+    assert.equal(replay.filter(e=>!e.type.startsWith('notification.')).length, 1);
     assert.equal(replay[0].resourceId, message.id);
     assert.equal(replay[0].type, 'message.created');
   });
@@ -448,6 +450,79 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     const {verifyChatBrowser}=await import('./helpers/communications-browser.mjs');
     await verifyChatBrowser({app,service,owner,member});
   });
+
+  await t.test('Phase 4 private attachments validate bytes, bind atomically and revoke downloads',async()=>{
+    const c=await service.create(owner,{type:'PRIVATE_CHANNEL',name:'Secure files',memberUserIds:[member.userId]});const cid=String(c.id);
+    const reserve=async(name:string,bytes:Buffer)=>{const row=await service.attachments.reserve(owner,cid,{name,size:bytes.length});return String(row.id);};
+    const bytes=Buffer.from('Business report and quarterly plan');
+    const fid=await reserve('../../report.txt',bytes);
+    await assert.rejects(service.attachments.reserve(other,cid,{name:'x.txt',size:1}));
+    await assert.rejects(service.attachments.reserve(outsider,cid,{name:'x.txt',size:1}));
+    await assert.rejects(service.attachments.reserve(owner,cid,{name:'x.exe',size:1}));
+    await assert.rejects(service.attachments.reserve(owner,cid,{name:'x.txt',size:100000000}));
+    await assert.rejects(service.post(owner,cid,{body:'Pending',attachmentIds:[fid]}));
+    const file=await service.attachments.upload(owner,cid,fid,bytes);
+    assert.equal(file.status,'AVAILABLE');assert.ok(!String(file.fileName).includes('/'));assert.equal('storageKey' in file,false);
+    await assert.rejects(service.attachments.download(owner,cid,fid));
+    await assert.rejects(service.post(member,cid,{body:'Steal',attachmentIds:[fid]}));
+    const retry=randomUUID();const sent=await service.post(owner,cid,{body:'',attachmentIds:[fid],clientMessageId:retry});
+    assert.equal((await service.post(owner,cid,{body:'',attachmentIds:[fid],clientMessageId:retry})).id,sent.id);
+    assert.equal((await service.attachments.download(member,cid,fid)).bytes.toString(),bytes.toString());
+    await assert.rejects(service.attachments.download(other,cid,fid));await assert.rejects(service.attachments.download(outsider,cid,fid));
+    assert.equal((await service.attachments.files(member,cid,{limit:1})).data.length,1);
+    const bad=Buffer.from('<script>alert(1)</script>');const badId=await reserve('safe.txt',bad);await assert.rejects(service.attachments.upload(owner,cid,badId,bad));
+    const pdf=Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF');const pdfId=await reserve('brief.pdf',pdf);
+    assert.equal((await service.attachments.upload(owner,cid,pdfId,pdf)).status,'QUARANTINED');
+    await assert.rejects(service.post(owner,cid,{body:'No',attachmentIds:[pdfId]}));
+    await service.removeMember(owner,cid,member.userId);await assert.rejects(service.attachments.download(member,cid,fid));
+    await service.editMessage(owner,cid,String(sent.id),null);await assert.rejects(service.attachments.download(owner,cid,fid));
+    const unused=await reserve('abandoned.txt',bytes);await service.attachments.upload(owner,cid,unused,bytes);await service.attachments.remove(owner,cid,unused);
+    await pg.query("UPDATE conversation_attachments SET expires_at=now()-interval '1 second' WHERE id IN ($1,$2)",[fid,unused]);
+    assert.ok((await service.attachments.cleanup()).removed>=2);assert.equal(storedFiles.has(owner.tenantId+'/'+fid),false);
+  });
+  await t.test('Phase 4 indexed search filters authorized messages, threads, tombstones and pagination',async()=>{
+    const c=await service.create(owner,{type:'PRIVATE_CHANNEL',name:'Search room',memberUserIds:[member.userId]});const cid=String(c.id);
+    const first=await service.post(owner,cid,{body:'Quarterly budgets for collaboration'});
+    const second=await service.post(member,cid,{body:'Quarterly budget review',parentMessageId:String(first.id)});
+    const query={q:'budget',limit:1,conversationId:cid};
+    const one=await service.discovery.search(member,query),two=await service.discovery.search(member,{...query,before:one.nextCursor!});
+    assert.equal(one.data[0].id,second.id);assert.equal(two.data[0].id,first.id);
+    assert.equal((await service.discovery.search(member,{...query,senderId:owner.userId})).data[0].id,first.id);
+    assert.equal((await service.discovery.search(member,{...query,from:'2099-01-01T00:00:00.000Z'})).data.length,0);
+    assert.equal((await service.discovery.search(member,{...query,to:'2000-01-01T00:00:00.000Z'})).data.length,0);
+    assert.equal((await service.discovery.search(member,{...query,attachments:'true'})).data.length,0);
+    for(const actor of [other,outsider])assert.equal((await service.discovery.search(actor,query)).data.length,0);
+    await service.editMessage(member,cid,String(second.id),null);assert.equal((await service.discovery.search(member,query)).data[0].id,first.id);
+    await service.removeMember(owner,cid,member.userId);assert.equal((await service.discovery.search(member,query)).data.length,0);
+  });
+  await t.test('Phase 4 notifications are idempotent, preference-aware and reauthorize previews',async()=>{
+    const c=await service.create(owner,{type:'DIRECT',name:'',memberUserIds:[member.userId]});const cid=String(c.id);
+    const pref={browser:false,inApp:true,sound:false,dnd:false,directMessages:true};
+    await service.discovery.preferences(member,pref);
+    const key=randomUUID();const message=await service.post(owner,cid,{body:'Private notification',clientMessageId:key});
+    await service.post(owner,cid,{body:'Private notification',clientMessageId:key});
+    let notices=(await service.discovery.notifications(member)).data;const record=notices.find(n=>n.messageId===message.id)!;assert.ok(record);
+    assert.equal(notices.filter(n=>n.messageId===message.id).length,1);
+    await service.discovery.readNotification(member,record.id);assert.ok((await service.discovery.notifications(member)).data.find(n=>n.id===record.id)?.readAt);
+    await assert.rejects(service.discovery.readNotification(owner,record.id));
+    const events=await service.events(member,cid,'0');assert.ok(events.some(e=>e.type==='notification.created'&&e.resourceId===record.id));
+    assert.ok(!(await service.events(owner,cid,'0')).some(e=>e.resourceId===record.id));
+    await service.discovery.conversationPreference(member,cid,'NONE');
+    const muted=await service.post(owner,cid,{body:'Muted'});assert.ok(!(await service.discovery.notifications(member)).data.some(n=>n.messageId===muted.id));
+    await service.discovery.conversationPreference(member,cid,'MENTIONS');
+    const mentioned=await service.post(owner,cid,{body:'@Test member please review',mentions:[{userId:member.userId,start:0,end:12}]});
+    assert.equal((await service.discovery.notifications(member)).data.find(n=>n.messageId===mentioned.id)?.type,'CHAT_MENTION');
+    const group=await service.create(owner,{type:'GROUP_DIRECT',name:'Notify group',memberUserIds:[member.userId,outsider.userId]});const gid=String(group.id);
+    const root=await service.post(owner,gid,{body:'Root'});const reply=await service.post(outsider,gid,{body:'Reply',parentMessageId:String(root.id)});
+    assert.equal((await service.discovery.notifications(member)).data.find(n=>n.messageId===reply.id)?.type,'CHAT_THREAD');
+    await service.removeMember(owner,gid,member.userId);assert.ok(!(await service.discovery.notifications(member)).data.some(n=>n.conversationId===gid));
+    await service.discovery.preferences(member,{...pref,directMessages:false});
+    const off=await service.post(owner,cid,{body:'@Test member disabled',mentions:[{userId:member.userId,start:0,end:12}]});
+    assert.ok(!(await service.discovery.notifications(member)).data.some(n=>n.messageId===off.id));
+    await service.discovery.preferences(member,pref);await service.discovery.conversationPreference(member,cid,'ALL');
+    await service.editMessage(owner,cid,String(message.id),null);assert.ok(!(await service.discovery.notifications(member)).data.some(n=>n.id===record.id));
+  });
+
   await t.test('authorized WebSocket replays durable events and closes after removal', async () => {
     const ticket = await service.ticket(member, id);
     const received: string[] = [];

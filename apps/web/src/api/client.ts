@@ -127,3 +127,27 @@ export async function requestJson<T>(path: string, options: AuthenticatedRequest
     typeof envelope?.error?.message === 'string' ? envelope.error.message : 'The request could not be completed.', body);
   return body as T;
 }
+
+/** Binary upload with real browser progress, sharing the normal auth/context rules. */
+export async function uploadWithAuth(url:string,body:Blob,signal:AbortSignal,progress:(percent:number)=>void):Promise<Response>{
+ const send=async(token:string|null)=>new Promise<Response>((resolve,reject)=>{
+  const xhr=new XMLHttpRequest();xhr.open('PUT',resolveApiUrl(url));xhr.timeout=60000;
+  xhr.setRequestHeader('Content-Type','application/octet-stream');
+  xhr.setRequestHeader('X-KS-Application-Context',requestContext(url));
+  xhr.setRequestHeader('X-Correlation-ID',createCorrelationId());
+  if(token)xhr.setRequestHeader('Authorization','Bearer '+token);
+  const support=sessionStorage.getItem('ks-os-support-session');if(support)xhr.setRequestHeader('X-KS-Support-Session',support);
+  const abort=()=>xhr.abort();signal.addEventListener('abort',abort,{once:true});
+  const cleanup=()=>signal.removeEventListener('abort',abort);
+  xhr.upload.onprogress=event=>{if(event.lengthComputable)progress(Math.round(event.loaded/event.total*100));};
+  xhr.onload=()=>{cleanup();resolve(new Response(xhr.responseText,{status:xhr.status}));};
+  xhr.onerror=()=>{cleanup();reject(new Error('Upload failed. Check your connection and retry.'));};
+  xhr.ontimeout=()=>{cleanup();reject(new Error('Upload timed out. Please retry.'));};
+  xhr.onabort=()=>{cleanup();reject(new DOMException('Upload cancelled','AbortError'));};
+  if(signal.aborted){cleanup();reject(new DOMException('Upload cancelled','AbortError'));return;}
+  xhr.send(body);
+ });
+ const token=await currentAccessToken();let response=await send(token);
+ if(response.status===401&&!signal.aborted){const next=await recoverAccessToken(token);if(next)response=await send(next);}
+ return response;
+}

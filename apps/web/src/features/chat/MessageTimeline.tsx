@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router';
 import { ReadReceipt, TypingStatus } from './ChatLive';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CommunicationsEvent, NativeConversation, NativeMessage } from '@ks-os/contracts';
@@ -11,6 +12,7 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
   channel: NativeConversation; userId: string; parent?: string; subscribe: SubscribeChat; revision: number; drafts: Map<string,Draft>;
   openThread?: (message: NativeMessage) => void; inaccessible: () => void; read: (id: string) => Promise<void>; label?: string;
 }) {
+  const [searchParams]=useSearchParams();const targetId=searchParams.get('message');
   const [messages,setMessages]=useState<NativeMessage[]>([]),[cursor,setCursor]=useState<string|null>(null),[loading,setLoading]=useState(true),[more,setMore]=useState(false),[error,setError]=useState(''),[newer,setNewer]=useState(false);
   const scroll=useRef<HTMLDivElement>(null),bottom=useRef(true),live=useRef(true),frozen=useRef(false),reading=useRef(false),seenRead=useRef(channel.lastReadPosition),preserve=useRef<{id:string;offset:number}|null>(null),jump=useRef(true);
   const current=useRef<NativeMessage[]>([]),generation=useRef(0),updates=useRef(new Map<string,{generation:number;message:NativeMessage}>());
@@ -28,6 +30,15 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
     catch(cause){fail(cause);}finally{if(live.current)setLoading(false);}
   },[channel.id,parent,fail,put,reconcile]);
   useEffect(()=>{void latest();},[latest]);
+  useEffect(()=>{
+    if(!targetId)return;let active=true;
+    void chatApi.message(channel.id,targetId).then(async target=>{
+      if(target.parentMessageId!==(parent??null))return;
+      const page=await chatApi.messages(channel.id,parent,(BigInt(target.position)+1n).toString());
+      if(!active)return;frozen.current=true;bottom.current=false;jump.current=false;put(mergeMessages(page.data,[target]));setCursor(page.nextCursor);setNewer(true);
+      requestAnimationFrame(()=>{const el=scroll.current?.querySelector<HTMLElement>('[data-message-id="'+targetId+'"]');el?.scrollIntoView({block:'center'});el?.focus();});
+    }).catch(fail);return()=>{active=false;};
+  },[targetId,channel.id,parent,put,fail,loading]);
   // Reconcile a bounded window after reconnect, including edits and tombstones in older loaded pages.
   useEffect(()=>{
     if(!revision || !current.current.length)return;
@@ -101,7 +112,7 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
         const previous=messages[index-1],day=new Date(message.createdAt).toLocaleDateString();
         const sameDay=previous && new Date(previous.createdAt).toLocaleDateString()===day;
         const grouped=Boolean(sameDay && !message.editedAt && previous.senderId===message.senderId && new Date(message.createdAt).getTime()-new Date(previous.createdAt).getTime()<300000);
-        return <div key={message.id} data-message-id={message.id}>{!sameDay && <div className="chat-date"><span>{new Date(message.createdAt).toLocaleDateString([], {weekday:'short',day:'numeric',month:'long'})}</span></div>}<MessageItem message={message} grouped={grouped} userId={userId} archived={Boolean(channel.archivedAt)} thread={openThread} changed={changed}/><ReadReceipt message={message} userId={userId}/></div>;
+        return <div key={message.id} data-message-id={message.id} tabIndex={targetId===message.id?-1:undefined} className={targetId===message.id?'chat-search-target':undefined}>{!sameDay && <div className="chat-date"><span>{new Date(message.createdAt).toLocaleDateString([], {weekday:'short',day:'numeric',month:'long'})}</span></div>}<MessageItem message={message} grouped={grouped} userId={userId} archived={Boolean(channel.archivedAt)} thread={openThread} changed={changed}/><ReadReceipt message={message} userId={userId}/></div>;
       })}
     </div>
     {newer && <button type="button" className="chat-new-messages" onClick={()=>void latest()}>Back to latest messages ↓</button>}

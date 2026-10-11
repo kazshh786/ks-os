@@ -47,3 +47,20 @@
 .chat-conversation-preview time,.chat-presence{font-size:10px;font-weight:500;color:#475569}.chat-presence.online{color:#047857}.chat-presence.away{color:#92400e}
 .chat-read-receipt{display:block;margin:0 8px 8px 53px;font-size:10px;color:#475569;overflow-wrap:anywhere}
 .chat-typing{min-height:20px;margin:0 22px;font-size:11px;color:#475569}
+
+/* Phase 4 uses the same Chat tokens and dialog/focus primitives. */
+.chat-toolbar{display:flex;gap:.4rem;padding:.3rem .7rem;align-items:center}.chat-toolbar button{display:flex;align-items:center;gap:.4rem;font-size:.8rem}
+.chat-upload-controls{padding:.5rem 0}.chat-attach-button{display:inline-flex;align-items:center;gap:.4rem;position:relative;border:1px solid var(--border,#cbd5e1);border-radius:.5rem;padding:.45rem .7rem;cursor:pointer;font-size:.8rem}
+.chat-attach-button input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}.chat-attach-button:focus-within{outline:2px solid #4f46e5;outline-offset:2px}
+.chat-upload-controls ul{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:.4rem}.chat-upload-controls li{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;border:1px solid #cbd5e1;border-radius:.5rem;padding:.4rem;font-size:.8rem}.chat-upload-controls li span{max-width:180px;overflow-wrap:anywhere}
+.chat-upload-controls progress{width:100px}.chat-dragging{outline:2px dashed #4f46e5;background:#eef2ff}
+.chat-attachment-card{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;max-width:420px;border:1px solid #cbd5e1;background:var(--surface,#fff);border-radius:.75rem;padding:.6rem;margin:.6rem 0;overflow:hidden}
+.chat-attachment-card strong{display:block;overflow-wrap:anywhere;font-size:.85rem}.chat-attachment-card small{display:block;font-size:.7rem;color:#475569;overflow-wrap:anywhere}.chat-attachment-card button{display:inline-flex;align-items:center;gap:.3rem;margin:.2rem .4rem .1rem 0;font-size:.8rem}
+.chat-thumbnail{padding:0!important;display:block!important;width:100%}.chat-thumbnail img{display:block;max-width:100%;max-height:180px;object-fit:contain;border-radius:.4rem}
+.chat-image-viewer{max-width:100%;max-height:65vh;object-fit:contain}.chat-pdf-viewer{width:100%;height:55vh;border:1px solid #cbd5e1}
+.chat-files-panel{padding:1rem;overflow:auto}.chat-files-panel label,.chat-conversation-preference{display:grid;gap:.4rem;padding:.6rem;font-size:.85rem}
+.chat-search-form{display:grid;gap:.7rem}.chat-search-form label{display:grid;gap:.3rem}.chat-search-form input,.chat-search-form select,.chat-conversation-preference select,.chat-files-panel select{padding:.55rem;border:1px solid #94a3b8;border-radius:.4rem;min-width:0;max-width:100%;background:var(--surface,#fff);color:inherit}
+.chat-check{display:flex!important;align-items:center;gap:.5rem!important}.chat-check input{width:auto}
+.chat-date-filters{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}.chat-search-results,.chat-notice-list{list-style:none;padding:0}.chat-search-results li,.chat-notice-list li{border-bottom:1px solid #cbd5e1;padding:.5rem 0}.chat-search-results button,.chat-notice-list button{text-align:left;white-space:normal;width:100%;padding:.5rem}.chat-search-results strong,.chat-notice-list strong{font-size:.85rem;display:block}.chat-search-results time,.chat-notice-list time{font-size:.7rem;color:#475569}.chat-search-results p,.chat-notice-list p{white-space:pre-wrap;overflow-wrap:anywhere}
+.chat-search-target{outline:2px solid #6366f1;outline-offset:-2px;border-radius:.5rem;background:#eef2ff}.chat-preferences{display:grid;gap:1rem}.chat-preferences p{font-size:.85rem;color:#475569}
+@media(max-width:600px){.chat-date-filters{grid-template-columns:1fr}.chat-attachment-card{max-width:100%}.chat-toolbar{flex-wrap:wrap}.chat-conversation-header{gap:.3rem}}
