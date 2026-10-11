@@ -55,6 +55,7 @@ export function ChatWorkspace() {
     if(!conversationId)return;
     const current=await chatApi.channel(conversationId);
     if(context.current.conversationId!==conversationId)return;
+    if(!['CHANNEL','PRIVATE_CHANNEL'].includes(current.type))throw new Error('Choose a team channel.');
     setChannel(current);
     setChannels(values=>current.archivedAt?values.filter(c=>c.id!==current.id):values.map(c=>c.id===current.id?current:c));
   },[conversationId]);
@@ -150,7 +151,7 @@ export function ChatWorkspace() {
           {Boolean(channel.unreadCount) && channel.latestMessageId && <button type="button" aria-label="Mark channel and threads as read" title="Mark channel and threads as read" onClick={()=>void run(()=>read(channel.latestMessageId!))}><CheckCheck size={20} aria-hidden="true"/></button>}
         </header>
         <MessageTimeline key={channel.id} channel={channel} userId={capabilities.userId} subscribe={subscribe} revision={revision} drafts={drafts.current} openThread={message=>setParams({thread:message.id})} inaccessible={inaccessible} read={read}/>
-      </> : <div className="chat-welcome"><div><MessageSquare size={32} aria-hidden="true"/></div><p className="chat-eyebrow">Together, in the loop</p><h2>{conversationId?'Opening your channel…':'Room for every conversation'}</h2><p>Keep team updates, questions and ideas in one place.<br/>Choose a channel to join the conversation.</p>{capabilities?.canCreateChannels && !conversationId && <button type="button" className="chat-primary" onClick={()=>setCreate(true)}><Plus size={16} aria-hidden="true"/>Create a channel</button>}</div>}
+      </> : <div className="chat-welcome"><div><MessageSquare size={32} aria-hidden="true"/></div><p className="chat-eyebrow">Together, in the loop</p><h2>{conversationId?(error?'Channel unavailable':'Opening your channel…'):'Room for every conversation'}</h2><p>Keep team updates, questions and ideas in one place.<br/>Choose a channel to join the conversation.</p>{conversationId && error && <><button type="button" disabled={busy} onClick={()=>void run(refresh)}>Try again</button><Link to="/app/chat">Back to channels</Link></>}{capabilities?.canCreateChannels && !conversationId && <button type="button" className="chat-primary" onClick={()=>setCreate(true)}><Plus size={16} aria-hidden="true"/>Create a channel</button>}</div>}
     </div>
     {channel && capabilities && (threadId || details) && <aside className="chat-context-panel" onKeyDown={event=>{if(event.key==='Escape' && !event.defaultPrevented && !(event.target instanceof Element && event.target.closest('[role="dialog"]'))){event.preventDefault();closePanel();}}}>
       {threadId ? <ThreadPanel key={channel.id+threadId} channel={channel} userId={capabilities.userId} rootId={threadId} subscribe={subscribe} revision={revision} drafts={drafts.current} close={closePanel} inaccessible={inaccessible} read={read}/> : <ChannelDetails key={channel.id} channel={channel} userId={capabilities.userId} refresh={refresh} close={closePanel} closed={inaccessible}/>}

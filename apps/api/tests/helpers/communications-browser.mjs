@@ -120,6 +120,11 @@ export async function verifyChatBrowser({app,service,owner,member}) {
     await first.getByRole('button',{name:'Load older messages',exact:true}).click();
     await first.getByText('Historical message 0',{exact:true}).waitFor();
     assert.equal(await first.getByRole('article').count(),75);
+    await first.setViewportSize({width:390,height:844});
+    await first.goto(origin+'/app/chat/invalid-channel');
+    await first.getByRole('heading',{name:'Channel unavailable',exact:true}).waitFor();
+    await first.getByRole('link',{name:'Back to channels',exact:true}).click();
+    await first.getByRole('heading',{name:'Chat',exact:true}).waitFor();
     assert.deepEqual(errors,[]);
   }catch(error){
     console.error('Communications browser verification failed:',error);
