@@ -7,7 +7,7 @@ import { PgDialect, getTableConfig } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 import Fastify from 'fastify';
 import * as database from '@ks-os/database';
-import { CustomerCommandSchema, CustomerTimelineQuerySchema, CustomerTimelineEntrySchema, CustomerOverviewSchema, resolveBusinessProfile } from '@ks-os/contracts';
+import { CustomerCommandSchema, CustomerTimelineQuerySchema, CustomerTimelineEntrySchema, CustomerOverviewSchema, resolveBusinessProfile, canUseProfileModule } from '@ks-os/contracts';
 import { customerAdapters, type CustomerActor } from '../src/modules/customer-360/customer-360.adapters.js';
 import { Customer360Repository } from '../src/modules/customer-360/customer-360.repository.js';
 import { Customer360Service } from '../src/modules/customer-360/customer-360.service.js';
@@ -39,6 +39,17 @@ test('Business Profile composition includes only implemented, enabled and permit
   }
   const sources = customerAdapters({ actor: { ...owner, role: 'staff', permissions: ['CLIENTS_VIEW_BASIC'] }, clientId: client, profile: resolveBusinessProfile('AGENCY'), now });
   assert.equal(sources.length, 0);
+});
+test('native Chat access does not grant owner-only customer communication history', () => {
+  const profile = resolveBusinessProfile('AGENCY');
+  for (const permissions of [['CLIENTS_VIEW_BASIC'], ['CLIENTS_VIEW_BASIC', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE']]) {
+    const actor: CustomerActor = { ...owner, role: 'staff', permissions };
+    assert.equal(canUseProfileModule(profile, 'communications', actor), true, 'Staff can use native Chat');
+    assert.equal(customerAdapters({ actor, clientId: client, profile, now }).some(a => a.source === 'communications'), false);
+  }
+  assert.equal(customerAdapters({ actor: owner, clientId: client, profile, now }).some(a => a.source === 'communications'), true);
+  const disabled = { ...profile, enabledModules: profile.enabledModules.filter(key => key !== 'communications') };
+  assert.equal(customerAdapters({ actor: owner, clientId: client, profile: disabled, now }).some(a => a.source === 'communications'), false);
 });
 test('HTTP boundaries reject anonymous access, injected tenant context and unauthorised actions', async () => {
   const app = Fastify();

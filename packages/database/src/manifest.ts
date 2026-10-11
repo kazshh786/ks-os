@@ -94,4 +94,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260921140000_sales_booking_relationship.sql', order: 87, description: 'Optional tenant and customer constrained Sales provenance on canonical appointments' },
   { filename: '20260921160000_universal_invoices.sql', order: 88, description: 'Canonical invoices, payment allocations, refund-aware receivables and tenant numbering' },
   { filename: '20260929120000_communications_foundation.sql', order: 89, description: 'Native conversation membership, threads, read cursors and authorized realtime journal' },
+  { filename: '20261011040000_communications_channels.sql', order: 90, description: 'Native channel reactions, mention references, retry keys and authorized workspace event replay' },
 ];

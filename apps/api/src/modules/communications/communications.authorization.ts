@@ -22,7 +22,7 @@ export class CommunicationsAuthorization {
       throw communicationError(401, 'AUTH_REQUIRED', 'Authentication required');
     }
     const [active] = await this.db.query(sql`
-      SELECT u.id FROM users u JOIN tenants t ON t.id=u.tenant_id
+      SELECT u.id,u.role FROM users u JOIN tenants t ON t.id=u.tenant_id
       JOIN application_sessions s ON s.auth_user_id=u.auth_user_id
       WHERE u.id=${actor.userId} AND u.tenant_id=${actor.tenantId} AND u.auth_user_id=${actor.authUserId}
         AND u.account_status='ACTIVE' AND t.is_active=true
@@ -32,6 +32,7 @@ export class CommunicationsAuthorization {
         AND s.selected_tenant_user_id=u.id AND s.security_version=u.security_version
         AND s.revoked_at IS NULL AND s.expires_at > now() LIMIT 1`);
     if (!active) throw communicationError(401, 'AUTH_REQUIRED', 'Authentication required');
+    return { userId: actor.userId, canCreateChannels: active.role === 'owner' };
   }
 
   async requireConversation(actor: CommunicationsActor, id: string, action: 'view' | 'post' | 'manage' | 'invite' | 'remove' = 'view') {

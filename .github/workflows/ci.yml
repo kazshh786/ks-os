@@ -66,3 +66,30 @@ jobs:
         env:
           BOOKING_INTEGRITY_TEST_DATABASE_URL: postgresql://postgres_ci:postgres_ci_password@127.0.0.1:5432/ks_os_ci
       - run: pnpm db:migrations:plan
+
+  communications:
+    name: Communications browser verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://isolated_test:isolated_test@127.0.0.1:5432/isolated_test
+      COMMUNICATIONS_BROWSER_TEST: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.13.1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter site-worker exec playwright install --with-deps chromium
+      - run: pnpm --filter @ks-os/contracts --filter @ks-os/database build
+      - name: Exercise the real communications database, HTTP and browser flows
+        working-directory: apps/api
+        run: node --import ./tests/test-environment.mjs --import tsx --test tests/communications-foundation.test.ts
+      - name: Upload communications browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: communications-browser
+          path: artifacts/communications
+          if-no-files-found: ignore

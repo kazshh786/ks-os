@@ -104,6 +104,8 @@ export default {
     try {
       const upstreamRequest = createUpstreamRequest(request, getApiOrigin(env.API_ORIGIN));
       const upstreamResponse = await fetch(upstreamRequest);
+      // Preserve the upstream WebSocket upgrade, including its webSocket handle.
+      if (upstreamResponse.status === 101) return upstreamResponse;
 
       return new Response(upstreamResponse.body, {
         status: upstreamResponse.status,
