@@ -15,7 +15,8 @@ export const AddConversationMemberSchema = z.object({
   role: ConversationMemberRoleSchema.exclude(['OWNER']).default('MEMBER'),
 }).strict();
 export const CreateNativeMessageSchema = z.object({
-  body: z.string().min(1).max(16000).refine(value => value.trim().length > 0, 'Write a message'),
+  attachmentIds: z.array(z.string().uuid()).max(10).optional(),
+  body: z.string().max(16000),
   parentMessageId: z.string().uuid().optional(),
   clientMessageId: z.string().uuid().optional(),
   mentions: z.array(z.object({ userId: z.string().uuid(), start: z.number().int().nonnegative(), end: z.number().int().positive() }).strict()).max(50).optional(),
@@ -51,7 +52,22 @@ export const NativeConversationSchema = z.object({
   preview: z.string().nullable().optional(), lastActivityAt: z.string().datetime().optional(),
   memberCount: z.number().int().nonnegative().optional(), latestMessageId: z.string().uuid().nullable().optional(),
 });
+export const ChatAttachmentSchema = z.object({
+ id:z.string().uuid(), fileName:z.string(), mimeType:z.string(), sizeBytes:z.number(), status:z.string(),
+ thumbnail:z.boolean(), uploadedBy:z.string().nullable(), uploaderName:z.string().optional(), createdAt:z.string(),
+ messageId:z.string().nullable().optional(), conversationId:z.string().optional(), scanStatus:z.string().optional(),
+});
+export type ChatAttachment = z.infer<typeof ChatAttachmentSchema>;
+export const ChatPreferencesSchema=z.object({browser:z.boolean(),inApp:z.boolean(),sound:z.boolean(),dnd:z.boolean(),directMessages:z.boolean()}).strict();
+export type ChatPreferences=z.infer<typeof ChatPreferencesSchema>;
+export const ChatSearchQuerySchema=z.object({
+ q:z.string().trim().max(200).default(''), conversationId:z.string().uuid().optional(), senderId:z.string().uuid().optional(),
+ from:z.string().datetime().optional(), to:z.string().datetime().optional(), attachments:z.enum(['true']).optional(),
+ before:CommunicationPositionSchema.optional(),limit:z.coerce.number().int().min(1).max(50).default(30),
+}).strict().refine(v=>!v.from || !v.to || v.from<=v.to,'Start date must precede end date');
+export const ChatFileQuerySchema=z.object({after:z.string().uuid().optional(),type:z.enum(['image','document']).optional(),limit:z.coerce.number().int().min(1).max(50).default(30)}).strict();
 export const NativeMessageSchema = z.object({
+  attachments:z.array(ChatAttachmentSchema).optional(),
   id: z.string().uuid(), conversationId: z.string().uuid(), senderId: z.string().uuid().nullable(),
   body: z.string().nullable(), type: z.string(), parentMessageId: z.string().uuid().nullable(),
   position: CommunicationPositionSchema, createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
@@ -69,7 +85,7 @@ export const CommunicationsEventSchema = z.object({
   id: CommunicationPositionSchema,
   tenantId: z.string().uuid(),
   conversationId: z.string().uuid(),
-  type: z.enum(['conversation.created', 'conversation.member_joined', 'conversation.member_left', 'message.created', 'conversation.read', 'conversation.updated', 'message.updated', 'message.deleted', 'message.reaction']),
+  type: z.enum(['conversation.created', 'conversation.member_joined', 'conversation.member_left', 'message.created', 'conversation.read', 'conversation.updated', 'message.updated', 'message.deleted', 'message.reaction','notification.created','notification.read','notification.preferences_updated']),
   occurredAt: z.string().datetime(),
   // Invalidation events deliberately carry no message bodies or participant details.
   resourceId: z.string().uuid(),

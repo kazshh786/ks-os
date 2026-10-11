@@ -96,4 +96,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260929120000_communications_foundation.sql', order: 89, description: 'Native conversation membership, threads, read cursors and authorized realtime journal' },
   { filename: '20261011040000_communications_channels.sql', order: 90, description: 'Native channel reactions, mention references, retry keys and authorized workspace event replay' },
   { filename: '20261011060000_communications_direct.sql', order: 91, description: 'Canonical direct conversation identity and recent conversation index' },
+  { filename: '20261011100000_communications_files_search_notifications.sql', order: 92, description: 'Private Chat attachments, indexed message search and persisted notification preferences' },
 ];

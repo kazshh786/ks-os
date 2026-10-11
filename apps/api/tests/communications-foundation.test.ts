@@ -25,6 +25,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     CREATE TABLE users(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,auth_user_id uuid,name text,role text DEFAULT 'owner',account_status text DEFAULT 'ACTIVE',sessions_valid_after timestamptz,security_version integer DEFAULT 1);
     CREATE TABLE clients(id uuid PRIMARY KEY); CREATE TABLE appointments(id uuid PRIMARY KEY);
     CREATE TABLE customer_client_links(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants);
+    CREATE TABLE internal_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,recipient_user_id uuid REFERENCES users,type text,title text,message text,source_type text,source_id uuid,read_at timestamptz,created_at timestamptz DEFAULT now());
     CREATE TABLE integration_connections(id uuid PRIMARY KEY,kind text);
     CREATE TABLE application_sessions(auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer,revoked_at timestamptz,expires_at timestamptz);
     CREATE TABLE account_access_audit_events(id uuid DEFAULT gen_random_uuid(),auth_user_id uuid,tenant_id uuid,tenant_user_id uuid,application_context text,action text,outcome text,metadata jsonb);
@@ -37,6 +38,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20260929120000_communications_foundation.sql', import.meta.url), 'utf8'));
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261011040000_communications_channels.sql', import.meta.url), 'utf8'));
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261011060000_communications_direct.sql', import.meta.url), 'utf8'));
+  await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261011100000_communications_files_search_notifications.sql', import.meta.url), 'utf8'));
   const dialect = new PgDialect();
   const wrap = (connection: PGlite | Transaction): CommunicationsDatabase => ({
     async query<T extends Record<string, unknown>>(statement: SQL) {

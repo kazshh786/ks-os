@@ -830,6 +830,7 @@ export const automationActionRuns = pgTable('automation_action_runs', {
 });
 
 export const internalNotifications = pgTable('internal_notifications', {
+  chatConversationId:uuid('chat_conversation_id'),chatMessageId:uuid('chat_message_id'), // Composite scope FKs are owned by migration 92.
   id: uuid('id').defaultRandom().primaryKey(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   recipientUserId: uuid('recipient_user_id').references(() => users.id, { onDelete: 'set null' }), recipientRole: varchar('recipient_role', { length: 20 }),
   type: varchar('type', { length: 60 }).notNull(), title: varchar('title', { length: 160 }).notNull(), message: varchar('message', { length: 500 }).notNull(),
