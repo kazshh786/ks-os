@@ -93,3 +93,25 @@ jobs:
           name: communications-browser
           path: artifacts/communications
           if-no-files-found: ignore
+
+  phase4-lockfile:
+    name: Prepare patched image dependency
+    if: github.event_name == 'pull_request' && github.head_ref == 'codex/communications-phase-4' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.13.1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - name: Resolve patched sharp for API without running package scripts
+        run: pnpm --filter api add sharp@0.35.5 --save-exact --lockfile-only --ignore-scripts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase4-patched-lockfile
+          path: |
+            pnpm-lock.yaml
+            apps/api/package.json
