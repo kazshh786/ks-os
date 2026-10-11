@@ -70,9 +70,9 @@ export async function verifyChatBrowser({app,service,owner,member}) {
     await first.getByRole('button',{name:'1 reply',exact:true}).waitFor();
     await first.getByRole('button',{name:'1 reply',exact:true}).click();
     await first.getByText('A threaded reply',{exact:true}).waitFor();
-    await first.getByRole('button',{name:'Close thread'}).click();
-    await second.getByRole('button',{name:'Close thread'}).click();
-    const own=first.getByRole('article').filter({hasText:'Hello from the first browser'});
+    await first.getByRole('button',{name:'Close thread'}).click();await first.getByRole('region',{name:'Message thread',exact:true}).waitFor({state:'hidden'});
+    await second.getByRole('button',{name:'Close thread'}).click();await second.getByRole('region',{name:'Message thread',exact:true}).waitFor({state:'hidden'});
+    const own=first.getByRole('region',{name:'Channel messages',exact:true}).getByRole('article').filter({hasText:'Hello from the first browser'});
     await own.hover();await own.getByRole('button',{name:'Edit message'}).click();
     await first.getByRole('combobox',{name:'Message text'}).fill('Edited in the first browser');
     await first.getByRole('button',{name:'Save changes',exact:true}).click();
@@ -103,7 +103,7 @@ export async function verifyChatBrowser({app,service,owner,member}) {
     await second.addScriptTag({path:workerRequire.resolve('axe-core/axe.min.js')});
     const accessibility=await second.evaluate(async()=>window.axe.run(document.querySelector('.chat-workspace'),{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}}));
     assert.deepEqual(accessibility.violations.map(v=>({id:v.id,description:v.description,nodes:v.nodes.map(n=>n.target)})),[]);
-    const edited=first.getByRole('article').filter({hasText:'Edited in the first browser'});
+    const edited=first.getByRole('region',{name:'Channel messages',exact:true}).getByRole('article').filter({hasText:'Edited in the first browser'});
     await edited.hover();await edited.getByRole('button',{name:'Delete message'}).click();
     await first.getByRole('dialog',{name:'Delete message'}).getByRole('button',{name:'Delete message',exact:true}).click();
     await second.getByText('This message was deleted.',{exact:true}).waitFor();
