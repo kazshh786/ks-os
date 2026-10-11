@@ -47,10 +47,10 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON communication_preferences TO service_role;
 ALTER TABLE communication_events ADD COLUMN recipient_user_id uuid REFERENCES users(id) ON DELETE CASCADE;
 -- Guard the dedicated bucket even if another feature has broad permissive Storage policies.
 -- The bucket is provisioned privately by an operator at release, never by a migration/request.
-DO $
+DO $$
 BEGIN
  IF to_regclass('storage.objects') IS NOT NULL THEN
   EXECUTE 'CREATE POLICY chat_private_bucket_guard ON storage.objects AS RESTRICTIVE FOR ALL TO anon,authenticated USING (bucket_id <> ''private-chat'') WITH CHECK (bucket_id <> ''private-chat'')';
  END IF;
-END $;
+END $$;
 COMMIT;

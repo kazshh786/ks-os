@@ -497,6 +497,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     await service.removeMember(owner,cid,member.userId);assert.equal((await service.discovery.search(member,query)).data.length,0);
   });
   await t.test('Phase 4 notifications are idempotent, preference-aware and reauthorize previews',async()=>{
+    await pg.query("UPDATE users SET name='Test member' WHERE id=$1",[member.userId]);
     const c=await service.create(owner,{type:'DIRECT',name:'',memberUserIds:[member.userId]});const cid=String(c.id);
     const pref={browser:false,inApp:true,sound:false,dnd:false,directMessages:true};
     await service.discovery.preferences(member,pref);

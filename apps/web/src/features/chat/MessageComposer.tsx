@@ -81,7 +81,7 @@ export function MessageComposer({ channelId, label = 'Message', initial, saveDra
       {suggestions.length > 0 && <ul id={listId} role="listbox" aria-label="Mention a channel member" className="chat-mentions">{suggestions.map((person,index) => <li id={`${listId}-${index}`} key={person.userId} role="option" aria-selected={index===highlight} onMouseDown={event => event.preventDefault()} onClick={() => choose(person)}>{person.name}</li>)}</ul>}
     </div>
     {attachmentsEnabled&&<UploadControls uploads={uploads} disabled={disabled||busy}/>}
-    <div className="chat-composer-footer"><small id={`${inputId}-hint`}>Shift + Enter for a new line · {draft.body.length.toLocaleString()}/16,000</small><button type="submit" className="chat-primary" disabled={disabled || busy || !draft.body.trim() || draft.body.length > 16000} aria-label={submitLabel}><Send size={16} aria-hidden="true" />{busy ? 'Saving…' : submitLabel === 'Send message' ? 'Send' : submitLabel}</button></div>
+    <div className="chat-composer-footer"><small id={`${inputId}-hint`}>Shift + Enter for a new line · {draft.body.length.toLocaleString()}/16,000</small><button type="submit" className="chat-primary" disabled={disabled || busy || (!draft.body.trim() && !uploads.ready) || uploads.blocked || draft.body.length > 16000} aria-label={submitLabel}><Send size={16} aria-hidden="true" />{busy ? 'Saving…' : submitLabel === 'Send message' ? 'Send' : submitLabel}</button></div>
     {draft.body.length > 16000 && <p role="alert" className="chat-error">Your message is too long. The limit is 16,000 characters.</p>}
     {error && <p id={`${inputId}-error`} role="alert" className="chat-error">{error} Your text is retained.</p>}
   </form>;
