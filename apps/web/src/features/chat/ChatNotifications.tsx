@@ -14,11 +14,13 @@ export async function browserPermission(){
 export function ChatNotifications({subscribe,revision,conversationId}:{subscribe:SubscribeChat;revision:number;conversationId?:string}){
  const navigate=useNavigate(),[open,setOpen]=useState(false),[settings,setSettings]=useState(false),[preferences,setPreferences]=useState<ChatPreferences|null>(null);
  const [rows,setRows]=useState<ChatNotice[]>([]),[cursor,setCursor]=useState<string|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
+ const preferenceRevision=useRef(0),saving=useRef(false);
  const seen=useRef(new Set<string>()),initialized=useRef(false),context=useRef(conversationId),mounted=useRef(true);context.current=conversationId;
  const refresh=useCallback(async(deliver=false)=>{
   try {
+   const started=preferenceRevision.current;
    const [page,p]=await Promise.all([phase4Api.notifications(),phase4Api.preferences()]);if(!mounted.current)return;
-   setRows(page.data);setCursor(page.nextCursor);setPreferences(p);
+   setRows(page.data);setCursor(page.nextCursor);if(started===preferenceRevision.current&&!saving.current)setPreferences(p);
    for(const row of page.data){
     const fresh=initialized.current&&!seen.current.has(row.id);seen.current.add(row.id);
     if(!deliver||!fresh||!shouldAlert(p,row,context.current,document.visibilityState==='visible'&&document.hasFocus()))continue;
@@ -41,7 +43,7 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
   return()=>{mounted.current=false;clearInterval(timer);stop();};
  },[refresh,subscribe]);
  useEffect(()=>{if(revision)void refresh(true);},[revision,refresh]);
- const save=async(next:ChatPreferences)=>{setBusy(true);setError('');try{setPreferences(await phase4Api.savePreferences(next));}catch(e){setError(e instanceof Error?e.message:'Settings could not be saved');}finally{setBusy(false);}};
+ const save=async(next:ChatPreferences)=>{const previous=preferences;preferenceRevision.current++;saving.current=true;setPreferences(next);setBusy(true);setError('');try{setPreferences(await phase4Api.savePreferences(next));}catch(e){setPreferences(previous);setError(e instanceof Error?e.message:'Settings could not be saved');}finally{saving.current=false;setBusy(false);}};
  return <div className="chat-notifications">
  <div className="chat-toolbar"><button type="button" onClick={()=>{setOpen(true);setNotice('');void refresh();}}><Bell size={16} aria-hidden="true"/>Notifications{rows.some(n=>!n.readAt)&&<span aria-label="Unread notifications"> •</span>}</button><button type="button" aria-label="Chat notification settings" onClick={()=>setSettings(true)}><Settings size={16} aria-hidden="true"/></button></div>
  {notice&&<p role="status" className="chat-notice">{notice}</p>}

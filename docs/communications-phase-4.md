@@ -35,7 +35,7 @@ Filename normalization strips traversal separators, controls, bidi overrides and
 
 PNG/JPEG/WebP/GIF are decoded within a 20-million-pixel limit, one frame, five-second processing limit, bounded sharp concurrency/cache, then re-encoded to metadata-free WebP. Full images are downloaded only on request; timeline images use separate 320×240-bounded thumbnails. Animated GIF becomes a static first frame. Downloads use the normalized .webp extension. This is sanitization, **not a virus-scan claim**.
 
-UTF-8 TXT/CSV is validated and served strictly as a download. PDF, Office and ZIP require a scanner CLEAN result and otherwise remain quarantined and unsendable. Office macro containers and nested archive executables are denied before scanning. No operational antivirus service is installed. Legacy OLE Office files are checked for container signature and require the scanner to inspect content.
+UTF-8 TXT/CSV is validated (formula-bearing CSV cells are rejected) and served strictly as a download. PDF, Office and ZIP require a scanner CLEAN result and otherwise remain quarantined and unsendable. Office macro containers and nested archive executables are denied before scanning. No operational antivirus service is installed. Legacy OLE Office files are checked for container signature and require the scanner to inspect content.
 
 Scanner adapter: POST bytes to the configured trusted endpoint with content type and SHA-256 header, optional bearer token, 15-second timeout, no redirects. Response must be JSON `{status:"CLEAN"|"INFECTED",sha256:"matching digest"}`. Errors, mismatches and unavailable scanners fail closed. Use HTTPS or loopback HTTP. Evaluate scanner memory/CPU, archive support, signature updates and capacity before enabling document sharing.
 
@@ -79,3 +79,5 @@ Exact final GitHub run IDs, counts and known external check failures are recorde
 Existing repository web/API lint scripts are placeholder success commands, not substantive static lint coverage. Existing dependency-audit/Vercel account issues require release review. Physical-device keyboards, production proxy limits and the chosen scanner need staging verification. Scanner-dependent formats intentionally remain blocked until release configuration exists.
 
 Phase 5 can reuse stable conversation IDs, membership authorization, recipient preferences and the authenticated event transport for future LiveKit integration. Calls, guests, mobile push and semantic search remain out of scope.
+
+Implementation references: [PostgreSQL text search indexes](https://www.postgresql.org/docs/current/textsearch-tables.html), [Supabase Storage access control](https://supabase.com/docs/guides/storage/security/access-control), [sharp input limits](https://sharp.pixelplumbing.com/api-constructor/), [browser notification permission](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API/Using_the_Notifications_API).

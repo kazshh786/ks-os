@@ -57,6 +57,7 @@ export async function validateChatFile(bytes:Buffer,name:string,scan:FileScan=co
    // Re-encode one frame, discard metadata, bound decompression and execution time.
    const image=sharp(bytes,{limitInputPixels:20000000,failOn:'warning',pages:1}).timeout({seconds:5});
    const clean=await image.rotate().webp({quality:90}).toBuffer();
+   if(clean.length>limits.maxBytes)throw bad();
    const thumbnail=await sharp(clean,{limitInputPixels:20000000}).resize({width:320,height:240,fit:'inside',withoutEnlargement:true}).webp({quality:75}).timeout({seconds:5}).toBuffer();
    return {bytes:clean,mime:'image/webp',thumbnail,scanStatus:'REENCODED',available:true};
   }catch{throw bad();}
@@ -65,7 +66,8 @@ export async function validateChatFile(bytes:Buffer,name:string,scan:FileScan=co
   let text:string;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{throw bad();}
   if(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text)||/<\s*(?:!doctype|html|script|svg|iframe)\b/i.test(text)||/^\s*(?:#!|MZ)/.test(text))throw bad();
   // Text is always downloaded as an attachment; CSV formulas are neutralized.
-  const clean=ext==='csv'?Buffer.from(text.replace(/(^|[,;\n])([ \t]*)([=+@-])/g,'$1$2\'$3')):bytes;
+  if(ext==='csv' && /(^|[,;\r\n])[ \t]*"?[ \t]*[=+@-]/.test(text))throw bad();
+  const clean=bytes;
   return {bytes:clean,mime,thumbnail:undefined,scanStatus:'NOT_SCANNED',available:true};
  }
  if(ext==='pdf'){if(!bytes.subarray(0,5).equals(Buffer.from('%PDF-')) || !bytes.subarray(-1024).includes(Buffer.from('%%EOF')))throw bad();}

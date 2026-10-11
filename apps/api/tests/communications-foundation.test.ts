@@ -21,6 +21,9 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   t.after(() => pg.close());
   await pg.exec(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
+    CREATE SCHEMA storage;CREATE TABLE storage.objects(bucket_id text);ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+    GRANT USAGE ON SCHEMA storage TO authenticated;GRANT SELECT ON storage.objects TO authenticated;
+    CREATE POLICY existing_storage_access ON storage.objects FOR SELECT TO authenticated USING(true);
     CREATE TABLE tenants(id uuid PRIMARY KEY,is_active boolean DEFAULT true,lifecycle_status text DEFAULT 'ACTIVE');
     CREATE TABLE users(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,auth_user_id uuid,name text,role text DEFAULT 'owner',account_status text DEFAULT 'ACTIVE',sessions_valid_after timestamptz,security_version integer DEFAULT 1);
     CREATE TABLE clients(id uuid PRIMARY KEY); CREATE TABLE appointments(id uuid PRIMARY KEY);
@@ -90,6 +93,11 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   const id = created.json().data.id as string;
   const path = `/comms/${id}`;
 
+  await t.test('private Chat bucket stays inaccessible through broad existing Storage policies',async()=>{
+    await pg.exec("INSERT INTO storage.objects VALUES ('private-chat'),('other-public-feature'); SET ROLE authenticated;");
+    try{const rows=await pg.query<{bucket_id:string}>('SELECT bucket_id FROM storage.objects');assert.deepEqual(rows.rows.map(r=>r.bucket_id),['other-public-feature']);}
+    finally{await pg.exec('RESET ROLE');}
+  });
   await t.test('migration preserves legacy inbox and blocks direct Data API access', async () => {
     assert.equal((await pg.query<{ access_mode: string }>('SELECT access_mode FROM conversations WHERE id=$1', [legacyConversation])).rows[0].access_mode, 'INBOX');
     for (const table of ['conversation_members', 'communication_events', 'communication_tickets', 'communication_mentions', 'communication_reactions']) {
@@ -469,6 +477,10 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     const retry=randomUUID();const sent=await service.post(owner,cid,{body:'',attachmentIds:[fid],clientMessageId:retry});
     assert.equal((await service.post(owner,cid,{body:'',attachmentIds:[fid],clientMessageId:retry})).id,sent.id);
     assert.equal((await service.attachments.download(member,cid,fid)).bytes.toString(),bytes.toString());
+    const httpFile=await app.inject({url:`/comms/${cid}/files/${fid}/content`,headers:headers('member')});
+    assert.equal(httpFile.statusCode,200);assert.equal(httpFile.headers['x-content-type-options'],'nosniff');assert.equal(httpFile.headers['cache-control'],'no-store');
+    assert.match(String(httpFile.headers['content-disposition']),/^attachment;/);
+    for(const who of ['other','outsider'])assert.equal((await app.inject({url:`/comms/${cid}/files/${fid}/content`,headers:headers(who)})).statusCode,404);
     await assert.rejects(service.attachments.download(other,cid,fid));await assert.rejects(service.attachments.download(outsider,cid,fid));
     assert.equal((await service.attachments.files(member,cid,{limit:1})).data.length,1);
     const bad=Buffer.from('<script>alert(1)</script>');const badId=await reserve('safe.txt',bad);await assert.rejects(service.attachments.upload(owner,cid,badId,bad));

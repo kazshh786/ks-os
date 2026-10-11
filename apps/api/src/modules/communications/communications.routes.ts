@@ -46,7 +46,7 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
   app.post('/:conversationId/files',async(request,reply)=>reply.code(201).send({data:await service.attachments.reserve(actor(request),params.parse(request.params).conversationId,z.object({name:z.string().min(1).max(500),size:z.number().int().positive()}).strict().parse(request.body))}));
   app.put('/:conversationId/files/:fileId',{
     bodyLimit:fileLimits().maxBytes,
-    onRequest:async request=>{await service.attachments.authorize(actor(request),fileParams.parse(request.params).conversationId);if(incomingUploads>=2)throw communicationError(429,'UPLOAD_BUSY','Upload capacity is busy. Retry shortly.');incomingUploads++;uploadsInFlight.add(request);},
+    onRequest:async request=>{await service.attachments.authorize(actor(request),fileParams.parse(request.params).conversationId);if(incomingUploads>=2)throw communicationError(429,'UPLOAD_BUSY','Upload capacity is busy. Retry shortly.');incomingUploads++;uploadsInFlight.add(request);request.raw.once('aborted',()=>{if(uploadsInFlight.delete(request))incomingUploads--;});},
     config:{rateLimit:{max:20,timeWindow:'1 minute'}},
   },async request=>{
     const {conversationId,fileId}=fileParams.parse(request.params);
