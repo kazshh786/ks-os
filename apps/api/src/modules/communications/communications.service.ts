@@ -231,6 +231,10 @@ export class CommunicationsService {
   }
 
   private async event(db: CommunicationsDatabase, actor: CommunicationsActor, id: string, type: CommunicationsEvent['type'], resourceId: string) {
+    if (['conversation.member_joined','conversation.member_left','conversation.updated'].includes(type)) {
+      // A roster/role revision must change even if the final member count is unchanged.
+      await db.query(sql`UPDATE conversations SET updated_at=now() WHERE id=${id} AND tenant_id=${actor.tenantId}`);
+    }
     await db.query(sql`INSERT INTO communication_events(tenant_id,conversation_id,type,resource_id)
       VALUES (${actor.tenantId},${id},${type},${resourceId})`);
   }

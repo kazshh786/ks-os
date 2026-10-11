@@ -364,11 +364,14 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     await assert.rejects(service.addMember(member,cid,{userId:other.userId,role:'MEMBER'}),{statusCode:403});
     await assert.rejects(service.addMember(outsider,cid,{userId:other.userId,role:'MEMBER'}),{statusCode:400});
     await service.updateChannel(outsider,cid,{name:'Renamed group'});
+    await pg.query("UPDATE conversations SET updated_at='2000-01-01T00:00:00Z' WHERE id=$1",[cid]);
     await service.removeMember(outsider,cid,member.userId);
     await assert.rejects(service.messages(member,cid,{limit:50}),{statusCode:404});
     await assert.rejects(service.authorizeTyping(member,cid),{statusCode:404});
     assert.ok((await service.events(member,null,'0')).every(e=>e.conversationId!==cid || e.type==='conversation.member_left'));
     await service.addMember(outsider,cid,{userId:member.userId,role:'MEMBER'});
+    const roster=await service.get(outsider,cid);
+    assert.equal(roster.memberCount,3);assert.ok(new Date(String(roster.updatedAt)).getUTCFullYear()>2000,'Roster revision changes after a same-count membership replacement');
     assert.equal((await service.messages(member,cid,{limit:50})).data[0].id,history.id);
     await service.leave(outsider,cid);
     await assert.rejects(service.get(outsider,cid),{statusCode:404});
