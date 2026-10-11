@@ -596,6 +596,8 @@ export const products = pgTable('products', {
 });
 
 export const checkoutTransactions = pgTable('checkout_transactions', {
+  clientId: uuid('client_id').references(() => clients.id, { onDelete: 'restrict' }),
+  currency: varchar('currency', { length: 3 }),
   publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id')
@@ -613,7 +615,7 @@ export const checkoutTransactions = pgTable('checkout_transactions', {
     .notNull(),
   purchasedProducts: jsonb('purchased_products').default([]).notNull(),
   stripePaymentIntentId: varchar('stripe_payment_intent_id', { length: 255 }),
-  purpose: text('purpose', { enum: ['point_of_sale', 'booking_payment'] }).default('point_of_sale').notNull(),
+  purpose: text('purpose', { enum: ['point_of_sale', 'booking_payment', 'invoice_payment'] }).default('point_of_sale').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

@@ -23,6 +23,7 @@ function deriveState(status: string, refundedAmount: number, totalAmount: number
   if (status === 'REFUNDED') return 'REFUNDED';
   if (status === 'FAILED') return 'FAILED';
   if (status === 'PENDING') return 'PENDING';
+  if (status === 'SUCCEEDED' && totalAmount > 0 && refundedAmount >= totalAmount) return 'REFUNDED';
   if (status === 'SUCCEEDED' && refundedAmount > 0) return 'PARTIALLY_REFUNDED';
   if (status === 'SUCCEEDED') return 'SUCCEEDED';
   return 'PENDING';

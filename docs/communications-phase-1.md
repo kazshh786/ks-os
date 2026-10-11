@@ -162,7 +162,7 @@ web-proxy WebSockets require a separate reviewed Cloudflare change before Phase 
 
 ## Migration and safe deployment
 
-Migration: `20260929120000_communications_foundation.sql`, manifest order 88.
+Migration: `20260929120000_communications_foundation.sql`, manifest order 89.
 Additive, non-destructive: creates three tables and one explicit message sequence;
 adds columns/indexes/triggers; widens the two existing transport checks to NATIVE.
 No production data deletion or conversion. Index creation and ALTER TABLE can take

@@ -35,7 +35,7 @@ export function normalizeBusinessType(value: unknown): BusinessType | null {
   return typeof value === 'string' ? aliases.get(normalizedToken(value)) ?? null : null;
 }
 
-export const ModuleKeySchema = z.enum(['dashboard','crm','sales','bookings','services','calendar','work','tasks','projects','operations','forms','documents','communications','email-marketing','social','payments','pos','finance','inventory','team','analytics','reports','reputation','automations','integrations','fleet','routes','dispatch','assets','locations','booking-page','settings','security']);
+export const ModuleKeySchema = z.enum(['dashboard','crm','invoices','sales','bookings','services','calendar','work','tasks','projects','operations','forms','documents','communications','email-marketing','social','payments','pos','finance','inventory','team','analytics','reports','reputation','automations','integrations','fleet','routes','dispatch','assets','locations','booking-page','settings','security']);
 export type ModuleKey = z.infer<typeof ModuleKeySchema>;
 export type ModuleDefinition = {
   key: ModuleKey;
@@ -51,6 +51,7 @@ export type ModuleDefinition = {
 const implemented: Partial<Record<ModuleKey, [string, string, string[], boolean, string[]]>> = {
   dashboard:['Dashboard','/app/dashboard',[],true,[]],
   crm:['Customers','/app/clients',['CLIENTS_VIEW_BASIC'],false,[]],
+  invoices:['Money owed','/app/invoices',['INVOICES_VIEW'],false,[]],
   sales:['Sales','/app/sales',['SALES_VIEW_OWN','SALES_VIEW_ALL'],false,[]],
   bookings:['Bookings','/app/bookings',['BOOKINGS_VIEW_OWN','BOOKINGS_VIEW_ALL'],false,[]],
   calendar:['Booking Calendar','/app/calendar',['BOOKINGS_VIEW_OWN','BOOKINGS_VIEW_ALL'],false,[]],
@@ -81,12 +82,12 @@ const core: ModuleKey[] = ['dashboard','crm','tasks','operations','forms','commu
 const appointmentModules: ModuleKey[] = ['services','bookings','calendar','pos','analytics','reputation','email-marketing','inventory','locations','booking-page'];
 const modelModules: Record<string, ModuleKey[]> = {
   appointments: appointmentModules,
-  jobs:['sales','work','calendar','documents','assets','inventory'],
-  projects:['work','sales','documents','email-marketing'],
-  deliveries:['sales','work','dispatch','fleet','routes','documents'],
+  jobs:['invoices','sales','work','calendar','documents','assets','inventory'],
+  projects:['invoices','work','sales','documents','email-marketing'],
+  deliveries:['invoices','sales','work','dispatch','fleet','routes','documents'],
   classes:['bookings','calendar','services','documents','locations'],
-  orders:['pos','inventory','sales','work','documents'],
-  cases:['sales','work','documents'],
+  orders:['invoices','pos','inventory','sales','work','documents'],
+  cases:['invoices','sales','work','documents'],
 };
 
 const profileSeeds = {
@@ -164,7 +165,7 @@ export type BusinessProfile = z.infer<typeof BusinessProfileSchema>;
 
 const manageModules: Record<ProductOnboardingAnswers['manage'][number], ModuleKey[]> = {
   customers:['crm'],leads:['sales'],sales:['sales'],bookings:['bookings','calendar','services','booking-page'],
-  jobs:['work'],projects:['work'],staff:['team'],calendar:['calendar'],money:['finance','payments'],
+  jobs:['invoices','work'],projects:['invoices','work'],staff:['team'],calendar:['calendar'],money:['finance','payments'],
   documents:['documents','forms'],marketing:['email-marketing','reputation'],inventory:['inventory'],
   support:['operations','communications'],reports:['reports'],automation:['automations'],
 };
@@ -175,6 +176,7 @@ export function onboardingModules(answers: ProductOnboardingAnswers): ModuleKey[
   for (const delivery of answers.delivery) for (const key of modelModules[delivery] ?? []) result.add(key);
   if (answers.buying.includes('appointments')) for (const key of ['bookings','calendar','services','booking-page'] as const) result.add(key);
   if (answers.buying.includes('quotes') || answers.payment.includes('quotes')) result.add('sales');
+  if (answers.payment.includes('invoices')) result.add('invoices');
   if (answers.payment.includes('pos')) result.add('pos');
   if (answers.resources.includes('vehicles')) result.add('fleet');
   if (answers.resources.includes('stock')) result.add('inventory');

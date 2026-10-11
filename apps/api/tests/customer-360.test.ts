@@ -69,11 +69,13 @@ test('Customer 360 PostgreSQL isolation, visibility, cursor, attention and failu
   const schema = `c360_${randomUUID().replaceAll('-','')}`;
   await connection.query(`create schema ${schema}`);
   await connection.query(`set search_path to ${schema},public`);
-  const tables = [database.services,database.bookingAuditEvents,database.clients,database.tenants,database.users,database.clientSalesProfiles,database.salesOpportunities,database.salesPipelineStages,database.salesOpportunityActivity,database.salesQuotes,database.workItems,database.workItemActivity,database.tasks,database.taskActivity,database.appointments,database.formAssignments,database.checkoutTransactions,database.stripePaymentAttempts,database.stripeRefunds,database.emailOutbox,database.smsOutbox,database.reviewInvitations,database.conversations,database.operationsIssues];
+  const tables = [database.invoices,database.invoiceItems,database.invoicePaymentAllocations,database.invoiceActivity,database.checkoutPaymentReversals,database.services,database.bookingAuditEvents,database.clients,database.tenants,database.users,database.clientSalesProfiles,database.salesOpportunities,database.salesPipelineStages,database.salesOpportunityActivity,database.salesQuotes,database.workItems,database.workItemActivity,database.tasks,database.taskActivity,database.appointments,database.formAssignments,database.checkoutTransactions,database.stripePaymentAttempts,database.stripeRefunds,database.emailOutbox,database.smsOutbox,database.reviewInvitations,database.conversations,database.operationsIssues];
   // Use canonical column names/types, with nullable fixture columns so corrupt cross-tenant links can be exercised.
   for (const table of tables) { const config = getTableConfig(table); await connection.query(`create table "${config.name}" (${config.columns.map(column => `"${column.name}" ${column.getSQLType()}`).join(',')})`); }
   const migration = await readFile(new URL('../../../packages/database/migrations/20260921120000_customer_360_references_indexes.sql', import.meta.url), 'utf8');
   await connection.query(migration); await connection.query(migration); // Additive and rerunnable.
+  const invoiceMigration = await readFile(new URL('../../../packages/database/migrations/20260921160000_universal_invoices.sql', import.meta.url), 'utf8');
+  await connection.query(invoiceMigration.slice(invoiceMigration.indexOf('CREATE OR REPLACE VIEW invoice_allocation_balances'),invoiceMigration.indexOf('CREATE OR REPLACE FUNCTION guard_invoice_allocation')));
   const dialect = new PgDialect();
   let failWork = false;
   class TestRepository extends Customer360Repository {

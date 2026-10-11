@@ -4,6 +4,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import type { AgencyCapability, AgencyRole } from '@ks-os/contracts';
 import { fetchWithAuth } from '../../api/client';
 import { supabase } from '../../lib/supabase';
+import { signInErrorMessage } from '../../auth/sign-in-error';
 
 export interface AgencySession {
   authenticated: true; context: 'AGENCY'; user: { email: string; displayName: string; role: AgencyRole };
@@ -154,7 +155,7 @@ export const AgencyLoginPageLegacy: React.FC = () => {
     event.preventDefault(); setBusy(true); setError(null);
     try {
       const signedIn = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (signedIn.error || !signedIn.data.session) throw new Error('The email or password is incorrect.');
+      if (signedIn.error || !signedIn.data.session) throw new Error(signInErrorMessage(signedIn.error, 'The email or password is incorrect.'));
       const response = await fetchWithAuth('/api/v1/agency/session', { authContext: 'AGENCY' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {

@@ -4,6 +4,7 @@ import { AlertCircle, Eye, EyeOff, LogIn, ShieldCheck } from 'lucide-react';
 import { fetchWithAuth } from '../../api/client';
 import { AuthSplitLayout, type AuthHighlight } from '../../auth/AuthSplitLayout.js';
 import { supabase } from '../../lib/supabase';
+import { signInErrorMessage } from '../../auth/sign-in-error';
 
 const highlights: AuthHighlight[] = [
   {
@@ -62,7 +63,7 @@ export const AgencyLoginPage: React.FC = () => {
     try {
       const signedIn = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (signedIn.error || !signedIn.data.session) {
-        throw new Error('Those sign-in details didn’t match an active agency account. Try again or reset your password.');
+        throw new Error(signInErrorMessage(signedIn.error, 'Those sign-in details didn’t match an active agency account. Try again or reset your password.'));
       }
       const response = await fetchWithAuth('/api/v1/agency/session', { authContext: 'AGENCY' });
       const body = await response.json().catch(() => ({}));

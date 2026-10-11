@@ -17,6 +17,8 @@ export function attentionFor(item: CustomerNowItem, row: CurrentRow, now: Date):
     reason = item.status === 'COMPLETED' ? 'This appointment is completed and the related sale has no active quote. Review the next step.' : 'This appointment was cancelled or missed while the related sale remains open. Arrange another appointment or contact the customer.';
     action = row.sales_can_update ? { key: 'review-' + item.relatedSale.reference, label: 'Review next step', kind: 'LINK', route: '/app/sales/' + item.relatedSale.reference, source: 'sales', reference: item.relatedSale.reference, reason } : null;
   }
+  else if (item.source === 'invoices' && overdue && (item.amount ?? 0)>0) { code='INVOICE_OVERDUE'; reason='This invoice has money remaining and its due date has passed.'; severity='IMPORTANT'; action=item.action; }
+  else if (item.source === 'invoices' && item.dueAt && Date.parse(item.dueAt)<=now.getTime()+3*86400000 && (item.amount??0)>0) { code='INVOICE_DUE_SOON'; reason='This invoice has money remaining and is due within three days.'; action=item.action; }
   else if (item.source === 'work' && item.status === 'BLOCKED') { code = 'WORK_BLOCKED'; reason = 'This work is blocked and needs a team member to review it.'; severity = 'IMPORTANT'; }
   else if (item.source === 'work' && overdue) { code = 'WORK_OVERDUE'; reason = 'The due date has passed and this work is still active.'; severity = 'IMPORTANT'; }
   else if (item.source === 'tasks' && overdue) { code = 'TASK_OVERDUE'; reason = 'The due date has passed and this task is still open.'; severity = 'IMPORTANT'; }

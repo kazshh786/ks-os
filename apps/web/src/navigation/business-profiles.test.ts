@@ -6,10 +6,11 @@ const entitlements={'inventory.enabled':{enabled:true},'automations.enabled':{en
 const resolve=(type:string,role:'owner'|'staff'='owner',permissions:any[]=[],rights=entitlements)=>resolveNavigation(businessNavigation,{portal:'business',businessProfile:resolveBusinessProfile(type),role,permissions,entitlements:rights}).flatMap(group=>group.items);
 describe('business navigation',()=>{
   it('keeps the established salon destinations and does not add Sales or Work by default',()=>{
-    const legacyIds=businessNavigation.flatMap(group=>group.items).map(item=>item.id).filter(id=>!['sales','work'].includes(id));
+    const legacyIds=businessNavigation.flatMap(group=>group.items).map(item=>item.id).filter(id=>!['sales','work','invoices'].includes(id));
     expect(resolve('salon').map(item=>item.id)).toEqual(legacyIds);
     expect(resolve('salon').some(item=>item.id==='sales')).toBe(false);
     expect(resolve('salon').some(item=>item.id==='work')).toBe(false);
+    expect(resolve('salon').some(item=>item.id==='invoices')).toBe(false);
   });
   it('materially differs for logistics and agency and exposes implemented Sales and Work engines',()=>{
     expect(resolve('logistics').some(item=>item.id==='services')).toBe(false);
@@ -28,6 +29,9 @@ describe('business navigation',()=>{
     expect(resolve('agency','staff',[]).some(item=>item.id==='sales')).toBe(false);
     expect(resolve('agency','staff',['WORK_VIEW_OWN']).some(item=>item.id==='work')).toBe(true);
     expect(resolve('agency','staff',[]).some(item=>item.id==='work')).toBe(false);
+    expect(resolve('agency','staff',[]).some(item=>item.id==='invoices')).toBe(false);
+    expect(resolve('agency','staff',['INVOICES_VIEW']).some(item=>item.id==='invoices')).toBe(true);
+    expect(resolve('plumbing').some(item=>item.id==='invoices')).toBe(true);
     expect(resolve('salon','owner',[],{} as typeof entitlements).some(item=>['inventory','analytics','automations'].includes(item.id))).toBe(false);
   });
 });
