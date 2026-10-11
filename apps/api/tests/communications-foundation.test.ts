@@ -15,7 +15,7 @@ import { communicationsRoutes } from '../src/modules/communications/communicatio
 import type { CommunicationsDatabase } from '../src/modules/communications/communications.database.js';
 import type { CommunicationsActor } from '../src/modules/communications/communications.authorization.js';
 
-test('communications foundation: real PostgreSQL migration, services, HTTP and WebSocket isolation', { timeout: 120000 }, async t => {
+test('communications foundation: real PostgreSQL migration, services, HTTP and WebSocket isolation', { timeout: 300000 }, async t => {
   const pg = new PGlite();
   t.after(() => pg.close());
   await pg.exec(`
@@ -237,7 +237,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   await t.test('persisted mentions validate membership, ranges and safe text; invalid writes roll back', async () => {
     const channel=await service.create(owner,{type:'PRIVATE_CHANNEL',name:'Mentions',memberUserIds:[member.userId]});
     const cid=String(channel.id),body='Hello @Test member <script>alert(1)</script>',mentions=[{userId:member.userId,start:6,end:18}];
-    const posted=NativeMessageSchema.parse(await service.post(owner,cid,{body,mentions,clientMessageId:randomUUID()}));
+    const posted=NativeMessageSchema.parse(JSON.parse(JSON.stringify(await service.post(owner,cid,{body,mentions,clientMessageId:randomUUID()}))));
     assert.equal(posted.body,body);
     assert.deepEqual(posted.mentions,[{...mentions[0],name:'Test member'}]);
     for(const invalid of [[{...mentions[0],userId:other.userId}],[{...mentions[0],userId:outsider.userId}],[{...mentions[0],start:5}],[mentions[0],mentions[0]]]) {
@@ -253,7 +253,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   await t.test('send retries are idempotent and mutations enforce authorship and edit conflicts', async () => {
     const channel=await service.create(owner,{type:'PRIVATE_CHANNEL',name:'Edit and retry',memberUserIds:[member.userId]});
     const cid=String(channel.id),clientMessageId=randomUUID();
-    const first=NativeMessageSchema.parse(await service.post(owner,cid,{body:'Original',clientMessageId}));
+    const first=NativeMessageSchema.parse(JSON.parse(JSON.stringify(await service.post(owner,cid,{body:'Original',clientMessageId}))));
     const retry=await service.post(owner,cid,{body:'Original',clientMessageId});
     assert.equal(retry.id,first.id);
     assert.equal((await service.messages(owner,cid,{limit:50})).data.length,1);
@@ -262,11 +262,11 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     await assert.rejects(service.editMessage(member,cid,first.id,null),{statusCode:403});
     await assert.rejects(service.editMessage(outsider,cid,first.id,{body:'Secret'}),{statusCode:404});
     await assert.rejects(service.editMessage(owner,cid,first.id,{body:'Stale',expectedUpdatedAt:'2000-01-01T00:00:00.000Z'}),{statusCode:409});
-    const edited=NativeMessageSchema.parse(await service.editMessage(owner,cid,first.id,{body:'Edited',expectedUpdatedAt:first.updatedAt}));
+    const edited=NativeMessageSchema.parse(JSON.parse(JSON.stringify(await service.editMessage(owner,cid,first.id,{body:'Edited',expectedUpdatedAt:first.updatedAt}))));
     assert.equal(edited.body,'Edited'); assert.ok(edited.editedAt);
     const reply=await service.post(member,cid,{body:'Reply survives',parentMessageId:first.id});
     await service.reaction(member,cid,first.id,{emoji:'👍',active:true});
-    const deleted=NativeMessageSchema.parse(await service.editMessage(owner,cid,first.id,null));
+    const deleted=NativeMessageSchema.parse(JSON.parse(JSON.stringify(await service.editMessage(owner,cid,first.id,null))));
     assert.equal(deleted.body,null); assert.ok(deleted.deletedAt); assert.equal(deleted.replyCount,1);
     assert.deepEqual(deleted.reactions,[]);assert.deepEqual(deleted.mentions,[]);
     assert.equal((await service.messages(member,cid,{parentMessageId:first.id,limit:50})).data[0].id,reply.id);
@@ -317,6 +317,10 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     await assert.rejects(service.consumeTicket(null,ticket.ticket),{statusCode:401});
   });
 
+  await t.test('two browser sessions: real messages, threads, reactions, reconnect, mobile and accessibility', {skip:!process.env.CI,timeout:180000}, async () => {
+    const {verifyChatBrowser}=await import('./helpers/communications-browser.mjs');
+    await verifyChatBrowser({app,service,owner,member});
+  });
   await t.test('authorized WebSocket replays durable events and closes after removal', async () => {
     const ticket = await service.ticket(member, id);
     const received: string[] = [];
