@@ -16,7 +16,7 @@ const conversationFields = sql`c.id,c.conversation_type AS type,
   c.created_by_user_id AS "createdBy",c.created_at AS "createdAt",c.updated_at AS "updatedAt",c.archived_at AS "archivedAt",
   (SELECT count(*)::int FROM conversation_members cm WHERE cm.conversation_id=c.id AND cm.left_at IS NULL) AS "memberCount",
   (SELECT id FROM conversation_messages lm WHERE lm.conversation_id=c.id AND lm.native_position IS NOT NULL ORDER BY lm.native_position DESC LIMIT 1) AS "latestMessageId",
-  c.last_message_at AS "lastActivityAt",
+  to_char(c.last_message_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "lastActivityAt",
   (SELECT CASE WHEN lm.deleted_at IS NOT NULL THEN 'Message deleted' ELSE left(lm.body,160) END FROM conversation_messages lm WHERE lm.conversation_id=c.id AND lm.native_position IS NOT NULL ORDER BY lm.native_position DESC LIMIT 1) AS preview,
   (SELECT peer.user_id FROM conversation_members peer WHERE c.conversation_type='DIRECT' AND peer.conversation_id=c.id AND peer.user_id<>m.user_id AND peer.left_at IS NULL LIMIT 1) AS "peerUserId",
   m.role AS "memberRole",m.last_read_position::text AS "lastReadPosition",m.last_read_at AS "lastReadAt"`;
@@ -253,7 +253,7 @@ export class CommunicationsService {
     if (input.type === 'DIRECT' && members.length !== 2) throw communicationError(400, 'DIRECT_REQUIRES_TWO', 'Direct conversations require two participants');
     if (input.type === 'GROUP_DIRECT' && members.length < 3) throw communicationError(400, 'GROUP_REQUIRES_THREE', 'Group direct conversations require at least three participants');
     if (!['DIRECT','GROUP_DIRECT'].includes(input.type) && !input.name.trim()) throw communicationError(400,'NAME_REQUIRED','A conversation name is required');
-    const name=input.name.trim() || 'Group conversation';
+    let name=input.name.trim();
     const directKey=input.type==='DIRECT' ? [...members].sort().join(':') : null;
     let id: string = randomUUID();
     try {
@@ -261,7 +261,9 @@ export class CommunicationsService {
         await this.journalLock(db, actor);
         const capabilities = await new CommunicationsAuthorization(db).authenticate(actor);
         if (['CHANNEL','PRIVATE_CHANNEL'].includes(input.type) && !capabilities.canCreateChannels) throw communicationError(403, 'COMMUNICATIONS_FORBIDDEN', 'Only workspace owners can create channels');
-        for (const userId of members) await this.activeUser(db, actor, userId);
+        const participants=[];
+        for (const userId of members) participants.push(await this.activeUser(db, actor, userId));
+        name ||= participants.map(person=>person.name).join(', ').slice(0,255);
         if (directKey) {
           const [existing]=await db.query<{id:string}>(sql`SELECT id FROM conversations WHERE tenant_id=${actor.tenantId} AND direct_key=${directKey}`);
           if (existing) { id=existing.id; return; }
@@ -292,7 +294,7 @@ export class CommunicationsService {
       try { before=z.object({at:z.string().datetime(),id:z.string().uuid()}).strict().parse(JSON.parse(Buffer.from(query.after,'base64url').toString())); }
       catch { throw communicationError(400,'INVALID_CURSOR','Conversation cursor is invalid'); }
     } else if(query.after) z.string().uuid().parse(query.after);
-    const rows = await this.db.query<{ id:string;lastActivityAt:Date }>(sql`SELECT ${conversationFields},${this.unreadFields(actor)}
+    const rows = await this.db.query<{ id:string;lastActivityAt:string }>(sql`SELECT ${conversationFields},${this.unreadFields(actor)}
       FROM conversations c JOIN conversation_members m ON m.conversation_id=c.id AND m.tenant_id=c.tenant_id
       WHERE c.tenant_id=${actor.tenantId} AND c.access_mode='MEMBERS' AND c.archived_at IS NULL
         AND m.user_id=${actor.userId} AND m.left_at IS NULL
@@ -303,7 +305,7 @@ export class CommunicationsService {
         ${before ? sql`AND (c.last_message_at,c.id)<(${before.at}::timestamptz,${before.id}::uuid)` : query.after ? sql`AND c.id>${query.after}::uuid` : sql``}
       ORDER BY ${query.recent ? sql`c.last_message_at DESC,c.id DESC` : sql`c.id`} LIMIT ${query.limit + 1}`);
     const data=rows.slice(0,query.limit),last=data.at(-1);
-    return {data,nextCursor:rows.length>query.limit && last ? query.recent ? Buffer.from(JSON.stringify({at:new Date(last.lastActivityAt).toISOString(),id:last.id})).toString('base64url') : last.id : null};
+    return {data,nextCursor:rows.length>query.limit && last ? query.recent ? Buffer.from(JSON.stringify({at:last.lastActivityAt,id:last.id})).toString('base64url') : last.id : null};
   }
 
   async liveScope(actor: CommunicationsActor, id: string | null, userIds: string[]) {

@@ -373,6 +373,10 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     assert.ok(page.nextCursor);
     const next=await service.list(owner,{recent:'true',after:page.nextCursor!,limit:100});
     assert.ok(next.data.every(c=>c.id!==page.data[0].id));
+    const expected=(await service.list(owner,{recent:'true',limit:100})).data.map(c=>c.id),paged:string[]=[];
+    let cursor:string|undefined;
+    do { const batch=await service.list(owner,{recent:'true',limit:1,after:cursor});paged.push(...batch.data.map(c=>c.id));cursor=batch.nextCursor ?? undefined; } while(cursor);
+    assert.deepEqual(paged,expected,'Recent cursor keeps PostgreSQL microsecond precision');
     await assert.rejects(service.list(owner,{recent:'true',after:'bad',limit:1}),{statusCode:400});
     const colleagues=await service.people(member,null,{limit:100});
     assert.ok(colleagues.data.some(p=>p.userId===owner.userId));

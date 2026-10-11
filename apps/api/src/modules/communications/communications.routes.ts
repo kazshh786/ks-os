@@ -153,8 +153,11 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
         const watch=presence.watch(connectionId);
         const scope=await service.liveScope(subscription.actor,watch.conversationId,watch.userIds);
         if(stopped || socket.readyState!==1)return;
-        const snapshot=JSON.stringify(presence.snapshot(connectionId,scope));
-        if(snapshot!==lastSnapshot){socket.send(snapshot);lastSnapshot=snapshot;}
+        const currentWatch=presence.watch(connectionId);
+        if(currentWatch.conversationId===watch.conversationId && currentWatch.userIds===watch.userIds){
+          const snapshot=JSON.stringify(presence.snapshot(connectionId,scope));
+          if(snapshot!==lastSnapshot){socket.send(snapshot);lastSnapshot=snapshot;}
+        }
         }
         if (++polls % 20 === 0) {
           if (!alive) { stop(); socket.terminate(); return; }
