@@ -317,7 +317,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     await assert.rejects(service.consumeTicket(null,ticket.ticket),{statusCode:401});
   });
 
-  await t.test('two browser sessions: real messages, threads, reactions, reconnect, mobile and accessibility', {skip:!process.env.CI,timeout:180000}, async () => {
+  await t.test('two browser sessions: real messages, threads, reactions, reconnect, mobile and accessibility', {skip:process.env.COMMUNICATIONS_BROWSER_TEST!=='1',timeout:180000}, async () => {
     const {verifyChatBrowser}=await import('./helpers/communications-browser.mjs');
     await verifyChatBrowser({app,service,owner,member});
   });
