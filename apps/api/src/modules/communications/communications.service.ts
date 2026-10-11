@@ -1,3 +1,8 @@
+import { CommunicationsAttachments,attachmentFields } from './communications.attachments.js';
+import { CommunicationsDiscovery } from './communications.discovery.js';
+import { notifyMessage,notifyInvitation } from './communications.notifications.js';
+import type { ChatStorage } from './communications.storage.js';
+import type { FileScan } from './communications.file-policy.js';
 import { z } from 'zod';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { sql } from '@ks-os/database';
@@ -27,7 +32,9 @@ const messageFields = sql`m.id,m.conversation_id AS "conversationId",m.sender_us
   (SELECT count(*)::int FROM conversation_messages r WHERE r.conversation_id=m.conversation_id AND r.reply_to_message_id=m.id AND r.native_position IS NOT NULL) AS "replyCount"`;
 
 export class CommunicationsService {
-  constructor(private db: CommunicationsDatabase = communicationsDatabase()) {}
+  readonly attachments:CommunicationsAttachments;
+  readonly discovery:CommunicationsDiscovery;
+  constructor(private db: CommunicationsDatabase = communicationsDatabase(), options:{storage?:ChatStorage;scan?:FileScan}={}) {this.attachments=new CommunicationsAttachments(db,options.storage,options.scan);this.discovery=new CommunicationsDiscovery(db);}
 
   private async journalLock(db: CommunicationsDatabase, actor: CommunicationsActor) {
     await db.query(sql`SELECT pg_advisory_xact_lock(hashtextextended(${actor.tenantId}, 8241))`);
@@ -153,7 +160,8 @@ export class CommunicationsService {
     const ids = sql.join(messages.map(m=>sql`${m.id}::uuid`),sql`, `);
     const mentions = await db.query<{messageId:string;userId:string;name:string;start:number;end:number}>(sql`SELECT message_id AS "messageId",user_id AS "userId",display_name AS name,start_offset AS start,end_offset AS end FROM communication_mentions WHERE tenant_id=${actor.tenantId} AND message_id IN (${ids}) ORDER BY start_offset`);
     const reactions = await db.query<{messageId:string;emoji:string;count:number;mine:boolean}>(sql`SELECT message_id AS "messageId",emoji,count(*)::int AS count,bool_or(user_id=${actor.userId}) AS mine FROM communication_reactions WHERE tenant_id=${actor.tenantId} AND message_id IN (${ids}) GROUP BY message_id,emoji ORDER BY emoji`);
-    return messages.map(message=>({...message,mentions:mentions.filter(m=>m.messageId===message.id).map(({messageId,...m})=>m),reactions:reactions.filter(r=>r.messageId===message.id).map(({messageId,...r})=>r)}));
+    const attachments=await db.query<{messageId:string}>(sql`SELECT ${attachmentFields} FROM conversation_attachments a JOIN conversation_messages msg ON msg.id=a.message_id WHERE a.tenant_id=${actor.tenantId} AND a.message_id IN (${ids}) AND a.status='AVAILABLE' AND a.deleted_at IS NULL AND msg.deleted_at IS NULL`);
+    return messages.map(message=>({...message,attachments:attachments.filter(a=>a.messageId===message.id),mentions:mentions.filter(m=>m.messageId===message.id).map(({messageId,...m})=>m),reactions:reactions.filter(r=>r.messageId===message.id).map(({messageId,...r})=>r)}));
   }
 
   private async messageRow(db: CommunicationsDatabase, actor: CommunicationsActor, id: string, messageId: string) {
@@ -199,7 +207,12 @@ export class CommunicationsService {
       if (!input) await db.query(sql`DELETE FROM communication_reactions WHERE message_id=${messageId}`);
       await db.query(sql`UPDATE conversation_messages SET body=${input?.body ?? ''},updated_at=now(),
         edited_at=${input ? sql`now()` : sql`edited_at`},deleted_at=${input ? sql`NULL` : sql`now()`} WHERE id=${messageId}`);
-      if (input) await this.saveMentions(db,actor,id,messageId,input.body,input.mentions ?? []);
+      if(input && !input.body.trim()) {
+        const [file]=await db.query(sql`SELECT id FROM conversation_attachments WHERE message_id=${messageId} AND status='AVAILABLE' AND deleted_at IS NULL`);
+        if(!file)throw communicationError(400,'EMPTY_MESSAGE','Write a message or attach a file');
+      }
+      if (input) {await this.saveMentions(db,actor,id,messageId,input.body,input.mentions ?? []);await notifyMessage(db,actor,id,messageId);}
+      else await db.query(sql`UPDATE conversation_attachments SET status='DELETED',deleted_at=now(),expires_at=now() WHERE message_id=${messageId} AND status<>'LEGACY'`);
       await this.audit(db,actor,id,input ? 'COMMUNICATION_MESSAGE_EDITED' : 'COMMUNICATION_MESSAGE_DELETED',undefined,{messageId});
       await this.event(db,actor,id,input ? 'message.updated' : 'message.deleted',messageId);
       return this.messageRow(db,actor,id,messageId);
@@ -280,6 +293,7 @@ export class CommunicationsService {
         }
         await this.audit(db, actor, id, 'COMMUNICATION_CONVERSATION_CREATED');
         await this.event(db, actor, id, 'conversation.created', id);
+        for(const userId of input.memberUserIds)await notifyInvitation(db,actor,id,userId,id);
       });
     } catch (error) {
       const cause = error && typeof error === 'object' && 'cause' in error ? error.cause : error;
@@ -362,6 +376,7 @@ export class CommunicationsService {
         RETURNING id,user_id AS "userId",role,joined_at AS "joinedAt"`);
       await this.audit(db, actor, id, 'COMMUNICATION_MEMBER_ADDED', member.id);
       await this.event(db, actor, id, 'conversation.member_joined', member.id);
+      await notifyInvitation(db,actor,id,input.userId,randomUUID());
       return member;
     });
   }
@@ -402,11 +417,14 @@ export class CommunicationsService {
   }
 
   async post(actor: CommunicationsActor, id: string, input: CreateNativeMessage) {
+    if(!input.body.trim() && !input.attachmentIds?.length)throw communicationError(400,'EMPTY_MESSAGE','Write a message or attach a file');
     return this.locked(actor, id, 'post', async db => {
       if (input.clientMessageId) {
         const [previous] = await db.query<{id:string;body:string;parentMessageId:string|null}>(sql`SELECT id,body,reply_to_message_id AS "parentMessageId" FROM conversation_messages WHERE conversation_id=${id} AND sender_user_id=${actor.userId} AND client_message_id=${input.clientMessageId}`);
         if (previous) {
           if (previous.body !== input.body || previous.parentMessageId !== (input.parentMessageId ?? null)) throw communicationError(409,'RETRY_CONFLICT','This retry belongs to a different message');
+          const files=await db.query<{id:string}>(sql`SELECT id FROM conversation_attachments WHERE message_id=${previous.id}`);
+          if(JSON.stringify(files.map(f=>f.id).sort())!==JSON.stringify([...(input.attachmentIds??[])].sort()))throw communicationError(409,'RETRY_CONFLICT','This retry belongs to different attachments');
           return this.messageRow(db,actor,id,previous.id);
         }
       }
@@ -416,6 +434,13 @@ export class CommunicationsService {
       await db.query(sql`INSERT INTO conversation_messages(id,tenant_id,conversation_id,channel_type,direction,sender_type,sender_user_id,sender_name,body,status,reply_to_message_id,native_position,client_message_id)
         VALUES (${messageId},${actor.tenantId},${id},'NATIVE','INTERNAL','STAFF',${actor.userId},${sender.name},${input.body},'SENT',${input.parentMessageId ?? null},nextval('native_message_position_seq'),${input.clientMessageId ?? null})`);
       await this.saveMentions(db,actor,id,messageId,input.body,input.mentions ?? []);
+      for(const fileId of input.attachmentIds??[]){
+        const rows=await db.query(sql`UPDATE conversation_attachments SET message_id=${messageId},expires_at=NULL
+          WHERE id=${fileId} AND tenant_id=${actor.tenantId} AND conversation_id=${id} AND uploaded_by=${actor.userId}
+          AND message_id IS NULL AND status='AVAILABLE' AND deleted_at IS NULL AND expires_at>now() RETURNING id`);
+        if(!rows.length)throw communicationError(400,'ATTACHMENT_UNAVAILABLE','Every attachment must finish validation before sending');
+      }
+      await notifyMessage(db,actor,id,messageId);
       await db.query(sql`UPDATE conversations SET updated_at=now(),last_message_at=now() WHERE id=${id} AND tenant_id=${actor.tenantId}`);
       await this.event(db, actor, id, 'message.created', messageId);
       return this.messageRow(db,actor,id,messageId);
@@ -450,7 +475,7 @@ export class CommunicationsService {
   async events(actor: CommunicationsActor, id: string | null, after: string) {
     return this.subscription(actor,id,async db=>{
       const events = await db.query<{occurredAt:Date}>(sql`SELECT e.id::text,e.tenant_id AS "tenantId",e.conversation_id AS "conversationId",e.type,e.resource_id AS "resourceId",e.occurred_at AS "occurredAt"
-        FROM communication_events e WHERE e.tenant_id=${actor.tenantId} AND e.id > ${after}::bigint
+        FROM communication_events e WHERE e.tenant_id=${actor.tenantId} AND e.id > ${after}::bigint AND (e.recipient_user_id IS NULL OR e.recipient_user_id=${actor.userId})
         AND ${id ? sql`e.conversation_id=${id}` : sql`EXISTS(SELECT 1 FROM conversation_members m WHERE m.conversation_id=e.conversation_id AND m.tenant_id=e.tenant_id AND m.user_id=${actor.userId}
           AND (m.left_at IS NULL OR (e.type='conversation.member_left' AND e.resource_id=m.id)))`}
         ORDER BY e.id LIMIT 100`);

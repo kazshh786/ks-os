@@ -106,7 +106,12 @@ export const conversationMessages = pgTable('conversation_messages', {
 export const conversationAttachments = pgTable('conversation_attachments', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
-  messageId: uuid('message_id').notNull().references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  messageId: uuid('message_id').references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').references(()=>conversations.id),
+  uploadedBy: uuid('uploaded_by').references(()=>users.id),
+  status: varchar('status',{length:20}).default('LEGACY').notNull(),
+  thumbnailKey:text('thumbnail_key'),scanStatus:varchar('scan_status',{length:30}).default('NOT_SCANNED').notNull(),
+  deletedAt:timestamp('deleted_at',{withTimezone:true}),expiresAt:timestamp('expires_at',{withTimezone:true}),
   fileName: varchar('file_name', { length: 500 }).notNull(),
   mimeType: varchar('mime_type', { length: 255 }).notNull(),
   fileSizeBytes: integer('file_size_bytes').default(0).notNull(),
@@ -141,6 +146,7 @@ export const communicationEvents = pgTable('communication_events', {
   id: bigint('id', { mode: 'bigint' }).generatedAlwaysAsIdentity().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  recipientUserId:uuid('recipient_user_id').references(()=>users.id),
   type: varchar('type', { length: 60 }).notNull(),
   resourceId: uuid('resource_id').notNull(),
   occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
@@ -167,3 +173,10 @@ export const communicationMentions = pgTable('communication_mentions', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   startOffset: integer('start_offset').notNull(), endOffset: integer('end_offset').notNull(),displayName:text('display_name').notNull(),
 }, table => ({ identity:primaryKey({name:'communication_mentions_pkey',columns:[table.messageId,table.startOffset]}),recipientIdx:index('communication_mentions_recipient_idx').on(table.tenantId,table.userId,table.messageId) }));
+
+export const communicationPreferences=pgTable('communication_preferences',{
+ tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),
+ userId:uuid('user_id').primaryKey().references(()=>users.id,{onDelete:'cascade'}),
+ browser:boolean('browser').default(false).notNull(),inApp:boolean('in_app').default(true).notNull(),
+ sound:boolean('sound').default(false).notNull(),dnd:boolean('dnd').default(false).notNull(),directMessages:boolean('direct_messages').default(true).notNull(),
+});

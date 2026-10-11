@@ -1,3 +1,4 @@
+import { AttachmentCard } from './ChatAttachments';
 import { memo, useState } from 'react';
 import { MessageSquare, Pencil, Smile, Trash2 } from 'lucide-react';
 import { NativeReactionSchema, type NativeMessage } from '@ks-os/contracts';
@@ -26,6 +27,7 @@ export const MessageItem = memo(function MessageItem({ message, userId, archived
     <div className="chat-avatar" aria-hidden="true">{name.split(' ').map(word=>word[0]).slice(0,2).join('').toUpperCase()}</div>
     <div className="chat-message-content"><header><strong>{name}</strong><time dateTime={message.createdAt} title={new Date(message.createdAt).toLocaleString()}>{new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time>{message.editedAt && !message.deletedAt && <small>edited</small>}</header>
       <MessageBody message={message} />
+      {!message.deletedAt&&message.attachments?.map(file=><AttachmentCard key={file.id} attachment={file} conversationId={message.conversationId}/>)}
       <div className="chat-reactions">{message.reactions?.map(reaction=><button key={reaction.emoji} type="button" disabled={archived || busy} aria-pressed={reaction.mine} aria-label={`${reaction.emoji}, ${reaction.count} reaction${reaction.count===1?'':'s'}${reaction.mine?', including you':''}`} onClick={()=>void run(()=>chatApi.react(message.conversationId,message.id,reaction.emoji,!reaction.mine))}>{reaction.emoji} <span>{reaction.count}</span></button>)}</div>
       {thread && <button type="button" className="chat-thread-link" onClick={()=>thread(message)}><MessageSquare size={14} aria-hidden="true" />{message.replyCount ? `${message.replyCount} ${message.replyCount===1?'reply':'replies'}` : 'Reply in thread'}</button>}
       {!message.deletedAt && !archived && <div className="chat-message-actions"><button type="button" aria-label="Add reaction" aria-expanded={picker} onClick={()=>setPicker(!picker)}><Smile size={15} aria-hidden="true" /></button>{own && <><button type="button" aria-label="Edit message" onClick={()=>setEdit(true)}><Pencil size={15} aria-hidden="true" /></button><button type="button" aria-label="Delete message" onClick={()=>setRemove(true)}><Trash2 size={15} aria-hidden="true" /></button></>}</div>}

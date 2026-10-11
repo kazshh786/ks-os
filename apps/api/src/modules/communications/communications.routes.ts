@@ -1,3 +1,5 @@
+import { fileLimits } from './communications.file-policy.js';
+import { ChatPreferencesSchema,ChatSearchQuerySchema,ChatFileQuerySchema } from '@ks-os/contracts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { CommunicationsPresence } from './communications.presence.js';
@@ -29,6 +31,38 @@ function actor(request: FastifyRequest): CommunicationsActor {
 export async function communicationsRoutes(app: FastifyInstance, options: { service?: CommunicationsService }) {
   const service = options.service ?? new CommunicationsService();
   app.addHook('onSend', async (_request, reply, payload) => { reply.header('Cache-Control','no-store'); return payload; });
+  app.addContentTypeParser('application/octet-stream',{parseAs:'buffer'},(_request,body,done)=>done(null,body));
+  app.get('/search',async request=>service.discovery.search(actor(request),ChatSearchQuerySchema.parse(request.query)));
+  app.get('/preferences',async request=>({data:await service.discovery.preferences(actor(request))}));
+  app.put('/preferences',async request=>({data:await service.discovery.preferences(actor(request),ChatPreferencesSchema.parse(request.body))}));
+  app.get('/notifications',async request=>service.discovery.notifications(actor(request),z.object({after:z.string().max(300).optional()}).strict().parse(request.query).after));
+  app.post('/notifications/:notificationId/read',async request=>({data:await service.discovery.readNotification(actor(request),z.object({notificationId:z.string().uuid()}).parse(request.params).notificationId)}));
+  app.get('/file-policy',async request=>{await service.capabilities(actor(request));return {data:fileLimits()};});
+  app.get('/:conversationId/notification-preference',async request=>({data:await service.discovery.conversationPreference(actor(request),params.parse(request.params).conversationId)}));
+  app.put('/:conversationId/notification-preference',async request=>({data:await service.discovery.conversationPreference(actor(request),params.parse(request.params).conversationId,z.object({mode:z.enum(['ALL','MENTIONS','NONE'])}).strict().parse(request.body).mode)}));
+  let incomingUploads=0;const uploadsInFlight=new WeakSet<FastifyRequest>();
+  app.addHook('onResponse',async request=>{if(uploadsInFlight.delete(request))incomingUploads--;});
+  const fileParams=params.extend({fileId:z.string().uuid()});
+  app.post('/:conversationId/files',async(request,reply)=>reply.code(201).send({data:await service.attachments.reserve(actor(request),params.parse(request.params).conversationId,z.object({name:z.string().min(1).max(500),size:z.number().int().positive()}).strict().parse(request.body))}));
+  app.put('/:conversationId/files/:fileId',{
+    bodyLimit:fileLimits().maxBytes,
+    onRequest:async request=>{await service.attachments.authorize(actor(request),fileParams.parse(request.params).conversationId);if(incomingUploads>=2)throw communicationError(429,'UPLOAD_BUSY','Upload capacity is busy. Retry shortly.');incomingUploads++;uploadsInFlight.add(request);request.raw.once('aborted',()=>{if(uploadsInFlight.delete(request))incomingUploads--;});},
+    config:{rateLimit:{max:20,timeWindow:'1 minute'}},
+  },async request=>{
+    const {conversationId,fileId}=fileParams.parse(request.params);
+    if(!Buffer.isBuffer(request.body))throw communicationError(400,'FILE_BODY','Upload binary file data');
+    return {data:await service.attachments.upload(actor(request),conversationId,fileId,request.body)};
+  });
+  app.delete('/:conversationId/files/:fileId',async request=>{const {conversationId,fileId}=fileParams.parse(request.params);return {data:await service.attachments.remove(actor(request),conversationId,fileId)};});
+  app.get('/:conversationId/files',async request=>service.attachments.files(actor(request),params.parse(request.params).conversationId,ChatFileQuerySchema.parse(request.query)));
+  app.get('/:conversationId/files/:fileId/content',async(request,reply)=>{
+    const {conversationId,fileId}=fileParams.parse(request.params);
+    const {thumbnail}=z.object({thumbnail:z.enum(['true']).optional()}).strict().parse(request.query);
+    const result=await service.attachments.download(actor(request),conversationId,fileId,Boolean(thumbnail));
+    reply.header('X-Content-Type-Options','nosniff').header('Content-Security-Policy',"sandbox; default-src 'none'")
+      .header('Content-Disposition',"attachment; filename*=UTF-8''"+encodeURIComponent(result.name).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase())).type(result.mime);
+    return reply.send(result.bytes);
+  });
   app.get('/capabilities', async request => ({data:await service.capabilities(actor(request))}));
   app.get('/discover', async request => service.discover(actor(request),ChannelDiscoveryQuerySchema.parse(request.query)));
   app.get('/people', async request => service.people(actor(request),null,NativePeopleQuerySchema.parse(request.query)));

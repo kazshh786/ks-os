@@ -6,6 +6,8 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StaffWorkspaceLayout } from './StaffWorkspaceLayout';
 
+vi.mock('../features/chat/WorkspaceChatNotifications', () => ({ WorkspaceChatNotifications: () => <div>Workspace Chat alerts</div> }));
+
 let auth = makeAuth('owner', []);
 vi.mock('../auth/useBusinessProfile', () => ({ useBusinessProfile: () => auth.businessProfile ?? resolveBusinessProfile(null) }));
 vi.mock('../auth/useAuth', () => ({ useAuth: () => auth }));
@@ -27,6 +29,14 @@ function renderLayout(path = '/app/calendar') {
 
 describe('StaffWorkspaceLayout', () => {
   beforeEach(() => { localStorage.clear(); auth = makeAuth('owner', []); });
+
+  it('keeps alerts available outside Chat and yields to Chat on Chat routes', () => {
+    const view=renderLayout('/app/tasks/my');
+    expect(screen.getByText('Workspace Chat alerts')).toBeInTheDocument();
+    view.unmount();
+    renderLayout('/app/chat');
+    expect(screen.queryByText('Workspace Chat alerts')).not.toBeInTheDocument();
+  });
 
   it('renders the owner sidebar without any agency route or control-plane wording', () => {
     renderLayout();

@@ -1,3 +1,6 @@
+import { ChatSearch } from './ChatSearch';
+import { SharedFiles } from './ChatAttachments';
+import { ChatNotifications,ConversationNotifications } from './ChatNotifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ArrowLeft, CheckCheck, Hash, Info, Lock, MessageSquare, Plus, Search, Users, X } from 'lucide-react';
@@ -12,9 +15,9 @@ import { MessageItem } from './MessageItem';
 import type { Draft } from './MessageComposer';
 import './chat.css';
 
-function ThreadPanel({ channel, userId, rootId, subscribe, revision, drafts, close, inaccessible, read }: {
+function ThreadPanel({ channel, userId, rootId, subscribe, revision, drafts, close, inaccessible, read, targetId }: {
   channel: NativeConversation; userId: string; rootId: string; subscribe: SubscribeChat; revision: number; drafts: Map<string,Draft>;
-  close: () => void; inaccessible: () => void; read: (id:string) => Promise<void>;
+  close: () => void; inaccessible: () => void; read: (id:string) => Promise<void>;targetId?:string|null;
 }) {
   const [root,setRoot]=useState<NativeMessage|null>(null),[error,setError]=useState('');
   const heading=useRef<HTMLHeadingElement>(null);
@@ -31,7 +34,7 @@ function ThreadPanel({ channel, userId, rootId, subscribe, revision, drafts, clo
     return()=>{active=false;unsubscribe();};
   },[channel.id,rootId,subscribe,revision]);
   return <section className="chat-thread" aria-label="Message thread"><header className="chat-panel-header"><h2 ref={heading} tabIndex={-1}>Thread</h2><button type="button" onClick={close} aria-label="Close thread"><X size={20} aria-hidden="true"/></button></header>
-    {error ? <p role="alert" className="chat-error">{error}</p> : root ? <><div className="chat-thread-root"><MessageItem message={root} userId={userId} archived={Boolean(channel.archivedAt)} changed={setRoot}/></div><MessageTimeline key={rootId} channel={channel} userId={userId} parent={rootId} subscribe={subscribe} revision={revision} drafts={drafts} inaccessible={inaccessible} read={read} label="Thread replies"/></> : <p role="status" className="chat-muted">Loading thread…</p>}
+    {error ? <p role="alert" className="chat-error">{error}</p> : root ? <><div className="chat-thread-root"><MessageItem message={root} userId={userId} archived={Boolean(channel.archivedAt)} changed={setRoot}/></div><MessageTimeline key={rootId} channel={channel} userId={userId} parent={rootId} subscribe={subscribe} revision={revision} drafts={drafts} inaccessible={inaccessible} read={read} targetId={targetId} label="Thread replies"/></> : <p role="status" className="chat-muted">Loading thread…</p>}
   </section>;
 }
 
@@ -43,10 +46,11 @@ export default function ChatPage() {
 export function ChatWorkspace() {
   const {conversationId}=useParams();
   const navigate=useNavigate(),[params,setParams]=useSearchParams();
-  const threadId=params.get('thread'),details=params.get('details')==='1';
+  const threadId=params.get('thread'),details=params.get('details')==='1',files=params.get('files')==='1';
   const [channels,setChannels]=useState<NativeConversation[]>([]),[channel,setChannel]=useState<NativeConversation|null>(null),[discovered,setDiscovered]=useState<DiscoveredChannel[]>([]);
   const [search,setSearch]=useState(''),[cursor,setCursor]=useState<string|null>(null),[discoverCursor,setDiscoverCursor]=useState<string|null>(null),[discovering,setDiscovering]=useState(false);
   const [capabilities,setCapabilities]=useState<{userId:string;canCreateChannels:boolean}|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState(''),[create,setCreate]=useState(false),[busy,setBusy]=useState(false);
+  const [messageSearch,setMessageSearch]=useState(false);
   const [newMessage,setNewMessage]=useState(false),[snapshot,setSnapshot]=useState<ChatEphemeral|null>(null);
   const liveControl=useRef<ReturnType<typeof connectChat>|null>(null);
   const signal=useCallback((value:ChatSignal)=>liveControl.current?.signal(value),[]);
@@ -138,10 +142,12 @@ export function ChatWorkspace() {
   const choose=(id:string)=>{setNotice('');navigate('/app/chat/'+id);};
   const run=async(work:()=>Promise<void>)=>{setBusy(true);setError('');try{await work();}catch(cause){setError(cause instanceof Error?cause.message:'Chat could not complete this request');}finally{setBusy(false);}};
   const status={connecting:'Connecting…',connected:'Connected',reconnecting:'Reconnecting…',unavailable:'Sign-in required'}[connection];
-  return <ChatLiveContext.Provider value={{snapshot,signal,activeConversationId:channel && ['DIRECT','GROUP_DIRECT'].includes(channel.type)?channel.id:undefined}}><div className={'chat-workspace'+(conversationId?' chat-has-channel':'')+((threadId || details)?' chat-has-panel':'')}>
+  return <ChatLiveContext.Provider value={{snapshot,signal,activeConversationId:channel && ['DIRECT','GROUP_DIRECT'].includes(channel.type)?channel.id:undefined}}><div className={'chat-workspace'+(conversationId?' chat-has-channel':'')+((threadId || details || files)?' chat-has-panel':'')}>
     <aside className="chat-channel-nav" aria-label="Conversation navigation"><header className="chat-nav-header"><div><p className="chat-eyebrow">Your workspace</p><h1 ref={listHeading} tabIndex={-1}>Chat</h1><small>{channels.filter(c=>Boolean(c.unreadCount)).length} unread conversations</small></div>{capabilities?.canCreateChannels && <button type="button" aria-label="Create channel" title="Create channel" onClick={()=>setCreate(true)}><Plus size={20} aria-hidden="true"/></button>}</header>
       {!conversationId && <>{error && <p role="alert" className="chat-error">{error}</p>}{notice && <p role="status" className="chat-notice">{notice}</p>}</>}
       <button type="button" className="chat-discover-toggle" onClick={()=>setNewMessage(true)}><MessageSquare size={16} aria-hidden="true"/>New message</button>
+      <button type="button" className="chat-discover-toggle" onClick={()=>setMessageSearch(true)}><Search size={16} aria-hidden="true"/>Search messages</button>
+      <ChatNotifications subscribe={subscribe} revision={revision} conversationId={conversationId}/>
       <label className="chat-search"><Search size={17} aria-hidden="true"/><span className="sr-only">Search conversations</span><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Find a conversation"/></label>
       <button type="button" className="chat-discover-toggle" aria-expanded={discovering} onClick={()=>setDiscovering(!discovering)}><Search size={15} aria-hidden="true"/>{discovering?'Hide channel discovery':'Discover public channels'}</button>
       <div className="chat-channels-scroll">
@@ -161,16 +167,18 @@ export function ChatWorkspace() {
       {conversationId && <>{error && <p role="alert" className="chat-error">{error}</p>}{notice && <p role="status" className="chat-notice">{notice}</p>}</>}
       {channel && capabilities ? <>
         <header className="chat-conversation-header"><button type="button" className="chat-mobile-back" aria-label="Back to channels" onClick={()=>navigate('/app/chat')}><ArrowLeft size={20} aria-hidden="true"/></button><div className="chat-channel-title"><div>{['DIRECT','GROUP_DIRECT'].includes(channel.type)?<MessageSquare size={21} aria-hidden="true"/>:channel.type==='PRIVATE_CHANNEL'?<Lock size={21} aria-hidden="true"/>:<Hash size={23} aria-hidden="true"/>}<h2 ref={heading} tabIndex={-1}>{channel.name}</h2></div><p>{channel.archivedAt?'Archived · Read only':channel.type==='DIRECT'?'Private direct message':channel.type==='GROUP_DIRECT'?'Private group conversation':channel.description || 'A shared space for your team'}</p>{connection!=='connected' && <small role="status">{status}</small>}</div>
+          <button type="button" onClick={()=>setParams({files:'1'})}>Files</button>
           <button type="button" className="chat-member-count" onClick={()=>setParams({details:'1'})} aria-label={'View '+channel.memberCount+' participants'}><Users size={17} aria-hidden="true"/>{channel.memberCount}</button>
           <button type="button" aria-label={['DIRECT','GROUP_DIRECT'].includes(channel.type)?'Conversation details':'Channel details'} title="Conversation details" onClick={()=>setParams({details:'1'})}><Info size={20} aria-hidden="true"/></button>
           {Boolean(channel.unreadCount) && channel.latestMessageId && <button type="button" aria-label="Mark channel and threads as read" title="Mark channel and threads as read" onClick={()=>void run(()=>read(channel.latestMessageId!))}><CheckCheck size={20} aria-hidden="true"/></button>}
         </header>
-        <MessageTimeline key={channel.id} channel={channel} userId={capabilities.userId} subscribe={subscribe} revision={revision} drafts={drafts.current} openThread={message=>setParams({thread:message.id})} inaccessible={inaccessible} read={read}/>
+        <MessageTimeline key={channel.id} channel={channel} targetId={params.get('message')} userId={capabilities.userId} subscribe={subscribe} revision={revision} drafts={drafts.current} openThread={message=>setParams({thread:message.id})} inaccessible={inaccessible} read={read}/>
       </> : <div className="chat-welcome"><div><MessageSquare size={32} aria-hidden="true"/></div><p className="chat-eyebrow">Together, in the loop</p><h2>{conversationId?(error?'Conversation unavailable':'Opening your conversation…'):'Room for every conversation'}</h2><p>Keep team updates, questions and ideas in one place.<br/>Choose a conversation or start a new message.</p>{conversationId && error && <><button type="button" disabled={busy} onClick={()=>void run(refresh)}>Try again</button><Link to="/app/chat">Back to channels</Link></>}{capabilities?.canCreateChannels && !conversationId && <button type="button" className="chat-primary" onClick={()=>setCreate(true)}><Plus size={16} aria-hidden="true"/>Create a channel</button>}</div>}
     </div>
-    {channel && capabilities && (threadId || details) && <aside className="chat-context-panel" onKeyDown={event=>{if(event.key==='Escape' && !event.defaultPrevented && !(event.target instanceof Element && event.target.closest('[role="dialog"]'))){event.preventDefault();closePanel();}}}>
-      {threadId ? <ThreadPanel key={channel.id+threadId} channel={channel} userId={capabilities.userId} rootId={threadId} subscribe={subscribe} revision={revision} drafts={drafts.current} close={closePanel} inaccessible={inaccessible} read={read}/> : <ChannelDetails key={channel.id} channel={channel} userId={capabilities.userId} refresh={refresh} close={closePanel} closed={inaccessible}/>}
+    {channel && capabilities && (threadId || details || files) && <aside className="chat-context-panel" onKeyDown={event=>{if(event.key==='Escape' && !event.defaultPrevented && !(event.target instanceof Element && event.target.closest('[role="dialog"]'))){event.preventDefault();closePanel();}}}>
+      {threadId ? <ThreadPanel key={channel.id+threadId} channel={channel} userId={capabilities.userId} rootId={threadId} targetId={params.get('message')} subscribe={subscribe} revision={revision} drafts={drafts.current} close={closePanel} inaccessible={inaccessible} read={read}/> : files ? <section className="chat-thread"><header className="chat-panel-header"><h2>Files</h2><button type="button" aria-label="Close files" onClick={closePanel}><X size={20}/></button></header><SharedFiles key={channel.id+channel.updatedAt+revision} conversationId={channel.id}/></section> : <><ConversationNotifications conversationId={channel.id}/><ChannelDetails key={channel.id} channel={channel} userId={capabilities.userId} refresh={refresh} close={closePanel} closed={inaccessible}/></>}
     </aside>}
+    {messageSearch&&<ChatSearch userId={capabilities?.userId} channels={channels} close={()=>setMessageSearch(false)}/>}
     {newMessage && <NewMessageDialog close={()=>setNewMessage(false)} created={value=>{setNewMessage(false);setChannels(current=>[value,...current.filter(c=>c.id!==value.id)]);choose(value.id);}}/>}
     {create && <CreateChannelDialog close={()=>setCreate(false)} created={value=>{setCreate(false);setChannels(channels=>[...channels.filter(c=>c.id!==value.id),value]);choose(value.id);setNotice('Channel created');}}/>}
   </div></ChatLiveContext.Provider>;

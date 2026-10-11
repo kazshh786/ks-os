@@ -164,6 +164,7 @@ export class ConversationService {
       )) : [];
     const attachmentsByMessage = new Map<string, any[]>();
     for (const attachment of attachmentRows) {
+      if (!attachment.messageId) continue; // Unsent Chat uploads have no inbox message.
       const current = attachmentsByMessage.get(attachment.messageId) || [];
       current.push({
         id: attachment.id,
