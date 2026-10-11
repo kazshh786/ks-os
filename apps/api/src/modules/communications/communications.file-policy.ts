@@ -65,7 +65,7 @@ export async function validateChatFile(bytes:Buffer,name:string,scan:FileScan=co
  if(ext==='txt'||ext==='csv'){
   let text:string;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{throw bad();}
   if(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text)||/<\s*(?:!doctype|html|script|svg|iframe)\b/i.test(text)||/^\s*(?:#!|MZ)/.test(text))throw bad();
-  // Text is always downloaded as an attachment; CSV formulas are neutralized.
+  // Text is always downloaded as an attachment; formula-bearing CSV cells are rejected.
   if(ext==='csv' && /(^|[,;\r\n])[ \t]*"?[ \t]*[=+@-]/.test(text))throw bad();
   const clean=bytes;
   return {bytes:clean,mime,thumbnail:undefined,scanStatus:'NOT_SCANNED',available:true};

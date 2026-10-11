@@ -183,6 +183,7 @@ export async function verifyChatBrowser({app,service,owner,member}) {
     await first.getByRole('button',{name:'Files',exact:true}).click();
     await first.getByRole('heading',{name:'Shared files',exact:true}).waitFor();
     await first.locator('.chat-files-panel').getByText('team-plan.txt',{exact:true}).waitFor();
+    await first.locator('.chat-files-panel').getByRole('img',{name:'team-image.png',exact:true}).waitFor();
     await first.screenshot({path:path.join(artifacts,'phase4-files-desktop.png')});
     await first.getByRole('button',{name:'Close files',exact:true}).click();
     await first.getByRole('button',{name:'Search messages',exact:true}).click();
@@ -203,6 +204,8 @@ export async function verifyChatBrowser({app,service,owner,member}) {
     await first.getByRole('dialog',{name:'Chat notifications'}).getByText('Private group browser message',{exact:false}).waitFor();
     await first.getByRole('button',{name:'Close dialog',exact:true}).click();
     await first.screenshot({path:path.join(artifacts,'phase4-chat-desktop.png')});
+    await first.getByRole('button',{name:'Back to latest messages ↓',exact:true}).click();
+    await first.getByRole('article').getByText('team-plan.txt',{exact:true}).waitFor();
 
     await second.setViewportSize({width:390,height:844});
     await second.getByRole('button',{name:'Conversation details',exact:true}).click();

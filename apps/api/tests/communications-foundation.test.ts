@@ -497,6 +497,8 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     const c=await service.create(owner,{type:'PRIVATE_CHANNEL',name:'Search room',memberUserIds:[member.userId]});const cid=String(c.id);
     const first=await service.post(owner,cid,{body:'Quarterly budgets for collaboration'});
     const second=await service.post(member,cid,{body:'Quarterly budget review',parentMessageId:String(first.id)});
+    const long=await service.post(owner,cid,{body:'Long preamble '.repeat(100)+' distinctive needle here'});
+    const excerpt=(await service.discovery.search(member,{q:'needle',limit:10,conversationId:cid})).data[0];assert.equal(excerpt.id,long.id);assert.ok(String(excerpt.excerpt).includes('needle'));
     const query={q:'budget',limit:1,conversationId:cid};
     const one=await service.discovery.search(member,query),two=await service.discovery.search(member,{...query,before:one.nextCursor!});
     assert.equal(one.data[0].id,second.id);assert.equal(two.data[0].id,first.id);

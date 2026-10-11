@@ -60,7 +60,7 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
     const {thumbnail}=z.object({thumbnail:z.enum(['true']).optional()}).strict().parse(request.query);
     const result=await service.attachments.download(actor(request),conversationId,fileId,Boolean(thumbnail));
     reply.header('X-Content-Type-Options','nosniff').header('Content-Security-Policy',"sandbox; default-src 'none'")
-      .header('Content-Disposition',"attachment; filename*=UTF-8''"+encodeURIComponent(result.name)).type(result.mime);
+      .header('Content-Disposition',"attachment; filename*=UTF-8''"+encodeURIComponent(result.name).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase())).type(result.mime);
     return reply.send(result.bytes);
   });
   app.get('/capabilities', async request => ({data:await service.capabilities(actor(request))}));

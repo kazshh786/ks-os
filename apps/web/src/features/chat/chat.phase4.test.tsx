@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach,beforeEach,expect,it,vi } from 'vitest';
 import { MessageComposer } from './MessageComposer';
-import { ChatSearch,SearchHighlight } from './ChatSearch';
+import { ChatSearch } from './ChatSearch';
 import { ChatNotifications,browserPermission,shouldAlert } from './ChatNotifications';
 import { AttachmentCard } from './ChatAttachments';
 import { phase4Api } from './chat.phase4.api';
@@ -19,7 +19,7 @@ it('uploads files with progress, blocks send until available, and sends attachme
  let finish!:(value:any)=>void;vi.mocked(phase4Api.upload).mockImplementation((_c,_i,_f,_s,progress)=>{progress(60);return new Promise(resolve=>{finish=resolve;});});
  const send=vi.fn().mockResolvedValue(undefined);render(<MessageComposer channelId={id} send={send}/>);
  fireEvent.change(screen.getByLabelText('Attach files'),{target:{files:[new File(['hello'],'report.txt')]}});
- expect(await screen.findByRole('progressbar')).toHaveAttribute('value','60');
+ await waitFor(()=>expect(screen.getByRole('progressbar')).toHaveAttribute('value','60'));
  expect(screen.getByRole('button',{name:'Send message'})).toBeDisabled();
  finish({id,status:'AVAILABLE'});
  await screen.findByText('Ready to send');await userEvent.click(screen.getByRole('button',{name:'Send message'}));
@@ -46,7 +46,7 @@ it('shows upload limits and retains failed files for retry',async()=>{
 it('searches with filters and renders highlighted untrusted text without HTML',async()=>{
  vi.mocked(phase4Api.search).mockResolvedValue({data:[{id,conversationId:id,parentMessageId:null,senderName:'Ada',conversationName:'Team',excerpt:'<script>budget</script>',createdAt:'2026-10-11T00:00:00Z',position:'1'}],nextCursor:null});
  render(<MemoryRouter><ChatSearch channels={[]} close={vi.fn()}/></MemoryRouter>);
- await userEvent.type(screen.getByLabelText('Search text'),'budget');await userEvent.click(screen.getByLabelText('Has attachments'));await userEvent.click(screen.getByRole('button',{name:'Search',exact:true}));
+ await userEvent.type(screen.getByLabelText('Search text'),'budget');await userEvent.click(screen.getByLabelText('Has attachments'));await userEvent.click(screen.getByRole('button',{name:'Search'}));
  await screen.findByText('<script>budget</script>');expect(document.querySelector('script')).toBeNull();expect(vi.mocked(phase4Api.search).mock.calls[0][0].get('attachments')).toBe('true');
 });
 it('notification permission is requested only on opt-in and settings persist',async()=>{

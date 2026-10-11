@@ -1,11 +1,12 @@
 import { useCallback,useEffect,useRef,useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { ChatPreferences } from '@ks-os/contracts';
+import { ChatError } from './chat.api';
 import { Bell,Settings } from 'lucide-react';
 import { ChatDialog } from './ChatDialog';
 import type { SubscribeChat } from './MessageTimeline';
 import { phase4Api,messageLink,type ChatNotice } from './chat.phase4.api';
-export const shouldAlert=(p:ChatPreferences,notice:ChatNotice,conversationId?:string,focused=false)=>!p.dnd&&!notice.readAt&&!(focused&&notice.conversationId===conversationId);
+export const shouldAlert=(p:ChatPreferences,notice:ChatNotice,conversationId?:string,focused=false)=>!p.dnd&&!(notice.conversationType==='DIRECT'&&!p.directMessages)&&!notice.readAt&&!(focused&&notice.conversationId===conversationId);
 export async function browserPermission(){
  if(typeof Notification==='undefined')return 'unsupported';
  if(Notification.permission==='denied')return 'denied';
@@ -36,7 +37,7 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
    }
    initialized.current=true;
    if(seen.current.size>1000)seen.current=new Set(page.data.map(n=>n.id));
-  }catch(e){if(mounted.current)setError(e instanceof Error?e.message:'Notifications unavailable');}
+  }catch(e){if(mounted.current){if(e instanceof ChatError&&[401,403].includes(e.status)){setRows([]);setCursor(null);}setError(e instanceof Error?e.message:'Notifications unavailable');}}
  },[navigate]);
  useEffect(()=>{mounted.current=true;void refresh();const timer=setInterval(()=>void refresh(true),30000);
   const stop=subscribe(event=>{if(event.type.startsWith('notification.')||event.type==='conversation.member_left'||event.type==='message.deleted')void refresh(true);});

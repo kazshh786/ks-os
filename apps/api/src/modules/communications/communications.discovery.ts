@@ -16,7 +16,7 @@ export class CommunicationsDiscovery {
  async search(actor:CommunicationsActor,q:z.infer<typeof ChatSearchQuerySchema>){
   return this.scoped(actor,async db=>{
    const rows=await db.query<{id:string;position:string}>(sql`SELECT msg.id,msg.conversation_id AS "conversationId",msg.reply_to_message_id AS "parentMessageId",
-    msg.sender_user_id AS "senderId",msg.sender_name AS "senderName",left(msg.body,500) AS excerpt,msg.created_at AS "createdAt",msg.native_position::text AS position,
+    msg.sender_user_id AS "senderId",msg.sender_name AS "senderName",${q.q?sql`ts_headline('english',msg.body,websearch_to_tsquery('english',${q.q}),'StartSel="", StopSel="", MaxWords=45, MinWords=15, MaxFragments=2')`:sql`left(msg.body,500)`} AS excerpt,msg.created_at AS "createdAt",msg.native_position::text AS position,
     CASE WHEN c.conversation_type='DIRECT' THEN coalesce((SELECT u.name FROM conversation_members peer JOIN users u ON u.id=peer.user_id WHERE peer.conversation_id=c.id AND peer.user_id<>${actor.userId} AND peer.left_at IS NULL LIMIT 1),'Former colleague') ELSE c.name END AS "conversationName"
     FROM conversation_messages msg JOIN conversations c ON c.id=msg.conversation_id AND c.tenant_id=msg.tenant_id
     JOIN conversation_members m ON m.conversation_id=c.id AND m.tenant_id=c.tenant_id AND m.user_id=${actor.userId} AND m.left_at IS NULL
@@ -58,7 +58,7 @@ export class CommunicationsDiscovery {
   return this.scoped(actor,async db=>{
    let cursor:{at:string;id:string}|undefined;
    if(after)cursor=z.object({at:z.string().datetime(),id:z.string().uuid()}).parse(JSON.parse(Buffer.from(after,'base64url').toString()));
-   const rows=await db.query<{id:string;createdAt:string}>(sql`SELECT n.id,n.type,n.chat_conversation_id AS "conversationId",n.chat_message_id AS "messageId",
+   const rows=await db.query<{id:string;createdAt:string}>(sql`SELECT n.id,n.type,c.conversation_type AS "conversationType",n.chat_conversation_id AS "conversationId",n.chat_message_id AS "messageId",
      msg.reply_to_message_id AS "parentMessageId",msg.sender_name AS "senderName",left(msg.body,160) AS preview,
      CASE WHEN c.conversation_type='DIRECT' THEN coalesce(msg.sender_name,'Direct message') ELSE c.name END AS "conversationName",
      n.read_at AS "readAt",to_char(n.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "createdAt"

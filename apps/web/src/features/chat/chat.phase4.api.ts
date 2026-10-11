@@ -2,7 +2,7 @@ import type { ChatAttachment,ChatPreferences } from '@ks-os/contracts';
 import { fetchWithAuth,uploadWithAuth } from '../../api/client';
 import { chatBase,chatRequest,ChatError,type Page } from './chat.api';
 export type SearchHit={id:string;conversationId:string;parentMessageId:string|null;senderName:string;conversationName:string;createdAt:string;excerpt:string;position:string};
-export type ChatNotice={id:string;type:string;conversationId:string;messageId:string|null;parentMessageId:string|null;senderName:string|null;conversationName:string;preview:string|null;createdAt:string;readAt:string|null};
+export type ChatNotice={id:string;type:string;conversationType?:string;conversationId:string;messageId:string|null;parentMessageId:string|null;senderName:string|null;conversationName:string;preview:string|null;createdAt:string;readAt:string|null};
 const data=async<T>(p:Promise<{data:T}>)=>(await p).data;
 export const phase4Api={
  policy:()=>data(chatRequest<{data:{maxBytes:number;allowed:string[]}}>('/file-policy')),

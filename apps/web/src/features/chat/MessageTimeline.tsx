@@ -13,6 +13,7 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
 }) {
   const [messages,setMessages]=useState<NativeMessage[]>([]),[cursor,setCursor]=useState<string|null>(null),[loading,setLoading]=useState(true),[more,setMore]=useState(false),[error,setError]=useState(''),[newer,setNewer]=useState(false);
   const scroll=useRef<HTMLDivElement>(null),bottom=useRef(true),live=useRef(true),frozen=useRef(false),reading=useRef(false),seenRead=useRef(channel.lastReadPosition),preserve=useRef<{id:string;offset:number}|null>(null),jump=useRef(true);
+  const anchored=useRef<string|null>(null);
   const current=useRef<NativeMessage[]>([]),generation=useRef(0),updates=useRef(new Map<string,{generation:number;message:NativeMessage}>());
   const put=useCallback((rows:NativeMessage[])=>{current.current=rows;setMessages(rows);},[]);
   const reconcile=useCallback((rows:NativeMessage[],started:number)=>{
@@ -29,7 +30,7 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
   },[channel.id,parent,fail,put,reconcile]);
   useEffect(()=>{void latest();},[latest]);
   useEffect(()=>{
-    if(!targetId)return;let active=true;
+    if(!targetId){anchored.current=null;return;}if(loading||anchored.current===targetId)return;anchored.current=targetId;let active=true;
     void chatApi.message(channel.id,targetId).then(async target=>{
       if(target.parentMessageId!==(parent??null))return;
       const page=await chatApi.messages(channel.id,parent,(BigInt(target.position)+1n).toString());
