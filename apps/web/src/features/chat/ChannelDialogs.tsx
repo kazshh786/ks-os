@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { NativeConversation, NativePerson } from '@ks-os/contracts';
 import { chatApi } from './chat.api';
 import { ChatDialog, ConfirmChatAction } from './ChatDialog';
@@ -32,10 +32,12 @@ export function ChannelDetails({ channel, userId, refresh, closed, close }: { ch
   const [members,setMembers]=useState<NativePerson[]>([]),[cursor,setCursor]=useState<string|null>(null),[query,setQuery]=useState('');
   const [name,setName]=useState(channel.name),[description,setDescription]=useState(channel.description || ''),[people,setPeople]=useState<NativePerson[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [confirm,setConfirm]=useState<{title:string;description:string;work:()=>Promise<unknown>;leave?:boolean}|null>(null);
+  const heading=useRef<HTMLHeadingElement>(null);
+  useEffect(()=>{heading.current?.focus();},[]);
   const manage=['OWNER','ADMIN'].includes(channel.memberRole) && !channel.archivedAt;
   useEffect(()=>{let live=true;void chatApi.people(channel.id,false,query).then(page=>{if(live){setMembers(page.data);setCursor(page.nextCursor);}}).catch(cause=>{if(live)setError(cause.message);});return()=>{live=false;};},[channel.id,channel.updatedAt,channel.memberCount,query]);
   const run=async(work:()=>Promise<unknown>,leave=false)=>{setBusy(true);setError('');setNotice('');try{await work();if(leave){closed();return;}await refresh();const page=await chatApi.people(channel.id,false,query);setMembers(page.data);setCursor(page.nextCursor);setNotice('Channel updated');}catch(cause){setError(cause instanceof Error?cause.message:'Could not update channel');}finally{setBusy(false);}};
-  return <section className="chat-details" aria-label="Channel details"><header className="chat-panel-header"><h2>Channel details</h2><button type="button" onClick={close} aria-label="Close channel details">×</button></header><div className="chat-details-scroll">
+  return <section className="chat-details" aria-label="Channel details"><header className="chat-panel-header"><h2 ref={heading} tabIndex={-1}>Channel details</h2><button type="button" onClick={close} aria-label="Close channel details">×</button></header><div className="chat-details-scroll">
     <p className="chat-eyebrow">{channel.type==='PRIVATE_CHANNEL'?'Private channel':'Public within your workspace'}</p><h3>{channel.name}</h3><p>{channel.description || 'No description yet.'}</p><small>Created {new Date(channel.createdAt).toLocaleDateString()}{channel.archivedAt?' · Archived':''}</small>
     {manage && <form onSubmit={e=>{e.preventDefault();void run(()=>chatApi.update(channel.id,{name,description}));}}><label>Channel name<input required maxLength={255} value={name} onChange={e=>setName(e.target.value)}/></label><label>Description<textarea maxLength={2000} value={description} onChange={e=>setDescription(e.target.value)} rows={3}/></label><button disabled={busy || !name.trim()} type="submit">Save channel details</button></form>}
     <h3>Members <span>({channel.memberCount ?? members.length})</span></h3><label>Find a member<input value={query} onChange={e=>setQuery(e.target.value)} /></label>
@@ -44,7 +46,7 @@ export function ChannelDetails({ channel, userId, refresh, closed, close }: { ch
       {channel.memberRole==='OWNER' && <button disabled={busy} type="button" aria-label={`Make ${person.name} owner`} onClick={()=>setConfirm({title:'Transfer ownership',description:`Make ${person.name} the channel owner? You will become an administrator.`,work:()=>chatApi.action(channel.id,'owner',{userId:person.userId})})}>Make owner</button>}
     </div>}</li>)}</ul>
     {cursor && <button type="button" disabled={busy} onClick={()=>{setBusy(true);void chatApi.people(channel.id,false,query,cursor).then(page=>{setMembers(m=>[...m,...page.data]);setCursor(page.nextCursor);}).catch(cause=>setError(cause.message)).finally(()=>setBusy(false));}}>More members</button>}
-    {manage && <><PeoplePicker channelId={channel.id} selected={people} select={setPeople}/><button type="button" disabled={busy || !people.length} onClick={()=>void run(async()=>{for(const person of people){await chatApi.add(channel.id,person.userId);setPeople(current=>current.filter(p=>p.userId!==person.userId));}})}>Add selected members</button></>}
+    {manage && <><PeoplePicker key={channel.memberCount} channelId={channel.id} selected={people} select={setPeople}/><button type="button" disabled={busy || !people.length} onClick={()=>void run(async()=>{for(const person of people){await chatApi.add(channel.id,person.userId);setPeople(current=>current.filter(p=>p.userId!==person.userId));}})}>Add selected members</button></>}
     <div className="chat-channel-actions">{channel.memberRole!=='OWNER' ? <button type="button" disabled={busy} onClick={()=>setConfirm({title:'Leave channel',description:'You will lose access. Public channels can be rejoined; private channels require another invitation.',work:()=>chatApi.action(channel.id,'leave'),leave:true})}>Leave channel</button> : <p className="chat-muted">To leave, first transfer ownership to another member.</p>}
     {manage && <button type="button" disabled={busy} onClick={()=>setConfirm({title:'Archive channel',description:'Members can still read the history. New messages, reactions, and membership changes will be disabled.',work:()=>chatApi.action(channel.id,'archive')})}>Archive channel</button>}</div>
     {error && <p role="alert" className="chat-error">{error}</p>}{notice && <p role="status" className="chat-notice">{notice}</p>}

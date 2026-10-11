@@ -13,13 +13,13 @@ export function adjustMentions(before: string, after: string, mentions: Draft['m
 }
 
 export function MessageComposer({ channelId, label = 'Message', initial, saveDraft, send, disabled = false, submitLabel = 'Send message' }: {
-  channelId: string; label?: string; initial?: Draft; saveDraft?: (draft: Draft) => void;
+  channelId: string; label?: string; initial?: Draft; saveDraft?: (draft: Draft, expected?: Draft) => void;
   send: (draft: Draft) => Promise<void>; disabled?: boolean; submitLabel?: string;
 }) {
   const [draft,setDraft] = useState<Draft>(initial ?? {body:'',mentions:[]});
   const [caret,setCaret] = useState(0), [suggestions,setSuggestions] = useState<NativePerson[]>([]), [highlight,setHighlight] = useState(0);
   const [dismissed,setDismissed] = useState(''), [busy,setBusy] = useState(false), [error,setError] = useState('');
-  const textarea = useRef<HTMLTextAreaElement>(null), mounted = useRef(true), listId = useId(), inputId = useId();
+  const textarea = useRef<HTMLTextAreaElement>(null), mounted = useRef(true), sending = useRef(false), listId = useId(), inputId = useId();
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const match = draft.body.slice(0,caret).match(/(?:^|\s)@([^@\n]{0,60})$/);
   const query = match && dismissed !== `${draft.body}:${caret}` ? match[1] : null;
@@ -43,15 +43,16 @@ export function MessageComposer({ channelId, label = 'Message', initial, saveDra
     requestAnimationFrame(() => { textarea.current?.focus(); textarea.current?.setSelectionRange(next,next); });
   };
   const submit = async () => {
-    if (busy || disabled || !draft.body.trim() || draft.body.length > 16000) return;
+    if (sending.current || busy || disabled || !draft.body.trim() || draft.body.length > 16000) return;
+    sending.current = true;
     const pending = {...draft,clientMessageId:draft.clientMessageId ?? crypto.randomUUID()};
     update(pending); setBusy(true); setError('');
     try {
       await send(pending);
-      saveDraft?.({body:'',mentions:[]});
+      saveDraft?.({body:'',mentions:[]},pending);
       if (mounted.current) { setDraft({body:'',mentions:[]}); setCaret(0); textarea.current?.focus(); }
     } catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : 'Message was not sent. Your draft is saved.'); }
-    finally { if (mounted.current) setBusy(false); }
+    finally { sending.current = false; if (mounted.current) setBusy(false); }
   };
   return <form className="chat-composer" onSubmit={event => { event.preventDefault(); void submit(); }}>
     <label htmlFor={inputId}>{label}</label>

@@ -1,4 +1,4 @@
-import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { appointments, clients, customerClientLinks, integrationConnections, tenants, users } from './schema.js';
 
@@ -92,6 +92,8 @@ export const conversationMessages = pgTable('conversation_messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, table => ({
   conversationCreatedIdx: index('conversation_messages_conversation_created_idx').on(table.conversationId, table.createdAt),
+  scopeUnique: unique('conversation_messages_scope_unique').on(table.tenantId,table.conversationId,table.id),
+  nativeRetryUnique: uniqueIndex('conversation_messages_native_retry_unique').on(table.conversationId,table.senderUserId,table.clientMessageId).where(sql`${table.clientMessageId} IS NOT NULL`),
   nativePositionUnique: uniqueIndex('conversation_messages_native_position_unique').on(table.conversationId, table.nativePosition),
   nativeThreadIdx: index('conversation_messages_native_thread_idx').on(table.conversationId, table.replyToMessageId, table.nativePosition.desc()).where(sql`${table.nativePosition} IS NOT NULL`),
   deliveryQueueIdx: index('conversation_messages_delivery_queue_idx').on(table.status, table.nextAttemptAt),
@@ -139,7 +141,7 @@ export const communicationEvents = pgTable('communication_events', {
   type: varchar('type', { length: 60 }).notNull(),
   resourceId: uuid('resource_id').notNull(),
   occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
-}, table => ({ replayIdx: index('communication_events_replay_idx').on(table.tenantId, table.conversationId, table.id) }));
+}, table => ({ workspaceReplayIdx: index('communication_events_workspace_replay_idx').on(table.tenantId,table.id), replayIdx: index('communication_events_replay_idx').on(table.tenantId, table.conversationId, table.id) }));
 
 export const communicationTickets = pgTable('communication_tickets', {
   tokenHash: varchar('token_hash', { length: 64 }).primaryKey(),
@@ -155,10 +157,10 @@ export const communicationReactions = pgTable('communication_reactions', {
   messageId: uuid('message_id').notNull().references(() => conversationMessages.id, { onDelete: 'cascade' }),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   emoji: text('emoji').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, table => ({ identity: uniqueIndex('communication_reactions_pkey').on(table.messageId,table.userId,table.emoji), userIdx:index('communication_reactions_user_idx').on(table.userId) }));
+}, table => ({ identity: primaryKey({name:'communication_reactions_pkey',columns:[table.messageId,table.userId,table.emoji]}), userIdx:index('communication_reactions_user_idx').on(table.userId) }));
 export const communicationMentions = pgTable('communication_mentions', {
   tenantId: uuid('tenant_id').notNull(), conversationId: uuid('conversation_id').notNull(),
   messageId: uuid('message_id').notNull().references(() => conversationMessages.id, { onDelete: 'cascade' }),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   startOffset: integer('start_offset').notNull(), endOffset: integer('end_offset').notNull(),displayName:text('display_name').notNull(),
-}, table => ({ identity:uniqueIndex('communication_mentions_pkey').on(table.messageId,table.startOffset),recipientIdx:index('communication_mentions_recipient_idx').on(table.tenantId,table.userId,table.messageId) }));
+}, table => ({ identity:primaryKey({name:'communication_mentions_pkey',columns:[table.messageId,table.startOffset]}),recipientIdx:index('communication_mentions_recipient_idx').on(table.tenantId,table.userId,table.messageId) }));

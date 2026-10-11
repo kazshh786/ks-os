@@ -11,7 +11,7 @@ import { connectChat, mergeMessages } from './chat.realtime';
 
 vi.mock('./chat.api', async importOriginal => {
   const original=await importOriginal<typeof import('./chat.api')>();
-  return {...original,chatApi:{people:vi.fn(),create:vi.fn(),messages:vi.fn(),resolve:vi.fn(),ticket:vi.fn()}};
+  return {...original,chatApi:{people:vi.fn(),create:vi.fn(),messages:vi.fn(),resolve:vi.fn(),ticket:vi.fn(),send:vi.fn()}};
 });
 const channelId='11111111-1111-4111-8111-111111111111',userId='22222222-2222-4222-8222-222222222222';
 const channel:NativeConversation={id:channelId,type:'CHANNEL',name:'Team',slug:'team',description:null,createdBy:userId,createdAt:'2026-10-11T00:00:00.000Z',updatedAt:'2026-10-11T00:00:00.000Z',archivedAt:null,memberRole:'OWNER',lastReadPosition:'0',lastReadAt:null,unreadCount:1,memberCount:2};
@@ -33,7 +33,7 @@ describe('message composer',()=>{
     await user.click(screen.getByRole('button',{name:'Send message'}));
     await waitFor(()=>expect(field).toHaveValue(''));
     expect(send.mock.calls[1][0].clientMessageId).toBe(retryId);
-    expect(save).toHaveBeenLastCalledWith({body:'',mentions:[]});
+    expect(save).toHaveBeenLastCalledWith({body:'',mentions:[]},expect.objectContaining({clientMessageId:retryId}));
   });
   it('selects eligible mentions with the keyboard and sends stable references',async()=>{
     vi.mocked(chatApi.people).mockResolvedValue({data:[{userId,name:'Ada'}],nextCursor:null});
@@ -123,4 +123,22 @@ it('realtime deduplicates events, preserves the largest replay cursor and obtain
   expect(new URL(Socket.instances[1].url).searchParams.get('after')).toBe('8');
   stop();await vi.advanceTimersByTimeAsync(60000);
   expect(Socket.instances).toHaveLength(2);
+});
+
+it('keeps a newer draft when an earlier send finishes after channel switching',async()=>{
+  vi.mocked(chatApi.messages).mockResolvedValue({data:[],nextCursor:null});
+  let finish!:(value:NativeMessage)=>void;
+  vi.mocked(chatApi.send).mockReturnValue(new Promise(resolve=>{finish=resolve;}));
+  const drafts=new Map(),user=userEvent.setup(),subscribe:SubscribeChat=()=>()=>{};
+  const props={userId,subscribe,revision:0,drafts,inaccessible:vi.fn(),read:vi.fn()};
+  const {rerender}=render(<MessageTimeline key="a" channel={channel} {...props}/>);
+  await user.type(screen.getByRole('combobox',{name:'Message Team'}),'Original pending message');
+  await user.keyboard('{Enter}');
+  await waitFor(()=>expect(chatApi.send).toHaveBeenCalledTimes(1));
+  rerender(<MessageTimeline key="b" channel={{...channel,id:'33333333-3333-4333-8333-333333333333',name:'Other'}} {...props}/>);
+  rerender(<MessageTimeline key="a" channel={channel} {...props}/>);
+  const field=screen.getByRole('combobox',{name:'Message Team'});
+  await user.clear(field);await user.type(field,'Keep this newer draft');
+  await act(async()=>finish(message(userId,'1','Original pending message')));
+  expect(drafts.get(channelId+':root').body).toBe('Keep this newer draft');
 });

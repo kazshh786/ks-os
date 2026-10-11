@@ -104,6 +104,6 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
       })}
     </div>
     {newer && <button type="button" className="chat-new-messages" onClick={()=>void latest()}>Back to latest messages ↓</button>}
-    <MessageComposer key={draftKey} channelId={channel.id} label={parent?'Reply to thread':`Message ${channel.name}`} initial={drafts.get(draftKey)} saveDraft={draft=>{if(draft.body)drafts.set(draftKey,draft);else drafts.delete(draftKey);}} disabled={Boolean(channel.archivedAt)} send={async draft=>{const message=await chatApi.send(channel.id,{...draft,parentMessageId:parent});if(!live.current)return;bottom.current=true;changed(message);if(frozen.current)await latest();}}/>
+    <MessageComposer key={draftKey} channelId={channel.id} label={parent?'Reply to thread':`Message ${channel.name}`} initial={drafts.get(draftKey)} saveDraft={(draft,expected)=>{const saved=drafts.get(draftKey);if(expected && (saved?.clientMessageId!==expected.clientMessageId || saved?.body!==expected.body))return;if(draft.body)drafts.set(draftKey,draft);else drafts.delete(draftKey);}} disabled={Boolean(channel.archivedAt)} send={async draft=>{const message=await chatApi.send(channel.id,{...draft,parentMessageId:parent});if(!live.current)return;bottom.current=true;changed(message);if(frozen.current)await latest();}}/>
   </div>;
 }

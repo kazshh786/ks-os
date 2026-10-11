@@ -11,7 +11,7 @@ export async function verifyChatBrowser({app,service,owner,member}) {
   const {createServer}=await import(pathToFileURL(webRequire.resolve('vite')).href);
   const api=await app.listen({port:0,host:'127.0.0.1'});
   const vite=await createServer({
-    root:webRoot,configFile:path.join(webRoot,'vite.config.ts'),
+    root:webRoot,optimizeDeps:{entries:['tests/fixtures/chat-entry.tsx']},configFile:path.join(webRoot,'vite.config.ts'),
     resolve:{alias:[
       {find:'../../api/client',replacement:path.join(webRoot,'tests/fixtures/chat-client.ts')},
       {find:'../../auth/useAuth',replacement:path.join(webRoot,'tests/fixtures/chat-auth.ts')},
@@ -26,12 +26,13 @@ export async function verifyChatBrowser({app,service,owner,member}) {
       });
     }}],
   });
-  await vite.listen();
-  const origin='http://127.0.0.1:'+vite.httpServer.address().port;
-  const browser=await chromium.launch({headless:true});
-  const artifacts=path.join(root,'artifacts/communications');await mkdir(artifacts,{recursive:true});
-  const contexts=[],errors=[];
+  let browser;
+  const artifacts=path.join(root,'artifacts/communications'),contexts=[],errors=[];
   try{
+    await vite.listen();
+    const origin='http://127.0.0.1:'+vite.httpServer.address().port;
+    browser=await chromium.launch({headless:true});
+    await mkdir(artifacts,{recursive:true});
     const firstContext=await browser.newContext({viewport:{width:1440,height:1000},extraHTTPHeaders:{authorization:'Bearer owner'}});
     const secondContext=await browser.newContext({viewport:{width:1280,height:900},extraHTTPHeaders:{authorization:'Bearer member'}});
     contexts.push(firstContext,secondContext);
@@ -121,7 +122,8 @@ export async function verifyChatBrowser({app,service,owner,member}) {
     assert.equal(await first.getByRole('article').count(),75);
     assert.deepEqual(errors,[]);
   }catch(error){
+    console.error('Communications browser verification failed:',error);
     for(let n=0;n<contexts.length;n++)for(const page of contexts[n].pages())await page.screenshot({path:path.join(artifacts,'failure-'+n+'.png')}).catch(()=>{});
     throw error;
-  }finally{await browser.close();await vite.close();}
+  }finally{await browser?.close();for(const socket of app.websocketServer.clients)socket.terminate();await vite.close();}
 }
