@@ -26,6 +26,7 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
     const fresh=initialized.current&&!seen.current.has(row.id);seen.current.add(row.id);
     if(!deliver||!fresh||!shouldAlert(p,row,context.current,document.visibilityState==='visible'&&document.hasFocus()))continue;
     const mode=await phase4Api.conversationPreference(row.conversationId);
+    if(!mounted.current)return;
     if(mode.mode==='NONE'||mode.mode==='MENTIONS'&&row.type!=='CHAT_MENTION')continue;
     if(p.inApp)setNotice('New Chat activity. Open notifications to view it.');
     if(p.browser&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
@@ -56,7 +57,7 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
  {cursor&&<button disabled={busy} onClick={()=>{setBusy(true);void phase4Api.notifications(cursor).then(page=>{setRows(values=>[...values,...page.data]);setCursor(page.nextCursor);}).catch(e=>setError(e.message)).finally(()=>setBusy(false));}}>Older notifications</button>}
  </ChatDialog>}
  {settings&&<ChatDialog title="Chat notification settings" close={()=>setSettings(false)}>
- <p>Browser alerts work while Chat is open. Some mobile browsers do not support them. Closing the browser stops these alerts.</p>
+ <p>Browser alerts work while your KSOS workspace is open. Some mobile browsers do not support them. Closing the browser stops these alerts.</p>
  {preferences?(<div className="chat-preferences">{(['inApp','sound','dnd','directMessages'] as const).map(key=><label className="chat-check" key={key}><input type="checkbox" disabled={busy} checked={preferences[key]} onChange={e=>void save({...preferences,[key]:e.target.checked})}/>{{inApp:'In-app alerts',sound:'Browser notification sound (when supported)',dnd:'Do Not Disturb',directMessages:'Direct message notifications'}[key]}</label>)}
  <label className="chat-check"><input type="checkbox" disabled={busy} checked={preferences.browser} onChange={async e=>{if(!e.target.checked){void save({...preferences,browser:false});return;}const permission=await browserPermission();if(permission!=='granted'){setError(permission==='denied'?'Browser permission is denied. Change it in your browser site settings.':'Browser notifications are not supported here.');return;}void save({...preferences,browser:true});}}/>Browser notifications</label>
  <p>Do Not Disturb silences alerts; your notification history stays available.</p></div>):<p role="status">Loading settings…</p>}

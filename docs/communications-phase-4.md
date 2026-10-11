@@ -53,7 +53,7 @@ DM/group/channel messages, mentions, thread replies and invitations create datab
 
 Existing authenticated journal sockets carry recipient-scoped notification invalidations. Stable records remain recoverable after disconnect. Browser clients refresh on socket events, reconnect and a bounded thirty-second fallback. Read state is recipient-owned and persists. Browser alerts require explicit permission and a persisted opt-in; denied/unsupported browsers receive a clear message. Notification clicks navigate to the conversation/message. Alerts are suppressed for the actively viewed conversation; generic browser text avoids OS-level private preview leaks. Stable notification tags replace duplicate browser alerts.
 
-Notifications operate while **Chat is open**. Browser sound is controlled through the standard notification silent flag and depends on browser/OS support. No background Web Push, service workers, VAPID keys, native push or email sends are added. Browser permission is device-specific even though preferences persist across sessions.
+Notifications operate while **the signed-in KSOS workspace is open**. Browser sound is controlled through the standard notification silent flag and depends on browser/OS support. No background Web Push, service workers, VAPID keys, native push or email sends are added. Browser permission is device-specific even though preferences persist across sessions.
 
 ## Database and release
 
@@ -76,8 +76,12 @@ The GitHub production workflow is main/manual-only. Previously inspected Cloudfl
 
 Exact final GitHub run IDs, counts and known external check failures are recorded in PR #248. Tests cover migrated PostgreSQL, real HTTP/WebSockets, cross-tenant/private file access, validation/quarantine, binding/deletion/cleanup, search filters/pagination/tombstones, preferences/idempotency and notification revocation. Browser regression covers Phases 1–3 plus uploads, thumbnails, files panel, search anchors and notification settings. Unit tests cover upload progress/drop/paste, permission opt-in and blob cleanup.
 
+The API pins sharp 0.35.5, upgrading the initially reused repository version after the audit flagged it. Its lockfile was resolved in an isolated GitHub job; that temporary preparation job is removed from the final workflow. The shared resolver also refreshed its @emnapi runtime peer resolution. Older unrelated Astro dependency paths still need separate remediation.
+
 Existing repository web/API lint scripts are placeholder success commands, not substantive static lint coverage. Existing dependency-audit/Vercel account issues require release review. Physical-device keyboards, production proxy limits and the chosen scanner need staging verification. Scanner-dependent formats intentionally remain blocked until release configuration exists.
 
 Phase 5 can reuse stable conversation IDs, membership authorization, recipient preferences and the authenticated event transport for future LiveKit integration. Calls, guests, mobile push and semantic search remain out of scope.
 
 Implementation references: [PostgreSQL text search indexes](https://www.postgresql.org/docs/current/textsearch-tables.html), [Supabase Storage access control](https://supabase.com/docs/guides/storage/security/access-control), [sharp input limits](https://sharp.pixelplumbing.com/api-constructor/), [browser notification permission](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API/Using_the_Notifications_API).
+
+Workspace notification delivery also mounts outside Chat in the signed-in staff layout. It reuses `connectChat`, tears down on navigation/workspace change, and yields connection ownership to ChatWorkspace on Chat routes. No second simultaneous notification transport is created.

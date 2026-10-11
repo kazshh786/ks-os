@@ -185,6 +185,13 @@ export async function verifyChatBrowser({app,service,owner,member}) {
     await first.locator('.chat-files-panel').getByText('team-plan.txt',{exact:true}).waitFor();
     await first.locator('.chat-files-panel').getByRole('img',{name:'team-image.png',exact:true}).waitFor();
     await first.screenshot({path:path.join(artifacts,'phase4-files-desktop.png')});
+    await first.addScriptTag({path:workerRequire.resolve('axe-core/axe.min.js')});
+    const filesAccessibility=await first.evaluate(async()=>window.axe.run(document.querySelector('.chat-workspace'),{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}}));
+    assert.deepEqual(filesAccessibility.violations.map(v=>({id:v.id,nodes:v.nodes.map(n=>n.target)})),[]);
+    await first.setViewportSize({width:390,height:844});
+    assert.ok(await first.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
+    await first.screenshot({path:path.join(artifacts,'phase4-files-mobile.png')});
+    await first.setViewportSize({width:1440,height:1000});
     await first.getByRole('button',{name:'Close files',exact:true}).click();
     await first.getByRole('button',{name:'Search messages',exact:true}).click();
     const search=first.getByRole('dialog',{name:'Search messages'});
