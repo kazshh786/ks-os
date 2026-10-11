@@ -149,7 +149,9 @@ export function customerAdapters(c: AdapterContext): CustomerAdapter[] {
         union all ${events(refunds, "('REFUND_REQUESTED','Refund requested',b.created_at,true),('REFUND_SUCCEEDED','Refund completed',case when b.status='SUCCEEDED' then b.completed_at end,true)")}`,
     });
   }
-  if (enabled('communications')) {
+  // This source includes owner-only outbound delivery history. Native Chat access
+  // does not grant access to customer communications or the legacy Inbox.
+  if (enabled('communications') && a.role === 'owner') {
     const sms = sql`select s.public_reference as reference,s.created_at,s.sent_at,s.delivered_at,s.failed_at,'/app/settings/communications'::text as route from sms_outbox s where ${scoped('s')}`;
     // Match canonical links only; shared/reused email addresses are not customer identity.
     const email = sql`select e.public_reference as reference,e.created_at,e.sent_at,e.delivered_at,e.failed_at,'/app/settings/communications'::text as route from email_outbox e
