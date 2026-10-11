@@ -10,6 +10,7 @@ import websocket from '@fastify/websocket';
 import { ZodError } from 'zod';
 import { sql, type SQL } from '@ks-os/database';
 import { NativeConversationSchema, NativeMessageSchema } from '@ks-os/contracts';
+import { CommunicationsPresence } from '../src/modules/communications/communications.presence.js';
 import { CommunicationsService } from '../src/modules/communications/communications.service.js';
 import { communicationsRoutes } from '../src/modules/communications/communications.routes.js';
 import type { CommunicationsDatabase } from '../src/modules/communications/communications.database.js';
@@ -35,6 +36,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   await pg.query("INSERT INTO conversations(id,tenant_id,primary_channel,customer_display_name) VALUES ($1,$2,'EMAIL','Existing customer')", [legacyConversation, legacyTenant]);
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20260929120000_communications_foundation.sql', import.meta.url), 'utf8'));
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261011040000_communications_channels.sql', import.meta.url), 'utf8'));
+  await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261011060000_communications_direct.sql', import.meta.url), 'utf8'));
   const dialect = new PgDialect();
   const wrap = (connection: PGlite | Transaction): CommunicationsDatabase => ({
     async query<T extends Record<string, unknown>>(statement: SQL) {
@@ -162,6 +164,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     await pg.query('UPDATE conversations SET archived_at=now() WHERE id=$1', [direct.id]);
     await assert.rejects(service.post(owner, String(direct.id), { body: 'Denied' }), { statusCode: 409 });
     assert.ok(await service.get(owner, String(direct.id)));
+    await pg.query('UPDATE conversations SET archived_at=NULL WHERE id=$1',[direct.id]);
   });
   await t.test('a second service instance replays only events after the supplied cursor', async () => {
     const before = await service.events(owner, id, '0');
@@ -222,6 +225,9 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     const updated=await service.updateChannel(owner,cid,{name:'Managed renamed',description:'A team space'});
     assert.equal(updated.name,'Managed renamed');
     assert.equal(updated.description,'A team space');
+    const blank=await app.inject({method:'PATCH',url:`/comms/${cid}`,headers:headers('owner'),payload:{name:''}});assert.equal(blank.statusCode,400);
+    const descriptionOnly=await app.inject({method:'PATCH',url:`/comms/${cid}`,headers:headers('owner'),payload:{description:'Updated description'}});
+    assert.equal(descriptionOnly.statusCode,200);assert.equal(descriptionOnly.json().data.name,'Managed renamed');
     await service.transfer(owner,cid,member.userId);
     const transferAudit=(await pg.query<{metadata:{newOwnerUserId:string;memberId?:string}}>("SELECT metadata FROM account_access_audit_events WHERE action='COMMUNICATION_OWNERSHIP_TRANSFERRED' AND metadata->>'conversationId'=$1",[cid])).rows[0];
     assert.equal(transferAudit.metadata.newOwnerUserId,member.userId);
@@ -323,7 +329,120 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     await assert.rejects(service.consumeTicket(null,ticket.ticket),{statusCode:401});
   });
 
+
+  await t.test('canonical DMs survive concurrent starts, reverse order, tenant boundaries and database duplicate writes', async () => {
+    const make=(actor:CommunicationsActor,peer:string)=>service.create(actor,{type:'DIRECT',name:'',memberUserIds:[peer]});
+    const results=await Promise.all(Array.from({length:8},(_,i)=>i%2?make(member,owner.userId):make(owner,member.userId)));
+    assert.equal(new Set(results.map(c=>c.id)).size,1);
+    const cid=String(results[0].id);
+    assert.equal((await make(owner,member.userId.toUpperCase())).id,cid);
+    const equivalent=await app.inject({method:'POST',url:'/comms',headers:headers('member'),payload:{type:'DIRECT',memberUserIds:[owner.userId.toUpperCase()]}});
+    assert.equal(equivalent.statusCode,201);assert.equal(equivalent.json().data.id,cid);
+    await assert.rejects(make(owner,owner.userId.toUpperCase()),{statusCode:400});
+    await assert.rejects(make(owner,other.userId),{statusCode:400});
+    await assert.rejects(make(owner,owner.userId),{statusCode:400});
+    await assert.rejects(service.get(outsider,cid),{statusCode:404});
+    await assert.rejects(service.addMember(owner,cid,{userId:outsider.userId,role:'MEMBER'}),{statusCode:409});
+    await assert.rejects(service.leave(owner,cid),{statusCode:409});
+    await assert.rejects(pg.query("INSERT INTO conversations(tenant_id,primary_channel,customer_display_name,access_mode,conversation_type,name,direct_key) SELECT tenant_id,primary_channel,customer_display_name,access_mode,conversation_type,name,direct_key FROM conversations WHERE id=$1",[cid]),/duplicate key/);
+    await assert.rejects(pg.query("INSERT INTO conversation_members(tenant_id,conversation_id,user_id,role) VALUES($1,$2,$3,'MEMBER')",[owner.tenantId,cid,outsider.userId]),/DIRECT_PARTICIPANTS_FIXED/);
+    const one=await service.post(owner,cid,{body:'First direct message'}),two=await service.post(owner,cid,{body:'Second direct message'});
+    await service.read(member,cid,two.id);await service.read(member,cid,one.id);
+    const scope=await service.liveScope(owner,cid,[member.userId,other.userId,outsider.userId]);
+    assert.ok(BigInt(scope.readers.find(p=>p.userId===member.userId)!.position)>=BigInt(NativeMessageSchema.parse(JSON.parse(JSON.stringify(two))).position));
+    assert.deepEqual(scope.visible.map(p=>p.userId).sort(),[owner.userId,member.userId].sort());
+    const spoof=await app.inject({method:'POST',url:`/comms/${cid}/read`,headers:headers('member'),payload:{messageId:one.id,userId:owner.userId}});
+    assert.equal(spoof.statusCode,400);
+    assert.equal((await service.get(owner,cid)).preview,'Second direct message');
+    await service.editMessage(owner,cid,two.id,null);
+    assert.equal((await service.get(owner,cid)).preview,'Message deleted');
+  });
+  await t.test('private groups enforce manager rules, history revocation, owner succession and recent search', async () => {
+    const group=await service.create(outsider,{type:'GROUP_DIRECT',name:'Project group',memberUserIds:[owner.userId,member.userId]});
+    const cid=String(group.id),history=await service.post(member,cid,{body:'Private group history'});
+    await assert.rejects(service.updateChannel(member,cid,{name:'Denied'}),{statusCode:403});
+    await assert.rejects(service.addMember(member,cid,{userId:other.userId,role:'MEMBER'}),{statusCode:403});
+    await assert.rejects(service.addMember(outsider,cid,{userId:other.userId,role:'MEMBER'}),{statusCode:400});
+    await service.updateChannel(outsider,cid,{name:'Renamed group'});
+    await pg.query("UPDATE conversations SET updated_at='2000-01-01T00:00:00Z' WHERE id=$1",[cid]);
+    await service.removeMember(outsider,cid,member.userId);
+    await assert.rejects(service.messages(member,cid,{limit:50}),{statusCode:404});
+    await assert.rejects(service.authorizeTyping(member,cid),{statusCode:404});
+    assert.ok((await service.events(member,null,'0')).every(e=>e.conversationId!==cid || e.type==='conversation.member_left'));
+    await service.addMember(outsider,cid,{userId:member.userId,role:'MEMBER'});
+    const roster=await service.get(outsider,cid);
+    assert.equal(roster.memberCount,3);assert.ok(new Date(String(roster.updatedAt)).getUTCFullYear()>2000,'Roster revision changes after a same-count membership replacement');
+    assert.equal((await service.messages(member,cid,{limit:50})).data[0].id,history.id);
+    await service.leave(outsider,cid);
+    await assert.rejects(service.get(outsider,cid),{statusCode:404});
+    const roles=await service.people(owner,cid,{limit:50});
+    assert.equal(roles.data.filter(m=>m.role==='OWNER').length,1);
+    assert.equal((await service.list(other,{recent:'true',search:'Renamed',limit:50})).data.length,0);
+    assert.equal((await service.list(owner,{recent:'true',search:'Renamed',limit:50})).data[0].id,cid);
+    const page=await service.list(owner,{recent:'true',limit:1});
+    assert.ok(page.nextCursor);
+    const next=await service.list(owner,{recent:'true',after:page.nextCursor!,limit:100});
+    assert.ok(next.data.every(c=>c.id!==page.data[0].id));
+    const expected=(await service.list(owner,{recent:'true',limit:100})).data.map(c=>c.id),paged:string[]=[];
+    let cursor:string|undefined;
+    do { const batch=await service.list(owner,{recent:'true',limit:1,after:cursor});paged.push(...batch.data.map(c=>c.id));cursor=batch.nextCursor ?? undefined; } while(cursor);
+    assert.deepEqual(paged,expected,'Recent cursor keeps PostgreSQL microsecond precision');
+    await assert.rejects(service.list(owner,{recent:'true',after:'bad',limit:1}),{statusCode:400});
+    const colleagues=await service.people(member,null,{limit:100});
+    assert.ok(colleagues.data.some(p=>p.userId===owner.userId));
+    assert.ok(colleagues.data.every(p=>p.userId!==member.userId && p.userId!==other.userId));
+  });
+  await t.test('ephemeral leases aggregate tabs, expire typing and disconnects, and isolate tenants', () => {
+    let now=1000;const presence=new CommunicationsPresence(()=>now);
+    presence.open('a',owner);presence.open('b',member);presence.open('tab2',member);presence.open('foreign',other);
+    presence.signal('a',{type:'watch',conversationId:id,userIds:[member.userId]});
+    presence.signal('b',{type:'watch',conversationId:id,userIds:[]});
+    const scope={visible:[{userId:member.userId}],readers:[{userId:member.userId,name:'Member',position:'0'}]};
+    assert.equal(presence.snapshot('a',scope).presence[0].state,'ONLINE');
+    presence.signal('b',{type:'activity',active:false});
+    assert.equal(presence.snapshot('a',scope).presence[0].state,'ONLINE');
+    presence.close('tab2');
+    assert.equal(presence.snapshot('a',scope).presence[0].state,'AWAY');
+    presence.signal('b',{type:'typing',active:true});
+    assert.equal(presence.snapshot('a',scope).typing.length,1);
+    now+=5001;assert.equal(presence.snapshot('a',scope).typing.length,0);
+    now+=45000;presence.touch('a');
+    assert.equal(presence.snapshot('a',scope).presence[0].state,'OFFLINE');
+    presence.open('again',member);assert.equal(presence.snapshot('a',scope).presence[0].state,'ONLINE');
+    presence.close('again');assert.equal(presence.snapshot('a',scope).presence[0].state,'OFFLINE');
+  });
+  await t.test('DM sockets deliver authorized typing/presence and reject spoofed identity', async t => {
+    const owner=await seed(),member=await seed(owner.tenantId),outsider=await seed(owner.tenantId);
+    const dm=await service.create(owner,{type:'DIRECT',name:'',memberUserIds:[member.userId]}),cid=String(dm.id);
+    const frames:any[]=[];
+    const tokenA=await service.ticket(owner,null),tokenB=await service.ticket(member,null);
+    const a=await app.injectWS(`/comms/events?ticket=${tokenA.ticket}&after=${tokenA.cursor}`,{},{onOpen:ws=>ws.on('message',raw=>frames.push(JSON.parse(raw.toString())))});
+    const b=await app.injectWS(`/comms/events?ticket=${tokenB.ticket}&after=${tokenB.cursor}`);
+    t.after(()=>{a.terminate();b.terminate();});
+    const wait=async(fn:()=>boolean)=>{const until=Date.now()+6000;while(!fn()&&Date.now()<until)await new Promise(r=>setTimeout(r,25));assert.ok(fn(),'Expected live DM frame');};
+    a.send(JSON.stringify({type:'watch',conversationId:cid,userIds:[member.userId,other.userId]}));
+    b.send(JSON.stringify({type:'watch',conversationId:cid,userIds:[]}));
+    b.send(JSON.stringify({type:'typing',active:true}));
+    await wait(()=>frames.some(f=>f.type==='ephemeral.snapshot'&&f.typing.some((p:any)=>p.userId===member.userId)));
+    assert.ok(frames.filter(f=>f.type==='ephemeral.snapshot').every(f=>f.presence.every((p:any)=>p.userId!==other.userId)));
+    b.send(JSON.stringify({type:'typing',active:false}));
+    await wait(()=>frames.at(-1)?.type==='ephemeral.snapshot'&&frames.at(-1).typing.length===0);
+    const closed=once(b,'close',{signal:AbortSignal.timeout(6000)});
+    b.send(JSON.stringify({type:'activity',active:true,userId:owner.userId}));
+    assert.equal((await closed)[0],1008);
+    await wait(()=>frames.at(-1)?.presence?.find((p:any)=>p.userId===member.userId)?.state==='OFFLINE');
+    a.close();
+    const unauthorized=await service.ticket(outsider,null);
+    const denied=await app.injectWS(`/comms/events?ticket=${unauthorized.ticket}`);
+    const deniedClose=once(denied,'close',{signal:AbortSignal.timeout(6000)});
+    denied.send(JSON.stringify({type:'watch',conversationId:cid,userIds:[]}));
+    assert.equal((await deniedClose)[0],1008);
+  });
+
   await t.test('two browser sessions: real messages, threads, reactions, reconnect, mobile and accessibility', {skip:process.env.COMMUNICATIONS_BROWSER_TEST!=='1',timeout:180000}, async () => {
+    await pg.query('UPDATE users SET name=$2 WHERE id=$1',[owner.userId,'Ada Lovelace']);
+    await pg.query('UPDATE users SET name=$2 WHERE id=$1',[member.userId,'Grace Hopper']);
+    await pg.query('UPDATE users SET name=$2 WHERE id=$1',[outsider.userId,'Lin Chen']);
     const {verifyChatBrowser}=await import('./helpers/communications-browser.mjs');
     await verifyChatBrowser({app,service,owner,member});
   });

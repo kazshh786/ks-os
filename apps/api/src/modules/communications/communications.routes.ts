@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { randomUUID } from 'node:crypto';
+import { CommunicationsPresence } from './communications.presence.js';
 import { z } from 'zod';
 import {
-  AddConversationMemberSchema, CommunicationPositionSchema, CreateNativeConversationSchema,
+  ChatSignalSchema, AddConversationMemberSchema, CommunicationPositionSchema, CreateNativeConversationSchema,
   CreateNativeMessageSchema, MarkConversationReadSchema, NativeConversationQuerySchema, NativeMessageQuerySchema,
   UpdateNativeMessageSchema, UpdateNativeChannelSchema, SetNativeReactionSchema, ChannelDiscoveryQuerySchema, NativePeopleQuerySchema,
 } from '@ks-os/contracts';
@@ -87,6 +89,7 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
   });
 
   // Bound live subscriptions per actor per API process, alongside the existing HTTP limiter.
+  const presence=new CommunicationsPresence();
   const connectionCounts = new Map<string,number>();
   const subscriptions = new WeakMap<FastifyRequest, { actor: CommunicationsActor; id: string | null; after: string }>();
   for (const path of ['/events','/:conversationId/events']) app.get(path, {
@@ -103,6 +106,9 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
     const count=connectionCounts.get(connectionKey) ?? 0;
     if(count>=12){socket.close(1013,'Too many open Chat connections');return;}
     connectionCounts.set(connectionKey,count+1);
+    const connectionId=randomUUID();presence.open(connectionId,subscription.actor);
+    let ephemeralEnabled=false;
+    let lastSnapshot='',signalQueue=Promise.resolve(),signalWindow=Date.now(),signalCount=0;
     let released=false;
     const release=()=>{if(released)return;released=true;const remaining=(connectionCounts.get(connectionKey) ?? 1)-1;if(remaining>0)connectionCounts.set(connectionKey,remaining);else connectionCounts.delete(connectionKey);};
     let after = subscription.after;
@@ -110,12 +116,32 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
     let stopped = false;
     let alive = true;
     let polls = 0;
-    const stop = () => { stopped = true; release(); if (timer) clearTimeout(timer); };
+    const stop = () => { stopped = true; presence.close(connectionId); release(); if (timer) clearTimeout(timer); };
     socket.on('close', stop);
     socket.on('error', stop);
-    socket.on('pong', () => { alive = true; });
-    // Writes always go through the authenticated, validated HTTP APIs.
-    socket.on('message', () => { stop(); socket.close(1008, 'Use the HTTP API for writes'); });
+    socket.on('pong', () => { alive = true; presence.touch(connectionId); });
+    // Only bounded ephemeral control frames may use this socket. Message writes stay HTTP.
+    socket.on('message', raw => {
+      if(stopped)return;
+      if(Date.now()-signalWindow>10000){signalWindow=Date.now();signalCount=0;}
+      if(raw.toString().length>8192 || ++signalCount>30){stop();socket.close(1008,'Chat signal rate exceeded');return;}
+      signalQueue=signalQueue.then(async()=>{
+        if(stopped)return;
+        const signal=ChatSignalSchema.parse(JSON.parse(raw.toString()));
+        ephemeralEnabled=true;
+        await service.capabilities(subscription.actor);
+        if(signal.type==='watch' && signal.conversationId) {
+          if(subscription.id && subscription.id!==signal.conversationId)throw new Error('Wrong conversation');
+          await service.get(subscription.actor,signal.conversationId);
+        }
+        if(signal.type==='typing'){
+          const current=presence.watch(connectionId).conversationId;
+          if(signal.active){if(!current)throw new Error('Choose a conversation');await service.authorizeTyping(subscription.actor,current);}
+          else if(current)await service.get(subscription.actor,current);
+        }
+        if(!stopped)presence.signal(connectionId,signal);
+      }).catch(()=>{stop();socket.close(1008,'Chat signal not available');});
+    });
     const poll = async () => {
       if (stopped || socket.readyState !== 1) return;
       try {
@@ -123,6 +149,16 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
         const events = await service.events(subscription.actor, subscription.id, after);
         if (stopped || socket.readyState !== 1) return;
         for (const event of events) { socket.send(JSON.stringify(event)); after = event.id; }
+        if(ephemeralEnabled){
+        const watch=presence.watch(connectionId);
+        const scope=await service.liveScope(subscription.actor,watch.conversationId,watch.userIds);
+        if(stopped || socket.readyState!==1)return;
+        const currentWatch=presence.watch(connectionId);
+        if(currentWatch.conversationId===watch.conversationId && currentWatch.userIds===watch.userIds){
+          const snapshot=JSON.stringify(presence.snapshot(connectionId,scope));
+          if(snapshot!==lastSnapshot || polls%20===0){socket.send(snapshot);lastSnapshot=snapshot;}
+        }
+        }
         if (++polls % 20 === 0) {
           if (!alive) { stop(); socket.terminate(); return; }
           alive = false;
