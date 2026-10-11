@@ -38,7 +38,7 @@ export const StaffWorkspaceLayout: React.FC = () => {
   const isCustomerInboxWorkspace = location.pathname === '/app/operations' && new URLSearchParams(location.search).get('view') !== 'system';
   const isImmersiveWorkspace = isCalendarWorkspace || isCustomerInboxWorkspace;
   const isEmailStudioWorkspace = location.pathname === '/app/email-marketing/automated-emails';
-  const usesFullBleedContent = isImmersiveWorkspace || isEmailStudioWorkspace;
+  const usesFullBleedContent = isImmersiveWorkspace || isEmailStudioWorkspace || location.pathname.startsWith('/app/chat');
 
   const toggleCollapsed = () => {
     setCollapsed(value => {

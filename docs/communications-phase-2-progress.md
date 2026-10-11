@@ -33,8 +33,8 @@ Expected deployment classification once complete: **BOTH VPS + CLOUDFLARE**.
 The first API deployment requires reviewed migrations with `APPLY_MIGRATIONS=1`.
 Production deployment requires separate authorization and coordination.
 
-Cloudflare's GitHub integration reported a successful build/version upload for the
-Phase 1 development branch. Whether that integration can promote development
-changes to production has not been verified. No further branch update or PR should
-be published until that risk is resolved. This snapshot may be uploaded as Git
-objects without updating a branch, which does not publish a branch push.
+Cloudflare build #749bc52f was inspected in the authenticated dashboard: its deploy
+command is `pnpm run deploy:cloudflare:preview`, which invokes `wrangler versions
+upload`. The prior development build uploaded a preview version, not a production
+promotion. Phase 2 is isolated in PR #245 targeting the unmerged Phase 1 branch.
+No production settings have been changed. Verification runs in GitHub Actions.
