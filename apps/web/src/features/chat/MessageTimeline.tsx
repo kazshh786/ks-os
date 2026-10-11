@@ -11,52 +11,59 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
   openThread?: (message: NativeMessage) => void; inaccessible: () => void; read: (id: string) => Promise<void>; label?: string;
 }) {
   const [messages,setMessages]=useState<NativeMessage[]>([]),[cursor,setCursor]=useState<string|null>(null),[loading,setLoading]=useState(true),[more,setMore]=useState(false),[error,setError]=useState(''),[newer,setNewer]=useState(false);
-  const scroll=useRef<HTMLDivElement>(null),bottom=useRef(true),live=useRef(true),frozen=useRef(false),seenRead=useRef(channel.lastReadPosition),preserve=useRef<{height:number;top:number}|null>(null),jump=useRef(true);
+  const scroll=useRef<HTMLDivElement>(null),bottom=useRef(true),live=useRef(true),frozen=useRef(false),seenRead=useRef(channel.lastReadPosition),preserve=useRef<{id:string;offset:number}|null>(null),jump=useRef(true);
+  const current=useRef<NativeMessage[]>([]),generation=useRef(0),updates=useRef(new Map<string,{generation:number;message:NativeMessage}>());
+  const put=useCallback((rows:NativeMessage[])=>{current.current=rows;setMessages(rows);},[]);
+  const reconcile=useCallback((rows:NativeMessage[],started:number)=>{
+    const newer=[...updates.current.values()].filter(update=>update.generation>started).map(update=>update.message);
+    return mergeMessages(rows,newer).filter(message=>message.parentMessageId===(parent ?? null));
+  },[parent]);
   const draftKey=`${channel.id}:${parent || 'root'}`;
   useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
   const fail=useCallback((cause:unknown)=>{if(!live.current)return;if(cause instanceof ChatError && [401,403,404].includes(cause.status)){setMessages([]);inaccessible();}else setError(cause instanceof Error?cause.message:'Could not load messages');},[inaccessible]);
   const latest=useCallback(async()=>{
     setLoading(true);setError('');
-    try{const page=await chatApi.messages(channel.id,parent);if(!live.current)return;jump.current=true;frozen.current=false;bottom.current=true;setNewer(false);setMessages(mergeMessages([],page.data));setCursor(page.nextCursor);}
+    try{const started=generation.current;const page=await chatApi.messages(channel.id,parent);if(!live.current)return;jump.current=true;frozen.current=false;bottom.current=true;setNewer(false);put(reconcile(page.data,started).slice(-200));setCursor(page.nextCursor);}
     catch(cause){fail(cause);}finally{if(live.current)setLoading(false);}
-  },[channel.id,parent,fail]);
+  },[channel.id,parent,fail,put,reconcile]);
   useEffect(()=>{void latest();},[latest]);
   // Reconcile a bounded window after reconnect, including edits and tombstones in older loaded pages.
-  const current=useRef(messages);current.current=messages;
   useEffect(()=>{
     if(!revision || !current.current.length)return;
     let active=true;
     const refresh=async()=>{
       try{
+        const started=generation.current;
         const rows=await chatApi.resolve(channel.id,current.current.map(message=>message.id));
-        if(active)setMessages(m=>mergeMessages(m,rows));
-        if(!frozen.current){const page=await chatApi.messages(channel.id,parent);if(active)setMessages(m=>mergeMessages(m,page.data).slice(-200));}
+        if(active)put(reconcile(mergeMessages(current.current,rows),started));
+        if(!frozen.current){const began=generation.current;const page=await chatApi.messages(channel.id,parent);if(active){const merged=reconcile(mergeMessages(current.current,page.data),began);put(merged.slice(-200));if(merged.length>200)setCursor(merged.at(-200)!.position);}}
       }catch(cause){if(active)fail(cause);}
     };void refresh();return()=>{active=false;};
-  },[revision,channel.id,parent,fail]);
+  },[revision,channel.id,parent,fail,put,reconcile]);
   const changed=useCallback((message:NativeMessage)=>{
     if(!live.current || message.parentMessageId!==(parent ?? null))return;
-    setMessages(previous=>{
-      const existing=previous.some(m=>m.id===message.id);
-      if(frozen.current && !existing){setNewer(true);return previous;}
-      if(!existing && !bottom.current)setNewer(true);
-      jump.current=bottom.current;
-      const merged=mergeMessages(previous,[message]);
-      if(merged.length>200 && !bottom.current){frozen.current=true;setNewer(true);return previous;}
-      if(merged.length>200)setCursor(merged.at(-200)!.position);
-      return merged.slice(-200);
-    });
-  },[parent]);
+    updates.current.set(message.id,{generation:++generation.current,message});
+    // Only retain enough concurrent invalidations to reconcile the bounded history window.
+    if(updates.current.size>400)updates.current.delete(updates.current.keys().next().value!);
+    const previous=current.current,existing=previous.some(m=>m.id===message.id);
+    if(frozen.current && !existing){setNewer(true);return;}
+    if(!existing && !bottom.current)setNewer(true);
+    jump.current=bottom.current;
+    const merged=mergeMessages(previous,[message]);
+    if(merged.length>200 && !bottom.current){frozen.current=true;setNewer(true);return;}
+    if(merged.length>200)setCursor(merged.at(-200)!.position);
+    put(merged.slice(-200));
+  },[parent,put]);
   useEffect(()=>{
     let active=true,working=false;const pending=new Set<string>();
     let timer:ReturnType<typeof setTimeout>|undefined;
     const flush=async()=>{
       working=true;
-      while(active && pending.size){const ids=[...pending];pending.clear();try{
-        const rows=await chatApi.resolve(channel.id,ids.slice(0,200));
+      while(active && pending.size){const ids=[...pending].slice(0,200);ids.forEach(id=>pending.delete(id));try{
+        const started=generation.current;const rows=await chatApi.resolve(channel.id,ids);
         if(!active)break;
         const roots=new Set<string>();
-        for(const message of rows){changed(message);if(!parent && message.parentMessageId)roots.add(message.parentMessageId);}
+        for(const row of rows){const update=updates.current.get(row.id);const message=update && update.generation>started?update.message:row;changed(message);if(!parent && message.parentMessageId)roots.add(message.parentMessageId);}
         if(roots.size){const rootRows=await chatApi.resolve(channel.id,[...roots]);if(active)rootRows.forEach(changed);}
       }catch(cause){if(active)fail(cause);}}
       working=false;
@@ -66,7 +73,7 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
   },[channel.id,parent,subscribe,changed,fail]);
   useLayoutEffect(()=>{
     const element=scroll.current;if(!element)return;
-    if(preserve.current){element.scrollTop=preserve.current.top+element.scrollHeight-preserve.current.height;preserve.current=null;}
+    if(preserve.current){const anchor=Array.from(element.querySelectorAll<HTMLElement>('[data-message-id]')).find(row=>row.dataset.messageId===preserve.current!.id);if(anchor)element.scrollTop+=anchor.getBoundingClientRect().top-element.getBoundingClientRect().top-preserve.current.offset;preserve.current=null;}
     else if(jump.current){element.scrollTop=element.scrollHeight;jump.current=false;}
   },[messages]);
   const markVisible=useCallback(()=>{
@@ -77,7 +84,9 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
   useEffect(()=>{const timer=setTimeout(markVisible,1200);window.addEventListener('focus',markVisible);document.addEventListener('visibilitychange',markVisible);return()=>{clearTimeout(timer);window.removeEventListener('focus',markVisible);document.removeEventListener('visibilitychange',markVisible);};},[messages,markVisible]);
   const older=async()=>{
     if(!cursor || more)return;setMore(true);setError('');
-    try{const page=await chatApi.messages(channel.id,parent,cursor);if(!live.current)return;const element=scroll.current;if(element)preserve.current={height:element.scrollHeight,top:element.scrollTop};bottom.current=false;const merged=mergeMessages(current.current,page.data);if(merged.length>200){frozen.current=true;setNewer(true);}setMessages(merged.slice(0,200));setCursor(page.nextCursor);}
+    try{const started=generation.current;const page=await chatApi.messages(channel.id,parent,cursor);if(!live.current)return;const element=scroll.current;
+      if(element){const top=element.getBoundingClientRect().top;const anchor=Array.from(element.querySelectorAll<HTMLElement>('[data-message-id]')).find(row=>row.getBoundingClientRect().bottom>top);if(anchor)preserve.current={id:anchor.dataset.messageId!,offset:anchor.getBoundingClientRect().top-top};}
+      bottom.current=false;jump.current=false;const merged=reconcile(mergeMessages(current.current,page.data),started);if(merged.length>200){frozen.current=true;setNewer(true);}put(merged.slice(0,200));setCursor(page.nextCursor);}
     catch(cause){fail(cause);}finally{if(live.current)setMore(false);}
   };
   return <div className="chat-timeline-shell">
@@ -90,7 +99,7 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
         const previous=messages[index-1],day=new Date(message.createdAt).toLocaleDateString();
         const sameDay=previous && new Date(previous.createdAt).toLocaleDateString()===day;
         const grouped=Boolean(sameDay && previous.senderId===message.senderId && new Date(message.createdAt).getTime()-new Date(previous.createdAt).getTime()<300000);
-        return <div key={message.id}>{!sameDay && <div className="chat-date"><span>{new Date(message.createdAt).toLocaleDateString([], {weekday:'short',day:'numeric',month:'long'})}</span></div>}<MessageItem message={message} grouped={grouped} userId={userId} archived={Boolean(channel.archivedAt)} thread={openThread} changed={changed}/></div>;
+        return <div key={message.id} data-message-id={message.id}>{!sameDay && <div className="chat-date"><span>{new Date(message.createdAt).toLocaleDateString([], {weekday:'short',day:'numeric',month:'long'})}</span></div>}<MessageItem message={message} grouped={grouped} userId={userId} archived={Boolean(channel.archivedAt)} thread={openThread} changed={changed}/></div>;
       })}
     </div>
     {newer && <button type="button" className="chat-new-messages" onClick={()=>void latest()}>Back to latest messages ↓</button>}

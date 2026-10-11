@@ -56,7 +56,7 @@ export function MessageComposer({ channelId, label = 'Message', initial, saveDra
   return <form className="chat-composer" onSubmit={event => { event.preventDefault(); void submit(); }}>
     <label htmlFor={inputId}>{label}</label>
     <div className="chat-composer-field">
-      <textarea id={inputId} ref={textarea} value={draft.body} disabled={disabled || busy} rows={3}
+      <textarea role="combobox" aria-haspopup="listbox" id={inputId} ref={textarea} value={draft.body} disabled={disabled || busy} rows={3}
         placeholder={disabled ? 'This channel is read only' : 'Write a message… Use @ to mention a colleague'}
         aria-autocomplete="list" aria-controls={suggestions.length ? listId : undefined} aria-expanded={suggestions.length > 0}
         aria-activedescendant={suggestions.length ? `${listId}-${highlight}` : undefined} aria-describedby={`${inputId}-hint${error ? ` ${inputId}-error` : ''}`}

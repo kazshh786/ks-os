@@ -86,7 +86,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
 
   await t.test('migration preserves legacy inbox and blocks direct Data API access', async () => {
     assert.equal((await pg.query<{ access_mode: string }>('SELECT access_mode FROM conversations WHERE id=$1', [legacyConversation])).rows[0].access_mode, 'INBOX');
-    for (const table of ['conversation_members', 'communication_events', 'communication_tickets']) {
+    for (const table of ['conversation_members', 'communication_events', 'communication_tickets', 'communication_mentions', 'communication_reactions']) {
       const result = await pg.query<{ relrowsecurity: boolean }>('SELECT relrowsecurity FROM pg_class WHERE relname=$1', [table]);
       assert.equal(result.rows[0].relrowsecurity, true);
       const privileges = await pg.query<{ allowed: boolean }>("SELECT has_table_privilege('authenticated',$1,'SELECT') AS allowed", [table]);
@@ -191,6 +191,132 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     await service.consumeTicket(id, ticket.ticket);
     await assert.rejects(service.consumeTicket(id, ticket.ticket));
   });
+
+  await t.test('channel discovery is tenant scoped and staff cannot create channels', async () => {
+    await pg.query("UPDATE users SET role='staff' WHERE id=$1", [outsider.userId]);
+    assert.equal((await service.capabilities(outsider)).canCreateChannels, false);
+    const denied = await app.inject({method:'POST',url:'/comms',headers:headers('outsider'),payload:{type:'CHANNEL',name:'Denied'}});
+    assert.equal(denied.statusCode,403,denied.body);
+    const publicChannel = await service.create(owner,{type:'CHANNEL',name:'Discovery alpha',memberUserIds:[]});
+    const privateChannel = await service.create(owner,{type:'PRIVATE_CHANNEL',name:'Discovery secret',memberUserIds:[]});
+    const found = await service.discover(outsider,{search:'Discovery',limit:1});
+    assert.deepEqual(found.data.map(c=>c.id),[publicChannel.id]);
+    assert.equal(found.nextCursor,null);
+    assert.deepEqual((await service.discover(other,{search:'Discovery',limit:50})).data,[]);
+    await assert.rejects(service.join(outsider,String(privateChannel.id)),{statusCode:404});
+    await assert.rejects(service.join(other,String(publicChannel.id)),{statusCode:404});
+    await service.join(outsider,String(publicChannel.id));
+    await service.join(outsider,String(publicChannel.id));
+    const joined = await service.get(outsider,String(publicChannel.id));
+    assert.equal(joined.memberCount,2);
+    assert.deepEqual((await service.discover(outsider,{search:'Discovery',limit:50})).data,[]);
+    assert.ok((await service.list(outsider,{search:'alpha',channelsOnly:'true',limit:50})).data.some(c=>c.id===publicChannel.id));
+    await assert.rejects(service.create(owner,{type:'CHANNEL',name:'Discovery alpha',memberUserIds:[]}),{statusCode:409});
+  });
+  await t.test('ownership transfer, metadata, leave and archive preserve channel invariants', async () => {
+    const channel = await service.create(owner,{type:'CHANNEL',name:'Managed',memberUserIds:[member.userId]});
+    const cid=String(channel.id);
+    await assert.rejects(service.updateChannel(member,cid,{name:'Denied'}),{statusCode:403});
+    await assert.rejects(service.leave(owner,cid),{statusCode:409});
+    await assert.rejects(service.transfer(owner,cid,other.userId),{statusCode:400});
+    const updated=await service.updateChannel(owner,cid,{name:'Managed renamed',description:'A team space'});
+    assert.equal(updated.name,'Managed renamed');
+    assert.equal(updated.description,'A team space');
+    await service.transfer(owner,cid,member.userId);
+    assert.equal((await service.get(member,cid)).memberRole,'OWNER');
+    assert.equal((await service.get(owner,cid)).memberRole,'ADMIN');
+    await service.leave(owner,cid);
+    await assert.rejects(service.get(owner,cid),{statusCode:404});
+    const archived=await service.archive(member,cid);
+    assert.ok(archived.archivedAt);
+    assert.equal((await service.list(member,{search:'Managed renamed',limit:50})).data.length,0);
+    await assert.rejects(service.join(outsider,cid),{statusCode:404});
+    await assert.rejects(service.post(member,cid,{body:'Read only'}),{statusCode:409});
+    assert.ok(await service.messages(member,cid,{limit:50}));
+  });
+  await t.test('persisted mentions validate membership, ranges and safe text; invalid writes roll back', async () => {
+    const channel=await service.create(owner,{type:'PRIVATE_CHANNEL',name:'Mentions',memberUserIds:[member.userId]});
+    const cid=String(channel.id),body='Hello @Test member <script>alert(1)</script>',mentions=[{userId:member.userId,start:6,end:18}];
+    const posted=NativeMessageSchema.parse(await service.post(owner,cid,{body,mentions,clientMessageId:randomUUID()}));
+    assert.equal(posted.body,body);
+    assert.deepEqual(posted.mentions,[{...mentions[0],name:'Test member'}]);
+    for(const invalid of [[{...mentions[0],userId:other.userId}],[{...mentions[0],userId:outsider.userId}],[{...mentions[0],start:5}],[mentions[0],mentions[0]]]) {
+      await assert.rejects(service.post(owner,cid,{body,mentions:invalid}),{statusCode:400});
+    }
+    assert.equal((await service.messages(owner,cid,{limit:50})).data.length,1);
+    const people=await service.people(member,cid,{search:'Test',limit:50});
+    assert.deepEqual(new Set(people.data.map(p=>p.userId)),new Set([owner.userId,member.userId]));
+    await assert.rejects(service.people(outsider,cid,{limit:50}),{statusCode:404});
+    await assert.rejects(service.people(member,cid,{limit:50},true),{statusCode:403});
+    await assert.rejects(pg.query("INSERT INTO communication_mentions(tenant_id,conversation_id,message_id,user_id,start_offset,end_offset,display_name) VALUES ($1,$2,$3,$4,0,1,'Secret')",[owner.tenantId,cid,posted.id,other.userId]),/COMMUNICATION_ANNOTATION_SCOPE_INVALID/);
+  });
+  await t.test('send retries are idempotent and mutations enforce authorship and edit conflicts', async () => {
+    const channel=await service.create(owner,{type:'PRIVATE_CHANNEL',name:'Edit and retry',memberUserIds:[member.userId]});
+    const cid=String(channel.id),clientMessageId=randomUUID();
+    const first=NativeMessageSchema.parse(await service.post(owner,cid,{body:'Original',clientMessageId}));
+    const retry=await service.post(owner,cid,{body:'Original',clientMessageId});
+    assert.equal(retry.id,first.id);
+    assert.equal((await service.messages(owner,cid,{limit:50})).data.length,1);
+    await assert.rejects(service.post(owner,cid,{body:'Changed retry',clientMessageId}),{statusCode:409});
+    await assert.rejects(service.editMessage(member,cid,first.id,{body:'Impersonation'}),{statusCode:403});
+    await assert.rejects(service.editMessage(member,cid,first.id,null),{statusCode:403});
+    await assert.rejects(service.editMessage(outsider,cid,first.id,{body:'Secret'}),{statusCode:404});
+    await assert.rejects(service.editMessage(owner,cid,first.id,{body:'Stale',expectedUpdatedAt:'2000-01-01T00:00:00.000Z'}),{statusCode:409});
+    const edited=NativeMessageSchema.parse(await service.editMessage(owner,cid,first.id,{body:'Edited',expectedUpdatedAt:first.updatedAt}));
+    assert.equal(edited.body,'Edited'); assert.ok(edited.editedAt);
+    const reply=await service.post(member,cid,{body:'Reply survives',parentMessageId:first.id});
+    await service.reaction(member,cid,first.id,{emoji:'👍',active:true});
+    const deleted=NativeMessageSchema.parse(await service.editMessage(owner,cid,first.id,null));
+    assert.equal(deleted.body,null); assert.ok(deleted.deletedAt); assert.equal(deleted.replyCount,1);
+    assert.deepEqual(deleted.reactions,[]);assert.deepEqual(deleted.mentions,[]);
+    assert.equal((await service.messages(member,cid,{parentMessageId:first.id,limit:50})).data[0].id,reply.id);
+    await service.post(member,cid,{body:'Another reply',parentMessageId:first.id});
+    await assert.rejects(service.editMessage(owner,cid,first.id,{body:'Resurrect'}),{statusCode:409});
+    const events=await service.events(member,cid,'0');
+    assert.ok(events.some(e=>e.type==='message.updated'));assert.ok(events.some(e=>e.type==='message.deleted'));
+    const foreign=await service.resolveMessages(other,String((await service.create(other,{type:'CHANNEL',name:'Resolve isolation',memberUserIds:[]})).id),[first.id]);
+    assert.deepEqual(foreign,[]);
+  });
+  await t.test('reactions are persistent, idempotent, scoped and removed independently', async () => {
+    const channel=await service.create(owner,{type:'CHANNEL',name:'Reactions',memberUserIds:[member.userId]});
+    const cid=String(channel.id),message=await service.post(owner,cid,{body:'React'});
+    await service.reaction(owner,cid,message.id,{emoji:'👍',active:true});
+    await service.reaction(owner,cid,message.id,{emoji:'👍',active:true});
+    const result=await service.reaction(member,cid,message.id,{emoji:'👍',active:true});
+    assert.deepEqual(result.reactions,[{emoji:'👍',count:2,mine:true}]);
+    const removed=await service.reaction(owner,cid,message.id,{emoji:'👍',active:false});
+    assert.deepEqual(removed.reactions,[{emoji:'👍',count:1,mine:false}]);
+    await assert.rejects(service.reaction(outsider,cid,message.id,{emoji:'👍',active:true}),{statusCode:404});
+    const invalid=await app.inject({method:'PUT',url:`/comms/${cid}/messages/${message.id}/reactions`,headers:headers('member'),payload:{emoji:'🚫',active:true}});
+    assert.equal(invalid.statusCode,400);
+    await assert.rejects(pg.query("INSERT INTO communication_reactions(tenant_id,conversation_id,message_id,user_id,emoji) VALUES ($1,$2,$3,$4,'👍')",[owner.tenantId,cid,message.id,other.userId]),/COMMUNICATION_ANNOTATION_SCOPE_INVALID/);
+  });
+  await t.test('workspace feed filters private channels, replays across channels and revokes removed access', async () => {
+    const a=String((await service.create(owner,{type:'PRIVATE_CHANNEL',name:'Feed A',memberUserIds:[member.userId]})).id);
+    const b=String((await service.create(owner,{type:'CHANNEL',name:'Feed B',memberUserIds:[member.userId]})).id);
+    const secret=String((await service.create(owner,{type:'PRIVATE_CHANNEL',name:'Feed secret',memberUserIds:[]})).id);
+    const ticket=await service.ticket(member,null);
+    const received: {id:string;type:string;conversationId:string;resourceId:string}[]=[];
+    const socket=await app.injectWS(`/comms/events?ticket=${ticket.ticket}&after=${ticket.cursor}`,{}, {onOpen:ws=>ws.on('message',data=>received.push(JSON.parse(data.toString())))});
+    const waitFor=async(predicate:()=>boolean)=>{const until=Date.now()+5000;while(!predicate() && Date.now()<until)await new Promise(resolve=>setTimeout(resolve,30));assert.ok(predicate(),'Expected realtime event');};
+    const first=await service.post(owner,a,{body:'Across A'});
+    const second=await service.post(owner,b,{body:'Across B'});
+    await service.post(owner,secret,{body:'Hidden'});
+    await waitFor(()=>received.some(e=>e.resourceId===first.id)&&received.some(e=>e.resourceId===second.id));
+    assert.ok(received.every(e=>e.conversationId!==secret));
+    socket.close();
+    const cursor=received.at(-1)!.id;
+    const edited=await service.editMessage(owner,b,second.id,{body:'While disconnected'});
+    const replay=await service.events(member,null,cursor);
+    assert.ok(replay.some(e=>e.resourceId===edited.id && e.type==='message.updated'));
+    await service.removeMember(owner,a,member.userId);
+    const afterRemoval=await service.events(member,null,ticket.cursor);
+    assert.ok(afterRemoval.some(e=>e.conversationId===a && e.type==='conversation.member_left'));
+    assert.ok(afterRemoval.every(e=>e.conversationId!==a || e.type==='conversation.member_left'));
+    await assert.rejects(service.resolveMessages(member,a,[first.id]),{statusCode:404});
+    await assert.rejects(service.consumeTicket(null,ticket.ticket),{statusCode:401});
+  });
+
   await t.test('authorized WebSocket replays durable events and closes after removal', async () => {
     const ticket = await service.ticket(member, id);
     const received: string[] = [];

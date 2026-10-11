@@ -54,6 +54,7 @@ export function ChatWorkspace() {
   const refresh=useCallback(async()=>{
     if(!conversationId)return;
     const current=await chatApi.channel(conversationId);
+    if(context.current.conversationId!==conversationId)return;
     setChannel(current);
     setChannels(values=>current.archivedAt?values.filter(c=>c.id!==current.id):values.map(c=>c.id===current.id?current:c));
   },[conversationId]);
@@ -150,7 +151,7 @@ export function ChatWorkspace() {
         <MessageTimeline key={channel.id} channel={channel} userId={capabilities.userId} subscribe={subscribe} revision={revision} drafts={drafts.current} openThread={message=>setParams({thread:message.id})} inaccessible={inaccessible} read={read}/>
       </> : <div className="chat-welcome"><div><MessageSquare size={32} aria-hidden="true"/></div><p className="chat-eyebrow">Together, in the loop</p><h2>{conversationId?'Opening your channel…':'Room for every conversation'}</h2><p>Keep team updates, questions and ideas in one place.<br/>Choose a channel to join the conversation.</p>{capabilities?.canCreateChannels && !conversationId && <button type="button" className="chat-primary" onClick={()=>setCreate(true)}><Plus size={16} aria-hidden="true"/>Create a channel</button>}</div>}
     </div>
-    {channel && capabilities && (threadId || details) && <aside className="chat-context-panel" onKeyDown={event=>{if(event.key==='Escape' && event.target===event.currentTarget)closePanel();}}>
+    {channel && capabilities && (threadId || details) && <aside className="chat-context-panel" onKeyDown={event=>{if(event.key==='Escape' && !event.defaultPrevented && !(event.target instanceof Element && event.target.closest('[role="dialog"]'))){event.preventDefault();closePanel();}}}>
       {threadId ? <ThreadPanel key={channel.id+threadId} channel={channel} userId={capabilities.userId} rootId={threadId} subscribe={subscribe} revision={revision} drafts={drafts.current} close={closePanel} inaccessible={inaccessible} read={read}/> : <ChannelDetails key={channel.id} channel={channel} userId={capabilities.userId} refresh={refresh} close={closePanel} closed={inaccessible}/>}
     </aside>}
     {create && <CreateChannelDialog close={()=>setCreate(false)} created={value=>{setCreate(false);setChannels(channels=>[...channels.filter(c=>c.id!==value.id),value]);choose(value.id);setNotice('Channel created');}}/>}
