@@ -223,6 +223,9 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     assert.equal(updated.name,'Managed renamed');
     assert.equal(updated.description,'A team space');
     await service.transfer(owner,cid,member.userId);
+    const transferAudit=(await pg.query<{metadata:{newOwnerUserId:string;memberId?:string}}>("SELECT metadata FROM account_access_audit_events WHERE action='COMMUNICATION_OWNERSHIP_TRANSFERRED' AND metadata->>'conversationId'=$1",[cid])).rows[0];
+    assert.equal(transferAudit.metadata.newOwnerUserId,member.userId);
+    assert.equal(transferAudit.metadata.memberId,undefined);
     assert.equal((await service.get(member,cid)).memberRole,'OWNER');
     assert.equal((await service.get(owner,cid)).memberRole,'ADMIN');
     await service.leave(owner,cid);
@@ -264,6 +267,9 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     await assert.rejects(service.editMessage(owner,cid,first.id,{body:'Stale',expectedUpdatedAt:'2000-01-01T00:00:00.000Z'}),{statusCode:409});
     const edited=NativeMessageSchema.parse(JSON.parse(JSON.stringify(await service.editMessage(owner,cid,first.id,{body:'Edited',expectedUpdatedAt:first.updatedAt}))));
     assert.equal(edited.body,'Edited'); assert.ok(edited.editedAt);
+    const editAudit=(await pg.query<{metadata:{messageId:string;memberId?:string}}>("SELECT metadata FROM account_access_audit_events WHERE action='COMMUNICATION_MESSAGE_EDITED' AND metadata->>'conversationId'=$1",[cid])).rows[0];
+    assert.equal(editAudit.metadata.messageId,first.id);
+    assert.equal(editAudit.metadata.memberId,undefined);
     const reply=await service.post(member,cid,{body:'Reply survives',parentMessageId:first.id});
     await service.reaction(member,cid,first.id,{emoji:'👍',active:true});
     const deleted=NativeMessageSchema.parse(JSON.parse(JSON.stringify(await service.editMessage(owner,cid,first.id,null))));

@@ -115,7 +115,7 @@ export class CommunicationsService {
       const [next] = await db.query(sql`SELECT id FROM conversation_members WHERE conversation_id=${id} AND user_id=${userId} AND left_at IS NULL AND role IN ('ADMIN','MEMBER')`);
       if (!next) throw communicationError(400,'INVALID_MEMBER','Choose an active channel member');
       await db.query(sql`UPDATE conversation_members SET role=CASE WHEN user_id=${userId} THEN 'OWNER' ELSE 'ADMIN' END WHERE conversation_id=${id} AND user_id IN (${userId},${actor.userId})`);
-      await this.audit(db,actor,id,'COMMUNICATION_OWNERSHIP_TRANSFERRED',userId);
+      await this.audit(db,actor,id,'COMMUNICATION_OWNERSHIP_TRANSFERRED',undefined,{newOwnerUserId:userId});
       await this.event(db,actor,id,'conversation.updated',id);
       return {transferred:true};
     });
@@ -188,7 +188,7 @@ export class CommunicationsService {
       await db.query(sql`UPDATE conversation_messages SET body=${input?.body ?? ''},updated_at=now(),
         edited_at=${input ? sql`now()` : sql`edited_at`},deleted_at=${input ? sql`NULL` : sql`now()`} WHERE id=${messageId}`);
       if (input) await this.saveMentions(db,actor,id,messageId,input.body,input.mentions ?? []);
-      await this.audit(db,actor,id,input ? 'COMMUNICATION_MESSAGE_EDITED' : 'COMMUNICATION_MESSAGE_DELETED',messageId);
+      await this.audit(db,actor,id,input ? 'COMMUNICATION_MESSAGE_EDITED' : 'COMMUNICATION_MESSAGE_DELETED',undefined,{messageId});
       await this.event(db,actor,id,input ? 'message.updated' : 'message.deleted',messageId);
       return this.messageRow(db,actor,id,messageId);
     });
@@ -223,10 +223,10 @@ export class CommunicationsService {
       VALUES (${actor.tenantId},${id},${type},${resourceId})`);
   }
 
-  private async audit(db: CommunicationsDatabase, actor: CommunicationsActor, id: string, action: string, memberId?: string) {
+  private async audit(db: CommunicationsDatabase, actor: CommunicationsActor, id: string, action: string, memberId?: string, details: { messageId?: string; newOwnerUserId?: string } = {}) {
     await db.query(sql`INSERT INTO account_access_audit_events(auth_user_id,tenant_id,tenant_user_id,application_context,action,outcome,metadata)
       VALUES (${actor.authUserId},${actor.tenantId},${actor.userId},'TENANT',${action},'SUCCESS',
-        ${JSON.stringify({ conversationId: id, ...(memberId ? { memberId } : {}) })}::jsonb)`);
+        ${JSON.stringify({ conversationId: id, ...(memberId ? { memberId } : {}), ...details })}::jsonb)`);
   }
 
   private async activeUser(db: CommunicationsDatabase, actor: CommunicationsActor, userId: string) {
