@@ -7,7 +7,7 @@ import path from 'node:path';
 export async function verifyChatBrowser({app,service,owner,member}) {
   const root=fileURLToPath(new URL('../../../../',import.meta.url));
   const webRoot=path.join(root,'apps/web'),workerRequire=createRequire(path.join(root,'apps/site-worker/package.json')),webRequire=createRequire(path.join(webRoot,'package.json'));
-  const {chromium}=await import(pathToFileURL(workerRequire.resolve('playwright')).href);
+  const {chromium}=workerRequire('playwright');
   const {createServer}=await import(pathToFileURL(webRequire.resolve('vite')).href);
   const api=await app.listen({port:0,host:'127.0.0.1'});
   const vite=await createServer({
