@@ -1,6 +1,6 @@
 import {createContext,useContext,useEffect,useRef} from 'react';
 import type {ChatEphemeral,ChatSignal,NativeMessage} from '@ks-os/contracts';
-export const ChatLiveContext=createContext<{snapshot:ChatEphemeral|null;signal:(signal:ChatSignal)=>void}>({snapshot:null,signal:()=>{}});
+export const ChatLiveContext=createContext<{snapshot:ChatEphemeral|null;activeConversationId?:string;signal:(signal:ChatSignal)=>void}>({snapshot:null,signal:()=>{}});
 export function PresenceLabel({state}:{state?:'ONLINE'|'AWAY'|'OFFLINE'}) {
   const label=state==='ONLINE'?'Online':state==='AWAY'?'Away':'Offline';
   return <span className={'chat-presence '+label.toLowerCase()}><span aria-hidden="true">●</span> <span>{label}</span></span>;
@@ -17,9 +17,9 @@ export function TypingStatus({conversationId}:{conversationId:string}) {
   return <p className="chat-typing" aria-live="off">{people.length?people.map(person=>person.name).join(', ')+(people.length===1?' is typing…':' are typing…'):' '}</p>;
 }
 export function useTyping(conversationId:string) {
-  const {snapshot,signal}=useContext(ChatLiveContext);
+  const {snapshot,signal,activeConversationId}=useContext(ChatLiveContext);
   const timer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined),last=useRef(0);
-  const enabled=snapshot?.conversationId===conversationId && snapshot.readers.length>0;
+  const enabled=activeConversationId===conversationId || (snapshot?.conversationId===conversationId && snapshot.readers.length>0);
   useEffect(()=>()=>{clearTimeout(timer.current);if(enabled)signal({type:'typing',active:false});},[conversationId,enabled,signal]);
   return (active:boolean)=>{
     if(!enabled)return;

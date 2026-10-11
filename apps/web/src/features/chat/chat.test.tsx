@@ -202,3 +202,12 @@ it('expires typing and presence locally if the connection stops receiving fresh 
   await vi.advanceTimersByTimeAsync(40000);expect(ephemeral.mock.lastCall?.[0].presence[0].state).toBe('OFFLINE');
   stop();
 });
+
+it('sends typing immediately after opening a DM, before its first presence snapshot',()=>{
+  vi.useFakeTimers();const signal=vi.fn();
+  render(<ChatLiveContext.Provider value={{snapshot:null,activeConversationId:channelId,signal}}><MessageComposer channelId={channelId} send={vi.fn()}/></ChatLiveContext.Provider>);
+  fireEvent.change(screen.getByRole('combobox',{name:'Message'}),{target:{value:'Hello'}});
+  expect(signal).toHaveBeenCalledWith({type:'typing',active:true});
+  act(()=>vi.advanceTimersByTime(3001));
+  expect(signal).toHaveBeenLastCalledWith({type:'typing',active:false});
+});

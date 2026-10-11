@@ -136,8 +136,8 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
         }
         if(signal.type==='typing'){
           const current=presence.watch(connectionId).conversationId;
-          if(!current)throw new Error('Choose a conversation');
-          await service.authorizeTyping(subscription.actor,current);
+          if(signal.active){if(!current)throw new Error('Choose a conversation');await service.authorizeTyping(subscription.actor,current);}
+          else if(current)await service.get(subscription.actor,current);
         }
         if(!stopped)presence.signal(connectionId,signal);
       }).catch(()=>{stop();socket.close(1008,'Chat signal not available');});

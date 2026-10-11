@@ -138,7 +138,7 @@ export function ChatWorkspace() {
   const choose=(id:string)=>{setNotice('');navigate('/app/chat/'+id);};
   const run=async(work:()=>Promise<void>)=>{setBusy(true);setError('');try{await work();}catch(cause){setError(cause instanceof Error?cause.message:'Chat could not complete this request');}finally{setBusy(false);}};
   const status={connecting:'Connecting…',connected:'Connected',reconnecting:'Reconnecting…',unavailable:'Sign-in required'}[connection];
-  return <ChatLiveContext.Provider value={{snapshot,signal}}><div className={'chat-workspace'+(conversationId?' chat-has-channel':'')+((threadId || details)?' chat-has-panel':'')}>
+  return <ChatLiveContext.Provider value={{snapshot,signal,activeConversationId:channel && ['DIRECT','GROUP_DIRECT'].includes(channel.type)?channel.id:undefined}}><div className={'chat-workspace'+(conversationId?' chat-has-channel':'')+((threadId || details)?' chat-has-panel':'')}>
     <aside className="chat-channel-nav" aria-label="Conversation navigation"><header className="chat-nav-header"><div><p className="chat-eyebrow">Your workspace</p><h1 ref={listHeading} tabIndex={-1}>Chat</h1><small>{channels.filter(c=>Boolean(c.unreadCount)).length} unread conversations</small></div>{capabilities?.canCreateChannels && <button type="button" aria-label="Create channel" title="Create channel" onClick={()=>setCreate(true)}><Plus size={20} aria-hidden="true"/></button>}</header>
       {!conversationId && <>{error && <p role="alert" className="chat-error">{error}</p>}{notice && <p role="status" className="chat-notice">{notice}</p>}</>}
       <button type="button" className="chat-discover-toggle" onClick={()=>setNewMessage(true)}><MessageSquare size={16} aria-hidden="true"/>New message</button>
