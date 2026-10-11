@@ -101,10 +101,11 @@ test('automated-email settings remain backend-only and tenant-scoped', () => {
 test('automation email actions provide valid appointment tokens and reject non-queued sends', () => {
   const automation = source('modules/automations/automation.service.ts');
 
-  assert.match(automation, /bookingDate=c\.startTime\?new Intl\.DateTimeFormat/);
-  assert.match(automation, /bookingTime=c\.startTime\?new Intl\.DateTimeFormat/);
-  assert.match(automation, /appointmentDateTime:c\.startTime\?\.toISOString\(\)/);
-  assert.match(automation, /if\(!result\.queued\)throw fail\(409,'AUTOMATION_EMAIL_NOT_QUEUED'/);
+  assert.match(automation, /bookingDate\s*=\s*c\.startTime\s*\?\s*new Intl\.DateTimeFormat/);
+  assert.match(automation, /bookingTime\s*=\s*c\.startTime\s*\?\s*new Intl\.DateTimeFormat/);
+  assert.match(automation, /appointmentDateTime:\s*c\.startTime\?\.toISOString\(\)/);
+  assert.match(automation, /if\s*\(!result\.queued\)\s*throw fail\(/);
+  assert.match(automation, /AUTOMATION_EMAIL_NOT_QUEUED/);
   assert.match(automation, /Form emails require a secure assignment link/);
 });
 

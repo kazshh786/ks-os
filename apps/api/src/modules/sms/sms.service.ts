@@ -1,3 +1,4 @@
+import { automationDeliveryState } from '../automations/automation-delivery.js';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { clients, getDatabase, reviewInvitations, smsOutbox, tenants } from '@ks-os/database';
 import { renderSms, decideOutboxRetry, type SmsTemplateKey } from '@ks-os/notifications';
@@ -32,6 +33,10 @@ export class SmsService {
     const claimed = await db.execute(sql`UPDATE sms_outbox SET status='PROCESSING' WHERE id IN (SELECT id FROM sms_outbox WHERE status='PENDING' AND scheduled_for<=now() AND next_attempt_at<=now() ORDER BY next_attempt_at FOR UPDATE SKIP LOCKED LIMIT ${limit}) RETURNING *`);
     for (const row of claimed.rows as any[]) {
       try {
+        const autopilotState=await automationDeliveryState(row.tenant_id??'',row.idempotency_key,db,row.template_key);
+        if(autopilotState!=='READY'){
+          await db.update(smsOutbox).set({status:autopilotState==='PAUSED'?'PENDING':'CANCELLED',nextAttemptAt:new Date(Date.now()+300000),lastErrorCode:autopilotState==='PAUSED'?'AUTOMATION_PAUSED':'AUTOMATION_STATE_CHANGED'}).where(eq(smsOutbox.id,row.id));continue;
+        }
         if (row.valid_until && new Date(row.valid_until) <= new Date()) { await db.update(smsOutbox).set({ status: 'EXPIRED', failedAt: new Date(), lastErrorCode: 'EXPIRED' }).where(eq(smsOutbox.id, row.id)); continue; }
         const [tenant] = await db.select().from(tenants).where(eq(tenants.id, row.tenant_id)).limit(1);
         if (!tenant?.smsEnabled) { await db.update(smsOutbox).set({ status: 'SUPPRESSED', lastErrorCode: 'SMS_DISABLED' }).where(eq(smsOutbox.id, row.id)); continue; }

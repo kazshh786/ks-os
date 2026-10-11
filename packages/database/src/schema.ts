@@ -756,6 +756,8 @@ export const staffPricing = pgTable('staff_pricing', {
 });
 
 export const automationRules = pgTable('automation_rules', {
+  managedTemplateKey: varchar('managed_template_key',{length:80}),
+  managedTemplateVersion: varchar('managed_template_version',{length:20}),
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 120 }).notNull(),
@@ -784,6 +786,7 @@ export const automationRuleActions = pgTable('automation_rule_actions', {
 }, (table) => ({ rulePositionUnique: uniqueIndex('automation_rule_actions_rule_position_unique').on(table.automationRuleId, table.position) }));
 
 export const businessEvents = pgTable('business_events', {
+  claimedAt: timestamp('claimed_at',{withTimezone:true}),
   id: varchar('id', { length: 255 }).primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   eventType: varchar('event_type', { length: 60 }).notNull(),
@@ -830,6 +833,7 @@ export const automationActionRuns = pgTable('automation_action_runs', {
 });
 
 export const internalNotifications = pgTable('internal_notifications', {
+  automationActionRunId: uuid('automation_action_run_id').references(()=>automationActionRuns.id),
   id: uuid('id').defaultRandom().primaryKey(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   recipientUserId: uuid('recipient_user_id').references(() => users.id, { onDelete: 'set null' }), recipientRole: varchar('recipient_role', { length: 20 }),
   type: varchar('type', { length: 60 }).notNull(), title: varchar('title', { length: 160 }).notNull(), message: varchar('message', { length: 500 }).notNull(),
@@ -864,7 +868,7 @@ export const tasks = pgTable('tasks', {
   publicReference: uuid('public_reference').defaultRandom().notNull().unique(),
   id:uuid('id').defaultRandom().primaryKey(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),
   title:varchar('title',{length:180}).notNull(),description:text('description'),notes:text('notes'),status:varchar('status',{length:20}).default('OPEN').notNull(),priority:varchar('priority',{length:20}).default('NORMAL').notNull(),
-  assignedUserId:uuid('assigned_user_id').references(()=>users.id,{onDelete:'set null'}),createdByUserId:uuid('created_by_user_id').notNull().references(()=>users.id,{onDelete:'restrict'}),dueAt:timestamp('due_at',{withTimezone:true}),
+  assignedUserId:uuid('assigned_user_id').references(()=>users.id,{onDelete:'set null'}),createdByUserId:uuid('created_by_user_id').references(()=>users.id,{onDelete:'restrict'}),dueAt:timestamp('due_at',{withTimezone:true}),
   completedAt:timestamp('completed_at',{withTimezone:true}),completedByUserId:uuid('completed_by_user_id').references(()=>users.id,{onDelete:'set null'}),cancelledAt:timestamp('cancelled_at',{withTimezone:true}),cancelledByUserId:uuid('cancelled_by_user_id').references(()=>users.id,{onDelete:'set null'}),
   sourceType:varchar('source_type',{length:30}).default('MANUAL').notNull(),sourceId:uuid('source_id'),deduplicationKey:varchar('deduplication_key',{length:255}),
   appointmentId:uuid('appointment_id').references(()=>appointments.id,{onDelete:'set null'}),clientId:uuid('client_id').references(()=>clients.id,{onDelete:'set null'}),operationsIssueId:uuid('operations_issue_id').references(()=>operationsIssues.id,{onDelete:'set null'}),

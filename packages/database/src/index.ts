@@ -1,3 +1,5 @@
+export * from './autopilot-schema.js';
+import * as autopilotSchema from './autopilot-schema.js';
 export * from './invoice-schema.js';
 export * from './schema.js';
 export * from './sales-schema.js';
@@ -23,7 +25,8 @@ import * as conversationSchema from './conversation-schema.js';
 import * as searchResearchSchema from './search-research-schema.js';
 import { resolveDatabasePoolMax } from './pool-config.js';
 
-const schema: typeof invoiceSchema & typeof coreSchema & typeof salesSchema & typeof workSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema & typeof searchResearchSchema = {
+const schema: typeof autopilotSchema & typeof invoiceSchema & typeof coreSchema & typeof salesSchema & typeof workSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema & typeof searchResearchSchema = {
+  ...autopilotSchema,
   ...invoiceSchema,
   ...coreSchema,
   ...salesSchema,

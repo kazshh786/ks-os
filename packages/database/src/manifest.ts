@@ -93,4 +93,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20260921120000_customer_360_references_indexes.sql', order: 86, description: 'Public source references and tenant customer date indexes for Customer 360 without event duplication' },
   { filename: '20260921140000_sales_booking_relationship.sql', order: 87, description: 'Optional tenant and customer constrained Sales provenance on canonical appointments' },
   { filename: '20260921160000_universal_invoices.sql', order: 88, description: 'Canonical invoices, payment allocations, refund-aware receivables and tenant numbering' },
+  { filename: '20261011120000_managed_service_autopilot.sql', order: 89, description: 'Managed playbook provenance, bounded approval queue, controls, transactional lifecycle events and detector indexes' },
 ];

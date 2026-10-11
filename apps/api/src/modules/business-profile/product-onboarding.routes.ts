@@ -1,3 +1,4 @@
+import { installManagedPlaybooks } from '../automations/managed-playbooks.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { getDatabase, tenants, accountAccessAuditEvents } from '@ks-os/database';
@@ -20,6 +21,7 @@ const databaseStore:ProductOnboardingStore = {
         businessProfile:configuration,updatedAt:new Date(),
       }).where(eq(tenants.id,tenantId)).returning({id:tenants.id});
       if(!tenant)throw fail(404,'WORKSPACE_NOT_FOUND','Business workspace not found.');
+      await installManagedPlaybooks(tenantId,tx);
       await tx.insert(accountAccessAuditEvents).values({
         authUserId:actor.authUserId,tenantId,tenantUserId:actor.tenantUserId,
         applicationContext:'TENANT',action:'PRODUCT_ONBOARDING_SAVED',requestId:actor.requestId,metadata:{version:1},

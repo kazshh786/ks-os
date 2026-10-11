@@ -13,3 +13,7 @@ Responses use `{ data, meta? }`; errors use the platform standard and include re
 Webhook event names are versioned, for example `booking.created.v1`. Production targets must be HTTPS and cannot resolve to loopback, link-local, RFC1918, or unique-local addresses. Deliveries use `KS-Webhook-Id`, `KS-Webhook-Timestamp`, and `KS-Webhook-Signature: v1=<hex>`, where the signature is HMAC-SHA256 over `<timestamp>.<raw-body>`. Reject timestamps older than five minutes and deduplicate webhook IDs. Secrets are shown once and encrypted at rest.
 
 Delivery workers must use a five-second timeout, no redirects, a 256 KiB payload ceiling, DNS revalidation, exponential backoff with jitter, and dead-letter after the configured attempt ceiling. Never block booking/payment commits on an outbound request. Zapier REST hooks and Make custom webhooks subscribe to these same events; public marketplace publication requires separate approval.
+
+## Managed Service Autopilot
+
+See [Managed Service Autopilot](../automation/managed-service-autopilot.md) for the universal event catalog, source adapters, approvals, managed defaults, worker safeguards and migration 89. Owner routes are `/api/v1/autopilot`, `/controls` and `/approvals/:reference/decision`. Agency routes are `/api/v1/agency/autopilot` and `/:reference/emergency-stop`. Existing custom-rule routes remain supported.

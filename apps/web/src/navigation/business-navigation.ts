@@ -11,6 +11,7 @@ export const businessNavigation: NavigationGroup[] = [
     id: 'primary',
     items: [
       { id: 'dashboard', label: 'Dashboard', href: '/app/dashboard', icon: LayoutDashboard, roles: ['owner'] },
+      { id: 'autopilot', label: 'Autopilot', href: '/app/autopilot', icon: Workflow, roles: ['owner'], requiredEntitlement: 'automations.enabled', requiredPlan: 'GROWTH', lockedBenefit: 'Let KS OS handle routine follow-up and surface the decisions that need you.' },
       { id: 'services', label: 'Services', href: '/app/services', icon: Scissors, roles: ['owner'] },
       { id: 'calendar', label: 'Booking Calendar', href: '/app/calendar', icon: CalendarDays, permissionsAny: ['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL'], activePrefixes: ['/app/bookings'] },
       { id: 'tasks', label: 'Tasks', href: '/app/tasks/my', icon: ClipboardList, permissionsAny: ['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL'], activePrefixes: ['/app/tasks'] },
@@ -73,7 +74,7 @@ export const businessSecondaryActions = [
 
 /** Map established navigation IDs onto canonical engines without changing routes. */
 export const navigationModule: Readonly<Record<string, ModuleKey>> = {
-  dashboard:'dashboard',services:'services',calendar:'calendar',tasks:'tasks',operations:'operations',
+  autopilot:'automations',dashboard:'dashboard',services:'services',calendar:'calendar',tasks:'tasks',operations:'operations',
   invoices:'invoices',customers:'crm',forms:'forms',sales:'sales',pos:'pos',payments:'payments',finance:'finance',analytics:'analytics',
   reports:'reports',reviews:'reputation','email-marketing':'email-marketing',inventory:'inventory',
   work:'work',automations:'automations',team:'team',locations:'locations','booking-page':'booking-page',

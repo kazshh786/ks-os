@@ -1,3 +1,4 @@
+import { autopilotRoutes, agencyAutopilotRoutes } from './modules/automations/autopilot.routes.js';
 import { invoiceRoutes } from './modules/invoices/invoice.routes.js';
 import { customer360Routes } from './modules/customer-360/customer-360.routes.js';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -224,6 +225,8 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(paymentRoutes, { prefix: '/api/v1/payments' });
   fastify.register(financeRoutes, { prefix: '/api/v1/finance' });
   fastify.register(emailRoutes, { prefix: '/api/v1/communications' });
+  fastify.register(autopilotRoutes, { prefix: '/api/v1/autopilot' });
+  fastify.register(agencyAutopilotRoutes, { prefix: '/api/v1/agency/autopilot' });
   fastify.register(automationRoutes, { prefix: '/api/v1/automations' });
   fastify.register(automationRunRoutes, { prefix: '/api/v1/automation-runs' });
   fastify.register(automationActionRoutes, { prefix: '/api/v1/automation-actions' });
