@@ -1,3 +1,5 @@
+import { AutopilotPage } from './features/autopilot/AutopilotPage';
+import { AgencyAutopilotPage } from './features/autopilot/AgencyAutopilotPage';
 import { InvoiceWorkspace, InvoiceDetailPage, InvoiceCreatePage } from './features/invoices/InvoicePages';
 import React from 'react';
 import ProductOnboardingPage from './features/onboarding/ProductOnboardingPage';
@@ -227,6 +229,7 @@ const AppContent: React.FC = () => {
           <Route path="settings/booking/customer-management" element={<RoleRoute allowedRoles={['owner']}><CustomerBookingManagementSettings /></RoleRoute>} />
           <Route path="settings/booking-page" element={<RoleRoute allowedRoles={['owner']}><BookingPageSettings /></RoleRoute>} />
           <Route path="settings/security" element={<SecuritySettingsPage context="TENANT" />} />
+          <Route path="autopilot" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Managed Service Autopilot" requiredPlan="GROWTH" benefit="Let KS OS handle routine follow-up and surface the decisions that need you."><AutopilotPage /></EntitlementRoute></RoleRoute>} />
           <Route path="automations" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Workflow automations" requiredPlan="GROWTH" benefit="Automate confirmations, reminders, forms, rebooking and follow-up work."><AutomationsPage /></EntitlementRoute></RoleRoute>} />
           <Route path="automations/new" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Workflow automations" requiredPlan="GROWTH" benefit="Automate confirmations, reminders, forms, rebooking and follow-up work."><AutomationBuilderPage /></EntitlementRoute></RoleRoute>} />
           <Route path="automations/:id" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Workflow automations" requiredPlan="GROWTH" benefit="Automate confirmations, reminders, forms, rebooking and follow-up work."><AutomationDetailPage /></EntitlementRoute></RoleRoute>} />
@@ -246,6 +249,7 @@ const AppContent: React.FC = () => {
         </Route>
 
         <Route path="/agency" element={<AgencyGuard><AgencyLayout /></AgencyGuard>}>
+          <Route path="autopilot" element={<AgencyCapabilityRoute capabilities={['fulfilment.read']}><AgencyAutopilotPage /></AgencyCapabilityRoute>} />
           <Route index element={<Navigate to="/agency/tenants" replace />} />
           <Route path="overview" element={<AgencyCapabilityRoute capabilities={['analytics.read']}><AgencyOverviewPage /></AgencyCapabilityRoute>} />
           <Route path="tenants" element={<AgencyCapabilityRoute capabilities={['tenants.read']}><AgencyTenantsPage /></AgencyCapabilityRoute>} />

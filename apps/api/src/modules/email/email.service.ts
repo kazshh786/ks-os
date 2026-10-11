@@ -1,3 +1,4 @@
+import { automationDeliveryState } from '../automations/automation-delivery.js';
 import {
   getDatabase,
   emailOutbox,
@@ -198,6 +199,10 @@ export class EmailService {
     for (const email of claimed.rows as any[]) {
       const nextAttempt = Number(email.attempt_count ?? 0) + 1;
       try {
+        const autopilotState=await automationDeliveryState(email.tenant_id??'',email.idempotency_key,db,email.template_key);
+        if(autopilotState!=='READY'){
+          await db.update(emailOutbox).set({status:autopilotState==='PAUSED'?'PENDING':'CANCELLED',nextAttemptAt:new Date(Date.now()+300000),lastErrorCode:autopilotState==='PAUSED'?'AUTOMATION_PAUSED':'AUTOMATION_STATE_CHANGED'}).where(eq(emailOutbox.id,email.id));continue;
+        }
         const recipient = normalizeAndValidateEmailAddress(email.recipient_email, production);
         if (!recipient.valid) {
           await db.update(emailOutbox).set({

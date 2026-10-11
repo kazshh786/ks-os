@@ -129,3 +129,5 @@ export * from './work.js';
 export * from './customer-360.js';
 
 export * from './invoices.js';
+
+export * from './autopilot.js';

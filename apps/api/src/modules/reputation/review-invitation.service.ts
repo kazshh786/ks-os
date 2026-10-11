@@ -1,3 +1,4 @@
+import { automationDeliveryState } from '../automations/automation-delivery.js';
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
@@ -139,6 +140,7 @@ export class ReviewInvitationService {
         SELECT id FROM review_invitations
         WHERE (status='SCHEDULED' OR (status='QUEUED' AND updated_at<=now()-interval '10 minutes'))
           AND scheduled_for<=now() AND next_attempt_at<=now()
+          AND NOT EXISTS (SELECT 1 FROM automation_tenant_controls c WHERE c.tenant_id=review_invitations.tenant_id AND (c.outbound_paused OR c.emergency_stopped))
         ORDER BY next_attempt_at FOR UPDATE SKIP LOCKED LIMIT ${limit}
       ) RETURNING id, attempt_count
     `);
@@ -150,6 +152,9 @@ export class ReviewInvitationService {
         .where(eq(reviewInvitations.id, claim.id)).limit(1);
       if (!row) continue;
       try {
+        if(await automationDeliveryState(row.invitation.tenantId,'review:'+row.invitation.id,this.db,'review-invitation')==='PAUSED'){
+          await this.db.update(reviewInvitations).set({status:'SCHEDULED',nextAttemptAt:new Date(Date.now()+300000),attemptCount:Math.max(0,claim.attempt_count-1)}).where(eq(reviewInvitations.id,claim.id));continue;
+        }
         const eligibility = evaluateReviewEligibility({
           status: row.appointment.status, tenantActive: row.tenant.isActive, hasClient: true,
           isTest: row.appointment.isTest, isInternal: row.appointment.isInternal, explicitlyExcluded: row.appointment.reviewInvitationExcluded,

@@ -1,13 +1,17 @@
 import { z } from 'zod';
+import { UniversalEventTypes, SafeBusinessEventPayloadSchema, AutomationSourceSchema, AutopilotActionSchema } from './autopilot.js';
 
 export const BusinessEventTypeSchema = z.enum([
+  ...UniversalEventTypes,
   'BOOKING_CONFIRMED', 'BOOKING_RESCHEDULED', 'BOOKING_CANCELLED', 'APPOINTMENT_CHECKED_IN',
   'APPOINTMENT_COMPLETED', 'FORM_ASSIGNED', 'FORM_SUBMITTED', 'PAYMENT_SUCCEEDED', 'REFUND_SUCCEEDED',
   'SCHEDULED_BEFORE_APPOINTMENT', 'SCHEDULED_AFTER_APPOINTMENT',
 ]);
 export type BusinessEventType = z.infer<typeof BusinessEventTypeSchema>;
 
-export const TriggerSchema = z.discriminatedUnion('type', [
+export const TriggerSchema = z.union([
+  z.object({type:z.enum(UniversalEventTypes),config:z.object({}).strict()}).strict(),
+  z.discriminatedUnion('type', [
   z.object({ type: z.literal('BOOKING_CONFIRMED'), config: z.object({}).strict() }).strict(),
   z.object({ type: z.literal('BOOKING_RESCHEDULED'), config: z.object({}).strict() }).strict(),
   z.object({ type: z.literal('BOOKING_CANCELLED'), config: z.object({}).strict() }).strict(),
@@ -19,7 +23,7 @@ export const TriggerSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('REFUND_SUCCEEDED'), config: z.object({}).strict() }).strict(),
   z.object({ type: z.literal('SCHEDULED_BEFORE_APPOINTMENT'), config: z.object({ offsetMinutes: z.union([z.literal(2880), z.literal(1440), z.literal(120)]) }).strict() }).strict(),
   z.object({ type: z.literal('SCHEDULED_AFTER_APPOINTMENT'), config: z.object({ offsetMinutes: z.literal(1440) }).strict() }).strict(),
-]);
+] )]);
 
 const EmptyCondition = <T extends string>(type: T) => z.object({ type: z.literal(type) }).strict();
 export const AutomationConditionSchema = z.discriminatedUnion('type', [
@@ -37,6 +41,7 @@ const SmsTemplateSchema = z.enum(['booking-confirmed','booking-rescheduled','boo
 // CREATE_TASK has a cross-field refinement, so this must be a regular union:
 // Zod discriminated unions only accept bare object schemas, not ZodEffects.
 export const AutomationActionSchema = z.union([
+  AutopilotActionSchema,
   z.object({ type: z.literal('ASSIGN_FORM'), formId: z.string().uuid(), formVersionId: z.string().uuid().optional(), linkToAppointment: z.boolean().default(true) }).strict(),
   z.object({ type: z.literal('SEND_EMAIL'), templateKey: EmailTemplateSchema }).strict(),
   z.object({ type: z.literal('SEND_SMS'), templateKey: SmsTemplateSchema }).strict(),
@@ -67,9 +72,13 @@ export const AutomationActionRunIdParamsSchema = z.object({ actionRunId: z.strin
 
 export const BusinessEventSchema = z.object({
   id: z.string().min(1).max(255), tenantId: z.string().uuid(), type: BusinessEventTypeSchema,
-  occurredAt: z.string().datetime(), sourceType: z.string().min(1).max(50), sourceId: z.string().uuid(),
-  payload: z.record(z.unknown()),
-}).strict();
+  occurredAt: z.string().datetime(), sourceType: AutomationSourceSchema, sourceId: z.string().uuid(),
+  payload: SafeBusinessEventPayloadSchema,
+}).strict().superRefine((event,ctx)=>{
+ const expected=event.type.startsWith('QUOTE_')?['quote']:event.type.startsWith('OPPORTUNITY_')?['sales_opportunity']:event.type.startsWith('WORK_')?['work_item']:event.type.startsWith('TASK_')?['task']:event.type.startsWith('INVOICE_')?['invoice']:event.type.startsWith('CUSTOMER_')?['client']:event.type.startsWith('FORM_')?['form_assignment']:event.type.startsWith('PAYMENT_')||event.type.startsWith('REFUND_')?['appointment','payment']:['appointment'];
+ if(!expected.includes(event.sourceType))ctx.addIssue({code:z.ZodIssueCode.custom,path:['sourceType'],message:'Source is not valid for this event.'});
+ if(event.payload.tenantId&&event.payload.tenantId!==event.tenantId)ctx.addIssue({code:z.ZodIssueCode.custom,path:['payload'],message:'Tenant does not match.'});
+});
 export type BusinessEvent = z.infer<typeof BusinessEventSchema>;
 export type CreateAutomationInput = z.infer<typeof CreateAutomationSchema>;
 export type AutomationCondition = z.infer<typeof AutomationConditionSchema>;

@@ -39,6 +39,7 @@ export const agencyNavigation: NavigationGroup[] = [
     label: 'Work',
     items: [
       { id: 'onboarding', label: 'Work queue', href: '/agency/onboarding', icon: ClipboardCheck, agencyCapabilitiesAny: ['tenants.read'] },
+      { id: 'autopilot', label: 'Autopilot', href: '/agency/autopilot', icon: Activity, agencyCapabilitiesAny: ['fulfilment.read'] },
       { id: 'services', label: 'Managed delivery', href: '/agency/fulfilment', icon: FileCheck2, agencyCapabilitiesAny: ['fulfilment.read'] },
     ],
   },
