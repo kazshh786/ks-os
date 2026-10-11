@@ -1,0 +1,99 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { CommunicationsEvent, NativeConversation, NativeMessage } from '@ks-os/contracts';
+import { chatApi, ChatError } from './chat.api';
+import { mergeMessages } from './chat.realtime';
+import { MessageItem } from './MessageItem';
+import { MessageComposer, type Draft } from './MessageComposer';
+
+export type SubscribeChat = (listener: (event: CommunicationsEvent) => void) => () => void;
+export function MessageTimeline({ channel, userId, parent, subscribe, revision, drafts, openThread, inaccessible, read, label = 'Channel messages' }: {
+  channel: NativeConversation; userId: string; parent?: string; subscribe: SubscribeChat; revision: number; drafts: Map<string,Draft>;
+  openThread?: (message: NativeMessage) => void; inaccessible: () => void; read: (id: string) => Promise<void>; label?: string;
+}) {
+  const [messages,setMessages]=useState<NativeMessage[]>([]),[cursor,setCursor]=useState<string|null>(null),[loading,setLoading]=useState(true),[more,setMore]=useState(false),[error,setError]=useState(''),[newer,setNewer]=useState(false);
+  const scroll=useRef<HTMLDivElement>(null),bottom=useRef(true),live=useRef(true),frozen=useRef(false),seenRead=useRef(channel.lastReadPosition),preserve=useRef<{height:number;top:number}|null>(null),jump=useRef(true);
+  const draftKey=`${channel.id}:${parent || 'root'}`;
+  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
+  const fail=useCallback((cause:unknown)=>{if(!live.current)return;if(cause instanceof ChatError && [401,403,404].includes(cause.status)){setMessages([]);inaccessible();}else setError(cause instanceof Error?cause.message:'Could not load messages');},[inaccessible]);
+  const latest=useCallback(async()=>{
+    setLoading(true);setError('');
+    try{const page=await chatApi.messages(channel.id,parent);if(!live.current)return;jump.current=true;frozen.current=false;bottom.current=true;setNewer(false);setMessages(mergeMessages([],page.data));setCursor(page.nextCursor);}
+    catch(cause){fail(cause);}finally{if(live.current)setLoading(false);}
+  },[channel.id,parent,fail]);
+  useEffect(()=>{void latest();},[latest]);
+  // Reconcile a bounded window after reconnect, including edits and tombstones in older loaded pages.
+  const current=useRef(messages);current.current=messages;
+  useEffect(()=>{
+    if(!revision || !current.current.length)return;
+    let active=true;
+    const refresh=async()=>{
+      try{
+        const rows=await chatApi.resolve(channel.id,current.current.map(message=>message.id));
+        if(active)setMessages(m=>mergeMessages(m,rows));
+        if(!frozen.current){const page=await chatApi.messages(channel.id,parent);if(active)setMessages(m=>mergeMessages(m,page.data).slice(-200));}
+      }catch(cause){if(active)fail(cause);}
+    };void refresh();return()=>{active=false;};
+  },[revision,channel.id,parent,fail]);
+  const changed=useCallback((message:NativeMessage)=>{
+    if(!live.current || message.parentMessageId!==(parent ?? null))return;
+    setMessages(previous=>{
+      const existing=previous.some(m=>m.id===message.id);
+      if(frozen.current && !existing){setNewer(true);return previous;}
+      if(!existing && !bottom.current)setNewer(true);
+      jump.current=bottom.current;
+      const merged=mergeMessages(previous,[message]);
+      if(merged.length>200 && !bottom.current){frozen.current=true;setNewer(true);return previous;}
+      if(merged.length>200)setCursor(merged.at(-200)!.position);
+      return merged.slice(-200);
+    });
+  },[parent]);
+  useEffect(()=>{
+    let active=true,working=false;const pending=new Set<string>();
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const flush=async()=>{
+      working=true;
+      while(active && pending.size){const ids=[...pending];pending.clear();try{
+        const rows=await chatApi.resolve(channel.id,ids.slice(0,200));
+        if(!active)break;
+        const roots=new Set<string>();
+        for(const message of rows){changed(message);if(!parent && message.parentMessageId)roots.add(message.parentMessageId);}
+        if(roots.size){const rootRows=await chatApi.resolve(channel.id,[...roots]);if(active)rootRows.forEach(changed);}
+      }catch(cause){if(active)fail(cause);}}
+      working=false;
+    };
+    const unsubscribe=subscribe(event=>{if(event.conversationId!==channel.id || !event.type.startsWith('message.'))return;pending.add(event.resourceId);if(!working){clearTimeout(timer);timer=setTimeout(()=>void flush(),100);}});
+    return()=>{active=false;clearTimeout(timer);unsubscribe();};
+  },[channel.id,parent,subscribe,changed,fail]);
+  useLayoutEffect(()=>{
+    const element=scroll.current;if(!element)return;
+    if(preserve.current){element.scrollTop=preserve.current.top+element.scrollHeight-preserve.current.height;preserve.current=null;}
+    else if(jump.current){element.scrollTop=element.scrollHeight;jump.current=false;}
+  },[messages]);
+  const markVisible=useCallback(()=>{
+    const last=current.current.at(-1),element=scroll.current;
+    if(parent || frozen.current || !bottom.current || !last || channel.latestMessageId!==last.id || !element?.clientHeight || document.visibilityState!=='visible' || !document.hasFocus() || BigInt(last.position)<=BigInt(seenRead.current))return;
+    void read(last.id).then(()=>{seenRead.current=last.position;}).catch(fail);
+  },[channel.latestMessageId,parent,read,fail]);
+  useEffect(()=>{const timer=setTimeout(markVisible,1200);window.addEventListener('focus',markVisible);document.addEventListener('visibilitychange',markVisible);return()=>{clearTimeout(timer);window.removeEventListener('focus',markVisible);document.removeEventListener('visibilitychange',markVisible);};},[messages,markVisible]);
+  const older=async()=>{
+    if(!cursor || more)return;setMore(true);setError('');
+    try{const page=await chatApi.messages(channel.id,parent,cursor);if(!live.current)return;const element=scroll.current;if(element)preserve.current={height:element.scrollHeight,top:element.scrollTop};bottom.current=false;const merged=mergeMessages(current.current,page.data);if(merged.length>200){frozen.current=true;setNewer(true);}setMessages(merged.slice(0,200));setCursor(page.nextCursor);}
+    catch(cause){fail(cause);}finally{if(live.current)setMore(false);}
+  };
+  return <div className="chat-timeline-shell">
+    <div ref={scroll} className="chat-timeline" role="region" aria-label={label} tabIndex={0} onScroll={()=>{const el=scroll.current!;bottom.current=el.scrollHeight-el.scrollTop-el.clientHeight<50;}} onPointerUp={markVisible} onKeyUp={markVisible}>
+      {loading && <div role="status" className="chat-loading"><span className="sr-only">Loading messages</span>{[1,2,3].map(i=><div key={i} className="chat-skeleton"/>)}</div>}
+      {error && <div className="chat-error" role="alert">{error}<button type="button" onClick={()=>void latest()}>Try again</button></div>}
+      {!loading && cursor && <button type="button" className="chat-load-older" disabled={more} onClick={()=>void older()}>{more?'Loading…':'Load older messages'}</button>}
+      {!loading && !messages.length && !error && <div className="chat-empty"><h3>{parent?'Start this thread':'The conversation starts here'}</h3><p>{parent?'Reply to keep this discussion together.':'Share an update, ask a question, or say hello to your team.'}</p></div>}
+      {messages.map((message,index)=>{
+        const previous=messages[index-1],day=new Date(message.createdAt).toLocaleDateString();
+        const sameDay=previous && new Date(previous.createdAt).toLocaleDateString()===day;
+        const grouped=Boolean(sameDay && previous.senderId===message.senderId && new Date(message.createdAt).getTime()-new Date(previous.createdAt).getTime()<300000);
+        return <div key={message.id}>{!sameDay && <div className="chat-date"><span>{new Date(message.createdAt).toLocaleDateString([], {weekday:'short',day:'numeric',month:'long'})}</span></div>}<MessageItem message={message} grouped={grouped} userId={userId} archived={Boolean(channel.archivedAt)} thread={openThread} changed={changed}/></div>;
+      })}
+    </div>
+    {newer && <button type="button" className="chat-new-messages" onClick={()=>void latest()}>Back to latest messages ↓</button>}
+    <MessageComposer key={draftKey} channelId={channel.id} label={parent?'Reply to thread':`Message ${channel.name}`} initial={drafts.get(draftKey)} saveDraft={draft=>{if(draft.body)drafts.set(draftKey,draft);else drafts.delete(draftKey);}} disabled={Boolean(channel.archivedAt)} send={async draft=>{const message=await chatApi.send(channel.id,{...draft,parentMessageId:parent});if(!live.current)return;bottom.current=true;changed(message);if(frozen.current)await latest();}}/>
+  </div>;
+}

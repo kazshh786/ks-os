@@ -15,9 +15,19 @@ export const AddConversationMemberSchema = z.object({
   role: ConversationMemberRoleSchema.exclude(['OWNER']).default('MEMBER'),
 }).strict();
 export const CreateNativeMessageSchema = z.object({
-  body: z.string().trim().min(1).max(16000),
+  body: z.string().min(1).max(16000).refine(value => value.trim().length > 0, 'Write a message'),
   parentMessageId: z.string().uuid().optional(),
+  clientMessageId: z.string().uuid().optional(),
+  mentions: z.array(z.object({ userId: z.string().uuid(), start: z.number().int().nonnegative(), end: z.number().int().positive() }).strict()).max(50).optional(),
 }).strict();
+export const UpdateNativeMessageSchema = CreateNativeMessageSchema.pick({ body: true, mentions: true }).extend({ expectedUpdatedAt: z.string().datetime().optional() }).strict();
+export const UpdateNativeChannelSchema = CreateNativeConversationSchema.pick({ name: true, description: true }).partial().strict();
+export const NativeReactionSchema = z.enum(['👍', '❤️', '🎉', '😄', '👀', '✅']);
+export const SetNativeReactionSchema = z.object({ emoji: NativeReactionSchema, active: z.boolean() }).strict();
+export const ChannelDiscoveryQuerySchema = z.object({ search: z.string().trim().max(100).optional(), after: z.string().uuid().optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).strict();
+export const NativePeopleQuerySchema = ChannelDiscoveryQuerySchema;
+export const NativePersonSchema = z.object({ userId: z.string().uuid(), name: z.string(), role: ConversationMemberRoleSchema.optional() });
+export type NativePerson = z.infer<typeof NativePersonSchema>;
 export const NativeMessageQuerySchema = z.object({
   before: CommunicationPositionSchema.optional(),
   parentMessageId: z.string().uuid().optional(),
@@ -26,6 +36,8 @@ export const NativeMessageQuerySchema = z.object({
 export const NativeConversationQuerySchema = z.object({
   after: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  channelsOnly: z.enum(['true']).optional(),
+  search: z.string().trim().max(100).optional(),
 }).strict();
 export const MarkConversationReadSchema = z.object({ messageId: z.string().uuid() }).strict();
 export const NativeConversationSchema = z.object({
@@ -34,12 +46,16 @@ export const NativeConversationSchema = z.object({
   createdAt: z.string().datetime(), updatedAt: z.string().datetime(), archivedAt: z.string().datetime().nullable(),
   memberRole: ConversationMemberRoleSchema, lastReadPosition: CommunicationPositionSchema,
   lastReadAt: z.string().datetime().nullable(), unreadCount: z.number().int().nonnegative().optional(),
+  memberCount: z.number().int().nonnegative().optional(), latestMessageId: z.string().uuid().nullable().optional(),
 });
 export const NativeMessageSchema = z.object({
   id: z.string().uuid(), conversationId: z.string().uuid(), senderId: z.string().uuid().nullable(),
   body: z.string().nullable(), type: z.string(), parentMessageId: z.string().uuid().nullable(),
   position: CommunicationPositionSchema, createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
   editedAt: z.string().datetime().nullable(), deletedAt: z.string().datetime().nullable(), replyCount: z.number().int().nonnegative(),
+  senderName: z.string().optional(),
+  mentions: z.array(z.object({ userId: z.string().uuid(), name: z.string(), start: z.number().int(), end: z.number().int() })).optional(),
+  reactions: z.array(z.object({ emoji: NativeReactionSchema, count: z.number().int(), mine: z.boolean() })).optional(),
 });
 export const NativeConversationPageSchema = z.object({ data: z.array(NativeConversationSchema), nextCursor: z.string().uuid().nullable() });
 export const NativeMessagePageSchema = z.object({ data: z.array(NativeMessageSchema), nextCursor: CommunicationPositionSchema.nullable() });
@@ -50,7 +66,7 @@ export const CommunicationsEventSchema = z.object({
   id: CommunicationPositionSchema,
   tenantId: z.string().uuid(),
   conversationId: z.string().uuid(),
-  type: z.enum(['conversation.created', 'conversation.member_joined', 'conversation.member_left', 'message.created', 'conversation.read']),
+  type: z.enum(['conversation.created', 'conversation.member_joined', 'conversation.member_left', 'message.created', 'conversation.read', 'conversation.updated', 'message.updated', 'message.deleted', 'message.reaction']),
   occurredAt: z.string().datetime(),
   // Invalidation events deliberately carry no message bodies or participant details.
   resourceId: z.string().uuid(),

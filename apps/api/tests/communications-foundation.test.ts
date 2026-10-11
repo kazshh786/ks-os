@@ -21,7 +21,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   await pg.exec(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
     CREATE TABLE tenants(id uuid PRIMARY KEY,is_active boolean DEFAULT true,lifecycle_status text DEFAULT 'ACTIVE');
-    CREATE TABLE users(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,auth_user_id uuid,name text,account_status text DEFAULT 'ACTIVE',sessions_valid_after timestamptz,security_version integer DEFAULT 1);
+    CREATE TABLE users(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,auth_user_id uuid,name text,role text DEFAULT 'owner',account_status text DEFAULT 'ACTIVE',sessions_valid_after timestamptz,security_version integer DEFAULT 1);
     CREATE TABLE clients(id uuid PRIMARY KEY); CREATE TABLE appointments(id uuid PRIMARY KEY);
     CREATE TABLE customer_client_links(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants);
     CREATE TABLE integration_connections(id uuid PRIMARY KEY,kind text);
@@ -34,6 +34,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   await pg.query('INSERT INTO tenants(id) VALUES ($1)', [legacyTenant]);
   await pg.query("INSERT INTO conversations(id,tenant_id,primary_channel,customer_display_name) VALUES ($1,$2,'EMAIL','Existing customer')", [legacyConversation, legacyTenant]);
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20260929120000_communications_foundation.sql', import.meta.url), 'utf8'));
+  await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261011040000_communications_channels.sql', import.meta.url), 'utf8'));
   const dialect = new PgDialect();
   const wrap = (connection: PGlite | Transaction): CommunicationsDatabase => ({
     async query<T extends Record<string, unknown>>(statement: SQL) {

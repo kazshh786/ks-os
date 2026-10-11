@@ -62,6 +62,7 @@ export const conversations = pgTable('conversations', {
 }));
 
 export const conversationMessages = pgTable('conversation_messages', {
+  clientMessageId: uuid('client_message_id'),
   nativePosition: bigint('native_position', { mode: 'bigint' }),
   messageType: varchar('message_type', { length: 30 }).default('TEXT').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -143,7 +144,21 @@ export const communicationEvents = pgTable('communication_events', {
 export const communicationTickets = pgTable('communication_tickets', {
   tokenHash: varchar('token_hash', { length: 64 }).primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
-  conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }),
   actor: jsonb('actor').notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 }, table => ({ expiryIdx: index('communication_tickets_expiry_idx').on(table.expiresAt) }));
+
+// Composite message scope and active membership constraints are enforced by migration 90.
+export const communicationReactions = pgTable('communication_reactions', {
+  tenantId: uuid('tenant_id').notNull(), conversationId: uuid('conversation_id').notNull(),
+  messageId: uuid('message_id').notNull().references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  emoji: text('emoji').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, table => ({ identity: uniqueIndex('communication_reactions_pkey').on(table.messageId,table.userId,table.emoji), userIdx:index('communication_reactions_user_idx').on(table.userId) }));
+export const communicationMentions = pgTable('communication_mentions', {
+  tenantId: uuid('tenant_id').notNull(), conversationId: uuid('conversation_id').notNull(),
+  messageId: uuid('message_id').notNull().references(() => conversationMessages.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  startOffset: integer('start_offset').notNull(), endOffset: integer('end_offset').notNull(),displayName:text('display_name').notNull(),
+}, table => ({ identity:uniqueIndex('communication_mentions_pkey').on(table.messageId,table.startOffset),recipientIdx:index('communication_mentions_recipient_idx').on(table.tenantId,table.userId,table.messageId) }));
