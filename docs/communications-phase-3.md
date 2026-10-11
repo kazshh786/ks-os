@@ -14,13 +14,31 @@ Chat adds New message, recipient selection, optional group naming, direct/group 
 
 The existing socket accepts strict, bounded `activity`, `watch` and `typing` control frames. Durable message writes remain authenticated HTTP requests. `ephemeral.snapshot` contains authorized presence, typing identities and participant read cursors; it has no durable journal sequence or draft content.
 
-Connection leases expire after 45 seconds; transport heartbeats maintain live leases. Inactivity after five minutes or a hidden document produces AWAY; any active tab produces ONLINE; no live lease means OFFLINE. Typing is throttled to two-second updates and expires after five seconds, stops on blur/send and clears on disconnect.
+Connection leases expire after 45 seconds; transport heartbeats maintain live leases. Inactivity after five minutes or a hidden document produces AWAY; any active tab produces ONLINE; no live lease means OFFLINE. Typing is throttled to two-second updates and expires after five seconds, stops on blur/send and clears on disconnect. The server refreshes snapshots at least every 20 seconds. The browser independently expires typing after five seconds and marks stale presence offline after 45 seconds without a fresh snapshot, including silent connection loss.
 
 A per-API-server in-memory registry matches the current single API service deployment. No Redis or database keystroke writes are introduced. A deployment with multiple API processes/replicas MUST provide a shared ephemeral adapter before rollout; durable messages and canonical DM identity remain database-backed. Restarts correctly reset presence offline, then reconnect restores it.
 
 Every snapshot revalidates the receiving actor and current membership. Presence is only returned for active same-tenant users sharing a direct/group conversation. Typing and read cursors are restricted to the selected authorized conversation. Control frames cannot specify a sender; extra identity fields are rejected. Existing socket limits, slow-client handling, reauthorization and reconnect remain.
 
 Read cursors remain monotonic, one per participant. Persisted own messages show Sent; peers whose cursor covers a message appear under Read by. Device delivery is not claimed.
+
+## Important files and API changes
+
+- `packages/contracts/src/native-communications.ts`: conversation summaries, strict signal/snapshot contracts and recent cursors.
+- `packages/database/migrations/20261011060000_communications_direct.sql`, `conversation-schema.ts` and `manifest.ts`: canonical identity and indexed activity order.
+- `apps/api/src/modules/communications/communications.service.ts`: canonical create/reopen, group lifecycle, previews, cursor precision and authorized live scope.
+- `communications.routes.ts` and `communications.presence.ts`: existing socket control frames, leased connection aggregation and snapshots.
+- `apps/web/src/features/chat/ChatPage.tsx`, `ChannelDialogs.tsx`, `ChatLive.tsx`, `chat.realtime.ts`: unified navigation, New message, shared participant management, receipts/presence and reconnect/expiry.
+- Existing `MessageComposer.tsx` and `MessageTimeline.tsx`: shared typing and read-state display, without duplicate composers.
+- `apps/api/tests/communications-foundation.test.ts`, `tests/helpers/communications-browser.mjs`, and `apps/web/src/features/chat/chat.test.tsx`: database, service, socket, browser and component regression coverage.
+
+Existing routes under `/api/v1/communications/conversations` are extended:
+- POST `/`: DIRECT now returns the canonical pair; GROUP_DIRECT accepts an optional name.
+- GET `/`: `recent=true` uses descending activity and an opaque timestamp/ID cursor; summaries include safe latest-message previews and DM peer identity. Search matches DM colleague names.
+- GET `/people`: authenticated active workspace colleagues, excluding self, with search/pagination.
+- PATCH `/:id` and existing member/leave/owner routes: shared group management with current roles enforced.
+- Existing ticket and events routes: strict ephemeral control/snapshot frames; no second socket endpoint.
+- Existing POST `/:id/read`: unchanged actor-owned monotonic cursor, exposed only to authorized direct/group participants through live snapshots.
 
 ## Migration and deployment
 

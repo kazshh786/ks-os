@@ -225,6 +225,9 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     const updated=await service.updateChannel(owner,cid,{name:'Managed renamed',description:'A team space'});
     assert.equal(updated.name,'Managed renamed');
     assert.equal(updated.description,'A team space');
+    const blank=await app.inject({method:'PATCH',url:`/comms/${cid}`,headers:headers('owner'),payload:{name:''}});assert.equal(blank.statusCode,400);
+    const descriptionOnly=await app.inject({method:'PATCH',url:`/comms/${cid}`,headers:headers('owner'),payload:{description:'Updated description'}});
+    assert.equal(descriptionOnly.statusCode,200);assert.equal(descriptionOnly.json().data.name,'Managed renamed');
     await service.transfer(owner,cid,member.userId);
     const transferAudit=(await pg.query<{metadata:{newOwnerUserId:string;memberId?:string}}>("SELECT metadata FROM account_access_audit_events WHERE action='COMMUNICATION_OWNERSHIP_TRANSFERRED' AND metadata->>'conversationId'=$1",[cid])).rows[0];
     assert.equal(transferAudit.metadata.newOwnerUserId,member.userId);

@@ -21,7 +21,7 @@ export const CreateNativeMessageSchema = z.object({
   mentions: z.array(z.object({ userId: z.string().uuid(), start: z.number().int().nonnegative(), end: z.number().int().positive() }).strict()).max(50).optional(),
 }).strict();
 export const UpdateNativeMessageSchema = CreateNativeMessageSchema.pick({ body: true, mentions: true }).extend({ expectedUpdatedAt: z.string().datetime().optional() }).strict();
-export const UpdateNativeChannelSchema = CreateNativeConversationSchema.pick({ name: true, description: true }).partial().strict();
+export const UpdateNativeChannelSchema = z.object({name:z.string().trim().min(1).max(255).optional(),description:z.string().trim().max(2000).optional()}).strict();
 export const NativeReactionSchema = z.enum(['👍', '❤️', '🎉', '😄', '👀', '✅']);
 export const SetNativeReactionSchema = z.object({ emoji: NativeReactionSchema, active: z.boolean() }).strict();
 export const ChannelDiscoveryQuerySchema = z.object({ search: z.string().trim().max(100).optional(), after: z.string().uuid().optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).strict();
