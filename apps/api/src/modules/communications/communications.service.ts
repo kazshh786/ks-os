@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { sql } from '@ks-os/database';
 import {
@@ -11,10 +11,14 @@ import {
 } from './communications.authorization.js';
 import { communicationsDatabase, type CommunicationsDatabase } from './communications.database.js';
 
-const conversationFields = sql`c.id,c.conversation_type AS type,c.name,c.slug,c.description,
+const conversationFields = sql`c.id,c.conversation_type AS type,
+  CASE WHEN c.conversation_type='DIRECT' THEN coalesce((SELECT u.name FROM conversation_members peer JOIN users u ON u.id=peer.user_id AND u.tenant_id=peer.tenant_id WHERE peer.conversation_id=c.id AND peer.user_id<>m.user_id AND peer.left_at IS NULL LIMIT 1),'Former colleague') ELSE c.name END AS name,c.slug,c.description,
   c.created_by_user_id AS "createdBy",c.created_at AS "createdAt",c.updated_at AS "updatedAt",c.archived_at AS "archivedAt",
   (SELECT count(*)::int FROM conversation_members cm WHERE cm.conversation_id=c.id AND cm.left_at IS NULL) AS "memberCount",
   (SELECT id FROM conversation_messages lm WHERE lm.conversation_id=c.id AND lm.native_position IS NOT NULL ORDER BY lm.native_position DESC LIMIT 1) AS "latestMessageId",
+  c.last_message_at AS "lastActivityAt",
+  (SELECT CASE WHEN lm.deleted_at IS NOT NULL THEN 'Message deleted' ELSE left(lm.body,160) END FROM conversation_messages lm WHERE lm.conversation_id=c.id AND lm.native_position IS NOT NULL ORDER BY lm.native_position DESC LIMIT 1) AS preview,
+  (SELECT peer.user_id FROM conversation_members peer WHERE c.conversation_type='DIRECT' AND peer.conversation_id=c.id AND peer.user_id<>m.user_id AND peer.left_at IS NULL LIMIT 1) AS "peerUserId",
   m.role AS "memberRole",m.last_read_position::text AS "lastReadPosition",m.last_read_at AS "lastReadAt"`;
 const messageFields = sql`m.id,m.conversation_id AS "conversationId",m.sender_user_id AS "senderId",m.sender_name AS "senderName",
   CASE WHEN m.deleted_at IS NULL THEN m.body ELSE NULL END AS body,m.message_type AS type,
@@ -70,7 +74,7 @@ export class CommunicationsService {
 
   private async requireChannel(db: CommunicationsDatabase, actor: CommunicationsActor, id: string) {
     const access = await new CommunicationsAuthorization(db).requireConversation(actor,id);
-    if (!['CHANNEL','PRIVATE_CHANNEL'].includes(access.type)) throw communicationError(409,'CHANNEL_REQUIRED','This action requires a channel');
+    if (!['CHANNEL','PRIVATE_CHANNEL','GROUP_DIRECT'].includes(access.type)) throw communicationError(409,'CHANNEL_REQUIRED','This action requires a channel or group conversation');
     return access;
   }
 
@@ -99,7 +103,13 @@ export class CommunicationsService {
   async leave(actor: CommunicationsActor, id: string) {
     return this.locked(actor,id,'view',async db => {
       const access = await this.requireChannel(db,actor,id);
-      if (access.role === 'OWNER') throw communicationError(409,'OWNER_REQUIRED','Transfer ownership before leaving this channel');
+      if (access.role === 'OWNER' && access.type === 'GROUP_DIRECT') {
+        const [next] = await db.query<{userId:string}>(sql`SELECT m.user_id AS "userId" FROM conversation_members m JOIN users u ON u.id=m.user_id
+          WHERE m.conversation_id=${id} AND m.left_at IS NULL AND m.user_id<>${actor.userId} AND u.account_status='ACTIVE'
+          ORDER BY m.joined_at,m.user_id LIMIT 1`);
+        if (next) await db.query(sql`UPDATE conversation_members SET role='OWNER' WHERE conversation_id=${id} AND user_id=${next.userId}`);
+        else await db.query(sql`UPDATE conversations SET archived_at=now() WHERE id=${id}`);
+      } else if (access.role === 'OWNER') throw communicationError(409,'OWNER_REQUIRED','Transfer ownership before leaving this channel');
       const [member] = await db.query<{id:string}>(sql`UPDATE conversation_members SET left_at=now() WHERE conversation_id=${id} AND user_id=${actor.userId} AND left_at IS NULL RETURNING id`);
       await this.audit(db,actor,id,'COMMUNICATION_CHANNEL_LEFT',member.id);
       await this.event(db,actor,id,'conversation.member_left',member.id);
@@ -124,10 +134,12 @@ export class CommunicationsService {
   async people(actor: CommunicationsActor, id: string | null, query: z.infer<typeof ChannelDiscoveryQuerySchema>, candidates = false) {
     const queryPeople=async(db:CommunicationsDatabase)=>{
     const capabilities = await new CommunicationsAuthorization(db).authenticate(actor);
-    if (!id && !capabilities.canCreateChannels) throw communicationError(403,'COMMUNICATIONS_FORBIDDEN','Workspace owner access required');
-    const rows = await db.query<{userId:string}>(sql`SELECT u.id AS "userId",u.name${id && !candidates ? sql`,m.role` : sql``}
+    // Every authenticated workspace member may discover eligible colleagues for DMs.
+    void capabilities;
+    const rows = await db.query<{userId:string;name:string;role?:string}>(sql`SELECT u.id AS "userId",u.name${id && !candidates ? sql`,m.role` : sql``}
       FROM users u ${id && !candidates ? sql`JOIN conversation_members m ON m.user_id=u.id AND m.tenant_id=u.tenant_id AND m.conversation_id=${id} AND m.left_at IS NULL` : sql``}
       WHERE u.tenant_id=${actor.tenantId} AND u.account_status='ACTIVE' AND u.auth_user_id IS NOT NULL
+      ${!id ? sql`AND u.id<>${actor.userId}` : sql``}
       ${id && candidates ? sql`AND NOT EXISTS(SELECT 1 FROM conversation_members cm WHERE cm.conversation_id=${id} AND cm.user_id=u.id AND cm.left_at IS NULL)` : sql``}
       ${query.search ? sql`AND strpos(lower(u.name),lower(${query.search})) > 0` : sql``}
       ${query.after ? sql`AND u.id > ${query.after}::uuid` : sql``} ORDER BY u.id LIMIT ${query.limit+1}`);
@@ -240,15 +252,22 @@ export class CommunicationsService {
     const members = [...new Set([actor.userId, ...input.memberUserIds])];
     if (input.type === 'DIRECT' && members.length !== 2) throw communicationError(400, 'DIRECT_REQUIRES_TWO', 'Direct conversations require two participants');
     if (input.type === 'GROUP_DIRECT' && members.length < 3) throw communicationError(400, 'GROUP_REQUIRES_THREE', 'Group direct conversations require at least three participants');
-    const id = randomUUID();
+    if (!['DIRECT','GROUP_DIRECT'].includes(input.type) && !input.name.trim()) throw communicationError(400,'NAME_REQUIRED','A conversation name is required');
+    const name=input.name.trim() || 'Group conversation';
+    const directKey=input.type==='DIRECT' ? [...members].sort().join(':') : null;
+    let id = randomUUID();
     try {
       await this.db.transaction(async db => {
         await this.journalLock(db, actor);
         const capabilities = await new CommunicationsAuthorization(db).authenticate(actor);
         if (['CHANNEL','PRIVATE_CHANNEL'].includes(input.type) && !capabilities.canCreateChannels) throw communicationError(403, 'COMMUNICATIONS_FORBIDDEN', 'Only workspace owners can create channels');
         for (const userId of members) await this.activeUser(db, actor, userId);
-        await db.query(sql`INSERT INTO conversations(id,tenant_id,primary_channel,customer_display_name,access_mode,conversation_type,name,slug,description,created_by_user_id)
-          VALUES (${id},${actor.tenantId},'NATIVE',${input.name},'MEMBERS',${input.type},${input.name},${input.slug ?? (['CHANNEL','PRIVATE_CHANNEL'].includes(input.type) ? input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0,100) || id : null)},${input.description ?? null},${actor.userId})`);
+        if (directKey) {
+          const [existing]=await db.query<{id:string}>(sql`SELECT id FROM conversations WHERE tenant_id=${actor.tenantId} AND direct_key=${directKey}`);
+          if (existing) { id=existing.id; return; }
+        }
+        await db.query(sql`INSERT INTO conversations(id,tenant_id,primary_channel,customer_display_name,access_mode,conversation_type,name,slug,description,created_by_user_id,direct_key)
+          VALUES (${id},${actor.tenantId},'NATIVE',${name},'MEMBERS',${input.type},${name},${input.slug ?? (['CHANNEL','PRIVATE_CHANNEL'].includes(input.type) ? input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0,100) || id : null)},${input.description ?? null},${actor.userId},${directKey})`);
         for (const userId of members) {
           await db.query(sql`INSERT INTO conversation_members(tenant_id,conversation_id,user_id,role)
             VALUES (${actor.tenantId},${id},${userId},${userId === actor.userId ? 'OWNER' : 'MEMBER'})`);
@@ -268,16 +287,46 @@ export class CommunicationsService {
 
   async list(actor: CommunicationsActor, query: NativeConversationQuery) {
     await new CommunicationsAuthorization(this.db).authenticate(actor);
-    const rows = await this.db.query<{ id: string }>(sql`SELECT ${conversationFields},${this.unreadFields(actor)}
+    let before: {at:string;id:string} | undefined;
+    if(query.after && query.recent) {
+      try { before=z.object({at:z.string().datetime(),id:z.string().uuid()}).strict().parse(JSON.parse(Buffer.from(query.after,'base64url').toString())); }
+      catch { throw communicationError(400,'INVALID_CURSOR','Conversation cursor is invalid'); }
+    } else if(query.after) z.string().uuid().parse(query.after);
+    const rows = await this.db.query<{ id:string;lastActivityAt:Date }>(sql`SELECT ${conversationFields},${this.unreadFields(actor)}
       FROM conversations c JOIN conversation_members m ON m.conversation_id=c.id AND m.tenant_id=c.tenant_id
       WHERE c.tenant_id=${actor.tenantId} AND c.access_mode='MEMBERS' AND c.archived_at IS NULL
         AND m.user_id=${actor.userId} AND m.left_at IS NULL
         ${query.channelsOnly ? sql`AND c.conversation_type IN ('CHANNEL','PRIVATE_CHANNEL')` : sql``}
-        ${query.search ? sql`AND strpos(lower(c.name),lower(${query.search})) > 0` : sql``}
-        ${query.after ? sql`AND c.id > ${query.after}::uuid` : sql``}
-      ORDER BY c.id LIMIT ${query.limit + 1}`);
-    const data = rows.slice(0, query.limit);
-    return { data, nextCursor: rows.length > query.limit ? data.at(-1)!.id : null };
+        ${query.search ? sql`AND (strpos(lower(c.name),lower(${query.search})) > 0 OR (c.conversation_type='DIRECT' AND EXISTS(
+          SELECT 1 FROM conversation_members peer JOIN users u ON u.id=peer.user_id WHERE peer.conversation_id=c.id AND peer.user_id<>${actor.userId}
+          AND peer.left_at IS NULL AND strpos(lower(u.name),lower(${query.search}))>0)))` : sql``}
+        ${before ? sql`AND (c.last_message_at,c.id)<(${before.at}::timestamptz,${before.id}::uuid)` : query.after ? sql`AND c.id>${query.after}::uuid` : sql``}
+      ORDER BY ${query.recent ? sql`c.last_message_at DESC,c.id DESC` : sql`c.id`} LIMIT ${query.limit + 1}`);
+    const data=rows.slice(0,query.limit),last=data.at(-1);
+    return {data,nextCursor:rows.length>query.limit && last ? query.recent ? Buffer.from(JSON.stringify({at:new Date(last.lastActivityAt).toISOString(),id:last.id})).toString('base64url') : last.id : null};
+  }
+
+  async liveScope(actor: CommunicationsActor, id: string | null, userIds: string[]) {
+    return this.subscription(actor,id,async db=>{
+      const readers=id ? await db.query<{userId:string;name:string;position:string}>(sql`SELECT m.user_id AS "userId",u.name,m.last_read_position::text AS position
+        FROM conversation_members m JOIN users u ON u.id=m.user_id AND u.tenant_id=m.tenant_id
+        JOIN conversations c ON c.id=m.conversation_id WHERE m.conversation_id=${id} AND m.left_at IS NULL AND u.account_status='ACTIVE'
+        AND c.conversation_type IN ('DIRECT','GROUP_DIRECT') ORDER BY m.user_id LIMIT 101`) : [];
+      const wanted=[...new Set([...userIds,...readers.map(m=>m.userId)])].slice(0,201);
+      const visible=wanted.length ? await db.query<{userId:string}>(sql`SELECT u.id AS "userId" FROM users u WHERE u.tenant_id=${actor.tenantId} AND u.account_status='ACTIVE'
+        AND u.id IN (${sql.join(wanted.map(userId=>sql`${userId}::uuid`),sql`, `)})
+        AND EXISTS(SELECT 1 FROM conversation_members mine JOIN conversation_members peer ON peer.conversation_id=mine.conversation_id AND peer.tenant_id=mine.tenant_id
+          JOIN conversations c ON c.id=mine.conversation_id WHERE mine.tenant_id=${actor.tenantId} AND mine.user_id=${actor.userId} AND mine.left_at IS NULL
+          AND peer.user_id=u.id AND peer.left_at IS NULL AND c.conversation_type IN ('DIRECT','GROUP_DIRECT')) ORDER BY u.id`) : [];
+      return {readers,visible};
+    });
+  }
+
+  async authorizeTyping(actor: CommunicationsActor,id:string) {
+    return this.locked(actor,id,'post',async db=>{
+      const access=await new CommunicationsAuthorization(db).requireConversation(actor,id,'post');
+      if(!['DIRECT','GROUP_DIRECT'].includes(access.type)) throw communicationError(400,'DIRECT_REQUIRED','Typing is available in direct and group conversations');
+    });
   }
 
   async get(actor: CommunicationsActor, id: string) {
@@ -295,6 +344,9 @@ export class CommunicationsService {
     return this.locked(actor, id, 'invite', async db => {
       const access = await new CommunicationsAuthorization(db).requireConversation(actor, id, 'invite');
       if (input.role === 'ADMIN' && access.role !== 'OWNER') throw communicationError(403, 'COMMUNICATIONS_FORBIDDEN', 'Only the owner can appoint administrators');
+      const [size]=await db.query<{count:number}>(sql`SELECT count(*)::int AS count FROM conversation_members WHERE conversation_id=${id} AND left_at IS NULL`);
+      if(size.count>=101) throw communicationError(409,'MEMBER_LIMIT','A conversation supports up to 101 participants');
+      if(access.type==='GROUP_DIRECT' && !['ADMIN','MEMBER'].includes(input.role)) throw communicationError(400,'INVALID_MEMBER','Choose an internal participant role');
       await this.activeUser(db, actor, input.userId);
       const [existing] = await db.query(sql`SELECT id FROM conversation_members WHERE conversation_id=${id} AND user_id=${input.userId} AND left_at IS NULL`);
       if (existing) throw communicationError(409, 'ALREADY_MEMBER', 'Participant is already a member');

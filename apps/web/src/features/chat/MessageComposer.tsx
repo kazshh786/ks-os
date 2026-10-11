@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { useTyping } from './ChatLive';
 import { Send } from 'lucide-react';
 import type { CreateNativeMessage, NativePerson } from '@ks-os/contracts';
 import { chatApi } from './chat.api';
@@ -16,6 +17,7 @@ export function MessageComposer({ channelId, label = 'Message', initial, saveDra
   channelId: string; label?: string; initial?: Draft; saveDraft?: (draft: Draft, expected?: Draft) => void;
   send: (draft: Draft) => Promise<void>; disabled?: boolean; submitLabel?: string;
 }) {
+  const typing=useTyping(channelId);
   const [draft,setDraft] = useState<Draft>(initial ?? {body:'',mentions:[]});
   const [caret,setCaret] = useState(0), [suggestions,setSuggestions] = useState<NativePerson[]>([]), [highlight,setHighlight] = useState(0);
   const [dismissed,setDismissed] = useState(''), [busy,setBusy] = useState(false), [error,setError] = useState('');
@@ -44,6 +46,7 @@ export function MessageComposer({ channelId, label = 'Message', initial, saveDra
   };
   const submit = async () => {
     if (sending.current || busy || disabled || !draft.body.trim() || draft.body.length > 16000) return;
+    typing(false);
     sending.current = true;
     const pending = {...draft,clientMessageId:draft.clientMessageId ?? crypto.randomUUID()};
     update(pending); setBusy(true); setError('');
@@ -61,7 +64,8 @@ export function MessageComposer({ channelId, label = 'Message', initial, saveDra
         placeholder={disabled ? 'This channel is read only' : 'Write a message… Use @ to mention a colleague'}
         aria-autocomplete="list" aria-controls={suggestions.length ? listId : undefined} aria-expanded={suggestions.length > 0}
         aria-activedescendant={suggestions.length ? `${listId}-${highlight}` : undefined} aria-describedby={`${inputId}-hint${error ? ` ${inputId}-error` : ''}`}
-        onChange={event => { const body=event.target.value; update({body,mentions:adjustMentions(draft.body,body,draft.mentions)}); setCaret(event.target.selectionStart); }}
+        onBlur={()=>typing(false)}
+        onChange={event => { const body=event.target.value; typing(Boolean(body.trim())); update({body,mentions:adjustMentions(draft.body,body,draft.mentions)}); setCaret(event.target.selectionStart); }}
         onSelect={event => setCaret(event.currentTarget.selectionStart)}
         onKeyDown={event => {
           if (event.nativeEvent.isComposing) return;

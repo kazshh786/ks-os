@@ -1,3 +1,4 @@
+import { ReadReceipt, TypingStatus } from './ChatLive';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CommunicationsEvent, NativeConversation, NativeMessage } from '@ks-os/contracts';
 import { chatApi, ChatError } from './chat.api';
@@ -100,10 +101,11 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
         const previous=messages[index-1],day=new Date(message.createdAt).toLocaleDateString();
         const sameDay=previous && new Date(previous.createdAt).toLocaleDateString()===day;
         const grouped=Boolean(sameDay && !message.editedAt && previous.senderId===message.senderId && new Date(message.createdAt).getTime()-new Date(previous.createdAt).getTime()<300000);
-        return <div key={message.id} data-message-id={message.id}>{!sameDay && <div className="chat-date"><span>{new Date(message.createdAt).toLocaleDateString([], {weekday:'short',day:'numeric',month:'long'})}</span></div>}<MessageItem message={message} grouped={grouped} userId={userId} archived={Boolean(channel.archivedAt)} thread={openThread} changed={changed}/></div>;
+        return <div key={message.id} data-message-id={message.id}>{!sameDay && <div className="chat-date"><span>{new Date(message.createdAt).toLocaleDateString([], {weekday:'short',day:'numeric',month:'long'})}</span></div>}<MessageItem message={message} grouped={grouped} userId={userId} archived={Boolean(channel.archivedAt)} thread={openThread} changed={changed}/><ReadReceipt message={message} userId={userId}/></div>;
       })}
     </div>
     {newer && <button type="button" className="chat-new-messages" onClick={()=>void latest()}>Back to latest messages ↓</button>}
+    <TypingStatus conversationId={channel.id}/>
     <MessageComposer key={draftKey} channelId={channel.id} label={parent?'Reply to thread':`Message ${channel.name}`} initial={drafts.get(draftKey)} saveDraft={(draft,expected)=>{const saved=drafts.get(draftKey);if(expected && (saved?.clientMessageId!==expected.clientMessageId || saved?.body!==expected.body))return;if(draft.body)drafts.set(draftKey,draft);else drafts.delete(draftKey);}} disabled={Boolean(channel.archivedAt)} send={async draft=>{const message=await chatApi.send(channel.id,{...draft,parentMessageId:parent});if(!live.current)return;bottom.current=true;changed(message);if(frozen.current)await latest();}}/>
   </div>;
 }

@@ -23,6 +23,7 @@ export const communicationChannels = pgTable('communication_channels', {
 }));
 
 export const conversations = pgTable('conversations', {
+  directKey: varchar('direct_key', { length: 73 }),
   accessMode: varchar('access_mode', { length: 20 }).default('INBOX').notNull(),
   conversationType: varchar('conversation_type', { length: 20 }).default('CLIENT').notNull(),
   name: varchar('name', { length: 255 }),
@@ -55,6 +56,8 @@ export const conversations = pgTable('conversations', {
   tenantLastMessageIdx: index('conversations_tenant_last_message_idx').on(table.tenantId, table.lastMessageAt),
   tenantIdUnique: uniqueIndex('conversations_tenant_id_unique').on(table.tenantId, table.id),
   nativeSlugUnique: uniqueIndex('conversations_native_slug_unique').on(table.tenantId, table.slug).where(sql`${table.accessMode} = 'MEMBERS'`),
+  directPairUnique: uniqueIndex('conversations_direct_pair_unique').on(table.tenantId,table.directKey).where(sql`${table.directKey} IS NOT NULL`),
+  nativeActivityIdx: index('conversations_native_activity_idx').on(table.tenantId,table.lastMessageAt.desc(),table.id.desc()).where(sql`${table.accessMode} = 'MEMBERS' AND ${table.archivedAt} IS NULL`),
   nativeListIdx: index('conversations_native_list_idx').on(table.tenantId, table.id).where(sql`${table.accessMode} = 'MEMBERS' AND ${table.archivedAt} IS NULL`),
   tenantStatusIdx: index('conversations_tenant_status_idx').on(table.tenantId, table.status, table.lastMessageAt),
   tenantAssignmentIdx: index('conversations_tenant_assignment_idx').on(table.tenantId, table.assignedToUserId, table.lastMessageAt),

@@ -1,11 +1,18 @@
-import { CommunicationsEventSchema, type CommunicationsEvent } from '@ks-os/contracts';
+import { ChatEphemeralSchema, CommunicationsEventSchema, type ChatEphemeral, type ChatSignal, type CommunicationsEvent } from '@ks-os/contracts';
 import { chatApi, chatBase, ChatError } from './chat.api';
 
 export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'unavailable';
-export function connectChat(callbacks: { event: (event: CommunicationsEvent) => void; ready: () => Promise<void>; state: (state: ConnectionState) => void; revoked: () => void }) {
+export function connectChat(callbacks: { ephemeral?: (value:ChatEphemeral)=>void; event: (event: CommunicationsEvent) => void; ready: () => Promise<void>; state: (state: ConnectionState) => void; revoked: () => void }) {
   let stopped = false, attempt = 0, cursor: string | undefined;
   let socket: WebSocket | undefined, timer: ReturnType<typeof setTimeout> | undefined;
   const seen = new Set<string>();
+  let watch:ChatSignal={type:'watch',conversationId:null,userIds:[]},lastActivity=Date.now(),lastActivitySent=0;
+  const signal=(value:ChatSignal)=>{if(value.type==='watch')watch=value;if(socket?.readyState===1)socket.send(JSON.stringify(value));};
+  const activity=()=>{lastActivity=Date.now();if(Date.now()-lastActivitySent>2000)heartbeat();};
+  const heartbeat=()=>{lastActivitySent=Date.now();signal({type:'activity',active:document.visibilityState==='visible' && Date.now()-lastActivity<300000});};
+  const heartbeatTimer=setInterval(heartbeat,20000);
+  window.addEventListener('pointerdown',activity);window.addEventListener('keydown',activity);
+  document.addEventListener('visibilitychange',heartbeat);
   const retry = () => {
     if (stopped) return;
     callbacks.state('reconnecting');
@@ -25,11 +32,13 @@ export function connectChat(callbacks: { event: (event: CommunicationsEvent) => 
       url.searchParams.set('ticket', ticket.ticket);
       url.searchParams.set('after', cursor);
       socket = new WebSocket(url);
-      socket.onopen = () => { attempt = 0; callbacks.state('connected'); };
+      socket.onopen = () => { attempt = 0; signal(watch); heartbeat(); callbacks.state('connected'); };
       socket.onmessage = event => {
         if (stopped) return;
         try {
-          const parsed = CommunicationsEventSchema.parse(JSON.parse(String(event.data)));
+          const value=JSON.parse(String(event.data));
+          if(value.type==='ephemeral.snapshot'){callbacks.ephemeral?.(ChatEphemeralSchema.parse(value));return;}
+          const parsed = CommunicationsEventSchema.parse(value);
           if (seen.has(parsed.id)) return;
           seen.add(parsed.id);
           if (seen.size > 2000) seen.delete(seen.values().next().value!);
@@ -53,7 +62,10 @@ export function connectChat(callbacks: { event: (event: CommunicationsEvent) => 
   const online=()=>{if(!stopped && socket){socket.close();}};
   window.addEventListener('online',online);
   void open();
-  return () => { stopped = true; window.removeEventListener('online',online); clearTimeout(timer); if (socket) { socket.onclose = null; socket.close(); } };
+  return Object.assign(() => {
+    stopped=true;clearInterval(heartbeatTimer);window.removeEventListener('pointerdown',activity);window.removeEventListener('keydown',activity);document.removeEventListener('visibilitychange',heartbeat);
+    window.removeEventListener('online',online);clearTimeout(timer);if(socket){socket.onclose=null;socket.close();}
+  },{signal});
 }
 
 export function mergeMessages(current: import('@ks-os/contracts').NativeMessage[], incoming: import('@ks-os/contracts').NativeMessage[]) {

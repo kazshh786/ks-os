@@ -5,7 +5,7 @@ export const ConversationMemberRoleSchema = z.enum(['OWNER', 'ADMIN', 'MEMBER', 
 export const CommunicationPositionSchema = z.string().regex(/^(0|[1-9]\d{0,18})$/).refine(value => BigInt(value) <= 9223372036854775807n);
 export const CreateNativeConversationSchema = z.object({
   type: NativeConversationTypeSchema,
-  name: z.string().trim().min(1).max(255),
+  name: z.string().trim().max(255).default(''),
   slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100).optional(),
   description: z.string().trim().max(2000).optional(),
   memberUserIds: z.array(z.string().uuid()).max(100).default([]),
@@ -34,9 +34,10 @@ export const NativeMessageQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 }).strict();
 export const NativeConversationQuerySchema = z.object({
-  after: z.string().uuid().optional(),
+  after: z.string().min(1).max(200).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   channelsOnly: z.enum(['true']).optional(),
+  recent: z.enum(['true']).optional(),
   search: z.string().trim().max(100).optional(),
 }).strict();
 export const MarkConversationReadSchema = z.object({ messageId: z.string().uuid() }).strict();
@@ -46,6 +47,8 @@ export const NativeConversationSchema = z.object({
   createdAt: z.string().datetime(), updatedAt: z.string().datetime(), archivedAt: z.string().datetime().nullable(),
   memberRole: ConversationMemberRoleSchema, lastReadPosition: CommunicationPositionSchema,
   lastReadAt: z.string().datetime().nullable(), unreadCount: z.number().int().nonnegative().optional(),
+  peerUserId: z.string().uuid().nullable().optional(),
+  preview: z.string().nullable().optional(), lastActivityAt: z.string().datetime().optional(),
   memberCount: z.number().int().nonnegative().optional(), latestMessageId: z.string().uuid().nullable().optional(),
 });
 export const NativeMessageSchema = z.object({
@@ -57,7 +60,7 @@ export const NativeMessageSchema = z.object({
   mentions: z.array(z.object({ userId: z.string().uuid(), name: z.string(), start: z.number().int(), end: z.number().int() })).optional(),
   reactions: z.array(z.object({ emoji: NativeReactionSchema, count: z.number().int(), mine: z.boolean() })).optional(),
 });
-export const NativeConversationPageSchema = z.object({ data: z.array(NativeConversationSchema), nextCursor: z.string().uuid().nullable() });
+export const NativeConversationPageSchema = z.object({ data: z.array(NativeConversationSchema), nextCursor: z.string().max(200).nullable() });
 export const NativeMessagePageSchema = z.object({ data: z.array(NativeMessageSchema), nextCursor: CommunicationPositionSchema.nullable() });
 export type NativeConversation = z.infer<typeof NativeConversationSchema>;
 export type NativeMessage = z.infer<typeof NativeMessageSchema>;
@@ -77,3 +80,17 @@ export type CreateNativeMessage = z.infer<typeof CreateNativeMessageSchema>;
 export type NativeMessageQuery = z.infer<typeof NativeMessageQuerySchema>;
 export type NativeConversationQuery = z.infer<typeof NativeConversationQuerySchema>;
 export type AddConversationMember = z.infer<typeof AddConversationMemberSchema>;
+
+export const ChatSignalSchema = z.discriminatedUnion('type', [
+  z.object({type:z.literal('activity'),active:z.boolean()}).strict(),
+  z.object({type:z.literal('watch'),conversationId:z.string().uuid().nullable(),userIds:z.array(z.string().uuid()).max(100)}).strict(),
+  z.object({type:z.literal('typing'),active:z.boolean()}).strict(),
+]);
+export const ChatEphemeralSchema = z.object({
+  version:z.literal(1),type:z.literal('ephemeral.snapshot'),conversationId:z.string().uuid().nullable(),
+  presence:z.array(z.object({userId:z.string().uuid(),state:z.enum(['ONLINE','AWAY','OFFLINE'])})),
+  typing:z.array(z.object({userId:z.string().uuid(),name:z.string()})),
+  readers:z.array(z.object({userId:z.string().uuid(),name:z.string(),position:CommunicationPositionSchema})),
+}).strict();
+export type ChatSignal = z.infer<typeof ChatSignalSchema>;
+export type ChatEphemeral = z.infer<typeof ChatEphemeralSchema>;

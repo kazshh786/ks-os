@@ -110,7 +110,7 @@ export async function verifyChatBrowser({app,service,owner,member}) {
     await second.getByRole('button',{name:'1 reply',exact:true}).click();
     await second.getByText('A threaded reply',{exact:true}).waitFor();
     await service.removeMember(owner,cid,member.userId);
-    await second.getByText('This channel is no longer available to you.',{exact:true}).waitFor();
+    await second.getByText('This conversation is no longer available to you.',{exact:true}).waitFor();
     assert.equal(await second.getByText('A threaded reply',{exact:true}).count(),0);
     const history=String((await service.create(owner,{type:'CHANNEL',name:'Browser history',memberUserIds:[]})).id);
     for(let n=0;n<75;n++)await service.post(owner,history,{body:'Historical message '+n});
@@ -122,7 +122,7 @@ export async function verifyChatBrowser({app,service,owner,member}) {
     assert.equal(await first.getByRole('article').count(),75);
     await first.setViewportSize({width:390,height:844});
     await first.goto(origin+'/app/chat/invalid-channel');
-    await first.getByRole('heading',{name:'Channel unavailable',exact:true}).waitFor();
+    await first.getByRole('heading',{name:'Conversation unavailable',exact:true}).waitFor();
     await first.getByRole('link',{name:'Back to channels',exact:true}).click();
     await first.getByRole('heading',{name:'Chat',exact:true}).waitFor();
     assert.deepEqual(errors,[]);

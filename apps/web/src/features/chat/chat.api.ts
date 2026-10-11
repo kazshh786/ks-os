@@ -16,7 +16,7 @@ export async function chatRequest<T>(path: string, method = 'GET', body?: unknow
 const data = async <T>(request: Promise<{ data: T }>) => (await request).data;
 export const chatApi = {
   capabilities: () => data(chatRequest<{ data: { userId: string; canCreateChannels: boolean } }>('/capabilities')),
-  channels: (search = '', after = '', signal?: AbortSignal) => chatRequest<Page<NativeConversation>>(`?channelsOnly=true&limit=50&search=${encodeURIComponent(search)}${after ? `&after=${after}` : ''}`, 'GET', undefined, signal),
+  channels: (search = '', after = '', signal?: AbortSignal) => chatRequest<Page<NativeConversation>>(`?recent=true&limit=50&search=${encodeURIComponent(search)}${after ? `&after=${encodeURIComponent(after)}` : ''}`, 'GET', undefined, signal),
   discover: (search = '', after = '', signal?: AbortSignal) => chatRequest<Page<DiscoveredChannel>>(`/discover?search=${encodeURIComponent(search)}${after ? `&after=${after}` : ''}`, 'GET', undefined, signal),
   channel: (id: string) => data(chatRequest<{ data: NativeConversation }>(`/${id}`)),
   create: (input: CreateNativeConversation) => data(chatRequest<{ data: NativeConversation }>('', 'POST', input)),
