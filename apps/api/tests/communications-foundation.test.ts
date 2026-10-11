@@ -335,6 +335,10 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     const results=await Promise.all(Array.from({length:8},(_,i)=>i%2?make(member,owner.userId):make(owner,member.userId)));
     assert.equal(new Set(results.map(c=>c.id)).size,1);
     const cid=String(results[0].id);
+    assert.equal((await make(owner,member.userId.toUpperCase())).id,cid);
+    const equivalent=await app.inject({method:'POST',url:'/comms',headers:headers('member'),payload:{type:'DIRECT',memberUserIds:[owner.userId.toUpperCase()]}});
+    assert.equal(equivalent.statusCode,201);assert.equal(equivalent.json().data.id,cid);
+    await assert.rejects(make(owner,owner.userId.toUpperCase()),{statusCode:400});
     await assert.rejects(make(owner,other.userId),{statusCode:400});
     await assert.rejects(make(owner,owner.userId),{statusCode:400});
     await assert.rejects(service.get(outsider,cid),{statusCode:404});

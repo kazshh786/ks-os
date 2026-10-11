@@ -249,7 +249,7 @@ export class CommunicationsService {
   }
 
   async create(actor: CommunicationsActor, input: CreateNativeConversation) {
-    const members = [...new Set([actor.userId, ...input.memberUserIds])];
+    const members = [...new Set([actor.userId, ...input.memberUserIds].map(userId=>userId.toLowerCase()))];
     if (input.type === 'DIRECT' && members.length !== 2) throw communicationError(400, 'DIRECT_REQUIRES_TWO', 'Direct conversations require two participants');
     if (input.type === 'GROUP_DIRECT' && members.length < 3) throw communicationError(400, 'GROUP_REQUIRES_THREE', 'Group direct conversations require at least three participants');
     if (!['DIRECT','GROUP_DIRECT'].includes(input.type) && !input.name.trim()) throw communicationError(400,'NAME_REQUIRED','A conversation name is required');
@@ -272,7 +272,7 @@ export class CommunicationsService {
           VALUES (${id},${actor.tenantId},'NATIVE',${name},'MEMBERS',${input.type},${name},${input.slug ?? (['CHANNEL','PRIVATE_CHANNEL'].includes(input.type) ? input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0,100) || id : null)},${input.description ?? null},${actor.userId},${directKey})`);
         for (const userId of members) {
           await db.query(sql`INSERT INTO conversation_members(tenant_id,conversation_id,user_id,role)
-            VALUES (${actor.tenantId},${id},${userId},${userId === actor.userId ? 'OWNER' : 'MEMBER'})`);
+            VALUES (${actor.tenantId},${id},${userId},${userId === actor.userId.toLowerCase() ? 'OWNER' : 'MEMBER'})`);
         }
         await this.audit(db, actor, id, 'COMMUNICATION_CONVERSATION_CREATED');
         await this.event(db, actor, id, 'conversation.created', id);
