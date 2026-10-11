@@ -2,6 +2,8 @@ import sharp from 'sharp';
 import { createHash } from 'node:crypto';
 import { communicationError } from './communications.authorization.js';
 
+sharp.cache({memory:16,files:0,items:16});
+sharp.concurrency(2);
 export const fileTypes:Record<string,string>={pdf:'application/pdf',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',ppt:'application/vnd.ms-powerpoint',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',txt:'text/plain',csv:'text/csv',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',zip:'application/zip'};
 export function fileLimits(){
  const number=(key:string,fallback:number,max:number)=>{const n=Number(process.env[key]??fallback);return Number.isInteger(n)&&n>0?Math.min(n,max):fallback;};

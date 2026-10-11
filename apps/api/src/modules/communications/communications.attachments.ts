@@ -21,6 +21,7 @@ export class CommunicationsAttachments {
   if(input.size>limits.maxBytes)throw communicationError(413,'FILE_TOO_LARGE','File exceeds the '+Math.floor(limits.maxBytes/1048576)+' MB limit.');
   if(!limits.allowed.includes(ext))throw communicationError(422,'FILE_TYPE','This file type is not allowed.');
   // Bounded opportunistic cleanup is also exposed to the maintenance command.
+  await this.authorize(actor,id);
   await this.cleanup(10);
   return this.locked(actor,id,'post',async db=>{
    const [count]=await db.query<{pending:number;recent:number}>(sql`SELECT count(*) FILTER(WHERE message_id IS NULL AND status IN ('PENDING','VALIDATING','AVAILABLE','QUARANTINED'))::int AS pending,

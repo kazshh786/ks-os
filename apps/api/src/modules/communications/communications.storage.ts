@@ -3,7 +3,7 @@ import { communicationError } from './communications.authorization.js';
 export interface ChatStorage { put(key:string,bytes:Buffer,mime:string):Promise<void>; get(key:string):Promise<Buffer>; remove(keys:string[]):Promise<void>; }
 export class SupabaseChatStorage implements ChatStorage {
  private async bucket(){
-  const bucket=process.env.CHAT_STORAGE_BUCKET||'private-chat';
+  const bucket='private-chat';
   const api=getSupabaseAdmin().storage;const {data,error}=await api.getBucket(bucket);
   // Never create or alter infrastructure from a request. Release setup must supply a private bucket.
   if(error||!data||data.public)throw communicationError(503,'CHAT_STORAGE_UNAVAILABLE','Private Chat storage is not ready.');

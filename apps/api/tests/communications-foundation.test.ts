@@ -177,8 +177,8 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     const replica = new CommunicationsService(db);
     const replay = await replica.events(member, id, last);
     assert.equal(replay.filter(e=>!e.type.startsWith('notification.')).length, 1);
-    assert.equal(replay[0].resourceId, message.id);
-    assert.equal(replay[0].type, 'message.created');
+    assert.equal(replay.find(e=>e.type==='message.created')?.resourceId, message.id);
+    assert.ok(replay.some(e=>e.type==='message.created'));
   });
   await t.test('an audit failure rolls back the conversation and its events', async () => {
     await pg.exec("CREATE FUNCTION test_reject_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'audit unavailable'; END $$; CREATE TRIGGER test_audit_failure BEFORE INSERT ON account_access_audit_events FOR EACH ROW EXECUTE FUNCTION test_reject_audit();");
@@ -449,6 +449,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     await pg.query('UPDATE users SET name=$2 WHERE id=$1',[outsider.userId,'Lin Chen']);
     const {verifyChatBrowser}=await import('./helpers/communications-browser.mjs');
     await verifyChatBrowser({app,service,owner,member});
+    await pg.query("UPDATE users SET name='Test member' WHERE id IN ($1,$2,$3)",[owner.userId,member.userId,outsider.userId]);
   });
 
   await t.test('Phase 4 private attachments validate bytes, bind atomically and revoke downloads',async()=>{

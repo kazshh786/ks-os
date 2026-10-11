@@ -6,21 +6,21 @@ import { ChatDialog } from './ChatDialog';
 type Upload={key:string;file:File;id?:string;progress:number;state:'queued'|'uploading'|'ready'|'failed';error?:string;controller?:AbortController};
 export function useChatUploads(channelId:string){
  const [items,setItems]=useState<Upload[]>([]),[error,setError]=useState(''),[dragging,setDragging]=useState(false);
- const latest=useRef(items);latest.current=items;const mounted=useRef(true),active=useRef(0),accepted=useRef(false);
+ const latest=useRef(items);latest.current=items;const mounted=useRef(true),active=useRef(0),started=useRef(new Set<string>());
  const update=(key:string,patch:Partial<Upload>)=>{if(mounted.current)setItems(values=>values.map(v=>v.key===key?{...v,...patch}:v));};
- useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;for(const item of latest.current){item.controller?.abort();if(item.id&&!accepted.current)void phase4Api.remove(channelId,item.id).catch(()=>{});}};},[channelId]);
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;for(const item of latest.current){item.controller?.abort();if(item.id)void phase4Api.remove(channelId,item.id).catch(()=>{});}};},[channelId]);
  useEffect(()=>{
   for(const item of items){
-   if(item.state!=='queued'||active.current>=2)continue;
-   item.state='uploading';active.current++;
-   const controller=new AbortController();item.controller=controller;
+   if(item.state!=='queued'||active.current>=2||started.current.has(item.key))continue;
+   started.current.add(item.key);active.current++;
+   const controller=new AbortController();
    update(item.key,{state:'uploading',controller});
    void (async()=>{
     try {
      const policy=await phase4Api.policy();
      if(item.file.size>policy.maxBytes)throw new Error('File exceeds the '+Math.floor(policy.maxBytes/1048576)+' MB limit.');
      if(!policy.allowed.includes(item.file.name.split('.').at(-1)!.toLowerCase()))throw new Error('This file type is not allowed.');
-     const reserved=await phase4Api.reserve(channelId,item.file);item.id=reserved.id;update(item.key,{id:reserved.id});
+     const reserved=await phase4Api.reserve(channelId,item.file);update(item.key,{id:reserved.id});
      if(controller.signal.aborted){void phase4Api.remove(channelId,reserved.id).catch(()=>{});return;}
      const result=await phase4Api.upload(channelId,reserved.id,item.file,controller.signal,p=>update(item.key,{progress:p}));
      if(result.status!=='AVAILABLE')throw new Error('Quarantined: document scanning is unavailable. This file cannot be sent yet.');
@@ -36,9 +36,9 @@ export function useChatUploads(channelId:string){
  };
  const remove=(item:Upload)=>{item.controller?.abort();if(item.id)void phase4Api.remove(channelId,item.id).catch(()=>{});setItems(values=>values.filter(v=>v.key!==item.key));};
  return {items,error,dragging,setDragging,add,remove,
-  retry:(item:Upload)=>{if(item.id)void phase4Api.remove(channelId,item.id).catch(()=>{});update(item.key,{state:'queued',progress:0,error:undefined,id:undefined});},
+  retry:(item:Upload)=>{started.current.delete(item.key);if(item.id)void phase4Api.remove(channelId,item.id).catch(()=>{});update(item.key,{state:'queued',progress:0,error:undefined,id:undefined});},
   ready:items.length>0&&items.every(i=>i.state==='ready'),blocked:items.some(i=>i.state!=='ready'),
-  ids:()=>items.filter(i=>i.state==='ready').map(i=>i.id!),sent:()=>{accepted.current=true;setItems([]);latest.current=[];accepted.current=false;},
+  ids:()=>items.filter(i=>i.state==='ready').map(i=>i.id!),sent:()=>{setItems([]);latest.current=[];started.current.clear();},
  };
 }
 export function UploadControls({uploads,disabled}:{uploads:ReturnType<typeof useChatUploads>;disabled:boolean}){

@@ -40,11 +40,13 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
   app.get('/file-policy',async request=>{await service.capabilities(actor(request));return {data:fileLimits()};});
   app.get('/:conversationId/notification-preference',async request=>({data:await service.discovery.conversationPreference(actor(request),params.parse(request.params).conversationId)}));
   app.put('/:conversationId/notification-preference',async request=>({data:await service.discovery.conversationPreference(actor(request),params.parse(request.params).conversationId,z.object({mode:z.enum(['ALL','MENTIONS','NONE'])}).strict().parse(request.body).mode)}));
+  let incomingUploads=0;const uploadsInFlight=new WeakSet<FastifyRequest>();
+  app.addHook('onResponse',async request=>{if(uploadsInFlight.delete(request))incomingUploads--;});
   const fileParams=params.extend({fileId:z.string().uuid()});
   app.post('/:conversationId/files',async(request,reply)=>reply.code(201).send({data:await service.attachments.reserve(actor(request),params.parse(request.params).conversationId,z.object({name:z.string().min(1).max(500),size:z.number().int().positive()}).strict().parse(request.body))}));
   app.put('/:conversationId/files/:fileId',{
     bodyLimit:fileLimits().maxBytes,
-    onRequest:async request=>{await service.attachments.authorize(actor(request),fileParams.parse(request.params).conversationId);},
+    onRequest:async request=>{await service.attachments.authorize(actor(request),fileParams.parse(request.params).conversationId);if(incomingUploads>=2)throw communicationError(429,'UPLOAD_BUSY','Upload capacity is busy. Retry shortly.');incomingUploads++;uploadsInFlight.add(request);},
     config:{rateLimit:{max:20,timeWindow:'1 minute'}},
   },async request=>{
     const {conversationId,fileId}=fileParams.parse(request.params);

@@ -37,6 +37,9 @@ export class CommunicationsDiscovery {
    if(input)await db.query(sql`INSERT INTO communication_preferences(tenant_id,user_id,browser,in_app,sound,dnd,direct_messages)
      VALUES(${actor.tenantId},${actor.userId},${input.browser},${input.inApp},${input.sound},${input.dnd},${input.directMessages})
      ON CONFLICT(user_id) DO UPDATE SET browser=excluded.browser,in_app=excluded.in_app,sound=excluded.sound,dnd=excluded.dnd,direct_messages=excluded.direct_messages`);
+   if(input)await db.query(sql`INSERT INTO communication_events(tenant_id,conversation_id,type,resource_id,recipient_user_id)
+     SELECT ${actor.tenantId},conversation_id,'notification.preferences_updated',${actor.userId},${actor.userId}
+     FROM conversation_members WHERE tenant_id=${actor.tenantId} AND user_id=${actor.userId} AND left_at IS NULL LIMIT 1`);
    const [row]=await db.query(sql`SELECT browser,in_app AS "inApp",sound,dnd,direct_messages AS "directMessages" FROM communication_preferences WHERE tenant_id=${actor.tenantId} AND user_id=${actor.userId}`);
    return row??defaultChatPreferences;
   });

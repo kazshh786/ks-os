@@ -15,9 +15,9 @@ import { MessageItem } from './MessageItem';
 import type { Draft } from './MessageComposer';
 import './chat.css';
 
-function ThreadPanel({ channel, userId, rootId, subscribe, revision, drafts, close, inaccessible, read }: {
+function ThreadPanel({ channel, userId, rootId, subscribe, revision, drafts, close, inaccessible, read, targetId }: {
   channel: NativeConversation; userId: string; rootId: string; subscribe: SubscribeChat; revision: number; drafts: Map<string,Draft>;
-  close: () => void; inaccessible: () => void; read: (id:string) => Promise<void>;
+  close: () => void; inaccessible: () => void; read: (id:string) => Promise<void>;targetId?:string|null;
 }) {
   const [root,setRoot]=useState<NativeMessage|null>(null),[error,setError]=useState('');
   const heading=useRef<HTMLHeadingElement>(null);
@@ -34,7 +34,7 @@ function ThreadPanel({ channel, userId, rootId, subscribe, revision, drafts, clo
     return()=>{active=false;unsubscribe();};
   },[channel.id,rootId,subscribe,revision]);
   return <section className="chat-thread" aria-label="Message thread"><header className="chat-panel-header"><h2 ref={heading} tabIndex={-1}>Thread</h2><button type="button" onClick={close} aria-label="Close thread"><X size={20} aria-hidden="true"/></button></header>
-    {error ? <p role="alert" className="chat-error">{error}</p> : root ? <><div className="chat-thread-root"><MessageItem message={root} userId={userId} archived={Boolean(channel.archivedAt)} changed={setRoot}/></div><MessageTimeline key={rootId} channel={channel} userId={userId} parent={rootId} subscribe={subscribe} revision={revision} drafts={drafts} inaccessible={inaccessible} read={read} label="Thread replies"/></> : <p role="status" className="chat-muted">Loading thread…</p>}
+    {error ? <p role="alert" className="chat-error">{error}</p> : root ? <><div className="chat-thread-root"><MessageItem message={root} userId={userId} archived={Boolean(channel.archivedAt)} changed={setRoot}/></div><MessageTimeline key={rootId} channel={channel} userId={userId} parent={rootId} subscribe={subscribe} revision={revision} drafts={drafts} inaccessible={inaccessible} read={read} targetId={targetId} label="Thread replies"/></> : <p role="status" className="chat-muted">Loading thread…</p>}
   </section>;
 }
 
@@ -172,11 +172,11 @@ export function ChatWorkspace() {
           <button type="button" aria-label={['DIRECT','GROUP_DIRECT'].includes(channel.type)?'Conversation details':'Channel details'} title="Conversation details" onClick={()=>setParams({details:'1'})}><Info size={20} aria-hidden="true"/></button>
           {Boolean(channel.unreadCount) && channel.latestMessageId && <button type="button" aria-label="Mark channel and threads as read" title="Mark channel and threads as read" onClick={()=>void run(()=>read(channel.latestMessageId!))}><CheckCheck size={20} aria-hidden="true"/></button>}
         </header>
-        <MessageTimeline key={channel.id} channel={channel} userId={capabilities.userId} subscribe={subscribe} revision={revision} drafts={drafts.current} openThread={message=>setParams({thread:message.id})} inaccessible={inaccessible} read={read}/>
+        <MessageTimeline key={channel.id} channel={channel} targetId={params.get('message')} userId={capabilities.userId} subscribe={subscribe} revision={revision} drafts={drafts.current} openThread={message=>setParams({thread:message.id})} inaccessible={inaccessible} read={read}/>
       </> : <div className="chat-welcome"><div><MessageSquare size={32} aria-hidden="true"/></div><p className="chat-eyebrow">Together, in the loop</p><h2>{conversationId?(error?'Conversation unavailable':'Opening your conversation…'):'Room for every conversation'}</h2><p>Keep team updates, questions and ideas in one place.<br/>Choose a conversation or start a new message.</p>{conversationId && error && <><button type="button" disabled={busy} onClick={()=>void run(refresh)}>Try again</button><Link to="/app/chat">Back to channels</Link></>}{capabilities?.canCreateChannels && !conversationId && <button type="button" className="chat-primary" onClick={()=>setCreate(true)}><Plus size={16} aria-hidden="true"/>Create a channel</button>}</div>}
     </div>
     {channel && capabilities && (threadId || details || files) && <aside className="chat-context-panel" onKeyDown={event=>{if(event.key==='Escape' && !event.defaultPrevented && !(event.target instanceof Element && event.target.closest('[role="dialog"]'))){event.preventDefault();closePanel();}}}>
-      {threadId ? <ThreadPanel key={channel.id+threadId} channel={channel} userId={capabilities.userId} rootId={threadId} subscribe={subscribe} revision={revision} drafts={drafts.current} close={closePanel} inaccessible={inaccessible} read={read}/> : files ? <section className="chat-thread"><header className="chat-panel-header"><h2>Files</h2><button type="button" aria-label="Close files" onClick={closePanel}><X size={20}/></button></header><SharedFiles key={channel.id+revision} conversationId={channel.id}/></section> : <><ConversationNotifications conversationId={channel.id}/><ChannelDetails key={channel.id} channel={channel} userId={capabilities.userId} refresh={refresh} close={closePanel} closed={inaccessible}/></>}
+      {threadId ? <ThreadPanel key={channel.id+threadId} channel={channel} userId={capabilities.userId} rootId={threadId} targetId={params.get('message')} subscribe={subscribe} revision={revision} drafts={drafts.current} close={closePanel} inaccessible={inaccessible} read={read}/> : files ? <section className="chat-thread"><header className="chat-panel-header"><h2>Files</h2><button type="button" aria-label="Close files" onClick={closePanel}><X size={20}/></button></header><SharedFiles key={channel.id+channel.updatedAt+revision} conversationId={channel.id}/></section> : <><ConversationNotifications conversationId={channel.id}/><ChannelDetails key={channel.id} channel={channel} userId={capabilities.userId} refresh={refresh} close={closePanel} closed={inaccessible}/></>}
     </aside>}
     {messageSearch&&<ChatSearch channels={channels} close={()=>setMessageSearch(false)}/>}
     {newMessage && <NewMessageDialog close={()=>setNewMessage(false)} created={value=>{setNewMessage(false);setChannels(current=>[value,...current.filter(c=>c.id!==value.id)]);choose(value.id);}}/>}

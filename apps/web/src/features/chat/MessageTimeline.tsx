@@ -1,4 +1,3 @@
-import { useSearchParams } from 'react-router';
 import { ReadReceipt, TypingStatus } from './ChatLive';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CommunicationsEvent, NativeConversation, NativeMessage } from '@ks-os/contracts';
@@ -8,11 +7,10 @@ import { MessageItem } from './MessageItem';
 import { MessageComposer, type Draft } from './MessageComposer';
 
 export type SubscribeChat = (listener: (event: CommunicationsEvent) => void) => () => void;
-export function MessageTimeline({ channel, userId, parent, subscribe, revision, drafts, openThread, inaccessible, read, label = 'Channel messages' }: {
+export function MessageTimeline({ channel, userId, parent, subscribe, revision, drafts, openThread, inaccessible, read, targetId, label = 'Channel messages' }: {
   channel: NativeConversation; userId: string; parent?: string; subscribe: SubscribeChat; revision: number; drafts: Map<string,Draft>;
-  openThread?: (message: NativeMessage) => void; inaccessible: () => void; read: (id: string) => Promise<void>; label?: string;
+  openThread?: (message: NativeMessage) => void; inaccessible: () => void; read: (id: string) => Promise<void>; targetId?:string|null; label?: string;
 }) {
-  const [searchParams]=useSearchParams();const targetId=searchParams.get('message');
   const [messages,setMessages]=useState<NativeMessage[]>([]),[cursor,setCursor]=useState<string|null>(null),[loading,setLoading]=useState(true),[more,setMore]=useState(false),[error,setError]=useState(''),[newer,setNewer]=useState(false);
   const scroll=useRef<HTMLDivElement>(null),bottom=useRef(true),live=useRef(true),frozen=useRef(false),reading=useRef(false),seenRead=useRef(channel.lastReadPosition),preserve=useRef<{id:string;offset:number}|null>(null),jump=useRef(true);
   const current=useRef<NativeMessage[]>([]),generation=useRef(0),updates=useRef(new Map<string,{generation:number;message:NativeMessage}>());
