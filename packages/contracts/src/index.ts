@@ -128,4 +128,5 @@ export * from './work.js';
 
 export * from './customer-360.js';
 
+export * from './native-communications.js';
 export * from './invoices.js';

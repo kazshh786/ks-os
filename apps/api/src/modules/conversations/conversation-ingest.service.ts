@@ -51,6 +51,7 @@ export class ConversationIngestService {
         .from(conversations)
         .where(and(
           eq(conversations.tenantId, input.tenantId),
+          eq(conversations.accessMode, 'INBOX'),
           eq(conversations.primaryChannel, input.channel),
           inArray(conversations.status, ['OPEN', 'PENDING']),
           identityMatch,

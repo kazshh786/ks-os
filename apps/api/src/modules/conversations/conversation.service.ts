@@ -78,7 +78,7 @@ export class ConversationService {
   }
 
   private filters(actor: ConversationActor, query: ConversationListQuery) {
-    const conditions: any[] = [eq(conversations.tenantId, actor.tenantId)];
+    const conditions: any[] = [eq(conversations.tenantId, actor.tenantId), eq(conversations.accessMode, 'INBOX')];
     if (actor.scope === 'ASSIGNED') conditions.push(eq(conversations.assignedToUserId, actor.userId));
     if (query.channel) conditions.push(eq(conversations.primaryChannel, query.channel));
     if (query.status) conditions.push(eq(conversations.status, query.status));
@@ -117,6 +117,7 @@ export class ConversationService {
   private async conversationRow(actor: ConversationActor, conversationId: string) {
     const conditions: any[] = [
       eq(conversations.id, conversationId),
+      eq(conversations.accessMode, 'INBOX'),
       eq(conversations.tenantId, actor.tenantId),
     ];
     if (actor.scope === 'ASSIGNED') conditions.push(eq(conversations.assignedToUserId, actor.userId));
@@ -250,7 +251,8 @@ export class ConversationService {
       ...(Object.prototype.hasOwnProperty.call(input, 'assignedToUserId') ? { assignedToUserId: input.assignedToUserId } : {}),
       ...(input.markRead ? { unreadCount: 0 } : {}),
       updatedAt: now,
-    }).where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, actor.tenantId)));
+    }).where(and(eq(conversations.id, conversationId),
+      eq(conversations.accessMode, 'INBOX'), eq(conversations.tenantId, actor.tenantId)));
     return listItem(await this.conversationRow(actor, conversationId));
   }
 
@@ -290,7 +292,8 @@ export class ConversationService {
       lastMessagePreview: input.body.slice(0, 280),
       lastMessageAt: now,
       updatedAt: now,
-    }).where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, actor.tenantId)));
+    }).where(and(eq(conversations.id, conversationId),
+      eq(conversations.accessMode, 'INBOX'), eq(conversations.tenantId, actor.tenantId)));
     return {
       id: message.id,
       conversationId: message.conversationId,
