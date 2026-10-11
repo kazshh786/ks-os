@@ -255,7 +255,7 @@ export class CommunicationsService {
     if (!['DIRECT','GROUP_DIRECT'].includes(input.type) && !input.name.trim()) throw communicationError(400,'NAME_REQUIRED','A conversation name is required');
     const name=input.name.trim() || 'Group conversation';
     const directKey=input.type==='DIRECT' ? [...members].sort().join(':') : null;
-    let id = randomUUID();
+    let id: string = randomUUID();
     try {
       await this.db.transaction(async db => {
         await this.journalLock(db, actor);

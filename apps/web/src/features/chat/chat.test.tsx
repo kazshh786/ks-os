@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CommunicationsEvent, NativeConversation, NativeMessage } from '@ks-os/contracts';
 import { MessageComposer, adjustMentions } from './MessageComposer';
 import { MessageBody } from './MessageItem';
-import { CreateChannelDialog } from './ChannelDialogs';
+import { ChatLiveContext, PresenceLabel, ReadReceipt, TypingStatus } from './ChatLive';
+import { CreateChannelDialog, NewMessageDialog } from './ChannelDialogs';
 import { MessageTimeline, type SubscribeChat } from './MessageTimeline';
 import { chatApi } from './chat.api';
 import { connectChat, mergeMessages } from './chat.realtime';
@@ -109,6 +110,7 @@ it('realtime deduplicates events, preserves the largest replay cursor and obtain
   vi.useFakeTimers();
   class Socket {
     static instances:Socket[]=[];onopen:(()=>void)|null=null;onclose:(()=>void)|null=null;onerror:(()=>void)|null=null;onmessage:((e:{data:string})=>void)|null=null;
+    readyState=1;send=vi.fn();
     constructor(public url:string){Socket.instances.push(this);}close(){this.onclose?.();}
   }
   vi.stubGlobal('WebSocket',Socket);
@@ -141,4 +143,46 @@ it('keeps a newer draft when an earlier send finishes after channel switching',a
   await user.clear(field);await user.type(field,'Keep this newer draft');
   await act(async()=>finish(message(userId,'1','Original pending message')));
   expect(drafts.get(channelId+':root').body).toBe('Keep this newer draft');
+});
+
+it('starts a direct message through eligible colleague search and opens the canonical result',async()=>{
+  const user=userEvent.setup(),created=vi.fn();
+  vi.mocked(chatApi.people).mockResolvedValue({data:[{userId,name:'Grace Hopper'}],nextCursor:null});
+  vi.mocked(chatApi.create).mockResolvedValue({...channel,type:'DIRECT',name:'Grace Hopper'});
+  render(<NewMessageDialog close={vi.fn()} created={created}/>);
+  expect(screen.getByRole('button',{name:'Start conversation'})).toBeDisabled();
+  await user.type(screen.getByLabelText('Find a colleague'),'Grace');
+  await user.click(await screen.findByRole('checkbox',{name:'Grace Hopper'}));
+  await user.click(screen.getByRole('button',{name:'Start conversation'}));
+  await waitFor(()=>expect(created).toHaveBeenCalledWith(expect.objectContaining({id:channelId,type:'DIRECT'})));
+  expect(chatApi.create).toHaveBeenCalledWith({type:'DIRECT',name:'',memberUserIds:[userId]});
+});
+
+it('creates a private group with multiple recipients and preserves selection after failure',async()=>{
+  const otherId='33333333-3333-4333-8333-333333333333',user=userEvent.setup(),created=vi.fn();
+  vi.mocked(chatApi.people).mockResolvedValue({data:[{userId,name:'Grace'},{userId:otherId,name:'Lin'}],nextCursor:null});
+  vi.mocked(chatApi.create).mockRejectedValueOnce(new Error('Try again')).mockResolvedValue({...channel,type:'GROUP_DIRECT'});
+  render(<NewMessageDialog close={vi.fn()} created={created}/>);
+  await user.click(await screen.findByRole('checkbox',{name:'Grace'}));
+  await user.click(screen.getByRole('checkbox',{name:'Lin'}));
+  await user.type(screen.getByLabelText('Group name (optional)'),'Review team');
+  await user.click(screen.getByRole('button',{name:'Create group'}));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Try again');
+  expect(screen.getByRole('checkbox',{name:'Grace'})).toBeChecked();
+  await user.click(screen.getByRole('button',{name:'Create group'}));
+  await waitFor(()=>expect(created).toHaveBeenCalled());
+  expect(chatApi.create).toHaveBeenLastCalledWith({type:'GROUP_DIRECT',name:'Review team',memberUserIds:[userId,otherId]});
+});
+
+it('describes presence and only marks messages read when another participant cursor covers them',()=>{
+  const peer='33333333-3333-4333-8333-333333333333';
+  const snapshot={version:1 as const,type:'ephemeral.snapshot' as const,conversationId:channelId,presence:[],typing:[{userId:peer,name:'Grace'}],readers:[{userId:peer,name:'Grace',position:'9007199254740992'}]};
+  const value=message(userId,'9007199254740993');
+  const draw=(position:string)=><ChatLiveContext.Provider value={{snapshot:{...snapshot,readers:[{...snapshot.readers[0],position}]},signal:vi.fn()}}><PresenceLabel state="AWAY"/><ReadReceipt message={value} userId={userId}/><TypingStatus conversationId={channelId}/></ChatLiveContext.Provider>;
+  const {rerender}=render(draw('9007199254740992'));
+  expect(screen.getByText('Away')).toBeInTheDocument();
+  expect(screen.getByText('Sent')).toBeInTheDocument();
+  expect(screen.queryByText(/Delivered/)).toBeNull();
+  expect(screen.getByText('Grace is typing…')).toHaveAttribute('aria-live','off');
+  rerender(draw('9007199254740993'));expect(screen.getByText('Read by Grace')).toBeInTheDocument();
 });

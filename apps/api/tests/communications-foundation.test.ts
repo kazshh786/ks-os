@@ -164,6 +164,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     await pg.query('UPDATE conversations SET archived_at=now() WHERE id=$1', [direct.id]);
     await assert.rejects(service.post(owner, String(direct.id), { body: 'Denied' }), { statusCode: 409 });
     assert.ok(await service.get(owner, String(direct.id)));
+    await pg.query('UPDATE conversations SET archived_at=NULL WHERE id=$1',[direct.id]);
   });
   await t.test('a second service instance replays only events after the supplied cursor', async () => {
     const before = await service.events(owner, id, '0');
@@ -423,6 +424,9 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   });
 
   await t.test('two browser sessions: real messages, threads, reactions, reconnect, mobile and accessibility', {skip:process.env.COMMUNICATIONS_BROWSER_TEST!=='1',timeout:180000}, async () => {
+    await pg.query('UPDATE users SET name=$2 WHERE id=$1',[owner.userId,'Ada Lovelace']);
+    await pg.query('UPDATE users SET name=$2 WHERE id=$1',[member.userId,'Grace Hopper']);
+    await pg.query('UPDATE users SET name=$2 WHERE id=$1',[outsider.userId,'Lin Chen']);
     const {verifyChatBrowser}=await import('./helpers/communications-browser.mjs');
     await verifyChatBrowser({app,service,owner,member});
   });
