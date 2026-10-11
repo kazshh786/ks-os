@@ -186,3 +186,19 @@ it('describes presence and only marks messages read when another participant cur
   expect(screen.getByText('Grace is typing…')).toHaveAttribute('aria-live','off');
   rerender(draw('9007199254740993'));expect(screen.getByText('Read by Grace')).toBeInTheDocument();
 });
+
+it('expires typing and presence locally if the connection stops receiving fresh state',async()=>{
+  vi.useFakeTimers();
+  class Socket {
+    static current:Socket;readyState=1;send=vi.fn();onopen:(()=>void)|null=null;onclose:(()=>void)|null=null;onmessage:((e:{data:string})=>void)|null=null;onerror:(()=>void)|null=null;
+    constructor(){Socket.current=this;}close(){this.onclose?.();}
+  }
+  vi.stubGlobal('WebSocket',Socket);vi.mocked(chatApi.ticket).mockResolvedValue({ticket:'b'.repeat(64),cursor:'1'});
+  const ephemeral=vi.fn(),event=vi.fn(),stop=connectChat({ephemeral,event,ready:async()=>{},state:vi.fn(),revoked:vi.fn()});
+  await vi.advanceTimersByTimeAsync(0);Socket.current.onopen?.();
+  Socket.current.onmessage?.({data:JSON.stringify({version:1,type:'ephemeral.snapshot',conversationId:channelId,presence:[{userId,state:'ONLINE'}],typing:[{userId,name:'Grace'}],readers:[]})});
+  expect(event).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(5001);expect(ephemeral.mock.lastCall?.[0].typing).toEqual([]);
+  await vi.advanceTimersByTimeAsync(40000);expect(ephemeral.mock.lastCall?.[0].presence[0].state).toBe('OFFLINE');
+  stop();
+});

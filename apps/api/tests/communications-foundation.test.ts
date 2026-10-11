@@ -401,12 +401,14 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     presence.open('again',member);assert.equal(presence.snapshot('a',scope).presence[0].state,'ONLINE');
     presence.close('again');assert.equal(presence.snapshot('a',scope).presence[0].state,'OFFLINE');
   });
-  await t.test('DM sockets deliver authorized typing/presence and reject spoofed identity', async () => {
+  await t.test('DM sockets deliver authorized typing/presence and reject spoofed identity', async t => {
+    const owner=await seed(),member=await seed(owner.tenantId),outsider=await seed(owner.tenantId);
     const dm=await service.create(owner,{type:'DIRECT',name:'',memberUserIds:[member.userId]}),cid=String(dm.id);
     const frames:any[]=[];
     const tokenA=await service.ticket(owner,null),tokenB=await service.ticket(member,null);
     const a=await app.injectWS(`/comms/events?ticket=${tokenA.ticket}&after=${tokenA.cursor}`,{},{onOpen:ws=>ws.on('message',raw=>frames.push(JSON.parse(raw.toString())))});
     const b=await app.injectWS(`/comms/events?ticket=${tokenB.ticket}&after=${tokenB.cursor}`);
+    t.after(()=>{a.terminate();b.terminate();});
     const wait=async(fn:()=>boolean)=>{const until=Date.now()+6000;while(!fn()&&Date.now()<until)await new Promise(r=>setTimeout(r,25));assert.ok(fn(),'Expected live DM frame');};
     a.send(JSON.stringify({type:'watch',conversationId:cid,userIds:[member.userId,other.userId]}));
     b.send(JSON.stringify({type:'watch',conversationId:cid,userIds:[]}));

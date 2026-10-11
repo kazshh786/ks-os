@@ -5,16 +5,18 @@ export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'una
 export function connectChat(callbacks: { ephemeral?: (value:ChatEphemeral)=>void; event: (event: CommunicationsEvent) => void; ready: () => Promise<void>; state: (state: ConnectionState) => void; revoked: () => void }) {
   let stopped = false, attempt = 0, cursor: string | undefined;
   let socket: WebSocket | undefined, timer: ReturnType<typeof setTimeout> | undefined;
+  let typingTimer:ReturnType<typeof setTimeout>|undefined,expiryTimer:ReturnType<typeof setTimeout>|undefined;
   const seen = new Set<string>();
   let watch:ChatSignal={type:'watch',conversationId:null,userIds:[]},lastActivity=Date.now(),lastActivitySent=0;
   const signal=(value:ChatSignal)=>{if(value.type==='watch')watch=value;if(socket?.readyState===1)socket.send(JSON.stringify(value));};
   const activity=()=>{lastActivity=Date.now();if(Date.now()-lastActivitySent>2000)heartbeat();};
   const heartbeat=()=>{lastActivitySent=Date.now();signal({type:'activity',active:document.visibilityState==='visible' && Date.now()-lastActivity<300000});};
   const heartbeatTimer=setInterval(heartbeat,20000);
-  window.addEventListener('pointerdown',activity);window.addEventListener('keydown',activity);
+  window.addEventListener('pointerdown',activity);window.addEventListener('pointermove',activity);window.addEventListener('focus',activity);window.addEventListener('keydown',activity);
   document.addEventListener('visibilitychange',heartbeat);
   const retry = () => {
     if (stopped) return;
+    clearTimeout(typingTimer);clearTimeout(expiryTimer);
     callbacks.state('reconnecting');
     timer = setTimeout(() => void open(), Math.min(30000, 1000 * 2 ** Math.min(attempt++, 5)) + Math.random() * 300);
   };
@@ -37,7 +39,13 @@ export function connectChat(callbacks: { ephemeral?: (value:ChatEphemeral)=>void
         if (stopped) return;
         try {
           const value=JSON.parse(String(event.data));
-          if(value.type==='ephemeral.snapshot'){callbacks.ephemeral?.(ChatEphemeralSchema.parse(value));return;}
+          if(value.type==='ephemeral.snapshot'){
+            const snapshot=ChatEphemeralSchema.parse(value);callbacks.ephemeral?.(snapshot);
+            clearTimeout(typingTimer);clearTimeout(expiryTimer);
+            typingTimer=setTimeout(()=>callbacks.ephemeral?.({...snapshot,typing:[]}),5000);
+            expiryTimer=setTimeout(()=>callbacks.ephemeral?.({...snapshot,typing:[],presence:snapshot.presence.map(p=>({...p,state:'OFFLINE'}))}),45000);
+            return;
+          }
           const parsed = CommunicationsEventSchema.parse(value);
           if (seen.has(parsed.id)) return;
           seen.add(parsed.id);
@@ -63,7 +71,7 @@ export function connectChat(callbacks: { ephemeral?: (value:ChatEphemeral)=>void
   window.addEventListener('online',online);
   void open();
   return Object.assign(() => {
-    stopped=true;clearInterval(heartbeatTimer);window.removeEventListener('pointerdown',activity);window.removeEventListener('keydown',activity);document.removeEventListener('visibilitychange',heartbeat);
+    stopped=true;clearInterval(heartbeatTimer);clearTimeout(typingTimer);clearTimeout(expiryTimer);window.removeEventListener('pointermove',activity);window.removeEventListener('focus',activity);window.removeEventListener('pointerdown',activity);window.removeEventListener('keydown',activity);document.removeEventListener('visibilitychange',heartbeat);
     window.removeEventListener('online',online);clearTimeout(timer);if(socket){socket.onclose=null;socket.close();}
   },{signal});
 }

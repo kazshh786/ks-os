@@ -3,7 +3,7 @@ import type {ChatEphemeral,ChatSignal,NativeMessage} from '@ks-os/contracts';
 export const ChatLiveContext=createContext<{snapshot:ChatEphemeral|null;signal:(signal:ChatSignal)=>void}>({snapshot:null,signal:()=>{}});
 export function PresenceLabel({state}:{state?:'ONLINE'|'AWAY'|'OFFLINE'}) {
   const label=state==='ONLINE'?'Online':state==='AWAY'?'Away':'Offline';
-  return <span className={'chat-presence '+label.toLowerCase()}><span aria-hidden="true">●</span> {label}</span>;
+  return <span className={'chat-presence '+label.toLowerCase()}><span aria-hidden="true">●</span> <span>{label}</span></span>;
 }
 export function ReadReceipt({message,userId}:{message:NativeMessage;userId:string}) {
   const {snapshot}=useContext(ChatLiveContext);

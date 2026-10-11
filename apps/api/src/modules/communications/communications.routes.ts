@@ -156,7 +156,7 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
         const currentWatch=presence.watch(connectionId);
         if(currentWatch.conversationId===watch.conversationId && currentWatch.userIds===watch.userIds){
           const snapshot=JSON.stringify(presence.snapshot(connectionId,scope));
-          if(snapshot!==lastSnapshot){socket.send(snapshot);lastSnapshot=snapshot;}
+          if(snapshot!==lastSnapshot || polls%20===0){socket.send(snapshot);lastSnapshot=snapshot;}
         }
         }
         if (++polls % 20 === 0) {
