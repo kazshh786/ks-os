@@ -32,6 +32,29 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
   const service = options.service ?? new CommunicationsService();
   app.addHook('onSend', async (_request, reply, payload) => { reply.header('Cache-Control','no-store'); return payload; });
   app.addContentTypeParser('application/octet-stream',{parseAs:'buffer'},(_request,body,done)=>done(null,body));
+
+  const meetingParams=z.object({meetingId:z.string().uuid()});
+  const empty=z.object({}).strict();
+  app.addContentTypeParser('application/webhook+json',{parseAs:'string',bodyLimit:65536},(_request,body,done)=>done(null,body));
+  app.post('/meetings/webhook',{bodyLimit:65536,config:{rateLimit:{max:300,timeWindow:'1 minute'}}},async request=>{
+    if(typeof request.body!=='string')throw communicationError(400,'WEBHOOK_BODY','Invalid media notification');
+    return service.meetings.webhook(request.body,request.headers.authorization??'');
+  });
+  app.get('/meetings/config',async request=>({data:await service.meetings.config(actor(request))}));
+  app.get('/meetings/incoming',async request=>service.meetings.incoming(actor(request)));
+  app.get('/:conversationId/meetings',async request=>service.meetings.history(actor(request),params.parse(request.params).conversationId,z.object({before:z.string().uuid().optional()}).strict().parse(request.query).before));
+  app.post('/:conversationId/meetings',{config:{rateLimit:{max:10,timeWindow:'1 minute'}}},async(request,reply)=>reply.code(201).send({data:await service.meetings.create(actor(request),params.parse(request.params).conversationId,z.object({type:z.enum(['AUDIO','VIDEO']),requestId:z.string().uuid()}).strict().parse(request.body))}));
+  app.get('/meetings/:meetingId',async request=>({data:await service.meetings.get(actor(request),meetingParams.parse(request.params).meetingId)}));
+  app.post('/meetings/:meetingId/invitation',{config:{rateLimit:{max:30,timeWindow:'1 minute'}}},async request=>({data:await service.meetings.respond(actor(request),meetingParams.parse(request.params).meetingId,z.object({accept:z.boolean()}).strict().parse(request.body).accept)}));
+  app.post('/meetings/:meetingId/join',{config:{rateLimit:{max:12,timeWindow:'1 minute'}}},async request=>({data:await service.meetings.join(actor(request),meetingParams.parse(request.params).meetingId,z.object({requestId:z.string().uuid()}).strict().parse(request.body).requestId)}));
+  app.post('/meetings/:meetingId/leave',async request=>({data:await service.meetings.leave(actor(request),meetingParams.parse(request.params).meetingId,z.object({sessionId:z.string().uuid()}).strict().parse(request.body).sessionId)}));
+  app.post('/meetings/:meetingId/end',async request=>{empty.parse(request.body??{});return {data:await service.meetings.end(actor(request),meetingParams.parse(request.params).meetingId)};});
+  app.post('/meetings/:meetingId/participants/:userId/remove',async request=>{empty.parse(request.body??{});const p=meetingParams.extend({userId:z.string().uuid()}).parse(request.params);return {data:await service.meetings.remove(actor(request),p.meetingId,p.userId)};});
+  let reconciling=false;
+  const reconcile=async()=>{if(reconciling)return;reconciling=true;try{await service.meetings.reconcile();}catch{app.log.warn('Meeting reconciliation unavailable; retained state will be retried.');}finally{reconciling=false;}};
+  const timer=setInterval(()=>void reconcile(),15000);timer.unref();
+  app.addHook('onClose',async()=>{clearInterval(timer);});
+
   app.get('/search',async request=>service.discovery.search(actor(request),ChatSearchQuerySchema.parse(request.query)));
   app.get('/preferences',async request=>({data:await service.discovery.preferences(actor(request))}));
   app.put('/preferences',async request=>({data:await service.discovery.preferences(actor(request),ChatPreferencesSchema.parse(request.body))}));

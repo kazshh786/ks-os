@@ -1,3 +1,4 @@
+import { CallWorkspace } from '../calls/CallWorkspace';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CommunicationsEvent } from '@ks-os/contracts';
 import { ChatNotifications } from './ChatNotifications';
@@ -20,5 +21,6 @@ export function WorkspaceChatNotifications() {
   });
   return()=>{active=false;stop();};
  },[]);
- return revoked?null:<ChatNotifications subscribe={subscribe} revision={revision}/>;
+ return revoked?null:<><ChatNotifications subscribe={subscribe} revision={revision}/><CallWorkspace subscribe={subscribe} revision={revision}/></>;
 }
+

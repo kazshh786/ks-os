@@ -1,3 +1,5 @@
+import { CommunicationsMeetings } from './communications.meetings.js';
+import type { MeetingMediaProvider } from './communications.livekit.js';
 import { CommunicationsAttachments,attachmentFields } from './communications.attachments.js';
 import { CommunicationsDiscovery } from './communications.discovery.js';
 import { notifyMessage,notifyInvitation } from './communications.notifications.js';
@@ -34,7 +36,8 @@ const messageFields = sql`m.id,m.conversation_id AS "conversationId",m.sender_us
 export class CommunicationsService {
   readonly attachments:CommunicationsAttachments;
   readonly discovery:CommunicationsDiscovery;
-  constructor(private db: CommunicationsDatabase = communicationsDatabase(), options:{storage?:ChatStorage;scan?:FileScan}={}) {this.attachments=new CommunicationsAttachments(db,options.storage,options.scan);this.discovery=new CommunicationsDiscovery(db);}
+  readonly meetings:CommunicationsMeetings;
+  constructor(private db: CommunicationsDatabase = communicationsDatabase(), options:{storage?:ChatStorage;scan?:FileScan;meetingsProvider?:MeetingMediaProvider}={}) {this.attachments=new CommunicationsAttachments(db,options.storage,options.scan);this.discovery=new CommunicationsDiscovery(db);this.meetings=new CommunicationsMeetings(db,options.meetingsProvider);}
 
   private async journalLock(db: CommunicationsDatabase, actor: CommunicationsActor) {
     await db.query(sql`SELECT pg_advisory_xact_lock(hashtextextended(${actor.tenantId}, 8241))`);
@@ -108,7 +111,7 @@ export class CommunicationsService {
   }
 
   async leave(actor: CommunicationsActor, id: string) {
-    return this.locked(actor,id,'view',async db => {
+    const result=await this.locked(actor,id,'view',async db => {
       const access = await this.requireChannel(db,actor,id);
       if (access.role === 'OWNER' && access.type === 'GROUP_DIRECT') {
         const [next] = await db.query<{userId:string}>(sql`SELECT m.user_id AS "userId" FROM conversation_members m JOIN users u ON u.id=m.user_id
@@ -122,6 +125,8 @@ export class CommunicationsService {
       await this.event(db,actor,id,'conversation.member_left',member.id);
       return {removed:true};
     });
+    await this.meetings.revokeConversationMember(actor.tenantId,id,actor.userId);
+    return result;
   }
 
   async transfer(actor: CommunicationsActor, id: string, userId: string) {
@@ -382,7 +387,7 @@ export class CommunicationsService {
   }
 
   async removeMember(actor: CommunicationsActor, id: string, userId: string) {
-    return this.locked(actor, id, 'remove', async db => {
+    const result=await this.locked(actor, id, 'remove', async db => {
       const access = await new CommunicationsAuthorization(db).requireConversation(actor, id, 'remove');
       const [member] = await db.query<{ id: string; role: string }>(sql`SELECT id,role FROM conversation_members
         WHERE tenant_id=${actor.tenantId} AND conversation_id=${id} AND user_id=${userId} AND left_at IS NULL`);
@@ -395,6 +400,8 @@ export class CommunicationsService {
       await this.event(db, actor, id, 'conversation.member_left', member.id);
       return { removed: true };
     });
+    await this.meetings.revokeConversationMember(actor.tenantId,id,userId);
+    return result;
   }
 
   async messages(actor: CommunicationsActor, id: string, query: NativeMessageQuery) {

@@ -4565,3 +4565,5 @@ export const siteChangeProposals = pgTable('site_change_proposals', {
   reviewQueueIdx: index('site_change_proposals_review_queue_idx').on(table.tenantId, table.siteId, table.status, table.createdAt),
   reviewerIdx: index('site_change_proposals_reviewer_idx').on(table.reviewedByAgencyUserId),
 }));
+
+export { communicationMeetings,communicationMeetingParticipants,communicationMeetingSessions,communicationMeetingWebhooks } from './meeting-schema.js';

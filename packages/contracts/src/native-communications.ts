@@ -85,7 +85,7 @@ export const CommunicationsEventSchema = z.object({
   id: CommunicationPositionSchema,
   tenantId: z.string().uuid(),
   conversationId: z.string().uuid(),
-  type: z.enum(['conversation.created', 'conversation.member_joined', 'conversation.member_left', 'message.created', 'conversation.read', 'conversation.updated', 'message.updated', 'message.deleted', 'message.reaction','notification.created','notification.read','notification.preferences_updated']),
+  type: z.enum(['conversation.created', 'conversation.member_joined', 'conversation.member_left', 'message.created', 'conversation.read', 'conversation.updated', 'message.updated', 'message.deleted', 'message.reaction','notification.created','notification.read','notification.preferences_updated','call.created','call.invited','call.accepted','call.declined','call.cancelled','call.started','call.participant_joined','call.participant_left','call.ended','call.failed']),
   occurredAt: z.string().datetime(),
   // Invalidation events deliberately carry no message bodies or participant details.
   resourceId: z.string().uuid(),

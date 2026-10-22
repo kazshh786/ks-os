@@ -1,3 +1,5 @@
+import { CallWorkspace } from '../calls/CallWorkspace';
+import { ConversationCalls } from '../calls/ConversationCalls';
 import { ChatSearch } from './ChatSearch';
 import { SharedFiles } from './ChatAttachments';
 import { ChatNotifications,ConversationNotifications } from './ChatNotifications';
@@ -128,7 +130,7 @@ export function ChatWorkspace() {
         for(const listener of listeners.current)listener(event);
         pending.add(event.conversationId);if(!working){clearTimeout(timer);timer=setTimeout(()=>void flush(),150);}
       },
-      revoked:()=>{if(active){setChannels([]);setChannel(null);drafts.current.clear();setError('Your session is no longer available. Sign in again to use Chat.');}},
+      revoked:()=>{if(active){setChannels([]);setChannel(null);setCapabilities(null);drafts.current.clear();setError('Your session is no longer available. Sign in again to use Chat.');}},
     });
     liveControl.current=stop;
     return()=>{active=false;liveControl.current=null;clearTimeout(timer);stop();};
@@ -138,11 +140,13 @@ export function ChatWorkspace() {
     setSnapshot(null);
     signal({type:'watch',conversationId:channel && ['DIRECT','GROUP_DIRECT'].includes(channel.type)?channel.id:null,userIds:peerIds?peerIds.split(','):[]});
   },[channel?.id,channel?.type,peerIds,signal,capabilities]);
-  const closePanel=()=>{setParams({});requestAnimationFrame(()=>heading.current?.focus());};
-  const choose=(id:string)=>{setNotice('');navigate('/app/chat/'+id);};
+  const closePanel=()=>{setParams(current=>{const next=new URLSearchParams();if(current.get('call'))next.set('call',current.get('call')!);return next;});requestAnimationFrame(()=>heading.current?.focus());};
+  const callQuery=params.get('call')?'?call='+encodeURIComponent(params.get('call')!):'';
+  const choose=(id:string)=>{setNotice('');navigate('/app/chat/'+id+callQuery);};
   const run=async(work:()=>Promise<void>)=>{setBusy(true);setError('');try{await work();}catch(cause){setError(cause instanceof Error?cause.message:'Chat could not complete this request');}finally{setBusy(false);}};
   const status={connecting:'Connecting…',connected:'Connected',reconnecting:'Reconnecting…',unavailable:'Sign-in required'}[connection];
   return <ChatLiveContext.Provider value={{snapshot,signal,activeConversationId:channel && ['DIRECT','GROUP_DIRECT'].includes(channel.type)?channel.id:undefined}}><div className={'chat-workspace'+(conversationId?' chat-has-channel':'')+((threadId || details || files)?' chat-has-panel':'')}>
+    {capabilities && <CallWorkspace subscribe={subscribe} revision={revision} userId={capabilities.userId}/>}
     <aside className="chat-channel-nav" aria-label="Conversation navigation"><header className="chat-nav-header"><div><p className="chat-eyebrow">Your workspace</p><h1 ref={listHeading} tabIndex={-1}>Chat</h1><small>{channels.filter(c=>Boolean(c.unreadCount)).length} unread conversations</small></div>{capabilities?.canCreateChannels && <button type="button" aria-label="Create channel" title="Create channel" onClick={()=>setCreate(true)}><Plus size={20} aria-hidden="true"/></button>}</header>
       {!conversationId && <>{error && <p role="alert" className="chat-error">{error}</p>}{notice && <p role="status" className="chat-notice">{notice}</p>}</>}
       <button type="button" className="chat-discover-toggle" onClick={()=>setNewMessage(true)}><MessageSquare size={16} aria-hidden="true"/>New message</button>
@@ -152,7 +156,7 @@ export function ChatWorkspace() {
       <button type="button" className="chat-discover-toggle" aria-expanded={discovering} onClick={()=>setDiscovering(!discovering)}><Search size={15} aria-hidden="true"/>{discovering?'Hide channel discovery':'Discover public channels'}</button>
       <div className="chat-channels-scroll">
         {loading ? <div role="status" className="chat-loading"><span className="sr-only">Loading channels</span><div className="chat-skeleton"/><div className="chat-skeleton"/></div> : <>
-          {(['CHANNEL','PRIVATE_CHANNEL','DIRECT','GROUP_DIRECT'] as const).map(type=><details key={type} open className="chat-channel-group"><summary>{{CHANNEL:'Public channels',PRIVATE_CHANNEL:'Private channels',DIRECT:'Direct messages',GROUP_DIRECT:'Group chats'}[type]} <span>{channels.filter(c=>c.type===type).length}</span></summary><ul>{channels.filter(c=>c.type===type).map(item=><li key={item.id}><Link to={'/app/chat/'+item.id} aria-current={conversationId===item.id?'page':undefined} className={item.unreadCount?'chat-unread':''}>
+          {(['CHANNEL','PRIVATE_CHANNEL','DIRECT','GROUP_DIRECT'] as const).map(type=><details key={type} open className="chat-channel-group"><summary>{{CHANNEL:'Public channels',PRIVATE_CHANNEL:'Private channels',DIRECT:'Direct messages',GROUP_DIRECT:'Group chats'}[type]} <span>{channels.filter(c=>c.type===type).length}</span></summary><ul>{channels.filter(c=>c.type===type).map(item=><li key={item.id}><Link to={'/app/chat/'+item.id+callQuery} aria-current={conversationId===item.id?'page':undefined} className={item.unreadCount?'chat-unread':''}>
             {type==='CHANNEL'?<Hash size={17} aria-hidden="true"/>:type==='PRIVATE_CHANNEL'?<Lock size={16} aria-hidden="true"/>:type==='DIRECT'?<span className="chat-list-avatar" aria-hidden="true">{item.name.slice(0,2).toUpperCase()}</span>:<Users size={17} aria-hidden="true"/>}
             <span className="chat-conversation-preview"><strong>{item.name}</strong><small>{item.preview || 'No messages yet'}</small>{item.lastActivityAt && <time dateTime={item.lastActivityAt}>{new Date(item.lastActivityAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time>}{type==='DIRECT' && <PresenceLabel state={snapshot?.presence.find(p=>p.userId===item.peerUserId)?.state}/>}</span>
             {Boolean(item.unreadCount) && <b aria-label={item.unreadCount+' unread messages'}>{item.unreadCount!>99?'99+':item.unreadCount}</b>}</Link></li>)}</ul></details>)}
@@ -166,13 +170,14 @@ export function ChatWorkspace() {
     <div className="chat-main">
       {conversationId && <>{error && <p role="alert" className="chat-error">{error}</p>}{notice && <p role="status" className="chat-notice">{notice}</p>}</>}
       {channel && capabilities ? <>
-        <header className="chat-conversation-header"><button type="button" className="chat-mobile-back" aria-label="Back to channels" onClick={()=>navigate('/app/chat')}><ArrowLeft size={20} aria-hidden="true"/></button><div className="chat-channel-title"><div>{['DIRECT','GROUP_DIRECT'].includes(channel.type)?<MessageSquare size={21} aria-hidden="true"/>:channel.type==='PRIVATE_CHANNEL'?<Lock size={21} aria-hidden="true"/>:<Hash size={23} aria-hidden="true"/>}<h2 ref={heading} tabIndex={-1}>{channel.name}</h2></div><p>{channel.archivedAt?'Archived · Read only':channel.type==='DIRECT'?'Private direct message':channel.type==='GROUP_DIRECT'?'Private group conversation':channel.description || 'A shared space for your team'}</p>{connection!=='connected' && <small role="status">{status}</small>}</div>
-          <button type="button" onClick={()=>setParams({files:'1'})}>Files</button>
-          <button type="button" className="chat-member-count" onClick={()=>setParams({details:'1'})} aria-label={'View '+channel.memberCount+' participants'}><Users size={17} aria-hidden="true"/>{channel.memberCount}</button>
-          <button type="button" aria-label={['DIRECT','GROUP_DIRECT'].includes(channel.type)?'Conversation details':'Channel details'} title="Conversation details" onClick={()=>setParams({details:'1'})}><Info size={20} aria-hidden="true"/></button>
+        <header className="chat-conversation-header"><button type="button" className="chat-mobile-back" aria-label="Back to channels" onClick={()=>navigate('/app/chat'+callQuery)}><ArrowLeft size={20} aria-hidden="true"/></button><div className="chat-channel-title"><div>{['DIRECT','GROUP_DIRECT'].includes(channel.type)?<MessageSquare size={21} aria-hidden="true"/>:channel.type==='PRIVATE_CHANNEL'?<Lock size={21} aria-hidden="true"/>:<Hash size={23} aria-hidden="true"/>}<h2 ref={heading} tabIndex={-1}>{channel.name}</h2></div><p>{channel.archivedAt?'Archived · Read only':channel.type==='DIRECT'?'Private direct message':channel.type==='GROUP_DIRECT'?'Private group conversation':channel.description || 'A shared space for your team'}</p>{connection!=='connected' && <small role="status">{status}</small>}</div>
+          <ConversationCalls key={channel.id} conversationId={channel.id} archived={Boolean(channel.archivedAt)} subscribe={subscribe} revision={revision}/>
+          <button type="button" onClick={()=>setParams(current=>{const next=new URLSearchParams({files:'1'});if(current.get('call'))next.set('call',current.get('call')!);return next;})}>Files</button>
+          <button type="button" className="chat-member-count" onClick={()=>setParams(current=>{const next=new URLSearchParams({details:'1'});if(current.get('call'))next.set('call',current.get('call')!);return next;})} aria-label={'View '+channel.memberCount+' participants'}><Users size={17} aria-hidden="true"/>{channel.memberCount}</button>
+          <button type="button" aria-label={['DIRECT','GROUP_DIRECT'].includes(channel.type)?'Conversation details':'Channel details'} title="Conversation details" onClick={()=>setParams(current=>{const next=new URLSearchParams({details:'1'});if(current.get('call'))next.set('call',current.get('call')!);return next;})}><Info size={20} aria-hidden="true"/></button>
           {Boolean(channel.unreadCount) && channel.latestMessageId && <button type="button" aria-label="Mark channel and threads as read" title="Mark channel and threads as read" onClick={()=>void run(()=>read(channel.latestMessageId!))}><CheckCheck size={20} aria-hidden="true"/></button>}
         </header>
-        <MessageTimeline key={channel.id} channel={channel} targetId={params.get('message')} userId={capabilities.userId} subscribe={subscribe} revision={revision} drafts={drafts.current} openThread={message=>setParams({thread:message.id})} inaccessible={inaccessible} read={read}/>
+        <MessageTimeline key={channel.id} channel={channel} targetId={params.get('message')} userId={capabilities.userId} subscribe={subscribe} revision={revision} drafts={drafts.current} openThread={message=>setParams(current=>{const next=new URLSearchParams({thread:message.id});if(current.get('call'))next.set('call',current.get('call')!);return next;})} inaccessible={inaccessible} read={read}/>
       </> : <div className="chat-welcome"><div><MessageSquare size={32} aria-hidden="true"/></div><p className="chat-eyebrow">Together, in the loop</p><h2>{conversationId?(error?'Conversation unavailable':'Opening your conversation…'):'Room for every conversation'}</h2><p>Keep team updates, questions and ideas in one place.<br/>Choose a conversation or start a new message.</p>{conversationId && error && <><button type="button" disabled={busy} onClick={()=>void run(refresh)}>Try again</button><Link to="/app/chat">Back to channels</Link></>}{capabilities?.canCreateChannels && !conversationId && <button type="button" className="chat-primary" onClick={()=>setCreate(true)}><Plus size={16} aria-hidden="true"/>Create a channel</button>}</div>}
     </div>
     {channel && capabilities && (threadId || details || files) && <aside className="chat-context-panel" onKeyDown={event=>{if(event.key==='Escape' && !event.defaultPrevented && !(event.target instanceof Element && event.target.closest('[role="dialog"]'))){event.preventDefault();closePanel();}}}>
@@ -183,3 +188,4 @@ export function ChatWorkspace() {
     {create && <CreateChannelDialog close={()=>setCreate(false)} created={value=>{setCreate(false);setChannels(channels=>[...channels.filter(c=>c.id!==value.id),value]);choose(value.id);setNotice('Channel created');}}/>}
   </div></ChatLiveContext.Provider>;
 }
+

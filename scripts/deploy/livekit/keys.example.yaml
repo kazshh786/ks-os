@@ -1,0 +1,4 @@
+# Copy outside the checkout, replace with an independently generated production
+# credential, and set owner uid 65532 with mode 0600. Do not commit the real file.
+# The API uses the same key and secret as LIVEKIT_API_KEY/LIVEKIT_API_SECRET.
+REPLACE_WITH_SERVER_API_KEY: REPLACE_WITH_RANDOM_SECRET_AT_LEAST_32_CHARACTERS

@@ -1,0 +1,42 @@
+# TEMPLATE ONLY. Resolve all REPLACE values after infrastructure review.
+# This topology reserves a second public IP for TURN/TLS on 443. Never bind
+# it on an existing Plesk/Nextcloud/Coturn listener without an approved plan.
+port: 7880
+bind_addresses: ["127.0.0.1"]
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+  node_ip: REPLACE_WITH_MEDIA_PUBLIC_IPV4
+  enable_loopback_candidate: false
+room:
+  auto_create: false
+  max_participants: 8
+  empty_timeout: 120
+  departure_timeout: 30
+  enable_remote_unmute: false
+turn:
+  enabled: true
+  domain: REPLACE_WITH_APPROVED_TURN_HOSTNAME
+  bind_addresses: ["REPLACE_WITH_SEPARATE_TURN_PUBLIC_IPV4"]
+  tls_port: 443
+  udp_port: 3478
+  cert_file: /etc/livekit/certs/fullchain.pem
+  key_file: /etc/livekit/certs/privkey.pem
+  ttl_seconds: 300
+  per_user_relay_allocation_limit: 4
+  relay_range_start: 40000
+  relay_range_end: 40999
+prometheus:
+  port: 6789
+logging:
+  level: info
+  pion_level: error
+  json: true
+  sample: true
+webhook:
+  api_key: REPLACE_WITH_SAME_SERVER_API_KEY
+  urls:
+    - https://api.kasimshah.com/api/v1/communications/conversations/meetings/webhook
+# Single media node: no Redis is required. Review an isolated Redis deployment
+# before adding nodes; do not attach this instance to another application's Redis.
