@@ -141,28 +141,3 @@ jobs:
       - name: Stop isolated media server
         if: always()
         run: docker rm -f ksos-livekit-ci
-
-  prepare-livekit:
-    name: Resolve policy-eligible LiveKit SDK
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/communications-phase-5'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-      - uses: pnpm/action-setup@v4
-        with: { version: 11.13.1 }
-      - uses: actions/setup-node@v4
-        with: { node-version: 24 }
-      - name: Resolve from the reviewed Phase 4 lockfile
-        run: |
-          git show 8327608a31a3eba84d5e9c9ed2998797857e6fe8:pnpm-lock.yaml > pnpm-lock.yaml
-          pnpm install --lockfile-only --ignore-scripts
-      - uses: actions/upload-artifact@v4
-        with:
-          name: phase5-eligible-dependencies
-          path: |
-            pnpm-lock.yaml
-            apps/api/package.json

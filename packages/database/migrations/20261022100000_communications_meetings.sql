@@ -46,7 +46,7 @@ ALTER TABLE communication_meeting_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE communication_meeting_webhooks ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON communication_meetings,communication_meeting_participants,communication_meeting_sessions,communication_meeting_webhooks FROM anon,authenticated;
 GRANT ALL ON communication_meetings,communication_meeting_participants,communication_meeting_sessions,communication_meeting_webhooks TO service_role;
-CREATE FUNCTION check_communication_meeting_user_scope() RETURNS trigger LANGUAGE plpgsql SET search_path=public AS $
+CREATE FUNCTION check_communication_meeting_user_scope() RETURNS trigger LANGUAGE plpgsql SET search_path=public AS $$
 BEGIN
  IF TG_TABLE_NAME='communication_meetings' THEN
   IF NOT EXISTS(SELECT 1 FROM users WHERE id=NEW.created_by AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'MEETING_USER_SCOPE_INVALID' USING ERRCODE='23514'; END IF;
@@ -54,7 +54,7 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM users WHERE id=NEW.user_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'MEETING_USER_SCOPE_INVALID' USING ERRCODE='23514'; END IF;
  END IF;
  RETURN NEW;
-END $;
+END $$;
 CREATE TRIGGER meeting_creator_scope BEFORE INSERT OR UPDATE ON communication_meetings FOR EACH ROW EXECUTE FUNCTION check_communication_meeting_user_scope();
 CREATE TRIGGER meeting_participant_scope BEFORE INSERT OR UPDATE ON communication_meeting_participants FOR EACH ROW EXECUTE FUNCTION check_communication_meeting_user_scope();
 COMMIT;

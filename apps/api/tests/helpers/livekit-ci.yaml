@@ -7,6 +7,7 @@ rtc:
   udp_port: 7882
   use_external_ip: false
   node_ip: 127.0.0.1
+  enable_loopback_candidate: true
 keys:
   ksos-test-key: ksos-isolated-test-secret-never-production-2026
 room:
