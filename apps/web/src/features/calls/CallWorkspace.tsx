@@ -93,7 +93,7 @@ export function CallWorkspace({ subscribe, revision, userId }: { subscribe: Subs
     finally { setBusy(null); void refresh(); }
   };
   return <>
-    {incoming.filter(meeting => meeting.id !== selected).slice(0, 1).map(meeting => <section className="call-incoming" key={meeting.id} role="region" aria-label={'Incoming ' + (meeting.type === 'VIDEO' ? 'video' : 'voice') + ' call'}>
+    {incoming.filter(meeting => meeting.id !== selected).slice(0, 1).map(meeting => <section className="call-incoming" key={meeting.id} role="region" aria-live="polite" aria-atomic="true" aria-label={'Incoming ' + (meeting.type === 'VIDEO' ? 'video' : 'voice') + ' call'}>
       <div className="call-avatar" aria-hidden="true">{meeting.organizerName.slice(0, 2).toUpperCase()}</div>
       <div><p className="chat-eyebrow">Incoming {meeting.type === 'VIDEO' ? 'video' : 'voice'} call</p><h2>{meeting.organizerName}</h2><p>{meeting.conversationName}</p>{incoming.length > 1 && <p>{incoming.length - 1} more invitation{incoming.length > 2 ? 's' : ''} waiting</p>}</div>
       <div className="call-actions"><button type="button" disabled={busy !== null} className="call-danger" onClick={() => void respond(meeting, false)}><PhoneOff size={17} aria-hidden="true"/>Decline</button><button type="button" className="call-primary" disabled={busy !== null} onClick={() => void respond(meeting, true)}>{meeting.type === 'VIDEO' ? <Video size={17} aria-hidden="true"/> : <Phone size={17} aria-hidden="true"/>}Accept</button></div>

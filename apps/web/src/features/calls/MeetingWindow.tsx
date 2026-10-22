@@ -128,6 +128,7 @@ export default function MeetingWindow({ id, subscribe, revision, close, displayN
         {notice && <p role="status" className="call-notice">{notice}</p>}
         {!meeting ? <p role="status" className="call-loading">Loading meeting details…</p> : !isJoinable(meeting) ? <div className="call-ended"><PhoneOff size={36} aria-hidden="true"/><h3>{meetingOutcome(meeting)}</h3><p>Call history is saved in {meeting.conversationName}.</p><button type="button" onClick={close}>Back to workspace</button></div> : room ? <>
           <div className="call-body"><div className="call-stage">
+            <p className="sr-only" role="status" aria-live="polite">{participantList.length} connected device{participantList.length === 1 ? '' : 's'}: {participantList.map(person => person.name || 'Participant').join(', ')}</p>
             {sharing.length > 0 && <div className="call-stage-tools"><button type="button" onClick={() => setFocusShare(value => !value)}><Grid2X2 size={16}/>{focusShare ? 'Show grid' : 'Focus shared screen'}</button></div>}
             {focusShare && sharing.length > 0 && <div className="call-shared-focus">{sharing.map(person => <ParticipantTile key={person.identity} participant={person} share/>)}</div>}
             <div className={'call-grid' + (focusShare && sharing.length ? ' call-grid-small' : '')}>
