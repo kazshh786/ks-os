@@ -58,7 +58,13 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter site-worker exec playwright install --with-deps chromium
+      - name: Install Chromium and system dependencies
+        run: |
+          # The runner's Azure HTTP mirror has repeatedly stalled browser setup.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          pnpm --filter site-worker exec playwright install --with-deps chromium
       - run: pnpm build
       - run: pnpm lint
       - run: pnpm typecheck
@@ -81,7 +87,13 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter site-worker exec playwright install --with-deps chromium
+      - name: Install Chromium and system dependencies
+        run: |
+          # The runner's Azure HTTP mirror has repeatedly stalled browser setup.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          pnpm --filter site-worker exec playwright install --with-deps chromium
       - run: pnpm --filter @ks-os/contracts --filter @ks-os/database build
       - name: Exercise the real communications database, HTTP and browser flows
         working-directory: apps/api
@@ -113,7 +125,13 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter site-worker exec playwright install --with-deps chromium
+      - name: Install Chromium and system dependencies
+        run: |
+          # The runner's Azure HTTP mirror has repeatedly stalled browser setup.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          pnpm --filter site-worker exec playwright install --with-deps chromium
       - id: calling-build
         run: pnpm --filter @ks-os/contracts --filter @ks-os/database build
       - name: Validate review-only infrastructure template in an isolated network

@@ -16,6 +16,8 @@ The existing React/Vite workspace gains voice/video actions for direct messages,
 
 The UI uses official `livekit-client` **2.23.0** with KSOS React components. The Fastify API uses official `livekit-server-sdk` **2.19.1** behind `LiveKitProvider`/`MeetingMediaProvider`; KSOS owns permissions, meeting records and events. The review-only container is pinned to LiveKit Server **v1.13.10**. No LiveKit Cloud, recording, transcription, Ingress or Egress service is introduced. Video capture defaults to 640×360 at 24fps with simulcast, adaptive subscriptions and dynacast.
 
+Lifecycle events are `call.created`, `call.invited`, `call.accepted`, `call.declined`, `call.cancelled`, `call.started`, `call.participant_joined`, `call.participant_left`, `call.ended` and `call.failed`.
+
 Invitations use the existing authorized `communication_events` journal and workspace subscription, with a 15-second refresh fallback. Incoming UI honors Do Not Disturb, conversation notification settings, direct-message preferences, and in-app/browser/sound choices. Browser notifications require existing permission; ringtone depends on browser autoplay policy. BroadcastChannel and server invitation state synchronize answers across tabs. Notifications do not activate devices.
 
 ## API
