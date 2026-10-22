@@ -20,7 +20,7 @@ export default function MeetingWindow({ id, subscribe, revision, close, displayN
   const [, render] = useState(0);
   const alive = useRef(true), generation = useRef(0), connecting = useRef(false), session = useRef<Session | null>(null);
   const { devices, error: deviceError, refresh: refreshDevices } = useDevices();
-  const dialog = useModalDialog<HTMLDivElement>(!minimized, () => setMinimized(true));
+  const dialog = useModalDialog<HTMLDivElement>(!minimized && !confirmation, () => setMinimized(true));
   const stop = useCallback(async () => {
     generation.current++;
     const current = session.current; session.current = null;

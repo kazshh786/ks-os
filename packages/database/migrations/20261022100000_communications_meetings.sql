@@ -16,23 +16,25 @@ CREATE UNIQUE INDEX communication_meetings_one_live ON communication_meetings(co
 CREATE INDEX communication_meetings_history ON communication_meetings(tenant_id,conversation_id,created_at DESC,id DESC);
 CREATE INDEX communication_meetings_reconcile ON communication_meetings(last_reconciled_at NULLS FIRST) WHERE status IN ('CREATED','RINGING','ACTIVE') OR cleanup_pending;
 CREATE TABLE communication_meeting_participants (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  meeting_id uuid NOT NULL, tenant_id uuid NOT NULL REFERENCES tenants(id), user_id uuid NOT NULL REFERENCES users(id),
  role text NOT NULL CHECK(role IN ('ORGANIZER','PARTICIPANT')),
  invitation_state text NOT NULL DEFAULT 'INVITED' CHECK(invitation_state IN ('INVITED','ACCEPTED','DECLINED','REMOVED')),
  invited_at timestamptz NOT NULL DEFAULT now(), responded_at timestamptz, joined_at timestamptz, left_at timestamptz,
- PRIMARY KEY(meeting_id,user_id), UNIQUE(meeting_id,user_id,tenant_id),
+ UNIQUE(meeting_id,user_id), UNIQUE(meeting_id,user_id,tenant_id), UNIQUE(id,meeting_id,user_id,tenant_id),
  FOREIGN KEY(meeting_id,tenant_id) REFERENCES communication_meetings(id,tenant_id) ON DELETE CASCADE
 );
 CREATE INDEX communication_meeting_incoming ON communication_meeting_participants(tenant_id,user_id,invited_at DESC) WHERE invitation_state='INVITED';
 -- A session represents one explicit device/tab join. Identity is server-generated,
 -- so another tab cannot eject a participant by guessing their user ID.
 CREATE TABLE communication_meeting_sessions (
- id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL, meeting_id uuid NOT NULL, user_id uuid NOT NULL,
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL, meeting_id uuid NOT NULL, participant_id uuid NOT NULL, user_id uuid NOT NULL,
  auth_session_id uuid NOT NULL, auth_issued_at timestamptz NOT NULL, request_id uuid NOT NULL,
  identity text NOT NULL UNIQUE, provider_sid text, created_at timestamptz NOT NULL DEFAULT now(),
  token_expires_at timestamptz NOT NULL, token_count integer NOT NULL DEFAULT 0, token_issued_at timestamptz NOT NULL DEFAULT now(), joined_at timestamptz, left_at timestamptz, revoked_at timestamptz,
  UNIQUE(meeting_id,user_id,auth_session_id,request_id),
- FOREIGN KEY(meeting_id,user_id,tenant_id) REFERENCES communication_meeting_participants(meeting_id,user_id,tenant_id) ON DELETE CASCADE
+ FOREIGN KEY(meeting_id,user_id,tenant_id) REFERENCES communication_meeting_participants(meeting_id,user_id,tenant_id) ON DELETE CASCADE,
+ FOREIGN KEY(participant_id,meeting_id,user_id,tenant_id) REFERENCES communication_meeting_participants(id,meeting_id,user_id,tenant_id) ON DELETE CASCADE
 );
 CREATE INDEX communication_meeting_sessions_active ON communication_meeting_sessions(meeting_id,user_id) WHERE revoked_at IS NULL AND left_at IS NULL;
 CREATE INDEX communication_meeting_token_rate ON communication_meeting_sessions(tenant_id,user_id,created_at DESC);

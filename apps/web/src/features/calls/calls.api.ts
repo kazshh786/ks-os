@@ -40,9 +40,15 @@ export function meetingDuration(meeting: Meeting) {
   return seconds < 60 ? seconds + ' sec' : Math.floor(seconds / 60) + ' min';
 }
 export const callingError = (cause: unknown) => {
-  if (cause instanceof Error && ['NotAllowedError', 'PermissionDeniedError'].includes(cause.name)) return 'Microphone or camera permission was denied. You can join with both off, or allow access in your browser settings.';
-  if (cause instanceof Error && ['NotFoundError', 'DevicesNotFoundError'].includes(cause.name)) return 'That device is not available. Connect a device or join with it off.';
-  if (cause instanceof Error && ['NotReadableError', 'TrackStartError'].includes(cause.name)) return 'That device is busy or disconnected. Close other apps using it and try again.';
+  // DOMException can originate in another browser realm and fail instanceof Error.
+  // Only recognise known device names; arbitrary objects never supply display text.
+  let name = '';
+  if (typeof cause === 'object' && cause !== null) {
+    try { const candidate = Reflect.get(cause, 'name'); if (typeof candidate === 'string') name = candidate; } catch { /* Keep the generic safe message. */ }
+  }
+  if (['NotAllowedError', 'PermissionDeniedError'].includes(name)) return 'Microphone or camera permission was denied. You can join with both off, or allow access in your browser settings.';
+  if (['NotFoundError', 'DevicesNotFoundError'].includes(name)) return 'That device is not available. Connect a device or join with it off.';
+  if (['NotReadableError', 'TrackStartError'].includes(name)) return 'That device is busy or disconnected. Close other apps using it and try again.';
   return cause instanceof Error ? cause.message : 'The call could not complete this request. Please try again.';
 };
 

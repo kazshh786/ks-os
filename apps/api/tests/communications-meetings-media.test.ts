@@ -14,7 +14,7 @@ test('real self-hosted LiveKit: two-user audio, video, screen, reconnect and roo
   assert.equal(process.env.LIVEKIT_API_SECRET, 'ksos-isolated-test-secret-never-production-2026');
   const { db, owner, member, service } = await createMeetingFixture(t);
   const conversation = await service.create(owner, { type: 'PRIVATE_CHANNEL', name: `Real media ${randomUUID()}`, memberUserIds: [member.userId] });
-  const meetings = new CommunicationsMeetings(db, new LiveKitProvider({ ...process.env, NODE_ENV: 'test', LIVEKIT_ENABLED: 'true' }));
+  const meetings = new CommunicationsMeetings(db, new LiveKitProvider({ ...process.env, NODE_ENV: 'test', LIVEKIT_ENABLED: 'true', LIVEKIT_API_URL: 'http://127.0.0.1:7880' }));
   const { verifyMeetingMedia } = await import('./helpers/meetings-media-browser.mjs');
   const result = await verifyMeetingMedia({ meetings, owner, member, conversationId: String(conversation.id) });
   assert.equal(result.evidence.length, 9);

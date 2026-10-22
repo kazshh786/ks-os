@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CommunicationsEvent } from '@ks-os/contracts';
-import { callsApi, type Meeting } from './calls.api';
+import { callsApi, callingError, type Meeting } from './calls.api';
 import { ConversationCalls } from './ConversationCalls';
 import { CallWorkspace } from './CallWorkspace';
 import MeetingWindow from './MeetingWindow';
@@ -128,8 +128,31 @@ describe('incoming calls', () => {
     await act(async () => { for (const listener of listeners) listener({ type: 'call.ended', resourceId: meeting.id, conversationId: meeting.conversationId } as unknown as CommunicationsEvent); });
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Accept' })).not.toBeInTheDocument());
   });
+  it('deduplicates browser alerts and closes them when the caller cancels', async () => {
+    const close = vi.fn(), alerts = vi.fn();
+    class BrowserAlert {
+      static permission = 'granted'; onclick: (() => void) | null = null;
+      constructor(title: string, options: unknown) { alerts(title, options); }
+      close = close;
+    }
+    vi.stubGlobal('Notification', BrowserAlert);
+    vi.mocked(callsApi.incoming).mockResolvedValue([meeting]);
+    vi.mocked(phase4Api.preferences).mockResolvedValue({ inApp: true, browser: true, sound: false, dnd: false, directMessages: true });
+    render(<MemoryRouter><CallWorkspace subscribe={subscribe} revision={0}/></MemoryRouter>);
+    await waitFor(() => expect(alerts).toHaveBeenCalledTimes(1));
+    expect(alerts).toHaveBeenCalledWith('Incoming KSOS call', expect.objectContaining({ tag: 'ksos-call-' + meeting.id, silent: true }));
+    await act(async () => { for (const listener of listeners) listener({ type: 'call.invited', resourceId: meeting.id, conversationId: meeting.conversationId } as unknown as CommunicationsEvent); });
+    expect(alerts).toHaveBeenCalledTimes(1);
+    vi.mocked(callsApi.incoming).mockResolvedValue([]);
+    await act(async () => { for (const listener of listeners) listener({ type: 'call.ended', resourceId: meeting.id, conversationId: meeting.conversationId } as unknown as CommunicationsEvent); });
+    await waitFor(() => expect(close).toHaveBeenCalled());
+  });
 });
 describe('native meeting media', () => {
+  it('recognises cross-realm device errors without exposing arbitrary object messages', () => {
+    expect(callingError({ name: 'NotAllowedError', message: 'private provider details' })).toContain('permission was denied');
+    expect(callingError({ name: 'UnknownProviderError', message: 'private provider details' })).toBe('The call could not complete this request. Please try again.');
+  });
   it('joins with both devices disabled, shows participants, and leaves only this session', async () => {
     const mounted = mountMeeting();
     expect(await screen.findByLabelText('Enable microphone')).not.toBeChecked(); expect(screen.getByLabelText('Enable camera preview')).not.toBeChecked();

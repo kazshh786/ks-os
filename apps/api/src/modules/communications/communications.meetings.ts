@@ -125,8 +125,8 @@ export class CommunicationsMeetings {
     if(rate.devices>=2||rate.capacity>=this.provider.participantLimit)throw communicationError(409,'CALL_CAPACITY','This call has reached its connection limit. Leave another device or try later.');
     await db.query(sql`INSERT INTO communication_meeting_participants(meeting_id,tenant_id,user_id,role,invitation_state) VALUES(${id},${actor.tenantId},${actor.userId},'PARTICIPANT','ACCEPTED') ON CONFLICT(meeting_id,user_id) DO UPDATE SET invitation_state='ACCEPTED',responded_at=now()`);
     const sessionId=randomUUID(),identity='ksos_'+sessionId,expiry=new Date(Date.now()+this.provider.tokenTtlSeconds*1000).toISOString();
-    await db.query(sql`INSERT INTO communication_meeting_sessions(id,tenant_id,meeting_id,user_id,auth_session_id,auth_issued_at,request_id,identity,token_expires_at)
-      VALUES(${sessionId},${actor.tenantId},${id},${actor.userId},${actor.sessionId},${actor.issuedAt}::timestamptz,${requestId},${identity},${expiry}::timestamptz)`);
+    await db.query(sql`INSERT INTO communication_meeting_sessions(id,tenant_id,meeting_id,participant_id,user_id,auth_session_id,auth_issued_at,request_id,identity,token_expires_at)
+      VALUES(${sessionId},${actor.tenantId},${id},(SELECT id FROM communication_meeting_participants WHERE meeting_id=${id} AND user_id=${actor.userId}),${actor.userId},${actor.sessionId},${actor.issuedAt}::timestamptz,${requestId},${identity},${expiry}::timestamptz)`);
     session={id:sessionId,identity,revokedAt:null,leftAt:null,expiresAt:new Date(expiry)};
    }
    const [issuance]=await db.query<{count:number}>(sql`SELECT coalesce(sum(token_count),0)::int AS count FROM communication_meeting_sessions WHERE tenant_id=${actor.tenantId} AND user_id=${actor.userId} AND token_issued_at>now()-interval '1 minute'`);

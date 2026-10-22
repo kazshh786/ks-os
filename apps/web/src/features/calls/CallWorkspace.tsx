@@ -29,6 +29,7 @@ export function CallWorkspace({ subscribe, revision, userId }: { subscribe: Subs
   const selectedRef = useRef(selected); selectedRef.current = selected;
   const [incoming, setIncoming] = useState<Meeting[]>([]), [error, setError] = useState(''), [busy, setBusy] = useState<string | null>(null);
   const seen = useRef(new Set<string>()), alive = useRef(true), refreshing = useRef(false), broadcast = useRef<BroadcastChannel | null>(null);
+  const browserAlerts = useRef(new Map<string, Notification>());
   const open = useCallback((id: string) => setParams(current => { const next = new URLSearchParams(current); next.set('call', id); return next; }), [setParams]);
   const close = useCallback(() => setParams(current => { const next = new URLSearchParams(current); next.delete('call'); return next; }), [setParams]);
   const refresh = useCallback(async () => {
@@ -38,11 +39,13 @@ export function CallWorkspace({ subscribe, revision, userId }: { subscribe: Subs
       const settings = await callsApi.config();
       if (!alive.current) return;
       setConfig(settings);
-      if (!settings.enabled) { setIncoming([]); return; }
+      if (!settings.enabled) { setIncoming([]); for (const alert of browserAlerts.current.values()) alert.close(); browserAlerts.current.clear(); return; }
       const [meetings, preferences] = await Promise.all([callsApi.incoming(), phase4Api.preferences()]);
       if (!alive.current) return;
       const eligible = preferences.dnd ? [] : meetings.filter(m => isJoinable(m) && Date.parse(m.expiresAt) > Date.now());
       setIncoming(preferences.inApp ? eligible : []);
+      const activeIds = new Set(eligible.map(meeting => meeting.id));
+      for (const [id, alert] of browserAlerts.current) if (!activeIds.has(id) || !preferences.browser) { alert.close(); browserAlerts.current.delete(id); }
       for (const meeting of eligible) {
         if (seen.current.has(meeting.id) || meeting.id === selectedRef.current) continue;
         seen.current.add(meeting.id);
@@ -50,8 +53,9 @@ export function CallWorkspace({ subscribe, revision, userId }: { subscribe: Subs
         if (preferences.browser && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           try {
             const notification = new Notification('Incoming KSOS call', { body: 'Open KSOS to review the invitation.', tag: 'ksos-call-' + meeting.id, silent: !preferences.sound });
-            notification.onclick = () => { window.focus(); open(meeting.id); notification.close(); };
-            setTimeout(() => notification.close(), Math.max(0, Math.min(30000, Date.parse(meeting.expiresAt) - Date.now())));
+            browserAlerts.current.set(meeting.id, notification);
+            notification.onclick = () => { window.focus(); open(meeting.id); notification.close(); browserAlerts.current.delete(meeting.id); };
+            setTimeout(() => { notification.close(); browserAlerts.current.delete(meeting.id); }, Math.max(0, Math.min(30000, Date.parse(meeting.expiresAt) - Date.now())));
           } catch { /* Browsers that require native push still have the in-app invitation. */ }
         } else if (preferences.inApp && preferences.sound) incomingTone();
       }
@@ -59,7 +63,7 @@ export function CallWorkspace({ subscribe, revision, userId }: { subscribe: Subs
       setError('');
     } catch (cause) {
       if (!alive.current) return;
-      if (cause instanceof ChatError && [401, 403].includes(cause.status)) setIncoming([]);
+      if (cause instanceof ChatError && [401, 403].includes(cause.status)) { setIncoming([]); for (const alert of browserAlerts.current.values()) alert.close(); browserAlerts.current.clear(); }
       setError(callingError(cause));
     } finally { refreshing.current = false; }
   }, [open]);
@@ -74,7 +78,7 @@ export function CallWorkspace({ subscribe, revision, userId }: { subscribe: Subs
       broadcast.current = new BroadcastChannel('ksos-call-invitations');
       broadcast.current.onmessage = () => void refresh();
     }
-    return () => { alive.current = false; clearInterval(timer); stop(); window.removeEventListener('focus', focus); broadcast.current?.close(); broadcast.current = null; };
+    return () => { alive.current = false; clearInterval(timer); stop(); window.removeEventListener('focus', focus); broadcast.current?.close(); broadcast.current = null; for (const alert of browserAlerts.current.values()) alert.close(); browserAlerts.current.clear(); };
   }, [refresh, subscribe]);
   useEffect(() => { if (revision) void refresh(); }, [revision, refresh]);
   const respond = async (meeting: Meeting, accept: boolean) => {
