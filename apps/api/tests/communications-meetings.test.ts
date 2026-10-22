@@ -79,7 +79,7 @@ test('meetings: real database, authorization, tokens, webhooks and recovery', { 
   // Independent cases share the expensive PGlite fixture, but not rate-limit windows.
   // The dedicated limiter case below exercises real limits without this reset within it.
   t.beforeEach(async () => {
-    await pg.exec("UPDATE communication_meetings SET created_at=now()-interval '2 hours'; UPDATE communication_meeting_sessions SET created_at=now()-interval '2 hours';");
+    await pg.exec("UPDATE communication_meetings SET created_at=now()-interval '2 hours'; UPDATE communication_meeting_sessions SET created_at=now()-interval '2 hours',token_issued_at=now()-interval '2 hours';");
   });
 
   await t.test('additive tables deny direct browser database access', async () => {

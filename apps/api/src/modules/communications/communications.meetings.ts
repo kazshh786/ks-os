@@ -98,8 +98,9 @@ export class CommunicationsMeetings {
    const [p]=await db.query<{state:string}>(sql`SELECT invitation_state AS state FROM communication_meeting_participants WHERE meeting_id=${id} AND user_id=${actor.userId}`);
    if(!p||p.state==='REMOVED')throw notFound();
    if(p.state===(accept?'ACCEPTED':'DECLINED'))return this.view(db,actor,m);
+   if(p.state!=='INVITED')throw communicationError(409,'INVITATION_ANSWERED','This invitation was already answered on another device.');
    await db.query(sql`UPDATE communication_meeting_participants SET invitation_state=${accept?'ACCEPTED':'DECLINED'},responded_at=now() WHERE meeting_id=${id} AND user_id=${actor.userId}`);
-   await this.event(db,m,accept?'call.accepted':'call.declined',actor.userId);
+   await this.event(db,m,accept?'call.accepted':'call.declined');
    const [c]=await db.query<{type:string}>(sql`SELECT conversation_type AS type FROM conversations WHERE id=${m.conversationId}`);
    if(!accept&&c.type==='DIRECT')await this.finish(db,m,'CANCELLED','DECLINED');
    return this.view(db,actor,await this.row(db,id));
