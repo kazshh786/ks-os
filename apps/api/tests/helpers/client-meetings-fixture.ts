@@ -38,7 +38,19 @@ export async function createClientMeetingFixture(t: TestContext, options: { post
     await admin.query(`CREATE DATABASE ${database}`);
     url.pathname = `/${database}`;
     const pool = new Pool({ connectionString: url.toString(), max: 10 });
-    t.after(async () => { await pool.end(); await admin.query(`DROP DATABASE ${database} WITH (FORCE)`); await admin.end(); });
+    const connectionsClosed: Promise<void>[] = [];
+    pool.on('connect', client => {
+      connectionsClosed.push(new Promise<void>(resolve => client.once('end', resolve)));
+    });
+    t.after(async () => {
+      try {
+        // Pool shutdown removes idle clients before their socket end events arrive.
+        // Wait for those events before dropping the disposable database.
+        await pool.end();
+        await Promise.all(connectionsClosed);
+        await admin.query(`DROP DATABASE ${database}`);
+      } finally { await admin.end(); }
+    });
     pg = { query: (statement, params) => pool.query(statement, params), exec: statement => pool.query(statement) };
     transaction = async work => {
       const client = await pool.connect();

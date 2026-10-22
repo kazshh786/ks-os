@@ -33,7 +33,7 @@ export function useScheduledMeeting(id: string) {
     void update(); const timer = setInterval(() => void update(), 15000);
     return () => { active = false; clearInterval(timer); };
   }, [id, revision]);
-  return { meeting, error, refresh, revision };
+  return { meeting: meeting?.id === id ? meeting : null, error, refresh, revision };
 }
 export function MeetingDetail({ id, config }: { id: string; config: MeetingsConfig }) {
   const { meeting, error, refresh, revision } = useScheduledMeeting(id);

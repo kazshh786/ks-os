@@ -103,6 +103,15 @@ describe('scheduled business meetings', () => {
   it('requires confirmation before cancelling and closes guest access', async () => {
     mount(<MeetingDetail id="meeting-a" config={config}/>); await userEvent.click(await screen.findByRole('button', { name: 'Cancel meeting' })); expect(meetingsApi.cancel).not.toHaveBeenCalled(); await userEvent.click(screen.getByRole('button', { name: 'Confirm' })); await waitFor(() => expect(meetingsApi.cancel).toHaveBeenCalledWith('meeting-a')); expect(await screen.findByText('Meeting cancelled. Invitations and guest access are closed.')).toBeInTheDocument();
   });
+  it('clears the previous record immediately when navigating to another meeting', async () => {
+    const view = mount(<MeetingDetail id="meeting-a" config={config}/>);
+    await screen.findByRole('heading', { name: 'Tax review' });
+    vi.mocked(meetingsApi.meeting).mockReturnValue(new Promise(() => {}));
+    view.rerender(<MemoryRouter><MeetingDetail id="meeting-b" config={config}/></MemoryRouter>);
+    expect(screen.queryByRole('heading', { name: 'Tax review' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel meeting' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading meeting');
+  });
   it('creates a one-guest copy invitation and confirms revocation', async () => {
     render(<MeetingInvitations meeting={{ ...meeting, invitations: [{ id: 'invite-a', email: null, claimedAt: null, revokedAt: null, expiresAt: guest.expiresAt }] }} changed={vi.fn()}/>); await userEvent.click(screen.getByRole('button', { name: 'Create invitation' })); expect(await screen.findByLabelText('Invitation link')).toHaveValue('https://meetings.test/meet#invite=secret'); await userEvent.click(screen.getByRole('button', { name: /^Revoke$/ })); expect(meetingsApi.revoke).not.toHaveBeenCalled(); await userEvent.click(within(screen.getByRole('group', { name: 'Revoke invitation confirmation' })).getByRole('button', { name: 'Revoke invitation' })); await waitFor(() => expect(meetingsApi.revoke).toHaveBeenCalledWith('meeting-a', 'invite-a'));
   });

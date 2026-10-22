@@ -2,7 +2,7 @@
 
 Phase 6 extends the Phase 5 self-hosted LiveKit integration into tenant-owned scheduled internal and customer meetings. It reuses the existing users, tenants, clients, appointments, capabilities, email outbox, branding and communications event stream. Each meeting has its own opaque LiveKit room on the shared service. No production migration or deployment is part of this implementation.
 
-The development stack is [`codex/communications-phase-6`, PR #251](https://github.com/kazshh786/ks-os/pull/251), targeting `codex/communications-phase-5`. It depends on Phase 5 at `ff73acc5035c45b0ca184a93bc843a4744a2d4a7` and its unmerged Phase 1–4 ancestry. Keep the Phase 6 changes reviewable against Phase 5. **The PR records the final reviewed commit and its current verification results.** The evidence below preserves the first-run results and identifies the checks that required a corrected run.
+The development stack is [`codex/communications-phase-6`, PR #251](https://github.com/kazshh786/ks-os/pull/251), targeting `codex/communications-phase-5`. It depends on Phase 5 at `ff73acc5035c45b0ca184a93bc843a4744a2d4a7` and its unmerged Phase 1–4 ancestry. Keep the Phase 6 changes reviewable against Phase 5. **The PR records the final reviewed commit, complete check results and evidence links.** The verification scope and release limitations below apply independently of that commit identifier.
 
 ## Product surfaces
 
@@ -104,18 +104,18 @@ Main implementation areas:
 - Email: `meeting-email-policy.ts`, reference-only enqueue/worker integration, registered `meeting-notification` React Email template and accessible layout title/language support.
 - Operations: this report and [`communications-phase-6-deployment.md`](communications-phase-6-deployment.md).
 
-Prepared GitHub verification includes strict time/DST cases, outbox idempotency and secret minimization, template rendering/escaping, tenant-scoped service/database behavior, current authorization, waiting/admission/revocation/expiry, appointment synchronization, true PostgreSQL concurrency races, browser guest/workspace flows and isolated real LiveKit media across three simultaneous rooms in two organizations. Existing Phase 5 regression tests, typechecking, linting and builds must also pass on the final published commit. A skipped media/race test is not evidence of a pass.
+The final reviewed commit must complete the GitHub build, lint, typecheck, copy audit, unit/integration suites, migration plan, browser and real-media jobs. Existing Phase 5 regressions remain part of the required coverage. A skipped test, passing assertion followed by failed teardown, or successful analysis upload is not a fully passing validation run. Use [PR #251](https://github.com/kazshh786/ks-os/pull/251) for the final SHA and complete result links.
 
-The first [GitHub CI run, 39868482233](https://github.com/kazshh786/ks-os/actions/runs/39868482233), provides the following evidence. These results apply to that run; the final corrected commit must finish its own checks before the branch is described as fully verified.
-
-| Check | First-run evidence |
+| Evidence category | Scope |
 | --- | --- |
-| Workspace build and lint | Passed. |
-| [Communications browser verification](https://github.com/kazshh786/ks-os/actions/runs/39868482233/job/120136623454) | Passed against the real test database, HTTP API and browser flows. |
-| [Self-hosted LiveKit media verification](https://github.com/kazshh786/ks-os/actions/runs/39868482233/job/120136623894) | Passed the isolated infrastructure-template validation, 20 Phase 5 tests, the Phase 6 six-browser/three-room/two-tenant media scenario, and both native calling and client-meeting dashboard/waiting/mobile UI scenarios. |
-| Full typecheck, unit/database/concurrency/email suite and migration plan | The first run stopped at a frontend test typecheck error before the general test and migration-plan steps. These required a corrected run; see the PR for its final result. |
-| Copy audit | Required a corrected run after an inline TypeScript intersection was incorrectly treated as UI ampersand copy. The audit remains enabled; see the PR for the final result. |
-| [Security run, 39868482232](https://github.com/kazshh786/ks-os/actions/runs/39868482232) | Secret scanning and the CodeQL analysis job completed successfully; CodeQL still reported open alert #216, assessed below. Job success does not mean an empty findings list. The production dependency audit failed on the existing dependency graph with **63 findings: 1 critical, 32 high, 26 moderate and 4 low**. This remains a release blocker; Phase 6 adds no new dependency and the audit is not waived. |
+| Unit and email | Strict UTC/IANA/DST resolution; frontend behavior; outbox idempotency and reference-only metadata; current delivery authorization; escaped and accessible email rendering; cancellation without a join link. |
+| Domain, HTTP and database | Tenant isolation, role/attendance separation, guest cookie/origin/CSRF controls, waiting/admission/revocation/expiry, appointment synchronization, current-state token issuance and actual PostgreSQL capacity/revocation races. |
+| Browser | Real test database and HTTP API; workspace dashboard, invitations, public landing, waiting, host controls, customer links and desktop/mobile viewports. Automated axe checks cover **11 captured screens**, not every application state or a complete manual WCAG audit. |
+| Self-hosted media | Isolated LiveKit template/server validation and Phase 5 regression coverage; six browser participants across three simultaneous rooms in two tenants; native calling and client-meeting UI exercises. |
+
+[GitHub run 39870223504](https://github.com/kazshh786/ks-os/actions/runs/39870223504) supplies successful build, lint, typecheck, copy, browser and real-media evidence. It also records passing assertions for 373 web tests, 19 email tests, 29 client-meeting domain cases, 6 HTTP cases and 6 real PostgreSQL race cases. The final job result, including fixture teardown and the migration-plan gate, must be checked in the PR; these assertions alone do not claim that all CI is green.
+
+The [security evidence](https://github.com/kazshh786/ks-os/actions/runs/39868482232) records successful secret scanning and CodeQL analysis execution. CodeQL still reported open alert #216, assessed below; job success does not mean an empty findings list. The existing production dependency graph has **63 findings: 1 critical, 32 high, 26 moderate and 4 low**. This remains a release blocker; Phase 6 adds no new dependency and the audit is not waived.
 
 No local install/build/test or real email send has been used as verification. The media evidence is actual media transport through the isolated self-hosted LiveKit server, using synthetic Chromium cameras/microphones and loopback networking. It does not establish production TLS, NAT, TURN/firewall routing, hardware device behavior, mobile Safari quality, production capacity or mailbox deliverability. A mobile viewport/browser scenario is not a physical-device acceptance test. Keep those as explicit release acceptance work.
 
