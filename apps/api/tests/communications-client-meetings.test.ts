@@ -307,14 +307,50 @@ test('client meetings: tenant security, schedules, invitations, admission and re
   });
 
   await t.test('appointment rescheduling rotates links and reports invalidated waiting state immediately',async()=>{
-    const m=await create(f.owner,{customerId:f.customer.id,appointmentId:f.appointment.id,hostUserId:f.host.userId}),{guest,invitation}=await request(m.id);
-    await f.pg.query("UPDATE appointments SET start_time=start_time+interval '1 hour',end_time=end_time+interval '1 hour',version=version+1 WHERE id=$1",[f.appointment.id]);
+    const m=await create(f.owner,{customerId:f.customer.id,appointmentId:f.appointment.id,hostUserId:f.host.userId}),invitation=await invite(m.id,f.owner,{email:'guest@business.co.uk'});
+    const guest=await service.requestGuest({invitationToken:invitation.token,name:'Original guest',requestId:randomUUID()});
+    await f.pg.query("UPDATE appointments SET start_time=start_time+interval '5 minutes',end_time=end_time+interval '5 minutes',version=version+1 WHERE id=$1",[f.appointment.id]);
     try {
       const state=await service.guestState(guest.sessionId,guest.credential);assert.equal(state.meeting,null);assert.ok(['CANCELLED','EXPIRED'].includes(state.state));
       await assert.rejects(service.resolve(invitation.token));
       const updated=await service.get(f.owner,m.id);assert.ok(updated.version>m.version);
-      assert.equal(new Date(updated.scheduledStartAt).getTime(),new Date(m.scheduledStartAt).getTime()+3600000);
-    } finally {await f.pg.query("UPDATE appointments SET start_time=start_time-interval '1 hour',end_time=end_time-interval '1 hour',version=version+1 WHERE id=$1",[f.appointment.id]);}
+      assert.equal(new Date(updated.scheduledStartAt).getTime(),new Date(m.scheduledStartAt).getTime()+300000);
+      const replacement=updated.invitations.find(item=>!item.revokedAt);assert.ok(replacement);assert.notEqual(replacement.id,invitation.id);
+      assert.equal(new Date(replacement.expiresAt).getTime(),new Date(updated.expiresAt).getTime());
+      const rows=(await f.pg.query<{secret_hash:string}>('SELECT secret_hash FROM communication_meeting_invitations WHERE meeting_id=$1',[m.id])).rows;assert.equal(new Set(rows.map(row=>row.secret_hash)).size,2);
+      const fresh=await service.requestGuest({invitationToken:invitationToken(replacement.id),name:'Guest after reschedule',requestId:randomUUID()});
+      await service.admit(f.host,m.id,fresh.sessionId,true);await service.start(f.host,m.id);assert.ok((await service.guestJoin(fresh.sessionId,fresh.credential,randomUUID())).token);
+      await assert.rejects(service.guestJoin(guest.sessionId,guest.credential,randomUUID()));
+    } finally {await f.pg.query("UPDATE appointments SET start_time=start_time-interval '5 minutes',end_time=end_time-interval '5 minutes',version=version+1 WHERE id=$1",[f.appointment.id]);}
+  });
+
+  await t.test('reassigning an appointment to another customer closes the original meeting without rewriting its history',async()=>{
+    const replacementCustomer=randomUUID();
+    await f.pg.query('INSERT INTO clients(id,tenant_id,name) VALUES($1,$2,$3)',[replacementCustomer,f.owner.tenantId,'Different customer']);
+    const m=await create(f.owner,{customerId:f.customer.id,appointmentId:f.appointment.id,hostUserId:f.host.userId});
+    await service.start(f.host,m.id);const {guest,invitation}=await request(m.id);await service.admit(f.host,m.id,guest.sessionId,true);
+    const connected=await service.guestJoin(guest.sessionId,guest.credential,randomUUID()),room=(await mediaClaims(connected.token)).video!.room!;
+    provider.observeJoin(room,connected.identity);await legacy.reconcile();
+    await f.pg.query('UPDATE appointments SET client_id=$1,version=version+1 WHERE id=$2',[replacementCustomer,f.appointment.id]);
+    try {
+      const issuedBefore=provider.issued.length;
+      await assert.rejects(service.guestJoin(guest.sessionId,guest.credential,randomUUID()));
+      await assert.rejects(service.join(f.host,m.id,randomUUID()));
+      assert.equal(provider.issued.length,issuedBefore,'A changed customer relationship must block fresh media credentials immediately');
+      // The persisted cleanup path must also be able to update this row after the appointment relationship changes.
+      await legacy.reconcile();
+      assert.ok(!provider.liveRooms.has(room));
+      const ended=await service.get(f.owner,m.id);
+      assert.equal(ended.status,'CANCELLED');assert.equal(ended.customerId,f.customer.id);assert.equal(ended.appointmentId,f.appointment.id);
+      assert.ok(ended.participants.some(participant=>participant.joinedAt),'Original attendance remains available in history');
+      assert.ok((await service.list(f.owner,{customerId:f.customer.id})).data.some(item=>item.id===m.id));
+      assert.ok(!(await service.list(f.owner,{customerId:replacementCustomer})).data.some(item=>item.id===m.id));
+      await assert.rejects(service.resolve(invitation.token));
+      assert.equal((await service.guestState(guest.sessionId,guest.credential)).meeting,null);
+    } finally {
+      await f.pg.query('UPDATE appointments SET client_id=$1,version=version+1 WHERE id=$2',[f.customer.id,f.appointment.id]);
+      await f.pg.query('DELETE FROM clients WHERE id=$1',[replacementCustomer]);
+    }
   });
 
   await t.test('brand resolution is authoritative and rejects executable logo formats',async()=>{
@@ -345,5 +381,13 @@ test('client meetings: tenant security, schedules, invitations, admission and re
     await assert.rejects(service.guestJoin(guest.sessionId,guest.credential,randomUUID()),{code:'CALL_CAPACITY'});
     for(let n=1;n<12;n++)await service.guestJoin(guest.sessionId,guest.credential,requestId);
     await assert.rejects(service.guestJoin(guest.sessionId,guest.credential,requestId),{statusCode:429});
+  });
+
+  await t.test('cancellation after repeated reschedules queues one current-version notice per recipient',async()=>{
+    let m=await create();await invite(m.id,f.owner,{email:'guest@business.co.uk'});
+    for(const minutes of [5,10])m=await service.update(f.owner,m.id,edit(m.version,f.owner,{localStart:new Date(new Date(f.startsAt).getTime()+minutes*60000).toISOString()}));
+    const cancelled=await service.cancel(f.owner,m.id);await service.cancel(f.owner,m.id);
+    const messages=(await f.pg.query<{recipient_email:string;template_data_json:{kind:string;version:number}}>("SELECT recipient_email,template_data_json FROM email_outbox WHERE template_data_json->>'kind'='cancelled'")).rows;
+    assert.equal(messages.length,1);assert.equal(messages[0].recipient_email,'guest@business.co.uk');assert.equal(messages[0].template_data_json.version,cancelled.version);
   });
 });

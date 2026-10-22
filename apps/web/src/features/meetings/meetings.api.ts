@@ -26,6 +26,7 @@ export type MeetingInput = {
   hostUserId: string; customerId?: string | null; appointmentId?: string | null; attendeeIds: string[]; cohostIds: string[]; guestScreenShare: boolean;
 };
 export type MeetingPage = { data: ScheduledMeeting[]; nextCursor: string | null };
+export interface ScheduledJoinTicket extends Omit<JoinTicket, 'meeting'> { meeting: ScheduledMeeting }
 export type InvitationResult = { id: string; url: string; text: string; expiresAt: string; emailQueued: boolean };
 export type PublicMeeting = {
   title: string; type: MeetingType; status: ScheduledMeeting['status']; scheduledStartAt: string; scheduledEndAt: string;
@@ -47,7 +48,7 @@ export const meetingsApi = {
   start: (id: string) => data(post<{ data: ScheduledMeeting }>(idPath(id) + '/start')),
   cancel: (id: string) => data(post<{ data: ScheduledMeeting }>(idPath(id) + '/cancel')),
   end: (id: string) => data(post<{ data: ScheduledMeeting }>(idPath(id) + '/end')),
-  join: (id: string, requestId: string) => data(post<{ data: Omit<JoinTicket, 'meeting'> & { meeting: ScheduledMeeting } }>(idPath(id) + '/join', { requestId })),
+  join: (id: string, requestId: string) => data(post<{ data: ScheduledJoinTicket }>(idPath(id) + '/join', { requestId })),
   leave: (id: string, sessionId: string) => post(idPath(id) + '/leave', { sessionId }),
   remove: (id: string, participantId: string) => post(idPath(id) + '/participants/' + encodeURIComponent(participantId) + '/remove'),
   waiting: (id: string) => data(requestJson<{ data: WaitingGuest[] }>(idPath(id) + '/waiting')),

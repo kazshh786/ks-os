@@ -30,7 +30,7 @@ export function DeviceSettings({ devices, selected, change, disabled = false }: 
     <p className="call-muted">Device names may appear after you allow microphone or camera access.</p>
   </div>;
 }
-export function DevicePreview({ microphone, camera, selected, changed }: { microphone: boolean; camera: boolean; selected: DeviceSelection; changed: () => Promise<void> }) {
+export function DevicePreview({ microphone, camera, selected, changed, initials = 'KS' }: { microphone: boolean; camera: boolean; selected: DeviceSelection; changed: () => Promise<void>; initials?: string }) {
   const [tracks, setTracks] = useState<LocalTrack[]>([]), [error, setError] = useState(''), [loading, setLoading] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
@@ -57,7 +57,7 @@ export function DevicePreview({ microphone, camera, selected, changed }: { micro
     return () => { cameraTrack.detach(element); };
   }, [cameraTrack]);
   return <div className="call-preview">
-    {cameraTrack ? <video ref={video} autoPlay muted playsInline aria-label="Your camera preview"/> : <div className="call-camera-placeholder"><span aria-hidden="true">KS</span><p>{loading ? 'Checking devices…' : 'Your camera is off'}</p></div>}
+    {cameraTrack ? <video ref={video} autoPlay muted playsInline aria-label="Your camera preview"/> : <div className="call-camera-placeholder"><span aria-hidden="true">{initials}</span><p>{loading ? 'Checking devices…' : 'Your camera is off'}</p></div>}
     {microphone && tracks.some(track => track.kind === Track.Kind.Audio) && <p className="call-preview-caption">Microphone ready · preview is not sent to the meeting</p>}
     {error && <p role="alert" className="call-error">{error}</p>}
   </div>;

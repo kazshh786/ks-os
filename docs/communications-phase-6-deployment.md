@@ -1,6 +1,6 @@
 # Phase 6 deployment and operations
 
-This is an unapplied release plan. Deployment classification is **BOTH VPS + CLOUDFLARE**: VPS changes provide scheduling, guest sessions, admission, capacity enforcement and email delivery; Cloudflare serves the workspace and public meeting interfaces. Development publication must remain on the Phase 6 branch stacked on Phase 5. Do not merge or invoke production workflows as part of verification.
+This is an unapplied release plan. Deployment classification is **BOTH VPS + CLOUDFLARE**: VPS changes provide scheduling, guest sessions, admission, capacity enforcement and email delivery; Cloudflare serves the workspace and public meeting interfaces. Development publication remains on `codex/communications-phase-6` in [PR #251](https://github.com/kazshh786/ks-os/pull/251), targeting `codex/communications-phase-5`. Do not merge or invoke production workflows as part of verification.
 
 ## Dependencies and infrastructure boundary
 
@@ -55,4 +55,8 @@ All steps above require the later coordinated release approval. None is an instr
 
 Stop new invitations/admissions, end or drain affected rooms through authorized controls, and restore the reviewed application release/configuration. Preserve meeting history and guest admission audit records. Do not automatically drop the additive tables/columns. Prefer a forward repair, or a separately reviewed database restore if necessary. Restoring old application code alone does not revoke guest credentials or stop live media.
 
-Verification is **PENDING** until the final GitHub runs pass. Unit/database/browser tests, template rendering and loopback LiveKit media are separate evidence categories. Synthetic Chromium devices and runner-local networking do not prove production firewall/TLS/TURN, concurrency capacity, real cameras/microphones, mobile Safari or email deliverability. No production migrations, service restarts, deployments, DNS/firewall changes or email sends have been executed for this work.
+Full verification is **PENDING** on the corrected GitHub run. The first [CI run 39868482233](https://github.com/kazshh786/ks-os/actions/runs/39868482233) passed build, lint, communications browser verification and the real loopback LiveKit media job, including 20 Phase 5 tests, the Phase 6 six-browser/three-room/two-tenant scenario and native calling/client-meeting UI scenarios. The general test suite and migration-plan step did not run because the first full typecheck stopped on a frontend test error; the corrected run must complete them. See the [evidence table](communications-phase-6.md#files-and-verification-evidence).
+
+The first [Security run 39868482232](https://github.com/kazshh786/ks-os/actions/runs/39868482232) passed secret scanning and CodeQL, but the existing production dependency graph failed audit with 63 findings (1 critical, 32 high, 26 moderate, 4 low). That is a release blocker, not a waived check or a passing security result. Phase 6 introduces no additional dependency.
+
+Unit/database/browser tests, template rendering and loopback LiveKit media are separate evidence categories. Synthetic Chromium devices and runner-local networking do not prove production firewall/TLS/TURN, concurrency capacity, real cameras/microphones, physical mobile Safari behavior or email deliverability. No production migrations, service restarts, deployments, DNS/firewall changes or email sends have been executed for this work.

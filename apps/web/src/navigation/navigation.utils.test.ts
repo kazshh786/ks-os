@@ -15,7 +15,7 @@ describe('navigation resolution', () => {
 
   it('promotes tasks after the calendar and places the inbox with customer operations', () => {
     const primary = businessNavigation.find(group => group.id === 'primary');
-    expect(primary?.items.map(item => item.label)).toEqual(['Dashboard', 'Services', 'Booking Calendar', 'Tasks', 'Chat']);
+    expect(primary?.items.map(item => item.label)).toEqual(['Dashboard', 'Services', 'Booking Calendar', 'Tasks', 'Chat', 'Meetings']);
     expect(businessNavigation.find(group => group.id === 'customer-operations')?.items.map(item => item.label)).toEqual(['Inbox', 'Customers', 'Forms']);
     expect(businessNavigation.find(group => group.id === 'work')?.items.map(item => item.label)).toEqual(['Work', 'Automations']);
   });

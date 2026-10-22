@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -237,6 +237,7 @@ describe('native meeting media', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Join call' })); await screen.findByRole('button', { name: 'Unmute' });
     expect(adapter.join).toHaveBeenCalledWith('guest-session', expect.any(String)); expect(callsApi.join).not.toHaveBeenCalled(); expect(sdk.connect).toHaveBeenCalledWith('ws://127.0.0.1:7880', 'guest-test-token');
     expect(screen.queryByRole('button', { name: 'Share screen' })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'End for everyone' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Participants' })); expect(within(screen.getByRole('region', { name: 'Call participants' })).getByText('Grace')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Information' })); expect(screen.queryByRole('link', { name: /conversation chat/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Leave call' })); await waitFor(() => expect(adapter.leave).toHaveBeenCalledWith('guest-session', 'guest-media')); expect(callsApi.leave).not.toHaveBeenCalled();
   });

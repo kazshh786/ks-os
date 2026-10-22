@@ -12,7 +12,7 @@ export async function verifyClientMeetingUi() {
   const { chromium } = workerRequire('playwright'), { createServer } = await import(pathToFileURL(webRequire.resolve('vite')).href);
   const artifacts = path.join(root, 'artifacts/client-meetings'); await mkdir(artifacts, { recursive: true });
   const vite = await createServer({ root: webRoot, configFile: path.join(webRoot, 'vite.config.ts'), optimizeDeps: { entries: ['tests/fixtures/client-meetings-ui-entry.tsx'] }, resolve: { alias: [
-    { find: 'livekit-client', replacement: path.join(webRoot, 'tests/fixtures/calls-ui-sdk.ts') },
+    { find: 'livekit-client', replacement: path.join(webRoot, 'tests/fixtures/client-meetings-ui-sdk.ts') },
     { find: './meetings.api', replacement: path.join(webRoot, 'tests/fixtures/client-meetings-ui-api.ts') },
     { find: '../../auth/useAuth', replacement: path.join(webRoot, 'tests/fixtures/client-meetings-ui-auth.ts') },
     { find: '../../api/client', replacement: path.join(webRoot, 'tests/fixtures/chat-client.ts') },
@@ -53,7 +53,11 @@ export async function verifyClientMeetingUi() {
     await page.evaluate(() => window.clientMeetingsFixture.guest('APPROVED', 'ACTIVE')); await page.getByRole('dialog', { name: 'Video call', exact: true }).getByRole('button', { name: 'Join call', exact: true }).waitFor();
     await capture('guest-prejoin-mobile', '.call-window:visible'); await page.getByRole('button', { name: 'Join call', exact: true }).click(); await page.getByRole('button', { name: 'Unmute', exact: true }).waitFor();
     assert.equal(await page.getByRole('button', { name: 'End for everyone', exact: true }).count(), 0, 'Guest has no host controls'); assert.equal(await page.getByRole('button', { name: 'Share screen', exact: true }).count(), 0, 'Guest sharing follows business policy');
-    await capture('guest-call-mobile', '.call-window:visible'); await page.setViewportSize({ width: 1440, height: 1000 }); await capture('guest-call-desktop', '.call-window:visible');
+    await capture('guest-call-mobile', '.call-window:visible');
+    await page.getByRole('button', { name: 'Participants', exact: true }).click(); await page.getByRole('region', { name: 'Call participants', exact: true }).getByText('Alex Taylor (you)', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('region', { name: 'Call participants', exact: true }).getByRole('button', { name: /Remove/ }).count(), 0, 'Guest participant panel has no moderator controls');
+    await capture('guest-participants-mobile', '.call-window:visible'); await page.getByRole('button', { name: 'Participants', exact: true }).click();
+    await page.setViewportSize({ width: 1440, height: 1000 }); await capture('guest-call-desktop', '.call-window:visible');
     await page.evaluate(() => window.clientMeetingsFixture.guest('CANCELLED')); await page.getByRole('heading', { name: 'This meeting is closed', exact: true }).waitFor(); assert.equal(await page.getByText('Harbour Accounting', { exact: true }).count(), 0, 'Revocation purges private branding');
     await capture('guest-cancelled-desktop');
     assert.deepEqual(errors, [], 'No browser runtime errors'); evidence.push('Create, ambiguous DST choice, existing customer link, host admission, invitation copy fields, fragment cleanup, guest refresh recovery, no token before admission, native guest call, policy controls and revoked-session cleanup');

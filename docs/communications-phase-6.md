@@ -2,7 +2,7 @@
 
 Phase 6 extends the Phase 5 self-hosted LiveKit integration into tenant-owned scheduled internal and customer meetings. It reuses the existing users, tenants, clients, appointments, capabilities, email outbox, branding and communications event stream. Each meeting has its own opaque LiveKit room on the shared service. No production migration or deployment is part of this implementation.
 
-The development stack depends on Phase 5 at `ff73acc5035c45b0ca184a93bc843a4744a2d4a7` and its unmerged Phase 1–4 ancestry. Keep the Phase 6 changes reviewable against Phase 5. **Verification is pending until the final GitHub checks pass**; the test inventory below is not a claim that every case has passed.
+The development stack is [`codex/communications-phase-6`, PR #251](https://github.com/kazshh786/ks-os/pull/251), targeting `codex/communications-phase-5`. It depends on Phase 5 at `ff73acc5035c45b0ca184a93bc843a4744a2d4a7` and its unmerged Phase 1–4 ancestry. Keep the Phase 6 changes reviewable against Phase 5. **Full verification remains pending on the corrected GitHub run**; the evidence below distinguishes completed checks from outstanding gates.
 
 ## Product surfaces
 
@@ -25,7 +25,7 @@ Migration **94**, [`20261022220000_communications_client_meetings.sql`](../packa
 | `communication_meeting_sessions` | Existing provider identities and connection history gain an exclusive internal-user or guest-session principal. Composite foreign keys bind guest, participant, meeting and tenant together. |
 | `communication_events` | Optional meeting relationship for scheduled-meeting and guest lifecycle invalidations without a conversation. |
 
-New guest/invitation tables enable RLS and revoke direct `anon`/`authenticated` access. Access runs through the tenant-aware API. Existing meeting user-scope validation is extended to host, customer and appointment references; composite keys protect the principal relationships. Schedule, customer history, capacity, invitation, waiting-session and event-replay indexes support the added query paths. No existing customer data is copied into a new customer model.
+New guest/invitation tables enable RLS and revoke direct `anon`/`authenticated` access. Access runs through the tenant-aware API. Existing meeting user-scope validation is extended to host, customer and appointment references; composite keys protect the principal relationships and triggers validate invitation/admission audit actors against the tenant. Schedule, customer history, capacity, invitation, waiting-session and event-replay indexes support the added query paths. No existing customer data is copied into a new customer model.
 
 | Stored status | Meaning |
 | --- | --- |
@@ -62,7 +62,7 @@ Room-specific provider tokens have a 60-second issue window and opaque unique se
 
 Local ISO wall time plus an IANA timezone resolves to UTC instants. A nonexistent daylight-saving time is rejected; a repeated time requires a matching explicit offset. For example, the two Europe/London occurrences of `2027-10-31T01:30` require `+01:00` or `+00:00`. The UI presents disambiguation choices. Duration is elapsed time in UTC. The existing tenant timezone supplies the default.
 
-A linked appointment remains authoritative for time and host. The service compares its version during reads, invitation/admission/token boundaries and reconciliation. Missing/cancelled/no-show appointments or changed client relationships cancel the meeting. Time/host changes update a still-scheduled meeting and increment its version; once room preparation has started, they cancel it instead. Edits and appointment reschedules invalidate previous guest admissions, revoke old invitation links and create replacement links with the new schedule window. Email recipients receive the current replacement; copied invitations must be redistributed. The meeting service never writes back into the appointment, and the database prevents duplicate non-cancelled meetings for one appointment. See the [release plan](communications-phase-6-deployment.md) for operational sequencing.
+A linked appointment remains authoritative for time and host. The service compares its version during reads, invitation/admission/token boundaries and reconciliation. Missing/cancelled/no-show appointments or changed client relationships cancel the meeting. Time/host changes update a still-scheduled meeting and increment its version; once room preparation has started, they cancel it instead. A reassigned former host loses their old attendance grant; creator/administrative access remains governed separately. Edits and appointment reschedules invalidate previous guest admissions, revoke old invitation links and create replacement links with the new schedule window. Email recipients receive the current replacement; copied invitations must be redistributed. The meeting service never writes back into the appointment, and the database prevents duplicate non-cancelled meetings for one appointment. See the [release plan](communications-phase-6-deployment.md) for operational sequencing.
 
 Branding resolves from the meeting tenant's existing business/email/booking branding. Public responses include only display name, validated raster logo URL, validated colors and a derived welcome message. They do not expose contact/address settings. The interfaces retain readable foreground colors, fallback initials and KSOS privacy notices; HTML/SVG assets are not accepted as meeting logos. Existing template rendering escapes user text. No separate logo upload store or custom-domain onboarding has been added.
 
@@ -106,6 +106,17 @@ Main implementation areas:
 
 Prepared GitHub verification includes strict time/DST cases, outbox idempotency and secret minimization, template rendering/escaping, tenant-scoped service/database behavior, current authorization, waiting/admission/revocation/expiry, appointment synchronization, true PostgreSQL concurrency races, browser guest/workspace flows and isolated real LiveKit media across three simultaneous rooms in two organizations. Existing Phase 5 regression tests, typechecking, linting and builds must also pass on the final published commit. A skipped media/race test is not evidence of a pass.
 
-At this report revision, those checks are **PENDING**. No local install/build/test or real email send has been used as verification. Runner-local synthetic Chromium media does not establish production TLS, NAT, TURN/firewall routing, hardware device behavior, mobile Safari quality, production capacity or mailbox deliverability. Keep those as explicit release acceptance work.
+The first [GitHub CI run, 39868482233](https://github.com/kazshh786/ks-os/actions/runs/39868482233), provides the following evidence. These results apply to that run; the final corrected commit must finish its own checks before the branch is described as fully verified.
+
+| Check | First-run evidence |
+| --- | --- |
+| Workspace build and lint | Passed. |
+| [Communications browser verification](https://github.com/kazshh786/ks-os/actions/runs/39868482233/job/120136623454) | Passed against the real test database, HTTP API and browser flows. |
+| [Self-hosted LiveKit media verification](https://github.com/kazshh786/ks-os/actions/runs/39868482233/job/120136623894) | Passed the isolated infrastructure-template validation, 20 Phase 5 tests, the Phase 6 six-browser/three-room/two-tenant media scenario, and both native calling and client-meeting dashboard/waiting/mobile UI scenarios. |
+| Full typecheck, unit/database/concurrency/email suite and migration plan | Outstanding on the corrected run. The first run stopped at a frontend test typecheck error before the general test and migration-plan steps. |
+| Copy audit | Awaiting corrected run after an inline TypeScript intersection was incorrectly treated as UI ampersand copy. The audit remains enabled. |
+| [Security run, 39868482232](https://github.com/kazshh786/ks-os/actions/runs/39868482232) | Secret scanning and CodeQL passed. The production dependency audit failed on the existing dependency graph with **63 findings: 1 critical, 32 high, 26 moderate and 4 low**. This remains a release blocker; Phase 6 adds no new dependency and the audit is not waived. |
+
+No local install/build/test or real email send has been used as verification. The media evidence is actual media transport through the isolated self-hosted LiveKit server, using synthetic Chromium cameras/microphones and loopback networking. It does not establish production TLS, NAT, TURN/firewall routing, hardware device behavior, mobile Safari quality, production capacity or mailbox deliverability. A mobile viewport/browser scenario is not a physical-device acceptance test. Keep those as explicit release acceptance work.
 
 Deployment classification is **BOTH VPS + CLOUDFLARE**. The [release plan](communications-phase-6-deployment.md) records variables, cookie/origin requirements, pending migrations, LiveKit dependencies, rollout order, rollback and unverified infrastructure boundaries. Do not merge, apply migrations or deploy without the later explicit approval.
