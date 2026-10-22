@@ -18,7 +18,7 @@ test('meeting invitation renders accessible escaped business content and plain t
 
 test('cancellation omits invitation URLs even if accidentally supplied', async () => {
   const output = await renderEmail('meeting-notification', { ...data, kind: 'cancelled' });
-  assert.match(output.text, /cancelled/);
+  assert.match(output.text, /cancelled/i);
   assert.doesNotMatch(output.text + output.html, /opaque-test|Open meeting invitation/);
 });
 

@@ -20,14 +20,18 @@ export function MeetingForm({ config, meeting, customerId, saved }: { config: Me
   const chosen = choices.length === 1 ? choices[0].value : choices.some(item => item.value === occurrence) ? occurrence : '';
   const toggle = (values: string[], id: string) => values.includes(id) ? values.filter(value => value !== id) : [...values, id];
   const changeZone = (value: string) => {
-    setZone(value); setOccurrence('');
+    setZone(value); setOccurrence(''); setError('');
     const linked = config.appointments.find(item => item.id === appointment);
     if (linked) { try { setLocalStart(localMeetingTime(linked.startAt, value)); setOccurrence(new Date(linked.startAt).toISOString()); } catch { /* The field shows a validation message until the time zone is complete. */ } }
   };
   const selectAppointment = (id: string) => {
-    setAppointment(id);
+    setAppointment(id); setError('');
     const selected = config.appointments.find(value => value.id === id);
-    if (selected) { setCustomer(selected.customerId); setLocalStart(localMeetingTime(selected.startAt, zone)); setOccurrence(new Date(selected.startAt).toISOString()); setDuration(Math.round((Date.parse(selected.endAt) - Date.parse(selected.startAt)) / 60000)); }
+    if (selected) {
+      setCustomer(selected.customerId); setHostId(selected.hostUserId); setDuration(Math.round((Date.parse(selected.endAt) - Date.parse(selected.startAt)) / 60000));
+      try { setLocalStart(localMeetingTime(selected.startAt, zone)); setOccurrence(new Date(selected.startAt).toISOString()); }
+      catch { setOccurrence(''); setError('Choose a valid time zone to display the linked appointment.'); }
+    }
   };
   async function submit(event: React.FormEvent) {
     event.preventDefault(); if (busy) return;
@@ -45,7 +49,7 @@ export function MeetingForm({ config, meeting, customerId, saved }: { config: Me
       <label>Audience<select value={audience} onChange={event => setAudience(event.target.value as MeetingInput['audience'])}><option value="EXTERNAL_CLIENT" disabled={config.guestEnabled === false}>Client meeting</option><option value="INTERNAL">Internal meeting</option></select></label>
       <label>Call format<select value={type} onChange={event => setType(event.target.value as MeetingInput['type'])}><option value="VIDEO">Video</option><option value="AUDIO">Audio</option></select></label>
       {config.guestEnabled === false && <p role="status" className="meetings-full meetings-muted">Guest invitations are not enabled for this business yet. Internal meetings are available.</p>}
-      <label>Host<select value={hostId} required onChange={event => setHostId(event.target.value)}><option value="">Choose a host</option>{config.hosts.map(host => <option value={host.id} key={host.id}>{host.name}</option>)}</select></label>
+      <label>Host<select value={hostId} required disabled={Boolean(appointment)} onChange={event => setHostId(event.target.value)}><option value="">Choose a host</option>{config.hosts.map(host => <option value={host.id} key={host.id}>{host.name}</option>)}</select></label>
       <label>Time zone<input list="meeting-timezones" required value={zone} onChange={event => changeZone(event.target.value)} /><datalist id="meeting-timezones">{[...new Set([initialZone, ...meetingTimeZones])].map(item => <option key={item} value={item} />)}</datalist></label>
       <label>Start date and time<input type="datetime-local" required disabled={Boolean(appointment)} value={localStart} onChange={event => { setLocalStart(event.target.value); setOccurrence(''); }} /></label>
       <label>Duration (minutes)<input type="number" required disabled={Boolean(appointment)} min={5} max={480} step={5} value={duration} onChange={event => setDuration(Number(event.target.value))} /></label>
@@ -55,7 +59,7 @@ export function MeetingForm({ config, meeting, customerId, saved }: { config: Me
     <fieldset disabled={busy}><legend>Keep the relationship connected</legend>
       <label>Customer (optional)<select value={customer} onChange={event => { setCustomer(event.target.value); setAppointment(''); }}><option value="">No linked customer</option>{config.customers.map(person => <option value={person.id} key={person.id}>{person.name}</option>)}</select></label>
       <label>Appointment (optional)<select value={appointment} onChange={event => selectAppointment(event.target.value)}><option value="">No linked appointment</option>{config.appointments.filter(value => !customer || value.customerId === customer).map(item => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
-      {appointment && <p className="meetings-muted meetings-full">The linked appointment supplies the meeting time. Reschedule it in <Link to={'/app/bookings?date=' + localStart.slice(0, 10)}>Calendar</Link>, or choose “No linked appointment” to set a separate meeting time. Changing the time zone only changes how the appointment time is displayed.</p>}
+      {appointment && <p className="meetings-muted meetings-full">The linked appointment supplies the host and meeting time. Update it in <Link to={'/app/bookings?date=' + localStart.slice(0, 10)}>Calendar</Link>, or choose “No linked appointment” to choose a separate host and time. Changing the time zone only changes how the appointment time is displayed.</p>}
     </fieldset>
     <fieldset disabled={busy} className="meetings-people"><legend>Invite your team</legend><p className="meetings-muted meetings-full">Co-hosts can admit guests and manage this meeting. Workspace access alone does not grant attendance.</p>
       {config.hosts.filter(person => person.id !== hostId).map(person => <div key={person.id} className="meetings-person"><strong>{person.name}</strong><label className="meetings-check"><input type="checkbox" checked={attendees.includes(person.id) || cohosts.includes(person.id)} onChange={event => { setAttendees(values => event.target.checked ? [...new Set([...values, person.id])] : values.filter(id => id !== person.id)); if (!event.target.checked) setCohosts(values => values.filter(id => id !== person.id)); }} />Attendee</label><label className="meetings-check"><input type="checkbox" checked={cohosts.includes(person.id)} onChange={() => setCohosts(values => toggle(values, person.id))} />Co-host</label></div>)}

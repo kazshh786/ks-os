@@ -19,7 +19,7 @@ export type MeetingsConfig = {
   limits: { concurrentMeetings: number; participants: number; externalGuests: number };
   hosts: Array<{ id: string; name: string }>;
   customers: Array<{ id: string; name: string; reference: string }>;
-  appointments: Array<{ id: string; customerId: string; startAt: string; endAt: string; label: string }>;
+  appointments: Array<{ id: string; customerId: string; hostUserId: string; startAt: string; endAt: string; label: string }>;
 };
 export type MeetingInput = {
   title: string; description: string; audience: ScheduledMeeting['audience']; type: MeetingType; localStart: string; timezone: string; durationMinutes: number;

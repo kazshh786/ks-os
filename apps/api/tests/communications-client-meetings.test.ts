@@ -99,6 +99,11 @@ test('client meetings: tenant security, schedules, invitations, admission and re
   });
 
   await t.test('customer, appointment, host and internal attendee references are tenant-validated', async () => {
+    const config=await service.config(f.owner,{customerReference:f.customer.reference});
+    assert.deepEqual(config.appointments.map(item=>({id:item.id,customerId:item.customerId,hostUserId:item.hostUserId})),[{id:f.appointment.id,customerId:f.customer.id,hostUserId:f.host.userId}]);
+    assert.ok(config.hosts.every(item=>![f.other.userId,f.otherStaff.userId].includes(item.id)));
+    assert.ok(config.customers.every(item=>item.id!==f.otherCustomer.id));
+    await assert.rejects(service.config(f.owner,{customerReference:f.otherCustomer.reference}),{statusCode:404});
     for (const extra of [{customerId:f.otherCustomer.id},{hostUserId:f.other.userId},{attendeeIds:[f.other.userId]},{cohostIds:[f.other.userId]},{customerId:f.customer.id,appointmentId:f.otherAppointment.id}]) await assert.rejects(create(f.owner,extra));
     const linked = await create(f.owner,{customerId:f.customer.id,appointmentId:f.appointment.id,hostUserId:f.host.userId});
     assert.equal(linked.customerId,f.customer.id); assert.equal(linked.appointmentId,f.appointment.id);
