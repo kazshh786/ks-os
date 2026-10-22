@@ -10,8 +10,8 @@ const listeners = new Set<(event: any)=>void>();
 const emit = () => { for(const listener of listeners)listener({type:'call.updated',conversationId:base.conversationId,resourceId:base.id}); };
 export const subscribe = (listener: (event: any)=>void) => { listeners.add(listener); return()=>{listeners.delete(listener);}; };
 export const fixture = {
- invite(){meeting={...structuredClone(base),canManage:false,createdBy:'grace',organizerName:'Grace Hopper'};incoming=[meeting];emit();},
- end(){meeting={...meeting,status:'ENDED',endReason:'ORGANIZER_ENDED',endedAt:new Date().toISOString()};incoming=[];emit();},
+ invite(){meeting={...structuredClone(base),canManage:false,createdBy:'grace',organizerName:'Grace Hopper'};incoming=[meeting];history=[meeting];emit();},
+ end(){meeting={...meeting,status:'ENDED',endReason:'ORGANIZER_ENDED',endedAt:new Date().toISOString()};history=[meeting];incoming=[];emit();},
 };
 export const callsApi = {
  config:async()=>({enabled:true,participantLimit:6,tokenTtlSeconds:120}),

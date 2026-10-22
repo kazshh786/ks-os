@@ -6,7 +6,7 @@ Implementation is on `codex/communications-phase-5`, [PR #250](https://github.co
 
 Branch chain: `main` → `codex/communications-phase-1` (#241) → `codex/communications-phase-2` (#245) → `codex/communications-phase-3` (#246) → `codex/communications-phase-4` (#248) → `codex/communications-phase-5` (#250). All five PRs remain open and unmerged.
 
-**Verification: PENDING.** The checks below describe committed verification, not passing results. Record the final reviewed commit and successful GitHub run before changing this status. No application build, dependency installation, media service, or migration was run on the developer's computer. Production infrastructure and databases were not modified.
+**Verification evidence:** the [PR checks](https://github.com/kazshh786/ks-os/pull/250/checks) and PR description record the reviewed commit, run links and final results. The table below describes automated coverage; a test definition alone is not evidence of a passing run. No application build, dependency installation, media service, or migration was run on the developer's computer. Production infrastructure and databases were not modified.
 
 Application deployment target: **BOTH VPS + CLOUDFLARE**. Self-hosted LiveKit installation is an additional, separately approved infrastructure operation. Calling defaults to disabled.
 
@@ -55,17 +55,17 @@ Webhooks use the official receiver, original body, authorization validation and 
 
 ## Verification boundaries
 
-| GitHub check | Committed coverage | Result |
+| GitHub check | Committed coverage | Evidence |
 | --- | --- | --- |
-| Repository `verify` | Frozen install; build; repository lint command; typecheck; tests; migration plan | **PENDING** |
-| Meeting API/database tests | Real PGlite migrations/queries, tenant and role boundaries, retry/rate limits, token grants, raw webhook tampering, state/order/recovery, participant/session removal and HTTP validation | **PENDING** |
-| Native calling UI | Component tests plus Chromium desktop/mobile viewport checks and screenshots; permission/device errors, explicit consent, controls, invitations and lifecycle | **PENDING** |
-| Real media | Two Chromium contexts with KSOS-issued tokens and the pinned self-hosted server; audio RTP received both directions, decoded camera/screen frames, controls, signalling reconnect, invalid token rejection, leave/end behavior and retained-token room recreation rejection | **PENDING** |
-| Infrastructure template | Isolated, network-disabled runner container with temporary credentials/test TLS; pinned server parses config and serves health/metrics | **PENDING** |
+| Repository `verify` | Frozen install; build; repository lint command; typecheck; tests; migration plan | Linked in PR #250 |
+| Meeting API/database tests | Real PGlite migrations/queries, tenant and role boundaries, retry/rate limits, token grants, raw webhook tampering, state/order/recovery, participant/session removal and HTTP validation | Linked in PR #250 |
+| Native calling UI | Component tests plus Chromium desktop/mobile viewport checks and screenshots; permission/device errors, explicit consent, controls, invitations and lifecycle | Linked in PR #250 |
+| Real media | Two Chromium contexts with KSOS-issued tokens and the pinned self-hosted server; audio RTP received both directions, decoded camera/screen frames, controls, signalling reconnect, invalid token rejection, leave/end behavior and retained-token room recreation rejection | Linked in PR #250 |
+| Infrastructure template | Isolated, network-disabled runner container with temporary credentials/test TLS; pinned server parses config and serves health/metrics | Linked in PR #250 |
 
 Meeting artifacts are uploaded as `communications-meetings`, including screenshots and `media-verification.json`. The real-media harness uses synthetic devices and loopback networking. Native UI browser checks use controlled API/SDK fixtures; they are separate from the real-media harness. These checks do not prove production TLS, NAT, TURN, bandwidth, physical devices, Safari/iOS/Android, packet-loss tolerance, or capacity. The existing API/web `lint` scripts are echo placeholders; a successful repository lint step is not evidence of ESLint coverage.
 
-The repository dependency audit remains failing on existing dependency paths (63 findings in the October 22 run: one critical, 32 high, 26 moderate, four low), including Astro, Fastify, Axios and image/build dependencies. No LiveKit dependency appeared in the high/critical findings. This is a release blocker requiring dependency remediation; the audit was not weakened. The Vercel integration is account-blocked, also present on Phase 4. CodeQL and secret scanning passed on the initial implementation; final-head checks remain required.
+The repository dependency audit remains failing on existing dependency paths (63 findings in the October 22 run: one critical, 32 high, 26 moderate, four low), including Astro, Fastify, Axios and image/build dependencies. No LiveKit dependency appeared in the high/critical findings. This is a release blocker requiring dependency remediation; the audit was not weakened. The Vercel integration is account-blocked, also present on Phase 4. CodeQL and secret scanning passed on the initial implementation; consult the PR for the final reviewed commit's check results.
 
 ## Environment and release requirements
 
@@ -79,7 +79,7 @@ The repository dependency audit remains failing on existing dependency paths (63
 
 See [the infrastructure review and release plan](communications-phase-5-infrastructure.md) for inventory gaps, port/TURN conflicts, DNS/TLS, resource limits, monitoring, secret handling, Compose files and rollback. Public signalling proxies only the required RTC path; the control API remains private. Media/TURN must not be routed through an ordinary Cloudflare HTTP proxy. Existing Plesk/other application listeners must be inventoried before reserving addresses or ports; no free-port or VPS-capacity assumption has been verified.
 
-The approved future migration sequence is the pending communications chain in manifest order: **89 foundation → 90 channels → 91 direct conversations → 92 files/search/notifications → 93 meetings**, accounting for the actual production ledger first. Rehearse against an isolated database with representative existing data, back up production, review locks and compatibility, then apply using the repository migration procedure. Do not use schema push. The existing automatic VPS production path uses `APPLY_MIGRATIONS=0`; it cannot perform the first communications release by itself.
+The approved future migration sequence is the pending communications chain in manifest order: **89 foundation → 90 channels → 91 direct conversations → 92 files/search/notifications → 93 meetings**, accounting for the actual production ledger first. Rehearse against an isolated database with representative existing data, back up production, review locks and compatibility, then inspect `pnpm db:migrations:status` and `pnpm db:migrations:plan`, run `pnpm db:migrations:validate`, and apply the approved set with `pnpm db:migrations:apply` using the operator-selected database environment. Verify status afterward; none of these apply commands were executed against production. Do not use schema push. The existing automatic VPS production path uses `APPLY_MIGRATIONS=0`; it cannot perform the first communications release by itself.
 
 After explicit approval, provision and verify the media layer, apply approved additive migrations, and coordinate the VPS API and Cloudflare frontend release. Verify two real users, private authorization, forced TURN, reconnects, removal, termination and history before enabling broadly. Keep history on rollback; disable new calls, drain/end active rooms, restore the reviewed application/configuration and use a forward database fix where necessary. Merely disabling calling does not remove active LiveKit participants.
 
