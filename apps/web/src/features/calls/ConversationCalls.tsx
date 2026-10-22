@@ -22,10 +22,10 @@ export function ConversationCalls({ conversationId, archived, subscribe, revisio
   useEffect(() => {
     let active = true;
     setConfig(null); setRows([]); setCursor(null); setError(''); request.current = null;
-    void callsApi.config().then(async value => {
+    void Promise.all([callsApi.config(), callsApi.history(conversationId)]).then(([value, page]) => {
       if (!active) return;
       setConfig(value);
-      if (value.enabled) { const page = await callsApi.history(conversationId); if (active) { setRows(page.data); setCursor(page.nextCursor); } }
+      setRows(page.data); setCursor(page.nextCursor);
     }).catch(cause => { if (active) setError(callingError(cause)); });
     return () => { active = false; };
   }, [conversationId]);
@@ -52,11 +52,11 @@ export function ConversationCalls({ conversationId, archived, subscribe, revisio
       <button type="button" disabled={busy} aria-label="Start voice call" title="Start voice call" onClick={() => void start('AUDIO')}><Phone size={18} aria-hidden="true"/></button>
       <button type="button" disabled={busy} aria-label="Start video call" title="Start video call" onClick={() => void start('VIDEO')}><Video size={19} aria-hidden="true"/></button>
     </>)}
-    <button type="button" aria-label="Call history" title="Call history" onClick={() => { setHistory(true); if (config?.enabled) void refresh().catch(cause => setError(callingError(cause))); }}><History size={18} aria-hidden="true"/></button>
+    <button type="button" aria-label="Call history" title="Call history" onClick={() => { setHistory(true); void refresh().catch(cause => setError(callingError(cause))); }}><History size={18} aria-hidden="true"/></button>
     {error && <span className="call-inline-error" role="alert">{error}</span>}
     {history && <ChatDialog title="Call history" close={() => setHistory(false)}>
-      {!config?.enabled && <p>Calling is not enabled for this workspace yet.</p>}
-      {config?.enabled && !rows.length && <p>No calls yet. Start a voice or video call from this conversation.</p>}
+      {config && !config.enabled && <p>New calls are currently unavailable. Saved call history remains available.</p>}
+      {!rows.length && <p>No saved calls yet.</p>}
       <ul className="call-history">{rows.map(meeting => <li key={meeting.id}>
         {meeting.type === 'VIDEO' ? <Video size={20} aria-hidden="true"/> : <Phone size={20} aria-hidden="true"/>}
         <div><strong>{meeting.type === 'VIDEO' ? 'Video call' : 'Voice call'} · {meetingOutcome(meeting)}</strong><p>{meeting.organizerName}</p><time dateTime={meeting.createdAt}>{new Date(meeting.createdAt).toLocaleString()}</time>{meetingDuration(meeting) && <span> · {meetingDuration(meeting)}</span>}</div>

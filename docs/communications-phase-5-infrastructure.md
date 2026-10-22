@@ -14,7 +14,7 @@ GitHub's tracked production workflow only automatically follows successful main 
 
 ## Version pins and hosting choice
 
-Use official packages and explicit versions: LiveKit Server `v1.13.10`, `livekit-server-sdk` `2.19.2`, `livekit-client` `2.23.0`, and `@livekit/components-react` `2.9.24`. These versions were verified against official release pages on October 22. Resolve the lockfile in GitHub and use frozen installs. Record the actual container digest in release evidence before production; do not silently replace a tag during an approved release. No Egress, Ingress, agent, transcription or recording services are required.
+Use official packages and explicit versions: LiveKit Server `v1.13.10`, `livekit-server-sdk` `2.19.1`, `livekit-client` `2.23.0`, and `@livekit/components-react` `2.9.24`. These versions were verified against official release pages on October 22. Resolve the lockfile in GitHub and use frozen installs. Record the actual container digest in release evidence before production; do not silently replace a tag during an approved release. No Egress, Ingress, agent, transcription or recording services are required.
 
 The review-only Compose example runs one isolated media container with host networking, bounded logs, a health check, restart policy and explicit CPU/memory caps. A single node does not require Redis; production multi-node operation should add a separately reviewed, isolated Redis service and failure plan. Never reuse an unrelated application's Redis without capacity, isolation and credential review.
 

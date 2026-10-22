@@ -126,6 +126,8 @@ jobs:
       - name: Verify permissions, lifecycle and real two-browser media
         working-directory: apps/api
         run: node --import ./tests/test-environment.mjs --import tsx --test tests/communications-meetings.test.ts tests/communications-meetings-media.test.ts
+      - name: Verify native calling UI on desktop and mobile
+        run: node apps/api/tests/helpers/meetings-ui-browser.mjs
       - name: Media server diagnostics
         if: failure()
         run: docker logs ksos-livekit-ci
@@ -149,11 +151,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with: { version: 11.13.1 }
       - uses: actions/setup-node@v4
         with: { node-version: 24 }
-      - run: pnpm --filter api add livekit-server-sdk@2.19.1 --save-exact --lockfile-only --ignore-scripts
+      - name: Resolve from the reviewed Phase 4 lockfile
+        run: |
+          git show 8327608a31a3eba84d5e9c9ed2998797857e6fe8:pnpm-lock.yaml > pnpm-lock.yaml
+          pnpm install --lockfile-only --ignore-scripts
       - uses: actions/upload-artifact@v4
         with:
           name: phase5-eligible-dependencies

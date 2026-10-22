@@ -52,7 +52,7 @@
     "fastify-plugin": "^6.0.0",
     "fastify-raw-body": "^5.0.0",
     "libphonenumber-js": "1.12.29",
-    "livekit-server-sdk": "2.19.2",
+    "livekit-server-sdk": "2.19.1",
     "resend": "^6.17.2",
     "sharp": "0.35.5",
     "stripe": "^22.3.2",
