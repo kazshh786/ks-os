@@ -98,4 +98,5 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20261011060000_communications_direct.sql', order: 91, description: 'Canonical direct conversation identity and recent conversation index' },
   { filename: '20261011100000_communications_files_search_notifications.sql', order: 92, description: 'Private Chat attachments, indexed message search and persisted notification preferences' },
   { filename: '20261022100000_communications_meetings.sql', order: 93, description: 'Internal LiveKit meeting lifecycle, private participants, device sessions and verified webhook receipts' },
+  { filename: '20261022220000_communications_client_meetings.sql', order: 94, description: 'Tenant scheduled client meetings, individual invitations, guest admissions and shared media session principals' },
 ];

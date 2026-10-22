@@ -84,8 +84,9 @@ export const CommunicationsEventSchema = z.object({
   version: z.literal(1),
   id: CommunicationPositionSchema,
   tenantId: z.string().uuid(),
-  conversationId: z.string().uuid(),
-  type: z.enum(['conversation.created', 'conversation.member_joined', 'conversation.member_left', 'message.created', 'conversation.read', 'conversation.updated', 'message.updated', 'message.deleted', 'message.reaction','notification.created','notification.read','notification.preferences_updated','call.created','call.invited','call.accepted','call.declined','call.cancelled','call.started','call.participant_joined','call.participant_left','call.ended','call.failed']),
+  conversationId: z.string().uuid().nullable(),
+  meetingId: z.string().uuid().nullable().optional(),
+  type: z.enum(['conversation.created', 'conversation.member_joined', 'conversation.member_left', 'message.created', 'conversation.read', 'conversation.updated', 'message.updated', 'message.deleted', 'message.reaction','notification.created','notification.read','notification.preferences_updated','call.created','call.invited','call.accepted','call.declined','call.cancelled','call.started','call.participant_joined','call.participant_left','call.ended','call.failed','meeting.scheduled','meeting.updated','meeting.cancelled','meeting.started','meeting.ended','guest.waiting','guest.admitted','guest.denied','guest.left','invitation.revoked']),
   occurredAt: z.string().datetime(),
   // Invalidation events deliberately carry no message bodies or participant details.
   resourceId: z.string().uuid(),

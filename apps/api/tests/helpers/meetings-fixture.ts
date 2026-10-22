@@ -15,9 +15,15 @@ export async function createMeetingFixture(t: TestContext) {
   await pg.exec(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
     CREATE SCHEMA storage; CREATE TABLE storage.objects(bucket_id text);
-    CREATE TABLE tenants(id uuid PRIMARY KEY,is_active boolean DEFAULT true,lifecycle_status text DEFAULT 'ACTIVE');
-    CREATE TABLE users(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,auth_user_id uuid,name text,role text DEFAULT 'owner',account_status text DEFAULT 'ACTIVE',sessions_valid_after timestamptz,security_version integer DEFAULT 1);
-    CREATE TABLE clients(id uuid PRIMARY KEY); CREATE TABLE appointments(id uuid PRIMARY KEY);
+    CREATE TABLE tenants(id uuid PRIMARY KEY,name text DEFAULT 'Test business',subdomain text DEFAULT 'test',timezone text DEFAULT 'Europe/London',primary_color text DEFAULT '#0f172a',secondary_color text DEFAULT '#475569',business_profile jsonb,is_active boolean DEFAULT true,lifecycle_status text DEFAULT 'ACTIVE');
+    CREATE TABLE users(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,auth_user_id uuid,name text,role text DEFAULT 'owner',access_profile text DEFAULT 'PRACTITIONER',permissions jsonb DEFAULT '{}',account_status text DEFAULT 'ACTIVE',sessions_valid_after timestamptz,security_version integer DEFAULT 1);
+    CREATE TABLE clients(id uuid PRIMARY KEY,public_reference uuid DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,name text,email text);
+    CREATE TABLE appointments(id uuid PRIMARY KEY,public_reference uuid DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,user_id uuid REFERENCES users,client_id uuid REFERENCES clients,start_time timestamptz,end_time timestamptz,status text DEFAULT 'CONFIRMED',version int DEFAULT 1);
+    CREATE TABLE booking_pages(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,logo_url text,theme_json jsonb DEFAULT '{}',enabled boolean DEFAULT true,published boolean DEFAULT true,created_at timestamptz DEFAULT now());
+    CREATE TABLE tenant_email_automation_settings(tenant_id uuid PRIMARY KEY REFERENCES tenants,settings_json jsonb DEFAULT '{}');
+    CREATE TABLE tenant_plan_assignments(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid,plan_version_id uuid,status text,starts_at timestamptz,ends_at timestamptz);
+    CREATE TABLE platform_plan_entitlements(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),plan_version_id uuid,entitlement_key text,value_json jsonb,created_at timestamptz DEFAULT now());
+    CREATE TABLE tenant_entitlement_overrides(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid,entitlement_key text,value_json jsonb,starts_at timestamptz,expires_at timestamptz,revoked_at timestamptz,created_at timestamptz DEFAULT now());
     CREATE TABLE customer_client_links(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants);
     CREATE TABLE internal_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,recipient_user_id uuid REFERENCES users,type text,title text,message text,source_type text,source_id uuid,read_at timestamptz,created_at timestamptz DEFAULT now());
     CREATE TABLE integration_connections(id uuid PRIMARY KEY,kind text);
@@ -31,6 +37,7 @@ export async function createMeetingFixture(t: TestContext) {
     '20261011060000_communications_direct.sql',
     '20261011100000_communications_files_search_notifications.sql',
     '20261022100000_communications_meetings.sql',
+    '20261022220000_communications_client_meetings.sql',
   ]) await pg.exec(readFileSync(new URL(`../../../../packages/database/migrations/${migration}`, import.meta.url), 'utf8'));
   const dialect = new PgDialect();
   const wrap = (connection: PGlite | Transaction): CommunicationsDatabase => ({

@@ -1,4 +1,4 @@
-import { AccessToken, RoomServiceClient, WebhookReceiver } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient, WebhookReceiver, TrackSource } from 'livekit-server-sdk';
 import { communicationError } from './communications.authorization.js';
 
 export interface MeetingMediaProvider {
@@ -7,7 +7,7 @@ export interface MeetingMediaProvider {
  participants(name:string):Promise<{identity:string;sid:string}[]>;
  rooms():Promise<{name:string;sid:string}[]>;
  removeParticipant(name:string,identity:string):Promise<void>;
- token(room:string,identity:string,name:string):Promise<string>;
+ token(room:string,identity:string,name:string,permissions?:{screenShare?:boolean}):Promise<string>;
  verify(raw:string,authorization:string):Promise<{id?:string;event:string;createdAt?:number|bigint;room?:{name?:string;sid?:string};participant?:{identity?:string;sid?:string}}>;
 }
 export class LiveKitProvider implements MeetingMediaProvider {
@@ -31,9 +31,9 @@ export class LiveKitProvider implements MeetingMediaProvider {
  async participants(name:string){try{return await this.require().listParticipants(name);}catch(e){if((e as {status?:number}).status===404)return [];throw e;}}
  async rooms(){return this.require().listRooms();}
  async removeParticipant(name:string,identity:string){try{await this.require().removeParticipant(name,identity);}catch(e){if((e as {status?:number}).status!==404)throw e;}}
- async token(room:string,identity:string,name:string){
+ async token(room:string,identity:string,name:string,permissions?:{screenShare?:boolean}){
   this.require(); const token=new AccessToken(this.key,this.secret,{identity,name,ttl:this.tokenTtlSeconds});
-  token.addGrant({room,roomJoin:true,canPublish:true,canSubscribe:true,canPublishData:false,canUpdateOwnMetadata:false});
+  token.addGrant({room,roomJoin:true,canPublish:true,canSubscribe:true,canPublishData:false,canUpdateOwnMetadata:false,...(permissions?.screenShare===false?{canPublishSources:[TrackSource.MICROPHONE,TrackSource.CAMERA]}:{})});
   return token.toJwt();
  }
  async verify(raw:string,authorization:string){

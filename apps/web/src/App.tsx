@@ -1,6 +1,8 @@
 import { InvoiceWorkspace, InvoiceDetailPage, InvoiceCreatePage } from './features/invoices/InvoicePages';
 import React from 'react';
 const ChatPage = React.lazy(() => import('./features/chat/ChatPage'));
+const MeetingsPage = React.lazy(() => import('./features/meetings/MeetingsPage'));
+const GuestMeetingPage = React.lazy(() => import('./features/meetings/GuestMeetingPage'));
 import ProductOnboardingPage from './features/onboarding/ProductOnboardingPage';
 import { useBusinessProfile } from './auth/useBusinessProfile';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
@@ -159,6 +161,7 @@ const AppContent: React.FC = () => {
         <Route path="/forms/complete/:token/success" element={<PublicFormSuccessPage />} />
         <Route path="/review/:token" element={<PublicReviewInvitationPage />} />
         <Route path="/quote/:token" element={<PublicQuotePage />} />
+        <Route path="/meet" element={<React.Suspense fallback={<p role="status">Opening your meeting…</p>}><GuestMeetingPage /></React.Suspense>} />
         <Route path="/fact-finding" element={<ClientFactFindingPage />} />
         <Route path="/pos-payment-complete" element={<PosPaymentCompletePage />} />
 
@@ -235,6 +238,7 @@ const AppContent: React.FC = () => {
           <Route path="automations/:id/runs" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Workflow automations" requiredPlan="GROWTH" benefit="Automate confirmations, reminders, forms, rebooking and follow-up work."><AutomationRunsPage /></EntitlementRoute></RoleRoute>} />
           <Route path="automation-runs/:runId" element={<RoleRoute allowedRoles={['owner']}><EntitlementRoute entitlementKey="automations.enabled" title="Workflow automations" requiredPlan="GROWTH" benefit="Automate confirmations, reminders, forms, rebooking and follow-up work."><AutomationRunPage /></EntitlementRoute></RoleRoute>} />
           <Route path="chat/:conversationId?" element={<RoleRoute allowedRoles={['owner','staff']}><React.Suspense fallback={<p role="status">Opening Chat…</p>}><ChatPage /></React.Suspense></RoleRoute>} />
+          <Route path="meetings/*" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['MEETINGS_VIEW_OWN','MEETINGS_VIEW_ALL']}><React.Suspense fallback={<p role="status">Opening Meetings…</p>}><MeetingsPage /></React.Suspense></RoleRoute>} />
           <Route path="operations" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE']}><OperationsInboxPage /></RoleRoute>} />
           <Route path="operations/:issueId" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['OPERATIONS_VIEW_ASSIGNED', 'OPERATIONS_VIEW_ALL', 'OPERATIONS_MANAGE']}><OperationIssueDetailPage /></RoleRoute>} />
           <Route path="tasks" element={<RoleRoute allowedRoles={['owner','staff']} requiredPermissionsAny={['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL']}><TasksPage /></RoleRoute>} />

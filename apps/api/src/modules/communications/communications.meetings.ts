@@ -3,17 +3,19 @@ import { sql } from '@ks-os/database';
 import { CommunicationsAuthorization, communicationError, notFound, type CommunicationsActor } from './communications.authorization.js';
 import { communicationsDatabase, type CommunicationsDatabase } from './communications.database.js';
 import { LiveKitProvider, type MeetingMediaProvider } from './communications.livekit.js';
+import { ClientMeetings } from './communications.client-meetings.js';
+import { meetingLimits, reserveMeetingCapacity, reserveConnectionCapacity } from './communications.meeting-policy.js';
 
 export interface MeetingParticipantView extends Record<string,unknown> {userId:string;name:string;role:string;invitationState:string;joinedAt:Date|null;leftAt:Date|null;sessionCount:number}
 export interface MeetingView {id:string;conversationId:string;createdBy:string;status:string;type:string;title:string;createdAt:Date;startedAt:Date|null;endedAt:Date|null;endReason:string|null;expiresAt:Date;organizerName:string;conversationName:string;canManage:boolean;invitationState?:string;participants:MeetingParticipantView[]}
 type Meeting=Record<string,unknown>&{id:string;tenantId:string;conversationId:string;createdBy:string;room:string;status:string;type:string;createdAt:Date;startedAt:Date|null;endedAt:Date|null;expiresAt:Date};
-const fields=sql`m.id,m.tenant_id AS "tenantId",m.conversation_id AS "conversationId",m.created_by AS "createdBy",m.provider_room_name AS room,m.status,m.type,m.title,m.created_at AS "createdAt",m.started_at AS "startedAt",m.ended_at AS "endedAt",m.end_reason AS "endReason",m.expires_at AS "expiresAt"`;
+const fields=sql`m.id,m.tenant_id AS "tenantId",m.conversation_id AS "conversationId",m.created_by AS "createdBy",m.provider_room_name AS room,m.status,m.type,m.title,m.created_at AS "createdAt",m.started_at AS "startedAt",m.ended_at AS "endedAt",m.end_reason AS "endReason",m.expires_at AS "expiresAt",m.scheduled_start_at AS "scheduledStartAt"`;
 const live=['CREATED','RINGING','ACTIVE'];
 const unavailable=()=>communicationError(503,'MEDIA_UNAVAILABLE','The calling service is unavailable. Please try again.');
 export class CommunicationsMeetings {
  constructor(private db:CommunicationsDatabase=communicationsDatabase(),private provider:MeetingMediaProvider=new LiveKitProvider()){}
  private requireEnabled(){if(!this.provider.enabled)throw communicationError(503,'CALLS_UNAVAILABLE','Calling has not been enabled for this workspace.');}
- private async lock<T>(tenant:string,work:(db:CommunicationsDatabase)=>Promise<T>){return this.db.transaction(async db=>{await db.query(sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenant},8241))`);return work(db);});}
+ private async lock<T>(tenant:string,work:(db:CommunicationsDatabase)=>Promise<T>){return this.db.transaction(async db=>{await db.query(sql`SELECT pg_advisory_xact_lock(8241006)`);await db.query(sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenant},8241))`);return work(db);});}
  private async row(db:CommunicationsDatabase,id:string,tenant?:string){const [m]=await db.query<Meeting>(sql`SELECT ${fields} FROM communication_meetings m WHERE m.id=${id} ${tenant?sql`AND m.tenant_id=${tenant}`:sql``}`);if(!m)throw notFound();return m;}
  private async access(db:CommunicationsDatabase,actor:CommunicationsActor,id:string,manage=false){
   const m=await this.row(db,id,actor.tenantId);const access=await new CommunicationsAuthorization(db).requireConversation(actor,m.conversationId);
@@ -61,6 +63,7 @@ export class CommunicationsMeetings {
    if(retry){if(retry.conversationId!==conversationId||retry.type!==input.type)throw communicationError(409,'RETRY_CONFLICT','This retry belongs to another call.');return {meeting:retry,fresh:false};}
    const [existing]=await db.query<Meeting>(sql`SELECT ${fields} FROM communication_meetings m WHERE m.tenant_id=${actor.tenantId} AND m.conversation_id=${conversationId} AND m.status IN ('CREATED','RINGING','ACTIVE')`);
    if(existing)return {meeting:existing,fresh:false};
+   await reserveMeetingCapacity(db,actor.tenantId,await meetingLimits(db,actor.tenantId,this.provider.participantLimit));
    const [count]=await db.query<{recent:number;hour:number}>(sql`SELECT count(*) FILTER(WHERE created_at>now()-interval '1 minute')::int AS recent,count(*)::int AS hour FROM communication_meetings WHERE tenant_id=${actor.tenantId} AND created_by=${actor.userId} AND created_at>now()-interval '1 hour'`);
    if(count.recent>=3||count.hour>=10)throw communicationError(429,'CALL_RATE_LIMIT','Too many call invitations. Please wait before trying again.');
    const id=randomUUID(),room='ksos-'+randomUUID();
@@ -117,6 +120,7 @@ export class CommunicationsMeetings {
    let [session]=await db.query<{id:string;identity:string;revokedAt:Date|null;leftAt:Date|null;expiresAt:Date}>(sql`SELECT id,identity,revoked_at AS "revokedAt",left_at AS "leftAt",token_expires_at AS "expiresAt" FROM communication_meeting_sessions WHERE meeting_id=${id} AND user_id=${actor.userId} AND auth_session_id=${actor.sessionId} AND request_id=${requestId}`);
    if(session&&(session.revokedAt||session.leftAt||new Date(session.expiresAt).getTime()<=Date.now()))throw communicationError(409,'JOIN_RETRY_EXPIRED','Start a new join attempt.');
    if(!session){
+    await reserveConnectionCapacity(db,id,await meetingLimits(db,actor.tenantId,this.provider.participantLimit));
     const [rate]=await db.query<{recent:number;devices:number;capacity:number}>(sql`SELECT count(*) FILTER(WHERE user_id=${actor.userId} AND created_at>now()-interval '1 minute')::int AS recent,
      count(*) FILTER(WHERE user_id=${actor.userId} AND meeting_id=${id} AND revoked_at IS NULL AND left_at IS NULL AND (joined_at IS NOT NULL OR token_expires_at>now()))::int AS devices,
      count(*) FILTER(WHERE meeting_id=${id} AND revoked_at IS NULL AND left_at IS NULL AND (joined_at IS NOT NULL OR token_expires_at>now()))::int AS capacity
@@ -183,6 +187,7 @@ export class CommunicationsMeetings {
   return session;
  }
  private async observe(db:CommunicationsDatabase,m:Meeting,roomExists:boolean,participants:{identity:string;sid:string}[]){
+  if(m.scheduledStartAt){await new ClientMeetings(db,this.provider).observeSnapshot(db,m.id,roomExists,participants);return;}
   if(!live.includes(m.status)){
    if(roomExists)await this.provider.deleteRoom(m.room);
    await db.query(sql`UPDATE communication_meetings SET cleanup_pending=false,last_reconciled_at=now() WHERE id=${m.id}`);return;
@@ -236,7 +241,7 @@ export class CommunicationsMeetings {
  async reconcile(limit=50){
   if(!this.provider.enabled)return {checked:0};
   const rooms=await this.provider.rooms();
-  const pending=await this.db.query<Meeting>(sql`SELECT ${fields} FROM communication_meetings m WHERE m.status IN ('CREATED','RINGING','ACTIVE') OR m.cleanup_pending ORDER BY m.last_reconciled_at NULLS FIRST,m.created_at LIMIT ${Math.max(1,Math.min(100,limit))}`);
+  const pending=await this.db.query<Meeting>(sql`SELECT ${fields} FROM communication_meetings m WHERE m.status IN ('SCHEDULED','CREATED','RINGING','ACTIVE') OR m.cleanup_pending ORDER BY m.last_reconciled_at NULLS FIRST,m.created_at LIMIT ${Math.max(1,Math.min(100,limit))}`);
   // Include resurrected terminal rooms. room.auto_create=false is still REQUIRED in deployment config.
   for(const room of rooms.filter(r=>r.name.startsWith('ksos-')).slice(0,100)){
    if(pending.some(m=>m.room===room.name))continue;

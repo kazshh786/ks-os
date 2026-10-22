@@ -1,4 +1,5 @@
 import { CallWorkspace } from '../calls/CallWorkspace';
+import { invalidateMeetings, publishMeetingEvent } from '../meetings/meetings.live';
 import { ConversationCalls } from '../calls/ConversationCalls';
 import { ChatSearch } from './ChatSearch';
 import { SharedFiles } from './ChatAttachments';
@@ -122,11 +123,12 @@ export function ChatWorkspace() {
       ephemeral:value=>{if(active)setSnapshot(value);},
       ready:async()=>{
         const page=await chatApi.channels(context.current.search);if(!active)return;
-        setChannels(page.data);setCursor(page.nextCursor);setRevision(value=>value+1);
+        setChannels(page.data);setCursor(page.nextCursor);setRevision(value=>value+1);invalidateMeetings();
         if(context.current.conversationId)await hydrate(context.current.conversationId);
       },
       event:event=>{
         if(!active)return;
+        publishMeetingEvent(event);
         for(const listener of listeners.current)listener(event);
         pending.add(event.conversationId);if(!working){clearTimeout(timer);timer=setTimeout(()=>void flush(),150);}
       },

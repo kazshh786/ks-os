@@ -1,7 +1,7 @@
 import {
   BadgePoundSterling, BarChart3, Boxes, BriefcaseBusiness, Building2, CalendarDays, ClipboardList, CreditCard,
   FileText, FormInput, Globe2, Landmark, LayoutDashboard, MapPinned, MessagesSquare, Scissors,
-  Mail, Plug, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Workflow,
+  Mail, Plug, Settings2, ShieldCheck, ShoppingCart, Sparkles, Users, Video, Workflow,
 } from 'lucide-react';
 import type { ModuleKey } from '@ks-os/contracts';
 import type { NavigationGroup } from './navigation.types';
@@ -15,6 +15,7 @@ export const businessNavigation: NavigationGroup[] = [
       { id: 'calendar', label: 'Booking Calendar', href: '/app/calendar', icon: CalendarDays, permissionsAny: ['BOOKINGS_VIEW_OWN', 'BOOKINGS_VIEW_ALL'], activePrefixes: ['/app/bookings'] },
       { id: 'tasks', label: 'Tasks', href: '/app/tasks/my', icon: ClipboardList, permissionsAny: ['TASKS_VIEW_OWN', 'TASKS_VIEW_ALL'], activePrefixes: ['/app/tasks'] },
       { id: 'chat', label: 'Chat', href: '/app/chat', icon: MessagesSquare, roles: ['owner','staff'], activePrefixes: ['/app/chat/'] },
+      { id: 'meetings', label: 'Meetings', href: '/app/meetings', icon: Video, permissionsAny: ['MEETINGS_VIEW_OWN','MEETINGS_VIEW_ALL'], activePrefixes: ['/app/meetings/'] },
     ],
   },
   {
@@ -74,7 +75,7 @@ export const businessSecondaryActions = [
 
 /** Map established navigation IDs onto canonical engines without changing routes. */
 export const navigationModule: Readonly<Record<string, ModuleKey>> = {
-  chat:'communications',dashboard:'dashboard',services:'services',calendar:'calendar',tasks:'tasks',operations:'operations',
+  chat:'communications',meetings:'communications',dashboard:'dashboard',services:'services',calendar:'calendar',tasks:'tasks',operations:'operations',
   invoices:'invoices',customers:'crm',forms:'forms',sales:'sales',pos:'pos',payments:'payments',finance:'finance',analytics:'analytics',
   reports:'reports',reviews:'reputation','email-marketing':'email-marketing',inventory:'inventory',
   work:'work',automations:'automations',team:'team',locations:'locations','booking-page':'booking-page',

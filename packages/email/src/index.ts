@@ -20,8 +20,10 @@ import { FactFindingInvitationEmail } from './templates/fact-finding-invitation.
 import { FactFindingNotificationEmail } from './templates/fact-finding-notification.js';
 import { BusinessBookingConfirmedEmail } from './templates/business-booking-confirmed.js';
 import { BusinessPaymentReceivedEmail } from './templates/business-payment-received.js';
+import { MeetingNotificationEmail } from './templates/meeting-notification.js';
 
 export const templates = {
+  'meeting-notification': MeetingNotificationEmail,
   'booking-confirmed': BookingConfirmedEmail,
   'booking-rescheduled': BookingRescheduledEmail,
   'booking-cancelled': BookingCancelledEmail,

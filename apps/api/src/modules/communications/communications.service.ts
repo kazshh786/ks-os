@@ -1,4 +1,5 @@
 import { CommunicationsMeetings } from './communications.meetings.js';
+import { ClientMeetings } from './communications.client-meetings.js';
 import type { MeetingMediaProvider } from './communications.livekit.js';
 import { CommunicationsAttachments,attachmentFields } from './communications.attachments.js';
 import { CommunicationsDiscovery } from './communications.discovery.js';
@@ -481,10 +482,18 @@ export class CommunicationsService {
 
   async events(actor: CommunicationsActor, id: string | null, after: string) {
     return this.subscription(actor,id,async db=>{
-      const events = await db.query<{occurredAt:Date}>(sql`SELECT e.id::text,e.tenant_id AS "tenantId",e.conversation_id AS "conversationId",e.type,e.resource_id AS "resourceId",e.occurred_at AS "occurredAt"
+      const meetingAccess=id?{all:false,own:false}:await new ClientMeetings(db).eventAccess(actor);
+      const events = await db.query<{occurredAt:Date}>(sql`SELECT e.id::text,e.tenant_id AS "tenantId",e.conversation_id AS "conversationId",e.meeting_id AS "meetingId",e.type,e.resource_id AS "resourceId",e.occurred_at AS "occurredAt"
         FROM communication_events e WHERE e.tenant_id=${actor.tenantId} AND e.id > ${after}::bigint AND (e.recipient_user_id IS NULL OR e.recipient_user_id=${actor.userId})
-        AND ${id ? sql`e.conversation_id=${id}` : sql`EXISTS(SELECT 1 FROM conversation_members m WHERE m.conversation_id=e.conversation_id AND m.tenant_id=e.tenant_id AND m.user_id=${actor.userId}
-          AND (m.left_at IS NULL OR (e.type='conversation.member_left' AND e.resource_id=m.id)))`}
+        AND ${id ? sql`e.conversation_id=${id}` : sql`(
+          EXISTS(SELECT 1 FROM conversation_members m WHERE m.conversation_id=e.conversation_id AND m.tenant_id=e.tenant_id AND m.user_id=${actor.userId}
+            AND (m.left_at IS NULL OR (e.type='conversation.member_left' AND e.resource_id=m.id)))
+          OR EXISTS(SELECT 1 FROM communication_meetings cm WHERE cm.id=e.meeting_id AND cm.tenant_id=e.tenant_id AND (
+            ${meetingAccess.all} OR (${meetingAccess.own} AND (cm.created_by=${actor.userId} OR EXISTS(
+              SELECT 1 FROM communication_meeting_participants mp WHERE mp.meeting_id=cm.id AND mp.user_id=${actor.userId} AND mp.invitation_state<>'REMOVED'
+            )))
+          ))
+        )`}
         ORDER BY e.id LIMIT 100`);
       return events.map(event=>CommunicationsEventSchema.parse({...event,version:1,occurredAt:new Date(event.occurredAt).toISOString()}));
     });

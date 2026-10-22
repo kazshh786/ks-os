@@ -1,5 +1,6 @@
 import websocket from '@fastify/websocket';
 import { communicationsRoutes } from './modules/communications/communications.routes.js';
+import { clientMeetingRoutes, publicMeetingRoutes } from './modules/communications/communications.client-meetings.routes.js';
 import { invoiceRoutes } from './modules/invoices/invoice.routes.js';
 import { customer360Routes } from './modules/customer-360/customer-360.routes.js';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -87,6 +88,7 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
         'req.headers["x-ks-support-session"]',
         'req.headers["x-site-review-session"]',
         'req.headers["x-fact-finding-session"]',
+        'req.headers["x-ksos-csrf"]',
         'req.headers.cookie',
         'req.headers["set-cookie"]',
         'req.body.client.name',
@@ -125,6 +127,8 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
         '*.token',
         '*.invitationToken',
         '*.sessionToken',
+        '*.credential',
+        '*.csrfToken',
         '*.previewUrl',
         'res.body'
       ]
@@ -242,6 +246,8 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(teamOperationsRoutes, { prefix: '/api/v1' });
   fastify.register(operationsRoutes, { prefix: '/api/v1/operations/issues' });
   fastify.register(communicationsRoutes, { prefix: '/api/v1/communications/conversations' });
+  fastify.register(clientMeetingRoutes, { prefix: '/api/v1/meetings' });
+  fastify.register(publicMeetingRoutes, { prefix: '/api/v1/public/meetings' });
   fastify.register(conversationRoutes, { prefix: '/api/v1/conversations' });
   fastify.register(operationsReconciliationRoutes, { prefix: '/api/v1/internal/operations-reconciliation' });
   fastify.register(reportingRoutes);

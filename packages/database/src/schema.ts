@@ -4566,4 +4566,4 @@ export const siteChangeProposals = pgTable('site_change_proposals', {
   reviewerIdx: index('site_change_proposals_reviewer_idx').on(table.reviewedByAgencyUserId),
 }));
 
-export { communicationMeetings,communicationMeetingParticipants,communicationMeetingSessions,communicationMeetingWebhooks } from './meeting-schema.js';
+export { communicationMeetings,communicationMeetingParticipants,communicationMeetingSessions,communicationMeetingWebhooks,communicationMeetingInvitations,communicationMeetingGuests } from './meeting-schema.js';

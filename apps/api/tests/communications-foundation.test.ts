@@ -25,8 +25,9 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     GRANT USAGE ON SCHEMA storage TO authenticated;GRANT SELECT ON storage.objects TO authenticated;
     CREATE POLICY existing_storage_access ON storage.objects FOR SELECT TO authenticated USING(true);
     CREATE TABLE tenants(id uuid PRIMARY KEY,is_active boolean DEFAULT true,lifecycle_status text DEFAULT 'ACTIVE');
-    CREATE TABLE users(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,auth_user_id uuid,name text,role text DEFAULT 'owner',account_status text DEFAULT 'ACTIVE',sessions_valid_after timestamptz,security_version integer DEFAULT 1);
-    CREATE TABLE clients(id uuid PRIMARY KEY); CREATE TABLE appointments(id uuid PRIMARY KEY);
+    CREATE TABLE users(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,auth_user_id uuid,name text,role text DEFAULT 'owner',access_profile text DEFAULT 'PRACTITIONER',permissions jsonb DEFAULT '{}',account_status text DEFAULT 'ACTIVE',sessions_valid_after timestamptz,security_version integer DEFAULT 1);
+    CREATE TABLE clients(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants);
+    CREATE TABLE appointments(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,client_id uuid REFERENCES clients);
     CREATE TABLE customer_client_links(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants);
     CREATE TABLE internal_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,recipient_user_id uuid REFERENCES users,type text,title text,message text,source_type text,source_id uuid,read_at timestamptz,created_at timestamptz DEFAULT now());
     CREATE TABLE integration_connections(id uuid PRIMARY KEY,kind text);
@@ -42,6 +43,8 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261011040000_communications_channels.sql', import.meta.url), 'utf8'));
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261011060000_communications_direct.sql', import.meta.url), 'utf8'));
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261011100000_communications_files_search_notifications.sql', import.meta.url), 'utf8'));
+  await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261022100000_communications_meetings.sql', import.meta.url), 'utf8'));
+  await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261022220000_communications_client_meetings.sql', import.meta.url), 'utf8'));
   const dialect = new PgDialect();
   const wrap = (connection: PGlite | Transaction): CommunicationsDatabase => ({
     async query<T extends Record<string, unknown>>(statement: SQL) {

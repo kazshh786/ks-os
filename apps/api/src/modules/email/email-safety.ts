@@ -1,6 +1,7 @@
 import { domainToASCII } from 'node:url';
 
 export const EMAIL_TEMPLATE_KEYS = [
+  'meeting-notification',
   'booking-confirmed',
   'booking-rescheduled',
   'booking-cancelled',
@@ -236,9 +237,18 @@ export function validateEmailTemplateData(
   const requireDate = (key: string) => { if (!isDateValue(payload[key])) invalid(key); };
   const requireScalar = (key: string) => { if (!hasScalar(payload, key)) invalid(key); };
 
-  requireText('tenantName');
+  if (templateKey !== 'meeting-notification') requireText('tenantName');
 
   switch (templateKey as EmailTemplateKey) {
+    case 'meeting-notification': {
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      for (const key of ['meetingId', 'invitationId']) if (!uuid.test(text(payload, key))) invalid(key);
+      if (typeof payload.version !== 'number' || !Number.isInteger(payload.version) || payload.version < 1) invalid('version');
+      if (!['invite', 'rescheduled', 'cancelled'].includes(text(payload, 'kind'))) invalid('kind');
+      // Meeting payloads persist references only; no secret URL or stale display data.
+      for (const key of Object.keys(payload)) if (!['meetingId', 'invitationId', 'version', 'kind'].includes(key)) invalid(key);
+      break;
+    }
     case 'booking-confirmed':
       requireAny('customerName|clientName', ['customerName', 'clientName']);
       requireText('serviceName');

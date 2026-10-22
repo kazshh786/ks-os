@@ -230,5 +230,15 @@ describe('native meeting media', () => {
     await join(); expect(screen.queryByRole('button', { name: 'End for everyone' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Participants' })); expect(screen.queryByRole('button', { name: 'Remove Grace' })).not.toBeInTheDocument();
   });
+  it('reuses native media with a scoped guest adapter and hides internal navigation and sharing policy controls', async () => {
+    const safeMeeting = { ...meeting, title: 'Client review', conversationId: '', canManage: false };
+    const adapter = { meeting: vi.fn().mockResolvedValue(safeMeeting), join: vi.fn().mockResolvedValue({ token: 'guest-test-token', url: 'ws://127.0.0.1:7880', identity: 'guest:session', sessionId: 'guest-media', expiresIn: 60, meeting: safeMeeting }), leave: vi.fn().mockResolvedValue({}), end: vi.fn(), remove: vi.fn() };
+    render(<MemoryRouter><MeetingWindow id="guest-session" api={adapter} mode="guest" brandName="Harbour Accounting" allowScreenShare={false} subscribe={subscribe} revision={0} close={vi.fn()} displayName="Alex" participantLimit={8}/></MemoryRouter>);
+    await userEvent.click(await screen.findByRole('button', { name: 'Join call' })); await screen.findByRole('button', { name: 'Unmute' });
+    expect(adapter.join).toHaveBeenCalledWith('guest-session', expect.any(String)); expect(callsApi.join).not.toHaveBeenCalled(); expect(sdk.connect).toHaveBeenCalledWith('ws://127.0.0.1:7880', 'guest-test-token');
+    expect(screen.queryByRole('button', { name: 'Share screen' })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'End for everyone' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Information' })); expect(screen.queryByRole('link', { name: /conversation chat/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Leave call' })); await waitFor(() => expect(adapter.leave).toHaveBeenCalledWith('guest-session', 'guest-media')); expect(callsApi.leave).not.toHaveBeenCalled();
+  });
 });
 

@@ -145,7 +145,9 @@ export const conversationMembers = pgTable('conversation_members', {
 export const communicationEvents = pgTable('communication_events', {
   id: bigint('id', { mode: 'bigint' }).generatedAlwaysAsIdentity().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
-  conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }),
+  meetingId: uuid('meeting_id'),
+  actorUserId: uuid('actor_user_id').references(()=>users.id),
   recipientUserId:uuid('recipient_user_id').references(()=>users.id),
   type: varchar('type', { length: 60 }).notNull(),
   resourceId: uuid('resource_id').notNull(),
