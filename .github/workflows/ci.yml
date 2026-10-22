@@ -114,7 +114,8 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter site-worker exec playwright install --with-deps chromium
-      - run: pnpm --filter @ks-os/contracts --filter @ks-os/database build
+      - id: calling-build
+        run: pnpm --filter @ks-os/contracts --filter @ks-os/database build
       - name: Validate review-only infrastructure template in an isolated network
         run: bash scripts/deploy/livekit/verify-template-ci.sh
       - name: Start isolated media server
@@ -127,6 +128,7 @@ jobs:
         working-directory: apps/api
         run: node --import ./tests/test-environment.mjs --import tsx --test tests/communications-meetings.test.ts tests/communications-meetings-media.test.ts
       - name: Verify native calling UI on desktop and mobile
+        if: ${{ !cancelled() && steps.calling-build.outcome == 'success' }}
         run: node apps/api/tests/helpers/meetings-ui-browser.mjs
       - name: Media server diagnostics
         if: failure()

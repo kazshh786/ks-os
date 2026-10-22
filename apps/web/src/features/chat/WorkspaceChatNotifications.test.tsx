@@ -2,7 +2,7 @@ import { render,screen,act,cleanup } from '@testing-library/react';
 import { afterEach,expect,it,vi } from 'vitest';
 import { WorkspaceChatNotifications } from './WorkspaceChatNotifications';
 import { connectChat } from './chat.realtime';
-const received=vi.hoisted(()=>vi.fn()),receivedCalls=vi.hoisted(()=>vi.fn());
+const {received,receivedCalls}=vi.hoisted(()=>({received:vi.fn(),receivedCalls:vi.fn()}));
 vi.mock('./chat.realtime',()=>({connectChat:vi.fn()}));
 vi.mock('./ChatNotifications',async()=>{
  const {useEffect}=await import('react');

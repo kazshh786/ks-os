@@ -4,6 +4,8 @@
 
 Implementation is on `codex/communications-phase-5`, [PR #250](https://github.com/kazshh786/ks-os/pull/250), stacked on the unmerged Phase 4 branch, [PR #248](https://github.com/kazshh786/ks-os/pull/248). Phase 4 base commit is `8327608a31a3eba84d5e9c9ed2998797857e6fe8`. Phases 1–4 remain prerequisites. This change does not merge or deploy the stack.
 
+Branch chain: `main` → `codex/communications-phase-1` (#241) → `codex/communications-phase-2` (#245) → `codex/communications-phase-3` (#246) → `codex/communications-phase-4` (#248) → `codex/communications-phase-5` (#250). All five PRs remain open and unmerged.
+
 **Verification: PENDING.** The checks below describe committed verification, not passing results. Record the final reviewed commit and successful GitHub run before changing this status. No application build, dependency installation, media service, or migration was run on the developer's computer. Production infrastructure and databases were not modified.
 
 Application deployment target: **BOTH VPS + CLOUDFLARE**. Self-hosted LiveKit installation is an additional, separately approved infrastructure operation. Calling defaults to disabled.
@@ -60,6 +62,8 @@ Webhooks use the official receiver, original body, authorization validation and 
 | Infrastructure template | Isolated, network-disabled runner container with temporary credentials/test TLS; pinned server parses config and serves health/metrics | **PENDING** |
 
 Meeting artifacts are uploaded as `communications-meetings`, including screenshots and `media-verification.json`. The real-media harness uses synthetic devices and loopback networking. Native UI browser checks use controlled API/SDK fixtures; they are separate from the real-media harness. These checks do not prove production TLS, NAT, TURN, bandwidth, physical devices, Safari/iOS/Android, packet-loss tolerance, or capacity. The existing API/web `lint` scripts are echo placeholders; a successful repository lint step is not evidence of ESLint coverage.
+
+The repository dependency audit remains failing on existing dependency paths (63 findings in the October 22 run: one critical, 32 high, 26 moderate, four low), including Astro, Fastify, Axios and image/build dependencies. No LiveKit dependency appeared in the high/critical findings. This is a release blocker requiring dependency remediation; the audit was not weakened. The Vercel integration is account-blocked, also present on Phase 4. CodeQL and secret scanning passed on the initial implementation; final-head checks remain required.
 
 ## Environment and release requirements
 

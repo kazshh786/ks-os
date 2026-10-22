@@ -46,7 +46,7 @@ export async function verifyMeetingMedia({ meetings, owner, member, conversation
     first.setDefaultTimeout(30000); second.setDefaultTimeout(30000);
     let signalSocket, signalConnections = 0;
     // Transparent pass-through to the real LiveKit server, used once to cut signalling.
-    await first.routeWebSocket(/\/rtc\?/, socket => { socket.connectToServer(); signalSocket = socket; signalConnections++; });
+    await first.routeWebSocket(/^ws:\/\/127\.0\.0\.1:7880\//, socket => { socket.connectToServer(); signalSocket = socket; signalConnections++; });
     await Promise.all([first.goto(`${origin}/media-test`), second.goto(`${origin}/media-test`)]);
     await Promise.all([first.waitForFunction(() => Boolean(window.media)), second.waitForFunction(() => Boolean(window.media))]);
     meeting = await meetings.create(owner, conversationId, { type: 'VIDEO', requestId: crypto.randomUUID() });
