@@ -52,6 +52,12 @@ describe('restricted client portal', () => {
     act(() => mocks.callbacks.at(-1).event({ type: 'conversation.read', conversationId: channel.id })); await waitFor(() => expect(mocks.channel).toHaveBeenCalledTimes(2)); await act(async () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))); expect(field).toHaveFocus(); expect(field).toHaveValue('An unfinished reply');
     await act(async () => mocks.callbacks.at(-1).ready()); await waitFor(() => expect(mocks.channel).toHaveBeenCalledTimes(3)); expect(screen.getByRole('combobox', { name: 'Message Your accounts' })).toBe(field); expect(field).toHaveFocus();
   });
+  it('toggles conversation options without remounting the composer or losing its draft', async () => {
+    mount('/customer/collaboration/relationship-a/messages/channel-a'); const field = await screen.findByRole('combobox', { name: 'Message Your accounts' }); await userEvent.type(field, 'A mobile reply');
+    const toggle = screen.getByRole('button', { name: 'Conversation options' }); expect(toggle).toHaveAttribute('aria-expanded', 'false'); await userEvent.click(toggle); expect(toggle).toHaveAttribute('aria-expanded', 'true'); expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toHaveClass('client-options-open');
+    await userEvent.click(toggle); expect(toggle).toHaveAttribute('aria-expanded', 'false'); expect(screen.getByRole('combobox', { name: 'Message Your accounts' })).toBe(field); expect(field).toHaveValue('A mobile reply');
+    await userEvent.click(toggle); await userEvent.click(screen.getByRole('button', { name: 'Files', exact: true })); expect(toggle).toHaveAttribute('aria-expanded', 'false'); expect(screen.getByRole('heading', { name: 'Your accounts' })).toHaveFocus();
+  });
   it('does not mount another relationship supplied in the URL', async () => { mount('/customer/collaboration/unknown/messages/channel-a'); await screen.findByRole('heading', { name: 'Choose a business' }); expect(mocks.channel).not.toHaveBeenCalled(); expect(mocks.callbacks).toHaveLength(0); });
   it('does not restore protected content from a late session refresh after sign out', async () => {
     mount('/customer/collaboration/relationship-a/messages/channel-a'); await screen.findByRole('combobox', { name: 'Message Your accounts' }); let finishSession!: (value: typeof session) => void, finishSignOut!: () => void;

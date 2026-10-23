@@ -36,6 +36,7 @@
 .client-conversation-header p { color:#4b6272;margin:8px 0; }
 .client-conversation-header nav { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
 .client-conversation-header nav a { padding:10px; }
+.client-portal .client-options-toggle { display:none; }
 .client-back { font-size:.8rem; }
 .client-conversation .chat-timeline { flex:1;min-height:0; }
 .client-conversation .chat-timeline-shell { flex:1;min-height:0; }
@@ -82,3 +83,24 @@
 .client-admission { margin:24px 0 0;border-color:#91b0bf; }
 @media(max-width:1100px) { .client-portal { grid-template-columns:190px minmax(0,1fr); }.client-messages { grid-template-columns:220px minmax(0,1fr); }.client-nav { padding:18px 12px; }.client-conversation-header { padding:16px; } }
 @media(max-width:760px) { .client-portal { display:flex;flex-direction:column;height:100dvh; }.client-nav { display:block;flex-shrink:0;padding:12px 16px;border-right:0;border-bottom:1px solid #d6e1e8;overflow:visible; }.client-nav .meeting-brand { font-size:.95rem; }.client-nav .meeting-brand img { max-height:30px; }.client-welcome,.client-connection { display:none; }.client-nav>label { margin:10px 0; }.client-nav>button { position:absolute;right:16px;top:10px;min-height:36px;font-size:.8rem; }.client-nav .meeting-brand { padding-right:75px; }.client-nav nav { display:flex;gap:4px;justify-content:space-between; }.client-nav nav a { padding:10px 8px;font-size:.9rem; }.client-main { flex:1; }.client-alerts { padding:4px 12px; }.client-messages { display:flex; }.client-conversations { flex:1;min-width:0;border-right:0;padding:20px; }.client-conversation { display:none;flex:1; }.client-conversation-open .client-conversations { display:none; }.client-conversation-open .client-conversation { display:flex; }.client-conversation-header { padding:12px 16px; }.client-conversation-header h2 { font-size:1.1rem; }.client-conversation-header p { font-size:.85rem; }.client-card { margin:16px;padding:20px; }.client-card>dl { grid-template-columns:1fr;gap:4px; }.client-card dd { margin-bottom:12px; }.client-meeting-list>li { align-items:flex-start;flex-direction:column;gap:10px; }.client-entry,.client-businesses { padding:20px; }.client-entry>.client-card { margin:20px 0;padding:22px; }.client-admission { margin:20px 0 0; }.client-portal button { min-height:44px; }.client-portal .chat-message-actions button { min-height:32px; } }
+@media(max-width:760px) {
+  .client-conversation-header { padding:8px 12px;max-height:50%;overflow:auto; }
+  .client-conversation-topline { display:flex;align-items:center;justify-content:space-between;gap:8px; }
+  .client-conversation-topline .client-back { display:flex;align-items:center;min-height:44px; }
+  .client-portal .client-options-toggle { display:inline-flex;align-items:center;font-size:.8rem;padding:8px; }
+  .client-conversation-header h2 { margin:4px 0; }
+  .client-conversation-options:not(.client-options-open) { display:none; }
+  .client-conversation-options nav { margin-top:10px; }
+  .client-portal .chat-composer { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;padding:8px;flex-shrink:0; }
+  .client-portal .chat-composer>label { grid-column:1/-1;margin:0; }
+  .client-portal .chat-composer-field { grid-column:1/-1;display:grid; }
+  .client-portal .chat-composer textarea { height:52px;min-height:52px;max-height:120px;line-height:1.5; }
+  .client-portal .chat-upload-controls { grid-column:1;min-width:0;padding:0; }
+  .client-portal .chat-composer .chat-attach-button { display:inline-flex;align-items:center;width:auto;min-height:44px;margin:0;font-size:.8rem;line-height:1.3; }
+  .client-portal .chat-upload-controls ul { margin:6px 0 0;max-height:100px;overflow:auto; }
+  .client-portal .chat-upload-controls ul:empty { display:none; }
+  .client-portal .chat-composer-footer { grid-column:2;align-self:start;margin:0; }
+  .client-portal .chat-composer-footer button { display:inline-flex;align-items:center;gap:6px; }
+  .client-portal .chat-composer-footer small { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap; }
+  .client-portal .chat-composer>.chat-error { grid-column:1/-1; }
+}
