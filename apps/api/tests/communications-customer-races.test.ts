@@ -83,4 +83,42 @@ test('customer collaboration: real PostgreSQL invitation and revocation races', 
     assert.equal((results.find(r => r.status === 'rejected') as PromiseRejectedResult).reason.code, '23505');
     assert.equal((await f.pg.query('SELECT id FROM conversation_messages WHERE conversation_id=$1 AND client_message_id=$2', [c.id, retry])).rows.length, 1);
   });
+
+  for (const scope of ['relationship', 'channel'] as const) await t.test(`${scope} revocation blocks old-email invitations even after a fresh authorized grant`, async () => {
+    const person = await f.seedCustomer(`historical-${scope}@example.test`), newEmail = `updated-${scope}@example.test`;
+    const changedIdentity = { ...person.identity, email: newEmail };
+    const primary = await channel(), shadow = await channel();
+    const initial = await first.invite(f.owner, primary.id, { email: person.identity.email, requestId: randomUUID() });
+    const initialHandoff = await first.handoff(collaborationInvitationToken(initial.id));
+    const accepted = await first.accept(person.identity, initialHandoff.credential);
+    const oldChannel = scope === 'relationship' ? shadow.id : primary.id;
+    const old = await first.invite(f.owner, oldChannel, { email: person.identity.email, requestId: randomUUID() });
+    const oldHandoff = await first.handoff(collaborationInvitationToken(old.id));
+    await f.pg.query("UPDATE customer_collaboration_invitations SET created_at=now()-interval '1 hour' WHERE id=$1", [old.id]);
+    // A separately verified email change leaves the old email's pending invitation intact.
+    await f.pg.query('UPDATE customer_accounts SET email_normalized=$1 WHERE id=$2', [newEmail, person.accountId]);
+    await f.pg.query('UPDATE auth.users SET email=$1,email_confirmed_at=now() WHERE id=$2', [newEmail, person.identity.authUserId]);
+    if (scope === 'relationship') await first.revokeRelationship(f.owner, accepted.relationshipId);
+    else await first.removeContact(f.owner, primary.id, accepted.relationshipId);
+    assert.equal((await f.pg.query('SELECT status FROM customer_collaboration_invitations WHERE id=$1', [old.id])).rows[0].status, 'PENDING');
+    // Explicit ordering avoids relying on wall-clock sleeps or timestamp rounding.
+    await f.pg.query("UPDATE customer_collaboration_relationships SET revoked_at=now()-interval '1 minute' WHERE id=$1 AND revoked_at IS NOT NULL", [accepted.relationshipId]);
+    await f.pg.query("UPDATE conversation_members SET left_at=now()-interval '1 minute' WHERE customer_relationship_id=$1 AND left_at IS NOT NULL", [accepted.relationshipId]);
+    await f.pg.query("UPDATE account_access_audit_events SET occurred_at=now()-interval '1 minute' WHERE metadata->>'relationshipId'=$1 AND action IN ('CUSTOMER_RELATIONSHIP_REVOKED','CUSTOMER_CHANNEL_ACCESS_REVOKED')", [accepted.relationshipId]);
+    await f.pg.query('UPDATE auth.users SET email=$1 WHERE id=$2', [person.identity.email, person.identity.authUserId]);
+    await assert.rejects(first.accept(person.identity, oldHandoff.credential), { code: 'COLLABORATION_UNAVAILABLE' });
+
+    await f.pg.query('UPDATE auth.users SET email=$1 WHERE id=$2', [newEmail, person.identity.authUserId]);
+    const fresh = await first.invite(f.owner, primary.id, { email: newEmail, requestId: randomUUID() });
+    const freshHandoff = await first.handoff(collaborationInvitationToken(fresh.id));
+    const reactivated = await first.accept(changedIdentity, freshHandoff.credential); assert.equal(reactivated.relationshipId, accepted.relationshipId);
+    await first.actor(changedIdentity, accepted.relationshipId);
+    assert.equal((await f.pg.query('SELECT revoked_at FROM customer_collaboration_relationships WHERE id=$1', [accepted.relationshipId])).rows[0].revoked_at, null);
+    assert.equal((await f.pg.query('SELECT left_at FROM conversation_members WHERE conversation_id=$1 AND customer_relationship_id=$2', [primary.id, accepted.relationshipId])).rows[0].left_at, null);
+    assert.equal((await f.pg.query('SELECT status FROM customer_collaboration_invitations WHERE id=$1', [old.id])).rows[0].status, 'PENDING');
+    // The audit tombstone still blocks the old invitation after live timestamps clear.
+    await f.pg.query('UPDATE auth.users SET email=$1 WHERE id=$2', [person.identity.email, person.identity.authUserId]);
+    await assert.rejects(second.accept(person.identity, oldHandoff.credential), { code: 'COLLABORATION_UNAVAILABLE' });
+    if (scope === 'relationship') assert.equal((await f.pg.query('SELECT id FROM conversation_members WHERE conversation_id=$1 AND customer_relationship_id=$2 AND left_at IS NULL', [shadow.id, accepted.relationshipId])).rows.length, 0);
+  });
 });

@@ -5,7 +5,6 @@ import { once } from 'node:events';
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import rateLimit from '@fastify/rate-limit';
-import { WebSocket } from 'ws';
 import { NativeConversationSchema, NativeMessageSchema } from '@ks-os/contracts';
 import { CommunicationsService } from '../src/modules/communications/communications.service.js';
 import { communicationsRoutes } from '../src/modules/communications/communications.routes.js';
@@ -117,9 +116,12 @@ test('customer principals use the shared messaging engine with tenant and custom
   const base=`/api/v1/customer/collaboration/${alice.userId}/chat`,headers={authorization:'Bearer alice'};
   assert.equal((await app.inject({url:`${base}/${privateBob}/messages`,headers})).statusCode,404);
   assert.equal((await app.inject({url:`${base}/people`,headers})).statusCode,403);
-  const ticket=await service.ticket(alice,id),socket=new WebSocket(`ws://127.0.0.1:${address.port}${base}/${id}/events?ticket=${ticket.ticket}&after=${ticket.cursor}`);await once(socket,'open');t.after(()=>socket.close());
+  const ticket=await service.ticket(alice,id),socket=await app.injectWS(`${base}/${id}/events?ticket=${ticket.ticket}&after=${ticket.cursor}`);t.after(()=>socket.close());
   const delivered=once(socket,'message');await service.post(owner,id,{body:'Realtime customer update'});assert.equal(JSON.parse(String((await delivered)[0])).type,'message.created');
-  const closed=once(socket,'close');await pg.query('UPDATE conversation_members SET left_at=now() WHERE conversation_id=$1 AND customer_relationship_id=$2',[id,alice.userId]);await closed;
+  const globalTicket=await service.ticket(alice,null),globalSocket=await app.injectWS(`${base}/events?ticket=${globalTicket.ticket}&after=${globalTicket.cursor}`);t.after(()=>globalSocket.close());
+  const watching=new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Customer workspace watch did not become ready')),10000);globalSocket.on('message',raw=>{if(JSON.parse(String(raw)).type==='ephemeral.snapshot'){clearTimeout(timer);resolve();}});});
+  globalSocket.send(JSON.stringify({type:'watch',conversationId:id,userIds:[]}));await watching;
+  const closed=once(socket,'close'),globalClosed=once(globalSocket,'close');await pg.query('UPDATE conversation_members SET left_at=now() WHERE conversation_id=$1 AND customer_relationship_id=$2',[id,alice.userId]);await Promise.all([closed,globalClosed]);
   await denied(service.messages(alice,id,{limit:30}));await denied(service.events(alice,id,'0'));await denied(service.ticket(alice,id));
   await pg.query('UPDATE conversation_members SET left_at=NULL WHERE conversation_id=$1 AND customer_relationship_id=$2',[id,alice.userId]);
   await httpT.test('native customer portal uses real message, thread, file and realtime APIs', {skip:process.env.COMMUNICATIONS_BROWSER_TEST!=='1',timeout:180000},async()=>{

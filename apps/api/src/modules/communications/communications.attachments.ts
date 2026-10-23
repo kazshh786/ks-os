@@ -6,8 +6,9 @@ import { fileLimits,safeFileName,validateChatFile,type FileScan } from './commun
 import { SupabaseChatStorage,type ChatStorage } from './communications.storage.js';
 export const attachmentFields=sql`a.id,a.file_name AS "fileName",a.mime_type AS "mimeType",a.file_size_bytes AS "sizeBytes",a.status,
  (a.thumbnail_key IS NOT NULL) AS thumbnail,coalesce(a.uploaded_by,a.uploaded_by_customer_relationship_id) AS "uploadedBy",a.created_at AS "createdAt",a.message_id AS "messageId",a.conversation_id AS "conversationId",a.scan_status AS "scanStatus"`;
+// All route/service instances share the process's bounded validation capacity.
+let runningUploads=0;
 export class CommunicationsAttachments {
- private running=0;
  constructor(private db:CommunicationsDatabase,private storage:ChatStorage=new SupabaseChatStorage(),private scan?:FileScan){}
  async authorize(actor:CommunicationsActor,id:string){await new CommunicationsAuthorization(this.db).requireConversation(actor,id,'post');}
  private async locked<T>(actor:CommunicationsActor,id:string,action:'post'|'view',work:(db:CommunicationsDatabase)=>Promise<T>){
@@ -33,8 +34,8 @@ export class CommunicationsAttachments {
   });
  }
  async upload(actor:CommunicationsActor,id:string,fileId:string,bytes:Buffer){
-  if(this.running>=2)throw communicationError(429,'UPLOAD_BUSY','Two files are being processed. Please retry shortly.');
-  this.running++;
+  if(runningUploads>=2)throw communicationError(429,'UPLOAD_BUSY','Two files are being processed. Please retry shortly.');
+  runningUploads++;
   try{
    const row=await this.locked(actor,id,'post',async db=>{
     const [r]=await db.query<{fileName:string;size:number;key:string}>(sql`UPDATE conversation_attachments SET status='VALIDATING',expires_at=now()+interval '24 hours'
@@ -60,7 +61,7 @@ export class CommunicationsAttachments {
     await this.db.query(sql`UPDATE conversation_attachments SET status='REJECTED',expires_at=now()+interval '1 hour' WHERE id=${fileId} AND status='VALIDATING'`);
     throw error;
    }
-  }finally{this.running--;}
+  }finally{runningUploads--;}
  }
  async remove(actor:CommunicationsActor,id:string,fileId:string){
   return this.locked(actor,id,'view',async db=>{

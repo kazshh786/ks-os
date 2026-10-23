@@ -6,7 +6,7 @@ import type { NativeConversation } from '@ks-os/contracts';
 import type { GuestCredential, GuestSession, MeetingBrand, PublicMeeting } from '../meetings/meetings.api';
 import type { JoinTicket } from '../calls/calls.api';
 
-export type ClientConversation = NativeConversation & { externalClientChannel?: boolean; clientId?: string | null; clientName?: string | null; canPost?: boolean; canManage?: boolean };
+export type ClientConversation = NativeConversation & { type: 'CLIENT'; externalClientChannel: true };
 export const isClientChannel = (value: NativeConversation): value is ClientConversation => value.type === 'CLIENT' && (value as ClientConversation).externalClientChannel === true;
 export type ClientRelationship = { id: string; tenantId: string; clientId: string; businessName: string; clientName: string; logoUrl: string | null; primaryColor: string; secondaryColor?: string | null };
 export type CollaborationSession = { actorId: string; displayName: string; relationships: ClientRelationship[] };

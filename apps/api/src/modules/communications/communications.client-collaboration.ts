@@ -186,7 +186,19 @@ export class ClientCollaboration {
       }
       await this.invitation(db,collaborationInvitationToken(i.id));
       await db.query(sql`UPDATE customer_accounts SET email_normalized=${normalizeCustomerEmail(identity.email)},updated_at=now() WHERE id=${account.id}`);
-      const [existing]=await db.query<Row>(sql`SELECT id,status FROM customer_collaboration_relationships WHERE tenant_id=${i.tenant_id} AND client_id=${i.client_id} AND customer_account_id=${account.id}`);
+      // Revocation applies to old invitations even after a verified email change.
+      // Audit tombstones also survive a later fresh grant, which clears revoked_at
+      // and left_at; an older invitation cannot use that grant to restore a channel.
+      const [existing]=await db.query<Row>(sql`SELECT r.id,r.status,(
+        coalesce(r.revoked_at>=inv.created_at,false) OR coalesce(cm.left_at>=inv.created_at,false)
+        OR EXISTS(SELECT 1 FROM account_access_audit_events e WHERE e.tenant_id=r.tenant_id
+          AND e.occurred_at>=inv.created_at AND e.metadata->>'relationshipId'=r.id::text
+          AND (e.action='CUSTOMER_RELATIONSHIP_REVOKED' OR (e.action='CUSTOMER_CHANNEL_ACCESS_REVOKED' AND e.metadata->>'conversationId'=inv.conversation_id::text)))
+        ) AS "invitationRevoked" FROM customer_collaboration_relationships r
+        JOIN customer_collaboration_invitations inv ON inv.id=${i.id}
+        LEFT JOIN conversation_members cm ON cm.customer_relationship_id=r.id AND cm.conversation_id=inv.conversation_id
+        WHERE r.tenant_id=${i.tenant_id} AND r.client_id=${i.client_id} AND r.customer_account_id=${account.id}`);
+      if(existing?.invitationRevoked)throw missing();
       if(!existing||existing.status!=='ACTIVE')await reserveCollaborationCapacity(db,i.tenant_id,'relationship');
       const [membership]=existing?await db.query(sql`SELECT id FROM conversation_members WHERE conversation_id=${i.conversation_id} AND customer_relationship_id=${existing.id} AND left_at IS NULL`):[];
       if(!membership)await reserveCollaborationCapacity(db,i.tenant_id,'member',i.conversation_id);
@@ -209,7 +221,7 @@ export class ClientCollaboration {
   async removeContact(actor: CommunicationsActor, conversation: string, relationshipId: string) {
     await this.lock(actor.tenantId,async db=>{
       await this.channel(db,actor,conversation,true);
-      const [m]=await db.query(sql`UPDATE conversation_members SET left_at=coalesce(left_at,now()) WHERE tenant_id=${actor.tenantId} AND conversation_id=${conversation} AND customer_relationship_id=${relationshipId} RETURNING id`); if(!m)throw missing();
+      const [m]=await db.query(sql`UPDATE conversation_members SET left_at=now() WHERE tenant_id=${actor.tenantId} AND conversation_id=${conversation} AND customer_relationship_id=${relationshipId} RETURNING id`); if(!m)throw missing();
       await db.query(sql`UPDATE customer_collaboration_invitations SET status='REVOKED',revoked_at=now() WHERE tenant_id=${actor.tenantId} AND conversation_id=${conversation} AND status='PENDING' AND email_normalized IN (SELECT a.email_normalized FROM customer_accounts a JOIN customer_collaboration_relationships r ON r.customer_account_id=a.id WHERE r.id=${relationshipId})`);
       await db.query(sql`DELETE FROM communication_tickets WHERE tenant_id=${actor.tenantId} AND conversation_id=${conversation} AND actor->>'customerRelationshipId'=${relationshipId}`);
       await this.audit(db,actor,actor.tenantId,'CUSTOMER_CHANNEL_ACCESS_REVOKED',{conversationId:conversation,relationshipId}); await this.event(db,actor.tenantId,conversation,'conversation.member_left',relationshipId);
@@ -219,9 +231,9 @@ export class ClientCollaboration {
   async revokeRelationship(actor: CommunicationsActor, relationshipId: string) {
     await this.lock(actor.tenantId,async db=>{
       await this.staff(db,actor,true);
-      const [r]=await db.query<Row>(sql`UPDATE customer_collaboration_relationships SET status='REVOKED',revoked_at=coalesce(revoked_at,now()) WHERE id=${relationshipId} AND tenant_id=${actor.tenantId} RETURNING id,client_id`); if(!r)throw missing();
+      const [r]=await db.query<Row>(sql`UPDATE customer_collaboration_relationships SET status='REVOKED',revoked_at=now() WHERE id=${relationshipId} AND tenant_id=${actor.tenantId} RETURNING id,client_id`); if(!r)throw missing();
       await db.query(sql`UPDATE customer_collaboration_invitations SET status='REVOKED',revoked_at=now() WHERE tenant_id=${actor.tenantId} AND client_id=${r.client_id} AND status='PENDING' AND email_normalized IN (SELECT a.email_normalized FROM customer_accounts a JOIN customer_collaboration_relationships r ON r.customer_account_id=a.id WHERE r.id=${relationshipId})`);
-      const members=await db.query<Row>(sql`UPDATE conversation_members SET left_at=coalesce(left_at,now()) WHERE customer_relationship_id=${relationshipId} AND tenant_id=${actor.tenantId} RETURNING conversation_id`);
+      const members=await db.query<Row>(sql`UPDATE conversation_members SET left_at=now() WHERE customer_relationship_id=${relationshipId} AND tenant_id=${actor.tenantId} RETURNING conversation_id`);
       await db.query(sql`DELETE FROM communication_tickets WHERE tenant_id=${actor.tenantId} AND actor->>'customerRelationshipId'=${relationshipId}`);
       for(const m of members)await this.event(db,actor.tenantId,m.conversation_id,'conversation.member_left',relationshipId);
       await this.audit(db,actor,actor.tenantId,'CUSTOMER_RELATIONSHIP_REVOKED',{relationshipId,clientId:r.client_id});

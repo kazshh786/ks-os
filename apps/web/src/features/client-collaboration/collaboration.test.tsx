@@ -47,7 +47,18 @@ describe('restricted client portal', () => {
     mount('/customer/collaboration/relationship-a/messages/channel-a'); await screen.findByRole('combobox', { name: 'Message Your accounts' }); act(() => mocks.callbacks.at(-1).revoked());
     await screen.findByRole('heading', { name: 'Access is no longer available' }); expect(screen.queryByRole('combobox', { name: 'Message Your accounts' })).not.toBeInTheDocument(); await waitFor(() => expect(collaborationApi.session).toHaveBeenCalledTimes(2));
   });
+  it('preserves composer focus and draft through read events and reconnection refreshes', async () => {
+    mount('/customer/collaboration/relationship-a/messages/channel-a'); const field = await screen.findByRole('combobox', { name: 'Message Your accounts' }); await userEvent.type(field, 'An unfinished reply'); expect(field).toHaveFocus();
+    act(() => mocks.callbacks.at(-1).event({ type: 'conversation.read', conversationId: channel.id })); await waitFor(() => expect(mocks.channel).toHaveBeenCalledTimes(2)); await act(async () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))); expect(field).toHaveFocus(); expect(field).toHaveValue('An unfinished reply');
+    await act(async () => mocks.callbacks.at(-1).ready()); await waitFor(() => expect(mocks.channel).toHaveBeenCalledTimes(3)); expect(screen.getByRole('combobox', { name: 'Message Your accounts' })).toBe(field); expect(field).toHaveFocus();
+  });
   it('does not mount another relationship supplied in the URL', async () => { mount('/customer/collaboration/unknown/messages/channel-a'); await screen.findByRole('heading', { name: 'Choose a business' }); expect(mocks.channel).not.toHaveBeenCalled(); expect(mocks.callbacks).toHaveLength(0); });
+  it('does not restore protected content from a late session refresh after sign out', async () => {
+    mount('/customer/collaboration/relationship-a/messages/channel-a'); await screen.findByRole('combobox', { name: 'Message Your accounts' }); let finishSession!: (value: typeof session) => void, finishSignOut!: () => void;
+    vi.mocked(collaborationApi.session).mockImplementation(() => new Promise(resolve => { finishSession = resolve; })); mocks.signOut.mockImplementation(() => new Promise<void>(resolve => { finishSignOut = resolve; }));
+    act(() => window.dispatchEvent(new Event('focus'))); await waitFor(() => expect(collaborationApi.session).toHaveBeenCalledTimes(2)); await userEvent.click(screen.getByRole('button', { name: 'Sign out' })); await waitFor(() => expect(mocks.signOut).toHaveBeenCalled());
+    await act(async () => finishSession(session)); expect(screen.queryByRole('combobox', { name: 'Message Your accounts' })).not.toBeInTheDocument(); expect(screen.queryByText('Harbour Accounting')).not.toBeInTheDocument(); await act(async () => finishSignOut()); await screen.findByText('Secure customer login');
+  });
   it('cancels an admission response that arrives after switching businesses', async () => {
     let finish!: (value: typeof guest) => void; vi.mocked(collaborationApi.requestMeeting).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     mount('/customer/collaboration/relationship-a/meetings'); await userEvent.click(await screen.findByRole('button', { name: 'Open meeting' })); await userEvent.click(screen.getByRole('button', { name: 'Request to join' })); await userEvent.selectOptions(screen.getByLabelText('Business'), second.id); await act(async () => finish(guest)); await waitFor(() => expect(mocks.meetingLeave).toHaveBeenCalled()); expect(mocks.gateway).not.toHaveBeenCalled();

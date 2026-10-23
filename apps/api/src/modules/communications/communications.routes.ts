@@ -20,6 +20,9 @@ const subscriptionQuery = z.object({ ticket: z.string().regex(/^[a-f0-9]{64}$/),
 // authorized channel rosters receive the same ephemeral presence and typing.
 const presence = new CommunicationsPresence();
 const connectionCounts = new Map<string,number>();
+// Buffer admission is shared across internal and customer route registrations.
+let incomingUploads=0;
+const uploadsInFlight=new WeakSet<FastifyRequest>();
 
 export function staffCommunicationsActor(request: FastifyRequest): CommunicationsActor {
   request.requireAuth();
@@ -70,7 +73,6 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
   app.get('/file-policy',async request=>{await service.capabilities(await actor(request));return {data:fileLimits()};});
   app.get('/:conversationId/notification-preference',async request=>({data:await service.discovery.conversationPreference(await actor(request),params.parse(request.params).conversationId)}));
   app.put('/:conversationId/notification-preference',async request=>({data:await service.discovery.conversationPreference(await actor(request),params.parse(request.params).conversationId,z.object({mode:z.enum(['ALL','MENTIONS','NONE'])}).strict().parse(request.body).mode)}));
-  let incomingUploads=0;const uploadsInFlight=new WeakSet<FastifyRequest>();
   app.addHook('onResponse',async request=>{if(uploadsInFlight.delete(request))incomingUploads--;});
   const fileParams=params.extend({fileId:z.string().uuid()});
   app.post('/:conversationId/files',async(request,reply)=>reply.code(201).send({data:await service.attachments.reserve(await actor(request),params.parse(request.params).conversationId,z.object({name:z.string().min(1).max(500),size:z.number().int().positive()}).strict().parse(request.body))}));

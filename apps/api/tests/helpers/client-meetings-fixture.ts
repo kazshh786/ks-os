@@ -94,7 +94,7 @@ export async function createClientMeetingFixture(t: TestContext, options: { post
     CREATE TABLE internal_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,recipient_user_id uuid REFERENCES users,type text,title text,message text,source_type text,source_id uuid,read_at timestamptz,created_at timestamptz DEFAULT now());
     CREATE TABLE integration_connections(id uuid PRIMARY KEY,kind text);
     CREATE TABLE application_sessions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer,revoked_at timestamptz,expires_at timestamptz);
-    CREATE TABLE account_access_audit_events(id uuid DEFAULT gen_random_uuid(),auth_user_id uuid,tenant_id uuid,tenant_user_id uuid,application_context text,action text,outcome text,metadata jsonb);
+    CREATE TABLE account_access_audit_events(id uuid DEFAULT gen_random_uuid(),auth_user_id uuid,tenant_id uuid,tenant_user_id uuid,application_context text,action text,outcome text,metadata jsonb,occurred_at timestamptz DEFAULT now());
     CREATE TABLE email_suppressions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),recipient_email_normalized text);
     CREATE TABLE email_outbox(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid,recipient_email text,recipient_name text,reply_to_email text,template_key text,template_version text,template_data_json jsonb,idempotency_key text UNIQUE,status text,scheduled_for timestamptz,next_attempt_at timestamptz,related_entity_type text,related_entity_id uuid,created_at timestamptz DEFAULT now());
   `);

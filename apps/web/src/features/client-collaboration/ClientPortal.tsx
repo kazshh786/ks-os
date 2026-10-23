@@ -62,18 +62,20 @@ function WorkspaceRoute({ session, reloadSession, signOut }: { session: Collabor
 }
 export default function ClientPortal() {
   const navigate = useNavigate(); const [session, setSession] = useState<CollaborationSession | null>(null), [error, setError] = useState(''), [revision, setRevision] = useState(0), [loading, setLoading] = useState(true);
+  const closed = useRef(false);
   const reloadSession = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
+    if (closed.current) return;
     const controller = new AbortController();
-    void collaborationApi.session(controller.signal).then(value => { if (!controller.signal.aborted) { setSession(value); setError(''); } }).catch(() => { if (!controller.signal.aborted) { setSession(null); setError('Your client portal session is unavailable. Please sign in again.'); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    void collaborationApi.session(controller.signal).then(value => { if (!controller.signal.aborted && !closed.current) { setSession(value); setError(''); } }).catch(() => { if (!controller.signal.aborted && !closed.current) { setSession(null); setError('Your client portal session is unavailable. Please sign in again.'); } }).finally(() => { if (!controller.signal.aborted && !closed.current) setLoading(false); });
     return () => controller.abort();
   }, [revision]);
   useEffect(() => {
     const timer = setInterval(reloadSession, 20000); window.addEventListener('focus', reloadSession);
-    const { data } = supabase.auth.onAuthStateChange(event => { if (event === 'SIGNED_OUT') { clearClientMeetingCredentials(); setSession(null); setError('You have signed out.'); } else if (['SIGNED_IN', 'TOKEN_REFRESHED', 'USER_UPDATED'].includes(event)) queueMicrotask(reloadSession); });
+    const { data } = supabase.auth.onAuthStateChange(event => { if (event === 'SIGNED_OUT') { closed.current = true; clearClientMeetingCredentials(); setSession(null); setLoading(false); setError('You have signed out.'); } else if (!closed.current && ['SIGNED_IN', 'TOKEN_REFRESHED', 'USER_UPDATED'].includes(event)) queueMicrotask(reloadSession); });
     return () => { clearInterval(timer); window.removeEventListener('focus', reloadSession); data.subscription.unsubscribe(); };
   }, [reloadSession]);
-  const signOut = () => { setSession(null); setLoading(true); void signOutCustomer().finally(() => navigate('/customer/login', { replace: true })); };
+  const signOut = () => { closed.current = true; setSession(null); setLoading(true); void signOutCustomer().catch(() => undefined).finally(() => navigate('/customer/login', { replace: true })); };
   if (!session) return <main className="client-entry"><h1>Client portal</h1>{loading ? <p role="status">Opening your authorised businesses…</p> : <><p role="alert">{error}</p><Link to="/customer/login?collaboration=1">Sign in securely</Link></>}</main>;
   return <Routes><Route index element={<BusinessChoices session={session}/>}/><Route path=":relationshipId/*" element={<WorkspaceRoute session={session} reloadSession={reloadSession} signOut={signOut}/>}/></Routes>;
 }
