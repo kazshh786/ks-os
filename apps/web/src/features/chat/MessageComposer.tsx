@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useTyping } from './ChatLive';
 import { Send } from 'lucide-react';
 import type { CreateNativeMessage, NativePerson } from '@ks-os/contracts';
-import { chatApi } from './chat.api';
+import { useChatServices } from './ChatServices';
 
 export type Draft = { body: string; mentions: NonNullable<CreateNativeMessage['mentions']>; clientMessageId?: string };
 export function adjustMentions(before: string, after: string, mentions: Draft['mentions']): Draft['mentions'] {
@@ -18,6 +18,7 @@ export function MessageComposer({ channelId, label = 'Message', initial, saveDra
   channelId: string; label?: string; initial?: Draft; saveDraft?: (draft: Draft, expected?: Draft) => void;
   send: (draft: Draft) => Promise<void>; disabled?: boolean; submitLabel?: string;
 }) {
+  const { api: chatApi } = useChatServices();
   const typing=useTyping(channelId);
   const uploads=useChatUploads(channelId);const attachmentsEnabled=submitLabel==='Send message';
   const [draft,setDraft] = useState<Draft>(initial ?? {body:'',mentions:[]});
@@ -63,7 +64,7 @@ export function MessageComposer({ channelId, label = 'Message', initial, saveDra
     <label htmlFor={inputId}>{label}</label>
     <div className="chat-composer-field">
       <textarea role="combobox" aria-haspopup="listbox" id={inputId} ref={textarea} value={draft.body} disabled={disabled || busy} rows={3}
-        placeholder={disabled ? 'This channel is read only' : 'Write a message… Use @ to mention a colleague'}
+        placeholder={disabled ? 'This channel is read only' : 'Write a message… Use @ to mention a participant'}
         aria-autocomplete="list" aria-controls={suggestions.length ? listId : undefined} aria-expanded={suggestions.length > 0}
         aria-activedescendant={suggestions.length ? `${listId}-${highlight}` : undefined} aria-describedby={`${inputId}-hint${error ? ` ${inputId}-error` : ''}`}
         onBlur={()=>typing(false)}

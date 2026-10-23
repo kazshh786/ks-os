@@ -15,11 +15,12 @@ import {
   type ChannelDiscoveryQuerySchema, type UpdateNativeMessageSchema, type UpdateNativeChannelSchema, type SetNativeReactionSchema,
 } from '@ks-os/contracts';
 import {
-  CommunicationsActorSchema, CommunicationsAuthorization, communicationError, notFound, type CommunicationsActor,
+  CommunicationsActorSchema, CommunicationsAuthorization, communicationError, notFound, isCustomer, staffId, customerId, requireStaff, type CommunicationsActor,
 } from './communications.authorization.js';
 import { communicationsDatabase, type CommunicationsDatabase } from './communications.database.js';
 
-const conversationFields = sql`c.id,c.conversation_type AS type,
+const conversationFields = sql`c.id,c.conversation_type AS type,c.external_client_channel AS "externalClientChannel",c.client_id AS "clientId",
+  (SELECT cl.name FROM clients cl WHERE cl.id=c.client_id AND cl.tenant_id=c.tenant_id) AS "clientName",
   CASE WHEN c.conversation_type='DIRECT' THEN coalesce((SELECT u.name FROM conversation_members peer JOIN users u ON u.id=peer.user_id AND u.tenant_id=peer.tenant_id WHERE peer.conversation_id=c.id AND peer.user_id<>m.user_id AND peer.left_at IS NULL LIMIT 1),'Former colleague') ELSE c.name END AS name,c.slug,c.description,
   c.created_by_user_id AS "createdBy",c.created_at AS "createdAt",c.updated_at AS "updatedAt",c.archived_at AS "archivedAt",
   (SELECT count(*)::int FROM conversation_members cm WHERE cm.conversation_id=c.id AND cm.left_at IS NULL) AS "memberCount",
@@ -28,7 +29,7 @@ const conversationFields = sql`c.id,c.conversation_type AS type,
   (SELECT CASE WHEN lm.deleted_at IS NOT NULL THEN 'Message deleted' ELSE left(lm.body,160) END FROM conversation_messages lm WHERE lm.conversation_id=c.id AND lm.native_position IS NOT NULL ORDER BY lm.native_position DESC LIMIT 1) AS preview,
   (SELECT peer.user_id FROM conversation_members peer WHERE c.conversation_type='DIRECT' AND peer.conversation_id=c.id AND peer.user_id<>m.user_id AND peer.left_at IS NULL LIMIT 1) AS "peerUserId",
   m.role AS "memberRole",m.last_read_position::text AS "lastReadPosition",m.last_read_at AS "lastReadAt"`;
-const messageFields = sql`m.id,m.conversation_id AS "conversationId",m.sender_user_id AS "senderId",m.sender_name AS "senderName",
+const messageFields = sql`m.id,m.conversation_id AS "conversationId",coalesce(m.sender_user_id,m.sender_customer_relationship_id) AS "senderId",m.sender_name AS "senderName",
   CASE WHEN m.deleted_at IS NULL THEN m.body ELSE NULL END AS body,m.message_type AS type,
   m.reply_to_message_id AS "parentMessageId",m.native_position::text AS position,
   m.created_at AS "createdAt",m.updated_at AS "updatedAt",m.edited_at AS "editedAt",m.deleted_at AS "deletedAt",
@@ -47,7 +48,7 @@ export class CommunicationsService {
   private unreadFields(actor: CommunicationsActor) {
     return sql`(SELECT count(*)::int FROM conversation_messages msg WHERE msg.conversation_id=c.id
       AND msg.native_position > m.last_read_position AND msg.deleted_at IS NULL
-      AND msg.sender_user_id IS DISTINCT FROM ${actor.userId}::uuid) AS "unreadCount"`;
+      AND coalesce(msg.sender_user_id,msg.sender_customer_relationship_id) IS DISTINCT FROM ${actor.userId}::uuid) AS "unreadCount"`;
   }
 
   async capabilities(actor: CommunicationsActor) {
@@ -55,17 +56,19 @@ export class CommunicationsService {
   }
 
   async discover(actor: CommunicationsActor, query: z.infer<typeof ChannelDiscoveryQuerySchema>) {
+    requireStaff(actor);
     await new CommunicationsAuthorization(this.db).authenticate(actor);
     const rows = await this.db.query<{id:string}>(sql`SELECT c.id,c.name,c.description,c.slug
       FROM conversations c WHERE c.tenant_id=${actor.tenantId} AND c.access_mode='MEMBERS'
       AND c.conversation_type='CHANNEL' AND c.archived_at IS NULL
-      AND NOT EXISTS(SELECT 1 FROM conversation_members m WHERE m.conversation_id=c.id AND m.user_id=${actor.userId} AND m.left_at IS NULL)
+      AND NOT EXISTS(SELECT 1 FROM conversation_members m WHERE m.conversation_id=c.id AND coalesce(m.user_id,m.customer_relationship_id)=${actor.userId} AND m.left_at IS NULL)
       ${query.search ? sql`AND strpos(lower(c.name),lower(${query.search})) > 0` : sql``}
       ${query.after ? sql`AND c.id > ${query.after}::uuid` : sql``} ORDER BY c.id LIMIT ${query.limit + 1}`);
     return {data:rows.slice(0,query.limit),nextCursor:rows.length > query.limit ? rows[query.limit-1].id : null};
   }
 
   async join(actor: CommunicationsActor, id: string) {
+    requireStaff(actor);
     await this.db.transaction(async db => {
       await this.journalLock(db,actor);
       await new CommunicationsAuthorization(db).authenticate(actor);
@@ -85,7 +88,7 @@ export class CommunicationsService {
 
   private async requireChannel(db: CommunicationsDatabase, actor: CommunicationsActor, id: string) {
     const access = await new CommunicationsAuthorization(db).requireConversation(actor,id);
-    if (!['CHANNEL','PRIVATE_CHANNEL','GROUP_DIRECT'].includes(access.type)) throw communicationError(409,'CHANNEL_REQUIRED','This action requires a channel or group conversation');
+    if (!['CHANNEL','PRIVATE_CHANNEL','GROUP_DIRECT','CLIENT'].includes(access.type)) throw communicationError(409,'CHANNEL_REQUIRED','This action requires a channel or group conversation');
     return access;
   }
 
@@ -108,10 +111,12 @@ export class CommunicationsService {
       await this.audit(db,actor,id,'COMMUNICATION_CHANNEL_ARCHIVED');
       await this.event(db,actor,id,'conversation.updated',id);
     });
+    await new ClientMeetings(this.db).revokeCustomerConversation(actor.tenantId,id);
     return this.get(actor,id);
   }
 
   async leave(actor: CommunicationsActor, id: string) {
+    requireStaff(actor);
     const result=await this.locked(actor,id,'view',async db => {
       const access = await this.requireChannel(db,actor,id);
       if (access.role === 'OWNER' && access.type === 'GROUP_DIRECT') {
@@ -121,7 +126,7 @@ export class CommunicationsService {
         if (next) await db.query(sql`UPDATE conversation_members SET role='OWNER' WHERE conversation_id=${id} AND user_id=${next.userId}`);
         else await db.query(sql`UPDATE conversations SET archived_at=now() WHERE id=${id}`);
       } else if (access.role === 'OWNER') throw communicationError(409,'OWNER_REQUIRED','Transfer ownership before leaving this channel');
-      const [member] = await db.query<{id:string}>(sql`UPDATE conversation_members SET left_at=now() WHERE conversation_id=${id} AND user_id=${actor.userId} AND left_at IS NULL RETURNING id`);
+      const [member] = await db.query<{id:string}>(sql`UPDATE conversation_members SET left_at=now() WHERE conversation_id=${id} AND coalesce(user_id,customer_relationship_id)=${actor.userId} AND left_at IS NULL RETURNING id`);
       await this.audit(db,actor,id,'COMMUNICATION_CHANNEL_LEFT',member.id);
       await this.event(db,actor,id,'conversation.member_left',member.id);
       return {removed:true};
@@ -145,7 +150,20 @@ export class CommunicationsService {
   }
 
   async people(actor: CommunicationsActor, id: string | null, query: z.infer<typeof ChannelDiscoveryQuerySchema>, candidates = false) {
+    if ((!id || candidates) && isCustomer(actor)) requireStaff(actor);
     const queryPeople=async(db:CommunicationsDatabase)=>{
+    if(id && !candidates) {
+      const rows=await db.query<{userId:string;name:string;role:string}>(sql`SELECT coalesce(m.user_id,m.customer_relationship_id) AS "userId",coalesce(u.name,a.display_name) AS name,m.role
+        FROM conversation_members m LEFT JOIN users u ON u.id=m.user_id AND u.tenant_id=m.tenant_id
+        LEFT JOIN customer_collaboration_relationships r ON r.id=m.customer_relationship_id AND r.tenant_id=m.tenant_id
+        LEFT JOIN customer_accounts a ON a.id=r.customer_account_id
+        WHERE m.conversation_id=${id} AND m.tenant_id=${actor.tenantId} AND m.left_at IS NULL
+          AND ((u.account_status='ACTIVE' AND u.auth_user_id IS NOT NULL) OR (r.status='ACTIVE' AND a.status='ACTIVE'))
+          ${query.search?sql`AND strpos(lower(coalesce(u.name,a.display_name)),lower(${query.search}))>0`:sql``}
+          ${query.after?sql`AND coalesce(m.user_id,m.customer_relationship_id)>${query.after}::uuid`:sql``}
+        ORDER BY coalesce(m.user_id,m.customer_relationship_id) LIMIT ${query.limit+1}`);
+      return {data:rows.slice(0,query.limit),nextCursor:rows.length>query.limit?rows[query.limit-1].userId:null};
+    }
     const capabilities = await new CommunicationsAuthorization(db).authenticate(actor);
     // Every authenticated workspace member may discover eligible colleagues for DMs.
     void capabilities;
@@ -164,8 +182,8 @@ export class CommunicationsService {
   private async annotate<T extends {id:string}>(db: CommunicationsDatabase, actor: CommunicationsActor, messages: T[]) {
     if (!messages.length) return [];
     const ids = sql.join(messages.map(m=>sql`${m.id}::uuid`),sql`, `);
-    const mentions = await db.query<{messageId:string;userId:string;name:string;start:number;end:number}>(sql`SELECT message_id AS "messageId",user_id AS "userId",display_name AS name,start_offset AS start,end_offset AS end FROM communication_mentions WHERE tenant_id=${actor.tenantId} AND message_id IN (${ids}) ORDER BY start_offset`);
-    const reactions = await db.query<{messageId:string;emoji:string;count:number;mine:boolean}>(sql`SELECT message_id AS "messageId",emoji,count(*)::int AS count,bool_or(user_id=${actor.userId}) AS mine FROM communication_reactions WHERE tenant_id=${actor.tenantId} AND message_id IN (${ids}) GROUP BY message_id,emoji ORDER BY emoji`);
+    const mentions = await db.query<{messageId:string;userId:string;name:string;start:number;end:number}>(sql`SELECT message_id AS "messageId",coalesce(user_id,customer_relationship_id) AS "userId",display_name AS name,start_offset AS start,end_offset AS end FROM communication_mentions WHERE tenant_id=${actor.tenantId} AND message_id IN (${ids}) ORDER BY start_offset`);
+    const reactions = await db.query<{messageId:string;emoji:string;count:number;mine:boolean}>(sql`SELECT message_id AS "messageId",emoji,count(*)::int AS count,bool_or(coalesce(user_id,customer_relationship_id)=${actor.userId}) AS mine FROM communication_reactions WHERE tenant_id=${actor.tenantId} AND message_id IN (${ids}) GROUP BY message_id,emoji ORDER BY emoji`);
     const attachments=await db.query<{messageId:string}>(sql`SELECT ${attachmentFields} FROM conversation_attachments a JOIN conversation_messages msg ON msg.id=a.message_id WHERE a.tenant_id=${actor.tenantId} AND a.message_id IN (${ids}) AND a.status='AVAILABLE' AND a.deleted_at IS NULL AND msg.deleted_at IS NULL`);
     return messages.map(message=>({...message,attachments:attachments.filter(a=>a.messageId===message.id),mentions:mentions.filter(m=>m.messageId===message.id).map(({messageId,...m})=>m),reactions:reactions.filter(r=>r.messageId===message.id).map(({messageId,...r})=>r)}));
   }
@@ -191,20 +209,24 @@ export class CommunicationsService {
   private async saveMentions(db: CommunicationsDatabase, actor: CommunicationsActor, id: string, messageId: string, body: string, mentions: NonNullable<CreateNativeMessage['mentions']>) {
     let previousEnd = 0;
     for (const mention of [...mentions].sort((a,b)=>a.start-b.start)) {
-      const [member] = await db.query<{name:string}>(sql`SELECT u.name FROM users u JOIN conversation_members m ON m.user_id=u.id AND m.tenant_id=u.tenant_id
-        WHERE m.conversation_id=${id} AND m.tenant_id=${actor.tenantId} AND m.user_id=${mention.userId} AND m.left_at IS NULL AND u.account_status='ACTIVE'`);
+      const [member] = await db.query<{name:string;staffId:string|null;customerId:string|null}>(sql`SELECT coalesce(u.name,a.display_name) AS name,m.user_id AS "staffId",m.customer_relationship_id AS "customerId"
+        FROM conversation_members m LEFT JOIN users u ON u.id=m.user_id AND u.tenant_id=m.tenant_id
+        LEFT JOIN customer_collaboration_relationships r ON r.id=m.customer_relationship_id AND r.tenant_id=m.tenant_id
+        LEFT JOIN customer_accounts a ON a.id=r.customer_account_id
+        WHERE m.conversation_id=${id} AND m.tenant_id=${actor.tenantId} AND coalesce(m.user_id,m.customer_relationship_id)=${mention.userId}
+        AND m.left_at IS NULL AND (u.account_status='ACTIVE' OR (r.status='ACTIVE' AND a.status='ACTIVE'))`);
       if (!member || mention.start < previousEnd || mention.end > body.length || body.slice(mention.start,mention.end) !== `@${member.name}`) {
         throw communicationError(400,'INVALID_MENTION','Mentions must reference current channel members');
       }
       previousEnd=mention.end;
-      await db.query(sql`INSERT INTO communication_mentions(tenant_id,conversation_id,message_id,user_id,start_offset,end_offset,display_name)
-        VALUES(${actor.tenantId},${id},${messageId},${mention.userId},${mention.start},${mention.end},${member.name})`);
+      await db.query(sql`INSERT INTO communication_mentions(tenant_id,conversation_id,message_id,user_id,customer_relationship_id,start_offset,end_offset,display_name)
+        VALUES(${actor.tenantId},${id},${messageId},${member.staffId},${member.customerId},${mention.start},${mention.end},${member.name})`);
     }
   }
 
   async editMessage(actor: CommunicationsActor, id: string, messageId: string, input: z.infer<typeof UpdateNativeMessageSchema> | null) {
     return this.locked(actor,id,'post',async db => {
-      const [message] = await db.query<{senderId:string;deletedAt:Date|null;updatedAt:Date}>(sql`SELECT sender_user_id AS "senderId",deleted_at AS "deletedAt",updated_at AS "updatedAt" FROM conversation_messages WHERE id=${messageId} AND conversation_id=${id} AND tenant_id=${actor.tenantId} AND channel_type='NATIVE'`);
+      const [message] = await db.query<{senderId:string;deletedAt:Date|null;updatedAt:Date}>(sql`SELECT coalesce(sender_user_id,sender_customer_relationship_id) AS "senderId",deleted_at AS "deletedAt",updated_at AS "updatedAt" FROM conversation_messages WHERE id=${messageId} AND conversation_id=${id} AND tenant_id=${actor.tenantId} AND channel_type='NATIVE'`);
       if (!message) throw notFound();
       if (message.senderId !== actor.userId) throw communicationError(403,'COMMUNICATIONS_FORBIDDEN','You can only change your own messages');
       if (message.deletedAt) throw communicationError(409,'MESSAGE_DELETED','This message was deleted');
@@ -230,8 +252,8 @@ export class CommunicationsService {
       const [message] = await db.query(sql`SELECT id FROM conversation_messages WHERE id=${messageId} AND conversation_id=${id} AND tenant_id=${actor.tenantId} AND channel_type='NATIVE' AND deleted_at IS NULL`);
       if (!message) throw notFound();
       const changed = input.active
-        ? await db.query(sql`INSERT INTO communication_reactions(tenant_id,conversation_id,message_id,user_id,emoji) VALUES(${actor.tenantId},${id},${messageId},${actor.userId},${input.emoji}) ON CONFLICT DO NOTHING RETURNING message_id`)
-        : await db.query(sql`DELETE FROM communication_reactions WHERE message_id=${messageId} AND user_id=${actor.userId} AND emoji=${input.emoji} RETURNING message_id`);
+        ? await db.query(sql`INSERT INTO communication_reactions(tenant_id,conversation_id,message_id,user_id,customer_relationship_id,emoji) VALUES(${actor.tenantId},${id},${messageId},${staffId(actor)},${customerId(actor)},${input.emoji}) ON CONFLICT DO NOTHING RETURNING message_id`)
+        : await db.query(sql`DELETE FROM communication_reactions WHERE message_id=${messageId} AND coalesce(user_id,customer_relationship_id)=${actor.userId} AND emoji=${input.emoji} RETURNING message_id`);
       if (changed.length) await this.event(db,actor,id,'message.reaction',messageId);
       return this.messageRow(db,actor,id,messageId);
     });
@@ -260,8 +282,8 @@ export class CommunicationsService {
 
   private async audit(db: CommunicationsDatabase, actor: CommunicationsActor, id: string, action: string, memberId?: string, details: { messageId?: string; newOwnerUserId?: string } = {}) {
     await db.query(sql`INSERT INTO account_access_audit_events(auth_user_id,tenant_id,tenant_user_id,application_context,action,outcome,metadata)
-      VALUES (${actor.authUserId},${actor.tenantId},${actor.userId},'TENANT',${action},'SUCCESS',
-        ${JSON.stringify({ conversationId: id, ...(memberId ? { memberId } : {}), ...details })}::jsonb)`);
+      VALUES (${actor.authUserId},${actor.tenantId},${staffId(actor)},${isCustomer(actor)?'CUSTOMER':'TENANT'},${action},'SUCCESS',
+        ${JSON.stringify({ conversationId: id, customerRelationshipId:customerId(actor), ...(memberId ? { memberId } : {}), ...details })}::jsonb)`);
   }
 
   private async activeUser(db: CommunicationsDatabase, actor: CommunicationsActor, userId: string) {
@@ -272,6 +294,7 @@ export class CommunicationsService {
   }
 
   async create(actor: CommunicationsActor, input: CreateNativeConversation) {
+    requireStaff(actor);
     const members = [...new Set([actor.userId, ...input.memberUserIds].map(userId=>userId.toLowerCase()))];
     if (input.type === 'DIRECT' && members.length !== 2) throw communicationError(400, 'DIRECT_REQUIRES_TWO', 'Direct conversations require two participants');
     if (input.type === 'GROUP_DIRECT' && members.length < 3) throw communicationError(400, 'GROUP_REQUIRES_THREE', 'Group direct conversations require at least three participants');
@@ -312,16 +335,17 @@ export class CommunicationsService {
   }
 
   async list(actor: CommunicationsActor, query: NativeConversationQuery) {
-    await new CommunicationsAuthorization(this.db).authenticate(actor);
+    return this.subscription(actor,null,async db=>{
     let before: {at:string;id:string} | undefined;
     if(query.after && query.recent) {
       try { before=z.object({at:z.string().datetime(),id:z.string().uuid()}).strict().parse(JSON.parse(Buffer.from(query.after,'base64url').toString())); }
       catch { throw communicationError(400,'INVALID_CURSOR','Conversation cursor is invalid'); }
     } else if(query.after) z.string().uuid().parse(query.after);
-    const rows = await this.db.query<{ id:string;lastActivityAt:string }>(sql`SELECT ${conversationFields},${this.unreadFields(actor)}
+    const rows = await db.query<{ id:string;lastActivityAt:string }>(sql`SELECT ${conversationFields},${this.unreadFields(actor)}
       FROM conversations c JOIN conversation_members m ON m.conversation_id=c.id AND m.tenant_id=c.tenant_id
       WHERE c.tenant_id=${actor.tenantId} AND c.access_mode='MEMBERS' AND c.archived_at IS NULL
-        AND m.user_id=${actor.userId} AND m.left_at IS NULL
+        AND (NOT ${isCustomer(actor)} OR c.external_client_channel=true)
+        AND coalesce(m.user_id,m.customer_relationship_id)=${actor.userId} AND m.left_at IS NULL
         ${query.channelsOnly ? sql`AND c.conversation_type IN ('CHANNEL','PRIVATE_CHANNEL')` : sql``}
         ${query.search ? sql`AND (strpos(lower(c.name),lower(${query.search})) > 0 OR (c.conversation_type='DIRECT' AND EXISTS(
           SELECT 1 FROM conversation_members peer JOIN users u ON u.id=peer.user_id WHERE peer.conversation_id=c.id AND peer.user_id<>${actor.userId}
@@ -330,10 +354,24 @@ export class CommunicationsService {
       ORDER BY ${query.recent ? sql`c.last_message_at DESC,c.id DESC` : sql`c.id`} LIMIT ${query.limit + 1}`);
     const data=rows.slice(0,query.limit),last=data.at(-1);
     return {data,nextCursor:rows.length>query.limit && last ? query.recent ? Buffer.from(JSON.stringify({at:last.lastActivityAt,id:last.id})).toString('base64url') : last.id : null};
+    });
   }
 
   async liveScope(actor: CommunicationsActor, id: string | null, userIds: string[]) {
     return this.subscription(actor,id,async db=>{
+      if(id) {
+        const [channel]=await db.query<{type:string}>(sql`SELECT conversation_type AS type FROM conversations WHERE id=${id}`);
+        if(channel?.type==='CLIENT') {
+          const readers=await db.query<{userId:string;name:string;position:string}>(sql`SELECT coalesce(m.user_id,m.customer_relationship_id) AS "userId",coalesce(u.name,a.display_name) AS name,m.last_read_position::text AS position
+            FROM conversation_members m LEFT JOIN users u ON u.id=m.user_id AND u.tenant_id=m.tenant_id
+            LEFT JOIN customer_collaboration_relationships r ON r.id=m.customer_relationship_id AND r.tenant_id=m.tenant_id
+            LEFT JOIN customer_accounts a ON a.id=r.customer_account_id
+            WHERE m.conversation_id=${id} AND m.tenant_id=${actor.tenantId} AND m.left_at IS NULL
+            AND (u.account_status='ACTIVE' OR (r.status='ACTIVE' AND a.status='ACTIVE')) ORDER BY coalesce(m.user_id,m.customer_relationship_id) LIMIT 101`);
+          return {readers,visible:readers.map(({userId})=>({userId}))};
+        }
+      }
+      if(isCustomer(actor))return {readers:[],visible:[]};
       const readers=id ? await db.query<{userId:string;name:string;position:string}>(sql`SELECT m.user_id AS "userId",u.name,m.last_read_position::text AS position
         FROM conversation_members m JOIN users u ON u.id=m.user_id AND u.tenant_id=m.tenant_id
         JOIN conversations c ON c.id=m.conversation_id WHERE m.conversation_id=${id} AND m.left_at IS NULL AND u.account_status='ACTIVE'
@@ -351,7 +389,7 @@ export class CommunicationsService {
   async authorizeTyping(actor: CommunicationsActor,id:string) {
     return this.locked(actor,id,'post',async db=>{
       const access=await new CommunicationsAuthorization(db).requireConversation(actor,id,'post');
-      if(!['DIRECT','GROUP_DIRECT'].includes(access.type)) throw communicationError(400,'DIRECT_REQUIRED','Typing is available in direct and group conversations');
+      if(!['DIRECT','GROUP_DIRECT','CLIENT'].includes(access.type)) throw communicationError(400,'DIRECT_REQUIRED','Typing is available in direct and group conversations');
     });
   }
 
@@ -359,9 +397,9 @@ export class CommunicationsService {
     return this.locked(actor, id, 'view', async db => {
       const [row] = await db.query(sql`SELECT ${conversationFields},
         (SELECT count(*)::int FROM conversation_messages msg WHERE msg.conversation_id=c.id
-          AND msg.native_position > m.last_read_position AND msg.deleted_at IS NULL AND msg.sender_user_id IS DISTINCT FROM ${actor.userId}::uuid) AS "unreadCount"
+          AND msg.native_position > m.last_read_position AND msg.deleted_at IS NULL AND coalesce(msg.sender_user_id,msg.sender_customer_relationship_id) IS DISTINCT FROM ${actor.userId}::uuid) AS "unreadCount"
         FROM conversations c JOIN conversation_members m ON m.conversation_id=c.id AND m.tenant_id=c.tenant_id
-        WHERE c.id=${id} AND c.tenant_id=${actor.tenantId} AND m.user_id=${actor.userId} AND m.left_at IS NULL`);
+        WHERE c.id=${id} AND c.tenant_id=${actor.tenantId} AND coalesce(m.user_id,m.customer_relationship_id)=${actor.userId} AND m.left_at IS NULL`);
       return row;
     });
   }
@@ -428,7 +466,7 @@ export class CommunicationsService {
     if(!input.body.trim() && !input.attachmentIds?.length)throw communicationError(400,'EMPTY_MESSAGE','Write a message or attach a file');
     return this.locked(actor, id, 'post', async db => {
       if (input.clientMessageId) {
-        const [previous] = await db.query<{id:string;body:string;parentMessageId:string|null}>(sql`SELECT id,body,reply_to_message_id AS "parentMessageId" FROM conversation_messages WHERE conversation_id=${id} AND sender_user_id=${actor.userId} AND client_message_id=${input.clientMessageId}`);
+        const [previous] = await db.query<{id:string;body:string;parentMessageId:string|null}>(sql`SELECT id,body,reply_to_message_id AS "parentMessageId" FROM conversation_messages WHERE conversation_id=${id} AND coalesce(sender_user_id,sender_customer_relationship_id)=${actor.userId} AND client_message_id=${input.clientMessageId}`);
         if (previous) {
           if (previous.body !== input.body || previous.parentMessageId !== (input.parentMessageId ?? null)) throw communicationError(409,'RETRY_CONFLICT','This retry belongs to a different message');
           const files=await db.query<{id:string}>(sql`SELECT id FROM conversation_attachments WHERE message_id=${previous.id}`);
@@ -437,14 +475,14 @@ export class CommunicationsService {
         }
       }
       if (input.parentMessageId) await this.rootMessage(db, actor, id, input.parentMessageId);
-      const sender = await this.activeUser(db, actor, actor.userId);
+      const sender = isCustomer(actor) ? (await db.query<{name:string}>(sql`SELECT display_name AS name FROM customer_accounts WHERE id=${actor.customerAccountId}`))[0] : await this.activeUser(db, actor, actor.userId);
       const messageId = randomUUID();
-      await db.query(sql`INSERT INTO conversation_messages(id,tenant_id,conversation_id,channel_type,direction,sender_type,sender_user_id,sender_name,body,status,reply_to_message_id,native_position,client_message_id)
-        VALUES (${messageId},${actor.tenantId},${id},'NATIVE','INTERNAL','STAFF',${actor.userId},${sender.name},${input.body},'SENT',${input.parentMessageId ?? null},nextval('native_message_position_seq'),${input.clientMessageId ?? null})`);
+      await db.query(sql`INSERT INTO conversation_messages(id,tenant_id,conversation_id,channel_type,direction,sender_type,sender_user_id,sender_customer_relationship_id,sender_name,body,status,reply_to_message_id,native_position,client_message_id)
+        VALUES (${messageId},${actor.tenantId},${id},'NATIVE','INTERNAL',${isCustomer(actor)?'CUSTOMER':'STAFF'},${staffId(actor)},${customerId(actor)},${sender.name},${input.body},'SENT',${input.parentMessageId ?? null},nextval('native_message_position_seq'),${input.clientMessageId ?? null})`);
       await this.saveMentions(db,actor,id,messageId,input.body,input.mentions ?? []);
       for(const fileId of input.attachmentIds??[]){
         const rows=await db.query(sql`UPDATE conversation_attachments SET message_id=${messageId},expires_at=NULL
-          WHERE id=${fileId} AND tenant_id=${actor.tenantId} AND conversation_id=${id} AND uploaded_by=${actor.userId}
+          WHERE id=${fileId} AND tenant_id=${actor.tenantId} AND conversation_id=${id} AND coalesce(uploaded_by,uploaded_by_customer_relationship_id)=${actor.userId}
           AND message_id IS NULL AND status='AVAILABLE' AND deleted_at IS NULL AND expires_at>now() RETURNING id`);
         if(!rows.length)throw communicationError(400,'ATTACHMENT_UNAVAILABLE','Every attachment must finish validation before sending');
       }
@@ -461,11 +499,11 @@ export class CommunicationsService {
         WHERE id=${messageId} AND conversation_id=${id} AND tenant_id=${actor.tenantId} AND channel_type='NATIVE'`);
       if (!message) throw notFound();
       const changed = await db.query(sql`UPDATE conversation_members SET last_read_position=${message.position}::bigint,last_read_at=now()
-        WHERE conversation_id=${id} AND user_id=${actor.userId} AND tenant_id=${actor.tenantId} AND left_at IS NULL
+        WHERE conversation_id=${id} AND coalesce(user_id,customer_relationship_id)=${actor.userId} AND tenant_id=${actor.tenantId} AND left_at IS NULL
         AND last_read_position < ${message.position}::bigint RETURNING id`);
       if (changed.length) await this.event(db, actor, id, 'conversation.read', actor.userId);
       const [cursor] = await db.query(sql`SELECT last_read_position::text AS "lastReadPosition",last_read_at AS "lastReadAt"
-        FROM conversation_members WHERE conversation_id=${id} AND user_id=${actor.userId}`);
+        FROM conversation_members WHERE conversation_id=${id} AND coalesce(user_id,customer_relationship_id)=${actor.userId}`);
       return cursor;
     });
   }
@@ -482,12 +520,13 @@ export class CommunicationsService {
 
   async events(actor: CommunicationsActor, id: string | null, after: string) {
     return this.subscription(actor,id,async db=>{
-      const meetingAccess=id?{all:false,own:false}:await new ClientMeetings(db).eventAccess(actor);
+      const meetingAccess=id||isCustomer(actor)?{all:false,own:false}:await new ClientMeetings(db).eventAccess(actor);
       const events = await db.query<{occurredAt:Date}>(sql`SELECT e.id::text,e.tenant_id AS "tenantId",e.conversation_id AS "conversationId",e.meeting_id AS "meetingId",e.type,e.resource_id AS "resourceId",e.occurred_at AS "occurredAt"
-        FROM communication_events e WHERE e.tenant_id=${actor.tenantId} AND e.id > ${after}::bigint AND (e.recipient_user_id IS NULL OR e.recipient_user_id=${actor.userId})
+        FROM communication_events e WHERE e.tenant_id=${actor.tenantId} AND e.id > ${after}::bigint AND (coalesce(e.recipient_user_id,e.recipient_customer_relationship_id) IS NULL OR coalesce(e.recipient_user_id,e.recipient_customer_relationship_id)=${actor.userId})
         AND ${id ? sql`e.conversation_id=${id}` : sql`(
-          EXISTS(SELECT 1 FROM conversation_members m WHERE m.conversation_id=e.conversation_id AND m.tenant_id=e.tenant_id AND m.user_id=${actor.userId}
-            AND (m.left_at IS NULL OR (e.type='conversation.member_left' AND e.resource_id=m.id)))
+          EXISTS(SELECT 1 FROM conversation_members m WHERE m.conversation_id=e.conversation_id AND m.tenant_id=e.tenant_id AND coalesce(m.user_id,m.customer_relationship_id)=${actor.userId}
+            AND (m.left_at IS NULL OR (NOT ${isCustomer(actor)} AND e.type='conversation.member_left' AND e.resource_id=m.id))
+            AND (NOT ${isCustomer(actor)} OR EXISTS(SELECT 1 FROM conversations c WHERE c.id=m.conversation_id AND c.external_client_channel=true AND c.client_id=(SELECT client_id FROM customer_collaboration_relationships WHERE id=${customerId(actor)}))))
           OR EXISTS(SELECT 1 FROM communication_meetings cm WHERE cm.id=e.meeting_id AND cm.tenant_id=e.tenant_id AND (
             ${meetingAccess.all} OR (${meetingAccess.own} AND (cm.created_by=${actor.userId} OR EXISTS(
               SELECT 1 FROM communication_meeting_participants mp WHERE mp.meeting_id=cm.id AND mp.user_id=${actor.userId} AND mp.invitation_state<>'REMOVED'

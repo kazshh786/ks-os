@@ -44,6 +44,8 @@ export const NativeConversationQuerySchema = z.object({
 export const MarkConversationReadSchema = z.object({ messageId: z.string().uuid() }).strict();
 export const NativeConversationSchema = z.object({
   id: z.string().uuid(), type: NativeConversationTypeSchema, name: z.string(),
+  externalClientChannel: z.boolean().optional(), clientId:z.string().uuid().nullable().optional(),
+  clientName:z.string().nullable().optional(), canPost:z.boolean().optional(), canManage:z.boolean().optional(),
   slug: z.string().nullable(), description: z.string().nullable(), createdBy: z.string().uuid().nullable(),
   createdAt: z.string().datetime(), updatedAt: z.string().datetime(), archivedAt: z.string().datetime().nullable(),
   memberRole: ConversationMemberRoleSchema, lastReadPosition: CommunicationPositionSchema,

@@ -7,6 +7,7 @@ import type { SQL } from '@ks-os/database';
 import type { CommunicationsActor } from '../../src/modules/communications/communications.authorization.js';
 import type { CommunicationsDatabase } from '../../src/modules/communications/communications.database.js';
 import { CommunicationsService } from '../../src/modules/communications/communications.service.js';
+import { collaborationIdentityFixtureSql } from './collaboration-schema-fixture.js';
 
 /** Real Postgres semantics in an isolated in-memory database; no production connection. */
 export async function createMeetingFixture(t: TestContext) {
@@ -27,9 +28,10 @@ export async function createMeetingFixture(t: TestContext) {
     CREATE TABLE customer_client_links(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants);
     CREATE TABLE internal_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,recipient_user_id uuid REFERENCES users,type text,title text,message text,source_type text,source_id uuid,read_at timestamptz,created_at timestamptz DEFAULT now());
     CREATE TABLE integration_connections(id uuid PRIMARY KEY,kind text);
-    CREATE TABLE application_sessions(auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer,revoked_at timestamptz,expires_at timestamptz);
+    CREATE TABLE application_sessions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer,revoked_at timestamptz,expires_at timestamptz);
     CREATE TABLE account_access_audit_events(id uuid DEFAULT gen_random_uuid(),auth_user_id uuid,tenant_id uuid,tenant_user_id uuid,application_context text,action text,outcome text,metadata jsonb);
   `);
+  await pg.exec(collaborationIdentityFixtureSql);
   for (const migration of [
     '20260730223000_omnichannel_conversations.sql',
     '20260929120000_communications_foundation.sql',
@@ -38,6 +40,7 @@ export async function createMeetingFixture(t: TestContext) {
     '20261011100000_communications_files_search_notifications.sql',
     '20261022100000_communications_meetings.sql',
     '20261022220000_communications_client_meetings.sql',
+    '20261023010000_communications_client_channels.sql',
   ]) await pg.exec(readFileSync(new URL(`../../../../packages/database/migrations/${migration}`, import.meta.url), 'utf8'));
   const dialect = new PgDialect();
   const wrap = (connection: PGlite | Transaction): CommunicationsDatabase => ({

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, LockKeyhole, Video } from 'lucide-react';
 import { defaultDevices, DevicePreview, DeviceSettings, useDevices } from '../calls/MeetingDevices';
-import { callingError, type Meeting as MediaMeeting } from '../calls/calls.api';
+import { callingError, type JoinTicket, type Meeting as MediaMeeting } from '../calls/calls.api';
 import type { MeetingMediaApi } from '../calls/MeetingWindow';
 import { MeetingBrandHeader, brandStyle } from './MeetingBrand';
 import { guestMeetingsApi, type GuestCredential, type GuestSession, type PublicMeeting } from './meetings.api';
@@ -27,14 +27,15 @@ function guestMediaMeeting(session: GuestSession): MediaMeeting {
     expiresAt: session.expiresAt, canManage: false, participants: [],
   };
 }
-function GuestCall({ credential, session, close }: { credential: GuestCredential; session: GuestSession & { meeting: PublicMeeting }; close: () => void }) {
+export type AdmittedMeetingGateway = { session: () => Promise<GuestSession>; join: (requestId: string) => Promise<JoinTicket>; leave: () => Promise<unknown> };
+export function GuestCall({ credential, session, close, gateway }: { credential: GuestCredential; session: GuestSession & { meeting: PublicMeeting }; close: () => void; gateway?: AdmittedMeetingGateway }) {
   const api = useMemo<MeetingMediaApi>(() => ({
-    meeting: async () => guestMediaMeeting(await guestMeetingsApi.session(credential)),
-    join: async (_id, requestId) => { const result = await guestMeetingsApi.join(credential, requestId); return { ...result, meeting: { ...result.meeting, canManage: false, conversationId: '' } }; },
-    leave: () => guestMeetingsApi.leave(credential),
+    meeting: async () => guestMediaMeeting(await (gateway ? gateway.session() : guestMeetingsApi.session(credential))),
+    join: async (_id, requestId) => { const result = await (gateway ? gateway.join(requestId) : guestMeetingsApi.join(credential, requestId)); return { ...result, meeting: { ...result.meeting, canManage: false, conversationId: '' } }; },
+    leave: () => gateway ? gateway.leave() : guestMeetingsApi.leave(credential),
     end: async () => { throw new Error('Only the host can end this meeting.'); },
     remove: async () => { throw new Error('Only the host can remove participants.'); },
-  }), [credential]);
+  }), [credential, gateway]);
   return <Suspense fallback={<p role="status">Opening your meeting…</p>}><MeetingWindow id={credential.sessionId} api={api} mode="guest" subscribe={noMeetingSubscription} revision={0} close={close} displayName={session.name || 'Guest'} participantLimit={session.meeting.participantLimit || 12} brandName={session.meeting.branding.name} brandHeader={<MeetingBrandHeader brand={session.meeting.branding}/>} allowScreenShare={session.meeting.guestScreenShare}/></Suspense>;
 }
 const stateText: Record<GuestSession['state'], { title: string; description: string }> = {

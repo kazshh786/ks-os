@@ -8,7 +8,7 @@ import {
   CustomerRescheduleAvailabilityQuerySchema, CustomerRescheduleAvailabilityResponseSchema,
   CustomerRescheduleRequestSchema, CustomerRescheduleResponseSchema,
 } from '@ks-os/contracts';
-import { CustomerAuthService } from './customer-auth.service.js';
+import { CustomerAuthService, verifyCustomerEmail } from './customer-auth.service.js';
 import { CustomerClaimsService } from './customer-claims.service.js';
 import { CustomerPortalService } from './customer-portal.service.js';
 import { CustomerBookingManagementService, hashCustomerBookingManagementToken } from './customer-booking-management.service.js';
@@ -37,6 +37,7 @@ export const customerPortalRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/claims/:token/complete', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request) => {
     const { token } = CustomerClaimParamsSchema.parse(request.params);
     const identity = auth.requireIdentity(request);
+    await verifyCustomerEmail(identity);
     return { data: await claims.complete(token, identity) };
   });
 

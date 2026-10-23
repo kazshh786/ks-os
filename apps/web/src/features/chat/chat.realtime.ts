@@ -2,7 +2,7 @@ import { ChatEphemeralSchema, CommunicationsEventSchema, type ChatEphemeral, typ
 import { chatApi, chatBase, ChatError } from './chat.api';
 
 export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'unavailable';
-export function connectChat(callbacks: { ephemeral?: (value:ChatEphemeral)=>void; event: (event: CommunicationsEvent) => void; ready: () => Promise<void>; state: (state: ConnectionState) => void; revoked: () => void }) {
+export function connectChat(callbacks: { ephemeral?: (value:ChatEphemeral)=>void; event: (event: CommunicationsEvent) => void; ready: () => Promise<void>; state: (state: ConnectionState) => void; revoked: () => void }, transport = { ticket: chatApi.ticket, eventsPath: chatBase + '/events' }) {
   let stopped = false, attempt = 0, cursor: string | undefined;
   let socket: WebSocket | undefined, timer: ReturnType<typeof setTimeout> | undefined;
   let typingTimer:ReturnType<typeof setTimeout>|undefined,expiryTimer:ReturnType<typeof setTimeout>|undefined;
@@ -23,13 +23,13 @@ export function connectChat(callbacks: { ephemeral?: (value:ChatEphemeral)=>void
   const open = async () => {
     callbacks.state(cursor ? 'reconnecting' : 'connecting');
     try {
-      const ticket = await chatApi.ticket();
+      const ticket = await transport.ticket();
       if (stopped) return;
       // Establish the replay boundary BEFORE fetching snapshots; no snapshot/socket gap.
       cursor ??= ticket.cursor;
       await callbacks.ready();
       if (stopped) return;
-      const url = new URL(`${chatBase}/events`, String(import.meta.env.VITE_API_ORIGIN || window.location.origin));
+      const url = new URL(transport.eventsPath, String(import.meta.env.VITE_API_ORIGIN || window.location.origin));
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
       url.searchParams.set('ticket', ticket.ticket);
       url.searchParams.set('after', cursor);

@@ -75,7 +75,8 @@ export async function fetchWithAuth(url: string, options: AuthenticatedRequestIn
       headers.set('Authorization', `Bearer ${accessToken}`);
     }
     const supportToken = sessionStorage.getItem('ks-os-support-session');
-    if (supportToken) headers.set('X-KS-Support-Session', supportToken);
+    if (supportToken && context === 'TENANT') headers.set('X-KS-Support-Session', supportToken);
+    else headers.delete('X-KS-Support-Session');
     return tracedFetch(requestUrl, { ...fetchOptions, headers }, correlationId, timeoutMs);
   };
 
@@ -129,14 +130,14 @@ export async function requestJson<T>(path: string, options: AuthenticatedRequest
 }
 
 /** Binary upload with real browser progress, sharing the normal auth/context rules. */
-export async function uploadWithAuth(url:string,body:Blob,signal:AbortSignal,progress:(percent:number)=>void):Promise<Response>{
+export async function uploadWithAuth(url:string,body:Blob,signal:AbortSignal,progress:(percent:number)=>void,authContext?:ApplicationContext):Promise<Response>{
  const send=async(token:string|null)=>new Promise<Response>((resolve,reject)=>{
   const xhr=new XMLHttpRequest();xhr.open('PUT',resolveApiUrl(url));xhr.timeout=60000;
   xhr.setRequestHeader('Content-Type','application/octet-stream');
-  xhr.setRequestHeader('X-KS-Application-Context',requestContext(url));
+  const context=requestContext(url,authContext);xhr.setRequestHeader('X-KS-Application-Context',context);
   xhr.setRequestHeader('X-Correlation-ID',createCorrelationId());
   if(token)xhr.setRequestHeader('Authorization','Bearer '+token);
-  const support=sessionStorage.getItem('ks-os-support-session');if(support)xhr.setRequestHeader('X-KS-Support-Session',support);
+  const support=sessionStorage.getItem('ks-os-support-session');if(support&&context==='TENANT')xhr.setRequestHeader('X-KS-Support-Session',support);
   const abort=()=>xhr.abort();signal.addEventListener('abort',abort,{once:true});
   const cleanup=()=>signal.removeEventListener('abort',abort);
   xhr.upload.onprogress=event=>{if(event.lengthComputable)progress(Math.round(event.loaded/event.total*100));};

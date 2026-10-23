@@ -1,7 +1,8 @@
 import { ReadReceipt, TypingStatus } from './ChatLive';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CommunicationsEvent, NativeConversation, NativeMessage } from '@ks-os/contracts';
-import { chatApi, ChatError } from './chat.api';
+import { ChatError } from './chat.api';
+import { useChatServices } from './ChatServices';
 import { mergeMessages } from './chat.realtime';
 import { MessageItem } from './MessageItem';
 import { MessageComposer, type Draft } from './MessageComposer';
@@ -11,6 +12,7 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
   channel: NativeConversation; userId: string; parent?: string; subscribe: SubscribeChat; revision: number; drafts: Map<string,Draft>;
   openThread?: (message: NativeMessage) => void; inaccessible: () => void; read: (id: string) => Promise<void>; targetId?:string|null; label?: string;
 }) {
+  const { api: chatApi } = useChatServices();
   const [messages,setMessages]=useState<NativeMessage[]>([]),[cursor,setCursor]=useState<string|null>(null),[loading,setLoading]=useState(true),[more,setMore]=useState(false),[error,setError]=useState(''),[newer,setNewer]=useState(false);
   const scroll=useRef<HTMLDivElement>(null),bottom=useRef(true),live=useRef(true),frozen=useRef(false),reading=useRef(false),seenRead=useRef(channel.lastReadPosition),preserve=useRef<{id:string;offset:number}|null>(null),jump=useRef(true);
   const anchored=useRef<string|null>(null);
@@ -106,16 +108,16 @@ export function MessageTimeline({ channel, userId, parent, subscribe, revision, 
       {loading && <div role="status" className="chat-loading"><span className="sr-only">Loading messages</span>{[1,2,3].map(i=><div key={i} className="chat-skeleton"/>)}</div>}
       {error && <div className="chat-error" role="alert">{error}<button type="button" onClick={()=>void latest()}>Try again</button></div>}
       {!loading && cursor && <button type="button" className="chat-load-older" disabled={more} onClick={()=>void older()}>{more?'Loading…':'Load older messages'}</button>}
-      {!loading && !messages.length && !error && <div className="chat-empty"><h3>{parent?'Start this thread':'The conversation starts here'}</h3><p>{parent?'Reply to keep this discussion together.':'Share an update, ask a question, or say hello to your team.'}</p></div>}
+      {!loading && !messages.length && !error && <div className="chat-empty"><h3>{parent?'Start this thread':'The conversation starts here'}</h3><p>{parent?'Reply to keep this discussion together.':'Share an update, ask a question, or say hello.'}</p></div>}
       {messages.map((message,index)=>{
         const previous=messages[index-1],day=new Date(message.createdAt).toLocaleDateString();
         const sameDay=previous && new Date(previous.createdAt).toLocaleDateString()===day;
         const grouped=Boolean(sameDay && !message.editedAt && previous.senderId===message.senderId && new Date(message.createdAt).getTime()-new Date(previous.createdAt).getTime()<300000);
-        return <div key={message.id} data-message-id={message.id} tabIndex={targetId===message.id?-1:undefined} className={targetId===message.id?'chat-search-target':undefined}>{!sameDay && <div className="chat-date"><span>{new Date(message.createdAt).toLocaleDateString([], {weekday:'short',day:'numeric',month:'long'})}</span></div>}<MessageItem message={message} grouped={grouped} userId={userId} archived={Boolean(channel.archivedAt)} thread={openThread} changed={changed}/><ReadReceipt message={message} userId={userId}/></div>;
+        return <div key={message.id} data-message-id={message.id} tabIndex={targetId===message.id?-1:undefined} className={targetId===message.id?'chat-search-target':undefined}>{!sameDay && <div className="chat-date"><span>{new Date(message.createdAt).toLocaleDateString([], {weekday:'short',day:'numeric',month:'long'})}</span></div>}<MessageItem message={message} grouped={grouped} userId={userId} archived={Boolean(channel.archivedAt) || channel.canPost === false} thread={openThread} changed={changed}/><ReadReceipt message={message} userId={userId}/></div>;
       })}
     </div>
     {newer && <button type="button" className="chat-new-messages" onClick={()=>void latest()}>Back to latest messages ↓</button>}
     <TypingStatus conversationId={channel.id}/>
-    <MessageComposer key={draftKey} channelId={channel.id} label={parent?'Reply to thread':`Message ${channel.name}`} initial={drafts.get(draftKey)} saveDraft={(draft,expected)=>{const saved=drafts.get(draftKey);if(expected && (saved?.clientMessageId!==expected.clientMessageId || saved?.body!==expected.body))return;if(draft.body)drafts.set(draftKey,draft);else drafts.delete(draftKey);}} disabled={Boolean(channel.archivedAt)} send={async draft=>{const message=await chatApi.send(channel.id,{...draft,parentMessageId:parent});if(!live.current)return;bottom.current=true;changed(message);if(frozen.current)await latest();}}/>
+    <MessageComposer key={draftKey} channelId={channel.id} label={parent?'Reply to thread':`Message ${channel.name}`} initial={drafts.get(draftKey)} saveDraft={(draft,expected)=>{const saved=drafts.get(draftKey);if(expected && (saved?.clientMessageId!==expected.clientMessageId || saved?.body!==expected.body))return;if(draft.body)drafts.set(draftKey,draft);else drafts.delete(draftKey);}} disabled={Boolean(channel.archivedAt) || channel.canPost === false} send={async draft=>{const message=await chatApi.send(channel.id,{...draft,parentMessageId:parent});if(!live.current)return;bottom.current=true;changed(message);if(frozen.current)await latest();}}/>
   </div>;
 }

@@ -2,17 +2,18 @@ import { useEffect,useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { NativeConversation,NativePerson } from '@ks-os/contracts';
 import { ChatDialog } from './ChatDialog';
-import { chatApi } from './chat.api';
-import { phase4Api,messageLink,type SearchHit } from './chat.phase4.api';
+import { useChatServices } from './ChatServices';
+import type { SearchHit } from './chat.phase4.api';
 export function SearchHighlight({text,query}:{text:string;query:string}){
  const words=query.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu)||[];
  if(!words.length)return <>{text}</>;
  return <>{text.split(/(\s+)/).map((part,i)=>words.some(word=>part.toLowerCase().includes(word))?<mark key={i}>{part}</mark>:part)}</>;
 }
 export function ChatSearch({channels,close,userId}:{channels:NativeConversation[];close:()=>void;userId?:string}){
+ const { api: chatApi, files: phase4Api, messageLink, external } = useChatServices();
  const navigate=useNavigate(),[q,setQ]=useState(''),[conversationId,setConversation]=useState(''),[senderId,setSender]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState(''),[attachments,setAttachments]=useState(false);
  const [people,setPeople]=useState<NativePerson[]>([]),[peopleQuery,setPeopleQuery]=useState(''),[rows,setRows]=useState<SearchHit[]>([]),[cursor,setCursor]=useState<string|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState(''),[searched,setSearched]=useState(false);
- useEffect(()=>{const controller=new AbortController();const timer=setTimeout(()=>void chatApi.people(null,false,peopleQuery,'',controller.signal).then(p=>setPeople(p.data)).catch(()=>{}),200);return()=>{controller.abort();clearTimeout(timer);};},[peopleQuery]);
+ useEffect(()=>{setPeople([]);setSender('');if(external&&!conversationId)return;const controller=new AbortController();const timer=setTimeout(()=>void chatApi.people(external?conversationId:null,false,peopleQuery,'',controller.signal).then(p=>{if(!controller.signal.aborted)setPeople(p.data);}).catch(()=>{}),200);return()=>{controller.abort();clearTimeout(timer);};},[peopleQuery,conversationId,external,chatApi]);
  const run=async(before='')=>{setLoading(true);setError('');setSearched(true);try{
   const params=new URLSearchParams({q,...conversationId?{conversationId}:{},...senderId?{senderId}:{},...from?{from:new Date(from+'T00:00:00').toISOString()}:{},...to?{to:new Date(to+'T23:59:59.999').toISOString()}:{},...attachments?{attachments:'true'}:{},...before?{before}:{}});
   const page=await phase4Api.search(params);setRows(values=>before?[...values,...page.data]:page.data);setCursor(page.nextCursor);

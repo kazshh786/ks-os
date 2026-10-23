@@ -15,6 +15,7 @@ import { CommunicationsService } from '../src/modules/communications/communicati
 import { communicationsRoutes } from '../src/modules/communications/communications.routes.js';
 import type { CommunicationsDatabase } from '../src/modules/communications/communications.database.js';
 import type { CommunicationsActor } from '../src/modules/communications/communications.authorization.js';
+import { collaborationIdentityFixtureSql } from './helpers/collaboration-schema-fixture.js';
 
 test('communications foundation: real PostgreSQL migration, services, HTTP and WebSocket isolation', { timeout: 300000 }, async t => {
   const pg = new PGlite();
@@ -26,14 +27,15 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     CREATE POLICY existing_storage_access ON storage.objects FOR SELECT TO authenticated USING(true);
     CREATE TABLE tenants(id uuid PRIMARY KEY,is_active boolean DEFAULT true,lifecycle_status text DEFAULT 'ACTIVE');
     CREATE TABLE users(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,auth_user_id uuid,name text,role text DEFAULT 'owner',access_profile text DEFAULT 'PRACTITIONER',permissions jsonb DEFAULT '{}',account_status text DEFAULT 'ACTIVE',sessions_valid_after timestamptz,security_version integer DEFAULT 1);
-    CREATE TABLE clients(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants);
+    CREATE TABLE clients(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,name text);
     CREATE TABLE appointments(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants,client_id uuid REFERENCES clients);
     CREATE TABLE customer_client_links(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants);
     CREATE TABLE internal_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,recipient_user_id uuid REFERENCES users,type text,title text,message text,source_type text,source_id uuid,read_at timestamptz,created_at timestamptz DEFAULT now());
     CREATE TABLE integration_connections(id uuid PRIMARY KEY,kind text);
-    CREATE TABLE application_sessions(auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer,revoked_at timestamptz,expires_at timestamptz);
+    CREATE TABLE application_sessions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer,revoked_at timestamptz,expires_at timestamptz);
     CREATE TABLE account_access_audit_events(id uuid DEFAULT gen_random_uuid(),auth_user_id uuid,tenant_id uuid,tenant_user_id uuid,application_context text,action text,outcome text,metadata jsonb);
   `);
+  await pg.exec(collaborationIdentityFixtureSql);
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20260730223000_omnichannel_conversations.sql', import.meta.url), 'utf8'));
   // Prove the additive migration keeps existing inbox rows and messages intact.
   const legacyTenant = randomUUID(), legacyConversation = randomUUID();
@@ -45,6 +47,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261011100000_communications_files_search_notifications.sql', import.meta.url), 'utf8'));
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261022100000_communications_meetings.sql', import.meta.url), 'utf8'));
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261022220000_communications_client_meetings.sql', import.meta.url), 'utf8'));
+  await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261023010000_communications_client_channels.sql', import.meta.url), 'utf8'));
   const dialect = new PgDialect();
   const wrap = (connection: PGlite | Transaction): CommunicationsDatabase => ({
     async query<T extends Record<string, unknown>>(statement: SQL) {

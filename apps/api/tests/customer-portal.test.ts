@@ -179,7 +179,8 @@ describe('CustomerAuthService.requireIdentity — auth context separation', () =
   // Helper to create a minimal Fastify-compatible mock request
   const mockRequest = (overrides: { auth?: object | null; authIdentity?: { authUserId: string | null; email: string } | null }) => ({
     auth: overrides.auth ?? undefined,
-    authIdentity: overrides.authIdentity ?? undefined,
+    applicationContext: 'CUSTOMER', customerSessionValidated: true,
+    authIdentity: overrides.authIdentity ? { ...overrides.authIdentity, authSessionId: '00000000-0000-4000-8000-000000000001', issuedAt: new Date(Date.now()-1000).toISOString(), expiresAt: new Date(Date.now()+60000).toISOString() } : undefined,
   } as any);
 
   it('throws CUSTOMER_ACCESS_DENIED when request.auth is set (staff session)', () => {
@@ -240,6 +241,24 @@ describe('CustomerAuthService.requireIdentity — auth context separation', () =
     });
     const identity = service.requireIdentity(req);
     assert.strictEqual(identity.email, 'jane@example.com');
+  });
+
+  it('requires explicit CUSTOMER context even when a valid identity exists', () => {
+    for (const context of [undefined,'TENANT','AGENCY']) {
+      const req=mockRequest({authIdentity:{authUserId:'customer',email:'customer@example.com'}});
+      req.applicationContext=context;
+      assert.throws(()=>service.requireIdentity(req),{code:'CUSTOMER_ACCESS_DENIED'});
+    }
+  });
+
+  it('rejects missing, unvalidated or expired provider/application sessions', () => {
+    for(const mutation of ['missing','unvalidated','expired']){
+      const req=mockRequest({authIdentity:{authUserId:'customer',email:'customer@example.com'}});
+      if(mutation==='missing')req.authIdentity.authSessionId=null;
+      if(mutation==='unvalidated')req.customerSessionValidated=false;
+      if(mutation==='expired')req.authIdentity.expiresAt=new Date(Date.now()-1000).toISOString();
+      assert.throws(()=>service.requireIdentity(req),{code:'CUSTOMER_AUTH_REQUIRED'});
+    }
   });
 });
 

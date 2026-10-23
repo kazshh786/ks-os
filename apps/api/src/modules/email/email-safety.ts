@@ -1,6 +1,7 @@
 import { domainToASCII } from 'node:url';
 
 export const EMAIL_TEMPLATE_KEYS = [
+  'customer-collaboration-invitation',
   'meeting-notification',
   'booking-confirmed',
   'booking-rescheduled',
@@ -237,9 +238,14 @@ export function validateEmailTemplateData(
   const requireDate = (key: string) => { if (!isDateValue(payload[key])) invalid(key); };
   const requireScalar = (key: string) => { if (!hasScalar(payload, key)) invalid(key); };
 
-  if (templateKey !== 'meeting-notification') requireText('tenantName');
+  if (!['meeting-notification','customer-collaboration-invitation'].includes(templateKey)) requireText('tenantName');
 
   switch (templateKey as EmailTemplateKey) {
+    case 'customer-collaboration-invitation': {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text(payload,'invitationId'))) invalid('invitationId');
+      for (const key of Object.keys(payload)) if (key !== 'invitationId') invalid(key);
+      break;
+    }
     case 'meeting-notification': {
       const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       for (const key of ['meetingId', 'invitationId']) if (!uuid.test(text(payload, key))) invalid(key);

@@ -2,7 +2,7 @@ import { AttachmentCard } from './ChatAttachments';
 import { memo, useState } from 'react';
 import { MessageSquare, Pencil, Smile, Trash2 } from 'lucide-react';
 import { NativeReactionSchema, type NativeMessage } from '@ks-os/contracts';
-import { chatApi } from './chat.api';
+import { useChatServices } from './ChatServices';
 import { ChatDialog, ConfirmChatAction } from './ChatDialog';
 import { MessageComposer } from './MessageComposer';
 
@@ -20,8 +20,9 @@ export function MessageBody({ message }: { message: NativeMessage }) {
 export const MessageItem = memo(function MessageItem({ message, userId, archived, grouped = false, thread, changed }: {
   message: NativeMessage; userId: string; archived: boolean; grouped?: boolean; thread?: (message: NativeMessage) => void; changed: (message: NativeMessage) => void;
 }) {
+  const { api: chatApi } = useChatServices();
   const [edit,setEdit]=useState(false),[remove,setRemove]=useState(false),[picker,setPicker]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const own=message.senderId===userId, name=message.senderName || 'Former colleague';
+  const own=message.senderId===userId, name=message.senderName || 'Former participant';
   const run=async(work:()=>Promise<NativeMessage>)=>{ setBusy(true);setError('');try {changed(await work());}catch(cause){setError(cause instanceof Error?cause.message:'Could not update message');}finally{setBusy(false);} };
   return <article className={`chat-message${grouped ? ' chat-grouped' : ''}`} aria-label={`${name}, ${new Date(message.createdAt).toLocaleString()}`}>
     <div className="chat-avatar" aria-hidden="true">{name.split(' ').map(word=>word[0]).slice(0,2).join('').toUpperCase()}</div>

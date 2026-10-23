@@ -1,3 +1,4 @@
+import { staffCollaborationApi } from '../client-collaboration/collaboration.api';
 import { useEffect, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ArrowLeft } from 'lucide-react';
@@ -13,7 +14,7 @@ function DetailRoute({ config }: { config: MeetingsConfig }) { const { id = '' }
 function CreateRoute({ config }: { config: MeetingsConfig }) {
   const navigate = useNavigate(); const [params] = useSearchParams();
   const customerId = params.get('customerId') || config.customers.find(customer => customer.reference === params.get('customerReference'))?.id;
-  return <><Link className="meetings-back" to="/app/meetings"><ArrowLeft size={16}/>Meetings</Link><header className="meetings-heading"><div><p className="meetings-eyebrow">{config.branding.name}</p><h1>Create a meeting</h1><p>Choose a time, invite your team and connect the customer.</p></div></header>{config.enabled && config.canCreate ? <MeetingForm config={config} customerId={customerId} saved={meeting => navigate('/app/meetings/' + meeting.id, { replace: true })}/> : <p role="alert">You do not have permission to create meetings, or calling is not enabled for this business.</p>}</>;
+  return <><Link className="meetings-back" to="/app/meetings"><ArrowLeft size={16}/>Meetings</Link><header className="meetings-heading"><div><p className="meetings-eyebrow">{config.branding.name}</p><h1>Create a meeting</h1><p>Choose a time, invite your team and connect the customer.</p></div></header>{config.enabled && config.canCreate ? <MeetingForm config={config} customerId={customerId} saved={async meeting => { const channelId = params.get('clientChannelId'); if (channelId) { await staffCollaborationApi.shareMeeting(channelId, meeting.id); navigate('/app/chat/' + channelId + '?meetings=1', { replace: true }); } else navigate('/app/meetings/' + meeting.id, { replace: true }); }}/> : <p role="alert">You do not have permission to create meetings, or calling is not enabled for this business.</p>}</>;
 }
 function EditRoute({ config }: { config: MeetingsConfig }) {
   const { id = '' } = useParams(); const navigate = useNavigate(); const { meeting, error } = useScheduledMeeting(id);

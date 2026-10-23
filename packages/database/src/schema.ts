@@ -235,6 +235,18 @@ export const customerClientLinks = pgTable('customer_client_links', {
   customerStatusIdx: index('customer_client_links_customer_status_idx').on(table.customerAccountId, table.status),
 }));
 
+// A purpose-separated many-contact collaboration grant; legacy booking links stay unchanged.
+export const customerCollaborationRelationships = pgTable('customer_collaboration_relationships', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'restrict' }),
+  customerAccountId: uuid('customer_account_id').notNull().references(() => customerAccounts.id, { onDelete: 'restrict' }),
+  status: text('status').default('ACTIVE').notNull(),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, table => ({ identity: uniqueIndex('customer_collaboration_relationship_identity').on(table.id, table.tenantId), account: uniqueIndex('customer_collaboration_relationship_account').on(table.tenantId, table.clientId, table.customerAccountId) }));
+
 export const customerAccountClaims = pgTable('customer_account_claims', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
@@ -830,6 +842,7 @@ export const automationActionRuns = pgTable('automation_action_runs', {
 });
 
 export const internalNotifications = pgTable('internal_notifications', {
+  recipientCustomerRelationshipId: uuid('recipient_customer_relationship_id').references(() => customerCollaborationRelationships.id),
   chatConversationId:uuid('chat_conversation_id'),chatMessageId:uuid('chat_message_id'), // Composite scope FKs are owned by migration 92.
   id: uuid('id').defaultRandom().primaryKey(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   recipientUserId: uuid('recipient_user_id').references(() => users.id, { onDelete: 'set null' }), recipientRole: varchar('recipient_role', { length: 20 }),

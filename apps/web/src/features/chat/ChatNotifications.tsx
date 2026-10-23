@@ -5,7 +5,8 @@ import { ChatError } from './chat.api';
 import { Bell,Settings } from 'lucide-react';
 import { ChatDialog } from './ChatDialog';
 import type { SubscribeChat } from './MessageTimeline';
-import { phase4Api,messageLink,type ChatNotice } from './chat.phase4.api';
+import type { ChatNotice } from './chat.phase4.api';
+import { useChatServices } from './ChatServices';
 export const shouldAlert=(p:ChatPreferences,notice:ChatNotice,conversationId?:string,focused=false)=>!p.dnd&&!(notice.conversationType==='DIRECT'&&!p.directMessages)&&!notice.readAt&&!(focused&&notice.conversationId===conversationId);
 export async function browserPermission(){
  if(typeof Notification==='undefined')return 'unsupported';
@@ -13,6 +14,7 @@ export async function browserPermission(){
  return Notification.permission==='granted'?'granted':Notification.requestPermission();
 }
 export function ChatNotifications({subscribe,revision,conversationId}:{subscribe:SubscribeChat;revision:number;conversationId?:string}){
+ const { files: phase4Api, messageLink, external, notificationName } = useChatServices();
  const navigate=useNavigate(),[open,setOpen]=useState(false),[settings,setSettings]=useState(false),[preferences,setPreferences]=useState<ChatPreferences|null>(null);
  const [rows,setRows]=useState<ChatNotice[]>([]),[cursor,setCursor]=useState<string|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
  const preferenceRevision=useRef(0),saving=useRef(false);
@@ -30,7 +32,7 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
     if(mode.mode==='NONE'||mode.mode==='MENTIONS'&&row.type!=='CHAT_MENTION')continue;
     if(p.inApp)setNotice('New Chat activity. Open notifications to view it.');
     if(p.browser&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
-     try{const notification=new Notification('New KSOS Chat activity',{body:'Open Chat to view your update.',tag:'ksos-chat-'+row.id,silent:!p.sound});
+     try{const notification=new Notification('New ' + notificationName + ' message activity',{body:'Open Chat to view your update.',tag:'ksos-chat-'+row.id,silent:!p.sound});
       notification.onclick=()=>{window.focus();navigate(messageLink(row));notification.close();};
       setTimeout(()=>notification.close(),15000);
      }catch{/* Some mobile browsers require background push, which is outside this phase. */}
@@ -39,7 +41,7 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
    initialized.current=true;
    if(seen.current.size>1000)seen.current=new Set(page.data.map(n=>n.id));
   }catch(e){if(mounted.current){if(e instanceof ChatError&&[401,403].includes(e.status)){setRows([]);setCursor(null);}setError(e instanceof Error?e.message:'Notifications unavailable');}}
- },[navigate]);
+ },[navigate,phase4Api,messageLink,notificationName]);
  useEffect(()=>{mounted.current=true;void refresh();const timer=setInterval(()=>void refresh(true),30000);
   const stop=subscribe(event=>{if(event.type.startsWith('notification.')||event.type==='conversation.member_left'||event.type==='message.deleted')void refresh(true);});
   return()=>{mounted.current=false;clearInterval(timer);stop();};
@@ -57,8 +59,8 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
  {cursor&&<button disabled={busy} onClick={()=>{setBusy(true);void phase4Api.notifications(cursor).then(page=>{setRows(values=>[...values,...page.data]);setCursor(page.nextCursor);}).catch(e=>setError(e.message)).finally(()=>setBusy(false));}}>Older notifications</button>}
  </ChatDialog>}
  {settings&&<ChatDialog title="Chat notification settings" close={()=>setSettings(false)}>
- <p>Browser alerts work while your KSOS workspace is open. Some mobile browsers do not support them. Closing the browser stops these alerts.</p>
- {preferences?(<div className="chat-preferences">{(['inApp','sound','dnd','directMessages'] as const).map(key=><label className="chat-check" key={key}><input type="checkbox" disabled={busy} checked={preferences[key]} onChange={e=>void save({...preferences,[key]:e.target.checked})}/>{{inApp:'In-app alerts',sound:'Browser notification sound (when supported)',dnd:'Do Not Disturb',directMessages:'Direct message notifications'}[key]}</label>)}
+ <p>Browser alerts work while this portal is open. Some mobile browsers do not support them. Closing the browser stops these alerts.</p>
+ {preferences?(<div className="chat-preferences">{(['inApp','sound','dnd','directMessages'] as const).filter(key=>!external||key!=='directMessages').map(key=><label className="chat-check" key={key}><input type="checkbox" disabled={busy} checked={preferences[key]} onChange={e=>void save({...preferences,[key]:e.target.checked})}/>{{inApp:'In-app alerts',sound:'Browser notification sound (when supported)',dnd:'Do Not Disturb',directMessages:'Direct message notifications'}[key]}</label>)}
  <label className="chat-check"><input type="checkbox" disabled={busy} checked={preferences.browser} onChange={async e=>{if(!e.target.checked){void save({...preferences,browser:false});return;}const permission=await browserPermission();if(permission!=='granted'){setError(permission==='denied'?'Browser permission is denied. Change it in your browser site settings.':'Browser notifications are not supported here.');return;}void save({...preferences,browser:true});}}/>Browser notifications</label>
  <p>Do Not Disturb silences alerts; your notification history stays available.</p></div>):<p role="status">Loading settings…</p>}
  {error&&<p role="alert">{error}</p>}
@@ -66,6 +68,7 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
  </div>;
 }
 export function ConversationNotifications({conversationId}:{conversationId:string}){
+ const { files: phase4Api } = useChatServices();
  const [mode,setMode]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  useEffect(()=>{let active=true;void phase4Api.conversationPreference(conversationId).then(p=>{if(active)setMode(p.mode);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[conversationId]);
  return <label className="chat-conversation-preference">Conversation alerts<select aria-label="Conversation alerts" disabled={!mode||busy} value={mode} onChange={e=>{const next=e.target.value;setBusy(true);void phase4Api.saveConversationPreference(conversationId,next).then(p=>setMode(p.mode)).catch(e=>setError(e.message)).finally(()=>setBusy(false));}}><option value="" disabled>Loading…</option><option value="ALL">All messages</option><option value="MENTIONS">Mentions only</option><option value="NONE">Mute conversation</option></select>{error&&<span role="alert">{error}</span>}</label>;

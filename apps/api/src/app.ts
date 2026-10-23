@@ -1,5 +1,6 @@
 import websocket from '@fastify/websocket';
 import { communicationsRoutes } from './modules/communications/communications.routes.js';
+import { clientCollaborationRoutes, customerCollaborationRoutes } from './modules/communications/communications.client-collaboration.routes.js';
 import { clientMeetingRoutes, publicMeetingRoutes } from './modules/communications/communications.client-meetings.routes.js';
 import { invoiceRoutes } from './modules/invoices/invoice.routes.js';
 import { customer360Routes } from './modules/customer-360/customer-360.routes.js';
@@ -246,6 +247,8 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(teamOperationsRoutes, { prefix: '/api/v1' });
   fastify.register(operationsRoutes, { prefix: '/api/v1/operations/issues' });
   fastify.register(communicationsRoutes, { prefix: '/api/v1/communications/conversations' });
+  fastify.register(clientCollaborationRoutes, { prefix: '/api/v1/client-collaboration' });
+  fastify.register(customerCollaborationRoutes, { prefix: '/api/v1/customer/collaboration' });
   fastify.register(clientMeetingRoutes, { prefix: '/api/v1/meetings' });
   fastify.register(publicMeetingRoutes, { prefix: '/api/v1/public/meetings' });
   fastify.register(conversationRoutes, { prefix: '/api/v1/conversations' });

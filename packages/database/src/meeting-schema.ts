@@ -1,5 +1,5 @@
-import { boolean, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
-import { tenants, users, clients, appointments } from './schema.js';
+import { boolean, integer, pgTable, primaryKey, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { tenants, users, clients, appointments, customerCollaborationRelationships } from './schema.js';
 import { conversations } from './conversation-schema.js';
 const time=(name:string)=>timestamp(name,{withTimezone:true});
 export const communicationMeetings=pgTable('communication_meetings',{
@@ -35,6 +35,10 @@ export const communicationMeetingInvitations=pgTable('communication_meeting_invi
  id:uuid('id').primaryKey().defaultRandom(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id),meetingId:uuid('meeting_id').notNull().references(()=>communicationMeetings.id),secretHash:text('secret_hash').notNull().unique(),requestId:uuid('request_id').notNull(),createdBy:uuid('created_by').notNull().references(()=>users.id),email:text('email'),expiresAt:time('expires_at').notNull(),revokedAt:time('revoked_at'),revokedBy:uuid('revoked_by').references(()=>users.id),claimedAt:time('claimed_at'),createdAt:time('created_at').notNull().defaultNow(),
 });
 export const communicationMeetingGuests=pgTable('communication_meeting_guests',{
- id:uuid('id').primaryKey().defaultRandom(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id),meetingId:uuid('meeting_id').notNull().references(()=>communicationMeetings.id),participantId:uuid('participant_id').notNull().references(()=>communicationMeetingParticipants.id),invitationId:uuid('invitation_id').notNull().unique().references(()=>communicationMeetingInvitations.id),requestId:uuid('request_id').notNull(),name:text('name').notNull(),credentialHash:text('credential_hash').notNull(),state:text('state').notNull().default('WAITING'),expiresAt:time('expires_at').notNull(),createdAt:time('created_at').notNull().defaultNow(),admittedAt:time('admitted_at'),decidedBy:uuid('decided_by').references(()=>users.id),revokedAt:time('revoked_at'),
+ customerRelationshipId:uuid('customer_relationship_id').references(()=>customerCollaborationRelationships.id),customerConversationId:uuid('customer_conversation_id').references(()=>conversations.id),customerAuthSessionId:uuid('customer_auth_session_id'),customerAuthUserId:uuid('customer_auth_user_id'),customerIssuedAt:time('customer_issued_at'),customerExpiresAt:time('customer_expires_at'),
+ id:uuid('id').primaryKey().defaultRandom(),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id),meetingId:uuid('meeting_id').notNull().references(()=>communicationMeetings.id),participantId:uuid('participant_id').notNull().references(()=>communicationMeetingParticipants.id),invitationId:uuid('invitation_id').unique().references(()=>communicationMeetingInvitations.id),requestId:uuid('request_id').notNull(),name:text('name').notNull(),credentialHash:text('credential_hash').notNull(),state:text('state').notNull().default('WAITING'),expiresAt:time('expires_at').notNull(),createdAt:time('created_at').notNull().defaultNow(),admittedAt:time('admitted_at'),decidedBy:uuid('decided_by').references(()=>users.id),revokedAt:time('revoked_at'),
 });
+export const communicationMeetingCustomerGrants=pgTable('communication_meeting_customer_grants',{
+ tenantId:uuid('tenant_id').notNull().references(()=>tenants.id),meetingId:uuid('meeting_id').notNull().references(()=>communicationMeetings.id),conversationId:uuid('conversation_id').notNull().references(()=>conversations.id),createdBy:uuid('created_by').notNull().references(()=>users.id),createdAt:time('created_at').defaultNow().notNull(),revokedAt:time('revoked_at'),
+},t=>({identity:primaryKey({columns:[t.meetingId,t.conversationId]})}));
 // Migration94 adds the guest principal checks, composite FKs, admission constraints and private grants.

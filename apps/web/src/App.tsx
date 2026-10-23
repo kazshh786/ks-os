@@ -1,3 +1,5 @@
+import ClientPortal from './features/client-collaboration/ClientPortal';
+import ClientInvitation from './features/client-collaboration/ClientInvitation';
 import { InvoiceWorkspace, InvoiceDetailPage, InvoiceCreatePage } from './features/invoices/InvoicePages';
 import React from 'react';
 const ChatPage = React.lazy(() => import('./features/chat/ChatPage'));
@@ -286,6 +288,8 @@ const AppContent: React.FC = () => {
           <Route path="settings/security" element={<SecuritySettingsPage context="AGENCY" />} />
         </Route>
 
+        <Route path="/customer/collaboration/*" element={<ClientPortal />} />
+        <Route path="/customer/invite" element={<ClientInvitation />} />
         <Route path="/customer/login" element={<CustomerLoginPage />} />
         <Route path="/customer/auth/callback" element={<CustomerAuthCallbackPage />} />
         <Route path="/customer/claim/:token" element={<CustomerClaimPage />} />

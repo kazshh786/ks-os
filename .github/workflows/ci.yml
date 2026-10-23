@@ -100,13 +100,20 @@ jobs:
       - run: pnpm --filter api... build
       - name: Exercise the real communications database, HTTP and browser flows
         working-directory: apps/api
-        run: node --import ./tests/test-environment.mjs --import tsx --test tests/communications-foundation.test.ts
+        run: node --import ./tests/test-environment.mjs --import tsx --test tests/communications-foundation.test.ts tests/communications-customer-engine.test.ts
       - name: Upload communications browser evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: communications-browser
           path: artifacts/communications
+          if-no-files-found: ignore
+      - name: Upload customer portal browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: communications-customer-portal
+          path: artifacts/customer-collaboration
           if-no-files-found: ignore
 
   meetings:
@@ -157,6 +164,10 @@ jobs:
         if: ${{ !cancelled() && steps.calling-build.outcome == 'success' }}
         working-directory: apps/api
         run: node --import ./tests/test-environment.mjs --import tsx --test tests/communications-client-meetings-media.test.ts
+      - name: Verify customer channel admission and isolated real media
+        if: ${{ !cancelled() && steps.calling-build.outcome == 'success' }}
+        working-directory: apps/api
+        run: node --import ./tests/test-environment.mjs --import tsx --test tests/communications-customer-media.test.ts
       - name: Media server diagnostics
         if: failure()
         run: docker logs ksos-livekit-ci
@@ -182,4 +193,11 @@ jobs:
         with:
           name: communications-client-meetings
           path: artifacts/client-meetings
+          if-no-files-found: ignore
+      - name: Upload customer collaboration media evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: communications-customer-collaboration-media
+          path: artifacts/customer-collaboration-media
           if-no-files-found: ignore

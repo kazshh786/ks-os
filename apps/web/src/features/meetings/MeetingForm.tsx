@@ -4,7 +4,7 @@ import { meetingTimeChoices, meetingTimeZones, localMeetingTime, offsetMeetingTi
 import { meetingsApi, type MeetingInput, type MeetingsConfig, type ScheduledMeeting } from './meetings.api';
 import { callingError } from '../calls/calls.api';
 
-export function MeetingForm({ config, meeting, customerId, saved }: { config: MeetingsConfig; meeting?: ScheduledMeeting; customerId?: string; saved: (value: ScheduledMeeting) => void }) {
+export function MeetingForm({ config, meeting, customerId, saved }: { config: MeetingsConfig; meeting?: ScheduledMeeting; customerId?: string; saved: (value: ScheduledMeeting) => void | Promise<void> }) {
   const initialZone = meeting?.timezone || config.timezone || 'Europe/London';
   const [title, setTitle] = useState(meeting?.title || ''), [description, setDescription] = useState(meeting?.description || '');
   const [audience, setAudience] = useState<MeetingInput['audience']>(meeting?.audience || (config.guestEnabled === false ? 'INTERNAL' : 'EXTERNAL_CLIENT')), [type, setType] = useState<MeetingInput['type']>(meeting?.type || 'VIDEO');
@@ -38,7 +38,7 @@ export function MeetingForm({ config, meeting, customerId, saved }: { config: Me
     if (!chosen) { setError(choices.length > 1 ? 'Choose which occurrence of this time you mean.' : 'This local time does not exist in that time zone. Choose another time.'); return; }
     setBusy(true); setError('');
     const input: MeetingInput = { title: title.trim(), description: description.trim(), audience, type, localStart: offsetMeetingTime(localStart, chosen), timezone: zone, durationMinutes: duration, hostUserId: hostId, customerId: customer || null, appointmentId: appointment || null, attendeeIds: [...new Set([...attendees, ...cohosts])].filter(id => id !== hostId), cohostIds: cohosts.filter(id => id !== hostId), guestScreenShare: audience === 'EXTERNAL_CLIENT' && guestSharing };
-    try { saved(meeting ? await meetingsApi.edit(meeting.id, input, meeting.version) : await meetingsApi.create(input, requestId.current)); }
+    try { await saved(meeting ? await meetingsApi.edit(meeting.id, input, meeting.version) : await meetingsApi.create(input, requestId.current)); }
     catch (cause) { setError(callingError(cause)); } finally { setBusy(false); }
   }
   return <form className="meetings-form" onSubmit={event => void submit(event)}>

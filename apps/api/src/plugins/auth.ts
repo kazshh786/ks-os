@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import {
   accountAccessAuditEvents, agencySessions, agencySupportSessions, agencyUsers, applicationSessions,
-  customerAccounts, getDatabase, platformAuditEvents, tenants, users,
+  customerAccounts, getDatabase, platformAuditEvents, tenants, users, sql,
 } from '@ks-os/database';
 import { effectiveCapabilities, type Permission } from '@ks-os/auth';
 import {
@@ -61,6 +61,7 @@ declare module 'fastify' {
     authIdentity?: AuthIdentity;
     agencyAuth?: AgencyAuthContext;
     applicationContext?: ApplicationContext;
+    customerSessionValidated?: boolean;
     requireAuth: () => void;
     requireIdentity: () => AuthIdentity;
     requireContext: (context: ApplicationContext) => void;
@@ -240,6 +241,7 @@ const authPlugin: FastifyPluginAsync = async fastify => {
   fastify.decorateRequest('authIdentity', undefined);
   fastify.decorateRequest('agencyAuth', undefined);
   fastify.decorateRequest('applicationContext', undefined);
+  fastify.decorateRequest('customerSessionValidated', false);
   fastify.decorateRequest('requireAuth', function (this: FastifyRequest) {
     if (!this.auth) throw Object.assign(new Error('Authentication required'), { statusCode: 401, code: 'AUTH_REQUIRED' });
   });
@@ -284,7 +286,13 @@ const authPlugin: FastifyPluginAsync = async fastify => {
         }
         await resolveTenant(request, claims);
       }
-      if (request.applicationContext === 'CUSTOMER' && request.authIdentity.authSessionId) {
+      if (request.applicationContext === 'CUSTOMER') {
+        const identity = request.authIdentity;
+        if (!identity.authSessionId || !identity.issuedAt || !identity.expiresAt || !identity.email || claims.is_anonymous === true || !Number.isFinite(new Date(identity.expiresAt).getTime()) || new Date(identity.expiresAt).getTime() <= Date.now()) { request.authIdentity = undefined; return; }
+        // A signed JWT alone can outlive provider sign-out. Customer sessions also
+        // require the current provider session and a confirmed, unchanged identity.
+        const current = await getDatabase().execute(sql`SELECT public.customer_provider_session_is_current(${identity.authSessionId}::uuid,${identity.authUserId}::uuid) AS current`);
+        if (!current.rows[0]?.current) { request.authIdentity = undefined; return; }
         const [customer] = await getDatabase().select().from(customerAccounts).where(eq(customerAccounts.authUserId, request.authIdentity.authUserId)).limit(1);
         const issuedAt = request.authIdentity.issuedAt ? new Date(request.authIdentity.issuedAt) : null;
         if (customer?.sessionsValidAfter && (!issuedAt || issuedAt <= customer.sessionsValidAfter)) { request.authIdentity = undefined; return; }
@@ -294,9 +302,11 @@ const authPlugin: FastifyPluginAsync = async fastify => {
           jwtExpiresAt: new Date(Number(claims.exp || 0) * 1000), securityVersion: 1,
           hardTtlHours: Number(process.env.CUSTOMER_SESSION_HARD_TTL_HOURS || 720),
         });
-        if (!contextSession) request.authIdentity = undefined;
+        if (!contextSession || customer && customer.status !== 'ACTIVE') request.authIdentity = undefined;
+        else request.customerSessionValidated = true;
       }
     } catch (error) {
+      if (request.applicationContext === 'CUSTOMER') { request.authIdentity = undefined; request.customerSessionValidated = false; }
       if ((error as any)?.statusCode) throw error;
       request.log.error({ error }, 'Authentication context resolution failed');
     }

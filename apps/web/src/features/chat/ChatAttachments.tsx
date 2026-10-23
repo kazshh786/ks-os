@@ -1,10 +1,11 @@
 import { useEffect,useRef,useState } from 'react';
 import type { ChatAttachment } from '@ks-os/contracts';
 import { Paperclip,Download,FileText,Image as ImageIcon,X } from 'lucide-react';
-import { phase4Api } from './chat.phase4.api';
+import { useChatServices } from './ChatServices';
 import { ChatDialog } from './ChatDialog';
 type Upload={key:string;file:File;id?:string;progress:number;state:'queued'|'uploading'|'ready'|'failed';error?:string;controller?:AbortController};
 export function useChatUploads(channelId:string){
+ const { files: phase4Api } = useChatServices();
  const [items,setItems]=useState<Upload[]>([]),[error,setError]=useState(''),[dragging,setDragging]=useState(false);
  const latest=useRef(items);latest.current=items;const mounted=useRef(true),active=useRef(0),started=useRef(new Set<string>());
  const update=(key:string,patch:Partial<Upload>)=>{if(mounted.current)setItems(values=>values.map(v=>v.key===key?{...v,...patch}:v));};
@@ -53,17 +54,20 @@ export function UploadControls({uploads,disabled}:{uploads:ReturnType<typeof use
  </div>;
 }
 export function AttachmentCard({attachment,conversationId}:{attachment:ChatAttachment;conversationId:string}){
+ const { files: phase4Api } = useChatServices();
  const [thumb,setThumb]=useState(''),[preview,setPreview]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const opening=useRef<AbortController|null>(null);
+ useEffect(()=>()=>{opening.current?.abort();},[conversationId,attachment.id]);
  useEffect(()=>{if(!attachment.thumbnail)return;const controller=new AbortController();let url='';
   void phase4Api.content(conversationId,attachment.id,true,controller.signal).then(blob=>{if(controller.signal.aborted)return;url=URL.createObjectURL(blob);setThumb(url);}).catch(()=>{if(!controller.signal.aborted)setError('Preview unavailable');});
   return()=>{controller.abort();if(url)URL.revokeObjectURL(url);};
  },[conversationId,attachment.id,attachment.thumbnail]);
  useEffect(()=>()=>{if(preview)URL.revokeObjectURL(preview);},[preview]);
- const open=async(download:boolean)=>{setBusy(true);setError('');try{
-  const blob=await phase4Api.content(conversationId,attachment.id);const url=URL.createObjectURL(blob);
+ const open=async(download:boolean)=>{opening.current?.abort();const controller=new AbortController();opening.current=controller;setBusy(true);setError('');try{
+  const blob=await phase4Api.content(conversationId,attachment.id,false,controller.signal);if(controller.signal.aborted)return;const url=URL.createObjectURL(blob);
   if(download){const a=document.createElement('a');a.href=url;a.download=attachment.mimeType==='image/webp'?attachment.fileName.replace(/\.[^.]+$/,'.webp'):attachment.fileName;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   else setPreview(url);
- }catch(cause){setError(cause instanceof Error?cause.message:'File unavailable');}finally{setBusy(false);}};
+ }catch(cause){if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:'File unavailable');}finally{if(!controller.signal.aborted)setBusy(false);}};
  const image=attachment.mimeType.startsWith('image/'),pdf=attachment.mimeType==='application/pdf';
  return <div className="chat-attachment-card">
   {thumb?<button type="button" className="chat-thumbnail" onClick={()=>void open(false)} aria-label={'Preview '+attachment.fileName}><img src={thumb} alt={attachment.fileName} loading="lazy"/></button>:image?<ImageIcon aria-hidden="true"/>:<FileText aria-hidden="true"/>}
@@ -75,6 +79,7 @@ export function AttachmentCard({attachment,conversationId}:{attachment:ChatAttac
  </div>;
 }
 export function SharedFiles({conversationId}:{conversationId:string}){
+ const { files: phase4Api } = useChatServices();
  const [files,setFiles]=useState<ChatAttachment[]>([]),[cursor,setCursor]=useState<string|null>(null),[type,setType]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true);
  useEffect(()=>{let active=true;setLoading(true);setError('');void phase4Api.files(conversationId,'',type).then(page=>{if(active){setFiles(page.data);setCursor(page.nextCursor);}}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[conversationId,type]);
  return <section className="chat-files-panel"><h3>Shared files</h3><label>File type<select value={type} onChange={e=>setType(e.target.value)}><option value="">All files</option><option value="image">Images</option><option value="document">Documents</option></select></label>

@@ -6,6 +6,7 @@ export * from './error-schema.js';
 export * from './design-library-schema.js';
 export * from './booking-schedule-overrides.js';
 export * from './conversation-schema.js';
+export * from './meeting-schema.js';
 export * from './search-research-schema.js';
 export * from './manifest.js';
 export * from './pool-config.js';
@@ -20,10 +21,11 @@ import * as errorSchema from './error-schema.js';
 import * as designLibrarySchema from './design-library-schema.js';
 import * as bookingScheduleOverrideSchema from './booking-schedule-overrides.js';
 import * as conversationSchema from './conversation-schema.js';
+import * as meetingSchema from './meeting-schema.js';
 import * as searchResearchSchema from './search-research-schema.js';
 import { resolveDatabasePoolMax } from './pool-config.js';
 
-const schema: typeof invoiceSchema & typeof coreSchema & typeof salesSchema & typeof workSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema & typeof searchResearchSchema = {
+const schema: typeof invoiceSchema & typeof coreSchema & typeof salesSchema & typeof workSchema & typeof errorSchema & typeof designLibrarySchema & typeof bookingScheduleOverrideSchema & typeof conversationSchema & typeof meetingSchema & typeof searchResearchSchema = {
   ...invoiceSchema,
   ...coreSchema,
   ...salesSchema,
@@ -32,6 +34,7 @@ const schema: typeof invoiceSchema & typeof coreSchema & typeof salesSchema & ty
   ...designLibrarySchema,
   ...bookingScheduleOverrideSchema,
   ...conversationSchema,
+  ...meetingSchema,
   ...searchResearchSchema,
 };
 type Database = NodePgDatabase<typeof schema>;

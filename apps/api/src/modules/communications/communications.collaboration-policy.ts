@@ -1,0 +1,17 @@
+import { sql } from '@ks-os/database';
+import type { CommunicationsDatabase } from './communications.database.js';
+import { communicationError } from './communications.authorization.js';
+const bounded = (value: unknown, fallback: number, maximum: number) => Number.isInteger(Number(value)) && Number(value) >= 0 ? Math.min(maximum,Number(value)) : fallback;
+export async function collaborationLimits(db: CommunicationsDatabase, tenant: string, env: NodeJS.ProcessEnv = process.env) {
+  const limits = { channels: bounded(env.COLLABORATION_DEFAULT_CHANNELS,50,1000), contacts: bounded(env.COLLABORATION_DEFAULT_CONTACTS,100,5000), channelContacts: bounded(env.COLLABORATION_DEFAULT_CHANNEL_CONTACTS,20,200) };
+  const keys = {'communications.client_channels':'channels','communications.external_contacts':'contacts','communications.channel_contacts':'channelContacts'} as const;
+  const rows = await db.query<{key:keyof typeof keys;value:unknown}>(sql`WITH assignment AS (SELECT plan_version_id FROM tenant_plan_assignments WHERE tenant_id=${tenant} AND status='ACTIVE' AND starts_at<=now() AND (ends_at IS NULL OR ends_at>now()) ORDER BY starts_at DESC,id DESC LIMIT 1), configured AS (SELECT entitlement_key AS key,value_json AS value,0 AS priority,created_at FROM platform_plan_entitlements WHERE plan_version_id IN (SELECT plan_version_id FROM assignment) UNION ALL SELECT entitlement_key,value_json,1,created_at FROM tenant_entitlement_overrides WHERE tenant_id=${tenant} AND starts_at<=now() AND expires_at>now() AND revoked_at IS NULL) SELECT DISTINCT ON(key) key,value FROM configured WHERE key IN ('communications.client_channels','communications.external_contacts','communications.channel_contacts') ORDER BY key,priority DESC,created_at DESC`);
+  for(const row of rows){const value=(row.value as {limit?:unknown})?.limit;if(!Number.isInteger(value)||Number(value)<0)throw communicationError(409,'COLLABORATION_POLICY_INVALID','Customer collaboration settings need administrator review.');const field=keys[row.key];limits[field]=bounded(value,limits[field],field==='channels'?1000:field==='contacts'?5000:200);}
+  return limits;
+}
+export async function reserveCollaborationCapacity(db:CommunicationsDatabase,tenant:string,kind:'channel'|'relationship'|'member',conversation?:string){
+  const limits=await collaborationLimits(db,tenant);
+  if(kind==='member'){const [total]=await db.query<{n:number}>(sql`SELECT count(*)::int AS n FROM conversation_members WHERE tenant_id=${tenant} AND conversation_id=${conversation} AND left_at IS NULL`);if(total.n>=101)throw communicationError(409,'MEMBER_LIMIT','This conversation has reached its member limit.');}
+  const [row]=kind==='channel'?await db.query<{n:number}>(sql`SELECT count(*)::int AS n FROM conversations WHERE tenant_id=${tenant} AND external_client_channel AND archived_at IS NULL`):kind==='relationship'?await db.query<{n:number}>(sql`SELECT count(*)::int AS n FROM customer_collaboration_relationships WHERE tenant_id=${tenant} AND status='ACTIVE' AND revoked_at IS NULL`):await db.query<{n:number}>(sql`SELECT count(*)::int AS n FROM conversation_members WHERE tenant_id=${tenant} AND conversation_id=${conversation} AND customer_relationship_id IS NOT NULL AND left_at IS NULL`);
+  if(row.n>=(kind==='channel'?limits.channels:kind==='relationship'?limits.contacts:limits.channelContacts))throw communicationError(409,'COLLABORATION_ENTITLEMENT_LIMIT','This business has reached its customer collaboration limit.');
+}

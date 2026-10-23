@@ -5,7 +5,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 /** Six real browsers, three room grants and two independent organisation fixtures. */
-export async function verifyClientMeetingMedia({ cases, provider, reconcile, removeGuest, revokeInvitation, freshGuestJoin, end }) {
+export async function verifyClientMeetingMedia({ cases, provider, reconcile, removeGuest, revokeInvitation, freshGuestJoin, end, artifactDirectory = 'client-meetings', accessLabel = 'Invitation' }) {
   assert.equal(cases.length, 3);
   assert.equal(new Set(cases.map(item => item.tenantId)).size, 2);
   assert.equal(cases[0].tenantId, cases[1].tenantId);
@@ -21,7 +21,8 @@ export async function verifyClientMeetingMedia({ cases, provider, reconcile, rem
   const webRequire = createRequire(path.join(webRoot, 'package.json'));
   const { chromium } = workerRequire('playwright');
   const { createServer } = await import(pathToFileURL(webRequire.resolve('vite')).href);
-  const artifacts = path.join(root, 'artifacts/client-meetings');
+  assert.ok(['client-meetings', 'customer-collaboration-media'].includes(artifactDirectory));
+  const artifacts = path.join(root, 'artifacts', artifactDirectory);
   await mkdir(artifacts, { recursive: true });
   const vite = await createServer({
     root: webRoot, configFile: false,
@@ -101,7 +102,7 @@ export async function verifyClientMeetingMedia({ cases, provider, reconcile, rem
     await cases[1].pages[1].waitForFunction(() => window.media.state() === 'disconnected');
     await assert.rejects(freshGuestJoin(cases[1]));
     for (const page of cases[2].pages) assert.equal(await page.evaluate(() => window.media.state()), 'connected');
-    evidence.push('Invitation revocation removed its admitted guest while the other organisation remained connected');
+    evidence.push(`${accessLabel} revocation removed its admitted guest while the other organisation remained connected`);
 
     await end(cases[0]);
     await cases[0].pages[0].waitForFunction(() => window.media.state() === 'disconnected');

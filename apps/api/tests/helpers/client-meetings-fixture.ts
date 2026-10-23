@@ -8,6 +8,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from '@ks-os/database';
 import type { CommunicationsActor } from '../../src/modules/communications/communications.authorization.js';
 import type { CommunicationsDatabase } from '../../src/modules/communications/communications.database.js';
+import { collaborationIdentityFixtureSql } from './collaboration-schema-fixture.js';
 
 interface QueryConnection {
   query<T extends Record<string, unknown> = Record<string, unknown>>(statement: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -85,11 +86,12 @@ export async function createClientMeetingFixture(t: TestContext, options: { post
     CREATE TABLE customer_client_links(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants);
     CREATE TABLE internal_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,recipient_user_id uuid REFERENCES users,type text,title text,message text,source_type text,source_id uuid,read_at timestamptz,created_at timestamptz DEFAULT now());
     CREATE TABLE integration_connections(id uuid PRIMARY KEY,kind text);
-    CREATE TABLE application_sessions(auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer,revoked_at timestamptz,expires_at timestamptz);
+    CREATE TABLE application_sessions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer,revoked_at timestamptz,expires_at timestamptz);
     CREATE TABLE account_access_audit_events(id uuid DEFAULT gen_random_uuid(),auth_user_id uuid,tenant_id uuid,tenant_user_id uuid,application_context text,action text,outcome text,metadata jsonb);
     CREATE TABLE email_suppressions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),recipient_email_normalized text);
     CREATE TABLE email_outbox(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid,recipient_email text,recipient_name text,reply_to_email text,template_key text,template_version text,template_data_json jsonb,idempotency_key text UNIQUE,status text,scheduled_for timestamptz,next_attempt_at timestamptz,related_entity_type text,related_entity_id uuid,created_at timestamptz DEFAULT now());
   `);
+  await pg.exec(collaborationIdentityFixtureSql);
   for (const migration of [
     '20260730223000_omnichannel_conversations.sql',
     '20260929120000_communications_foundation.sql',
@@ -98,6 +100,7 @@ export async function createClientMeetingFixture(t: TestContext, options: { post
     '20261011100000_communications_files_search_notifications.sql',
     '20261022100000_communications_meetings.sql',
     '20261022220000_communications_client_meetings.sql',
+    '20261023010000_communications_client_channels.sql',
   ]) await pg.exec(readFileSync(new URL(`../../../../packages/database/migrations/${migration}`, import.meta.url), 'utf8'));
   const db = wrap(pg);
   async function seed(tenantId = randomUUID(), name = 'Test staff', role = 'staff'): Promise<CommunicationsActor> {
@@ -107,6 +110,14 @@ export async function createClientMeetingFixture(t: TestContext, options: { post
     await pg.query('INSERT INTO users(id,tenant_id,auth_user_id,name,role) VALUES ($1,$2,$3,$4,$5)', [current.userId, tenantId, current.authUserId, name, role]);
     await pg.query("INSERT INTO application_sessions(auth_session_id,auth_user_id,application_context,selected_tenant_user_id,security_version,expires_at) VALUES ($1,$2,'TENANT',$3,1,$4)", [current.sessionId, current.authUserId, current.userId, current.expiresAt]);
     return current;
+  }
+  async function seedCustomer(email = `contact-${randomUUID()}@example.test`, displayName = 'Customer contact') {
+    const accountId = randomUUID(), identity = { authUserId: randomUUID(), email, sessionId: randomUUID(), issuedAt: new Date(Date.now() - 1000).toISOString(), expiresAt: new Date(Date.now() + 3600000).toISOString() };
+    await pg.query('INSERT INTO auth.users(id,email,email_confirmed_at) VALUES($1,$2,now())', [identity.authUserId, email]);
+    await pg.query('INSERT INTO auth.sessions(id,user_id,not_after) VALUES($1,$2,$3)', [identity.sessionId, identity.authUserId, identity.expiresAt]);
+    await pg.query('INSERT INTO customer_accounts(id,auth_user_id,email_normalized,display_name) VALUES($1,$2,$3,$4)', [accountId, identity.authUserId, email.toLowerCase().trim(), displayName]);
+    await pg.query("INSERT INTO application_sessions(auth_session_id,auth_user_id,application_context,expires_at) VALUES($1,$2,'CUSTOMER',$3)", [identity.sessionId, identity.authUserId, identity.expiresAt]);
+    return { accountId, identity };
   }
   const owner = await seed(undefined, 'Ari Host', 'owner');
   const host = await seed(owner.tenantId, 'Alex Host');
@@ -125,5 +136,5 @@ export async function createClientMeetingFixture(t: TestContext, options: { post
   const appointment = { id: randomUUID(), reference: randomUUID(), tenantId: owner.tenantId };
   const otherAppointment = { id: randomUUID(), reference: randomUUID(), tenantId: other.tenantId };
   for (const [item, staff, client] of [[appointment, host, customer], [otherAppointment, other, otherCustomer]] as const) await pg.query('INSERT INTO appointments(id,public_reference,tenant_id,user_id,client_id,start_time,end_time) VALUES($1,$2,$3,$4,$5,$6,$7)', [item.id,item.reference,item.tenantId,staff.userId,client.id,startsAt,endsAt]);
-  return { pg, db, owner, host, attendee, outsider, other, otherStaff, central, customer, otherCustomer, appointment, otherAppointment, startsAt, endsAt, seed };
+  return { pg, db, owner, host, attendee, outsider, other, otherStaff, central, customer, otherCustomer, appointment, otherAppointment, startsAt, endsAt, seed, seedCustomer };
 }
