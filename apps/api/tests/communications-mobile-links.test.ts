@@ -23,8 +23,17 @@ test('communication links contain only references and recheck access on opening'
   }
   const thread = await links.create(owner, { ...target, kind: 'THREAD' });
   assert.ok(thread.webPath.endsWith('&thread=' + message.id));
+  const meetingId = randomUUID();
+  await pg.query("INSERT INTO communication_meetings(id,tenant_id,conversation_id,created_by,request_id,title,type,provider_room_name,status) VALUES($1,$2,$3,$4,$5,'Private call','AUDIO',$6,'RINGING')", [meetingId, owner.tenantId, conversationId, owner.userId, randomUUID(), 'test-link-' + randomUUID()]);
+  const callTarget = { kind: 'MEETING' as const, tenantId: owner.tenantId, meetingId };
+  const callLink = await links.create(owner, callTarget);
+  assert.equal(callLink.webPath, `/app/chat/${conversationId}?call=${meetingId}`, 'Unscheduled meeting links select the exact call in the existing pre-join screen');
+  const resolvedCall = await links.resolve(outsider, callLink.url);
+  assert.deepEqual(resolvedCall.target, callTarget); assert.equal(resolvedCall.webPath, callLink.webPath); assert.equal(resolvedCall.requiresAdmission, true);
+  assert.equal(Number((await pg.query('SELECT count(*) AS total FROM communication_meeting_sessions WHERE meeting_id=$1', [meetingId])).rows[0].total), 0, 'Resolving a call link does not issue a media session');
   await service.removeMember(owner, conversationId, outsider.userId);
   await assert.rejects(links.resolve(outsider, link.url), { statusCode: 404 });
+  await assert.rejects(links.resolve(outsider, callLink.url), { statusCode: 404 });
   await service.editMessage(owner, conversationId, message.id, null);
   await assert.rejects(links.resolve(owner, link.url), { code: 'LINK_UNAVAILABLE' });
   await pg.query('UPDATE application_sessions SET revoked_at=now() WHERE auth_session_id=$1', [owner.sessionId]);

@@ -101,6 +101,20 @@ describe('restricted client portal', () => {
     await screen.findByRole('heading', { name: meeting.title });
     expect(screen.queryByRole('region', { name: 'Meeting admission' })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Request to join' })).not.toBeInTheDocument(); expect(collaborationApi.requestMeeting).not.toHaveBeenCalled();
   });
+  it('closes pre-join when the selected meeting is cancelled and preserves dismissal', async () => {
+    mount('/customer/collaboration/relationship-a/meetings?meetingId=meeting-a');
+    await screen.findByRole('button', { name: 'Request to join' });
+    vi.mocked(collaborationApi.meetings).mockResolvedValue({ data: [{ ...meeting, status: 'CANCELLED' }], nextCursor: null });
+    act(() => mocks.callbacks.at(-1).event({ type: 'meeting.cancelled', meetingId: meeting.id, conversationId: channel.id }));
+    await screen.findByRole('heading', { name: 'Meeting access closed' });
+    expect(screen.queryByRole('button', { name: 'Request to join' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open meeting' })).not.toBeInTheDocument();
+    expect(collaborationApi.requestMeeting).not.toHaveBeenCalled(); expect(mocks.meetingJoin).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Back to meetings' }));
+    act(() => mocks.callbacks.at(-1).event({ type: 'meeting.updated', meetingId: meeting.id, conversationId: channel.id }));
+    await waitFor(() => expect(collaborationApi.meetings).toHaveBeenCalledTimes(3));
+    expect(screen.queryByRole('region', { name: 'Meeting admission' })).not.toBeInTheDocument();
+  });
 });
 describe('verified invitations', () => {
   it('removes the invitation fragment before handoff and never puts the secret in login links or storage', async () => {

@@ -51,7 +51,7 @@ export class CommunicationLinks {
         // A link only selects an authorised resource. Admission and media token
         // issuance remain separate operations governed by the meeting services.
         webPath = isCustomer(actor) ? `${root}/meetings?meetingId=${target.meetingId}`
-          : meeting.scheduledStartAt ? `/app/meetings/${target.meetingId}` : `/app/chat/${meeting.conversationId}?meetings=1`;
+          : meeting.scheduledStartAt ? `/app/meetings/${target.meetingId}` : `/app/chat/${meeting.conversationId}?call=${target.meetingId}`;
       }
       const url = new URL('/open', origin);
       for (const [key, value] of Object.entries(target)) if (value) url.searchParams.set(key, value);

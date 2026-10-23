@@ -21,6 +21,11 @@ test('authoritative badges reconcile message and notification reads across devic
   assert.equal(await events(), before + 1); assert.equal((await service.badges.count(outsider)).unreadNotifications, 1);
   await service.editMessage(owner, id, first.id, null);
   assert.equal((await service.badges.count(outsider)).unreadNotifications, 0, 'Deleted content does not leave a private unread badge');
-  await pg.query('UPDATE conversation_members SET left_at=now() WHERE conversation_id=$1 AND user_id=$2', [id, outsider.userId]);
+  // Direct participants are intentionally fixed. Exercise membership removal
+  // through a channel that supports it, while retaining the read direct thread.
+  const channel = String((await service.create(owner, { type: 'PRIVATE_CHANNEL', name: 'Badge membership removal', memberUserIds: [outsider.userId] })).id);
+  await service.post(owner, channel, { body: 'Visible until membership is removed' });
+  assert.equal((await service.badges.count(outsider)).unreadConversations, 1);
+  await service.removeMember(owner, channel, outsider.userId);
   assert.deepEqual(await service.badges.count(outsider), { unreadConversations: 0, unreadDirectMessages: 0, unreadClientConversations: 0, unreadNotifications: 0, missedCalls: 0 });
 });

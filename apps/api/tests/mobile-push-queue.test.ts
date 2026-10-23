@@ -31,14 +31,14 @@ test('durable push uses canonical notifications and reauthorizes dispatch', { ti
   const adapter: PushAdapter = { matches: target => target.provider === 'APNS' && target.applicationId === applicationId && target.environment === 'SANDBOX', prepare: async () => { await prepare?.(); }, send: async (target, payload, id) => { deliveries.push({ target, payload, id }); await beforeSend?.(); return outcome; } };
   const devices = new MobileDevices(f.db, { MOBILE_APPLICATIONS_JSON: JSON.stringify([{ applicationId, platform: 'IOS', environment: 'SANDBOX', redirectUri: 'https://mobile.example.test/callback' }]) });
   const push = new MobilePushService(f.db, [adapter]);
-  const setup = async () => {
+  const setup = async (type: 'DIRECT' | 'PRIVATE_CHANNEL' = 'DIRECT') => {
     await f.pg.exec('TRUNCATE mobile_push_deliveries CASCADE'); deliveries.length = 0; outcome = { kind: 'accepted' }; beforeSend = undefined; prepare = undefined;
     const actor = await f.seed(f.owner.tenantId), device = await devices.register(request(actor), { applicationId, platform: 'IOS', environment: 'SANDBOX', installationId: randomUUID() });
     await f.pg.query("UPDATE application_sessions SET hard_expires_at=now()+interval '1 day' WHERE auth_session_id=$1", [actor.sessionId]);
     const binding = await requireMobileDevice(request(actor, String(device.id)), f.db), token = randomBytes(32).toString('hex');
     const registration = await push.register(binding, { provider: 'APNS', channel: 'ALERT', token });
     await push.enableContext(binding, actor);
-    const conversation = String((await chat.create(f.owner, { type: 'DIRECT', name: '', memberUserIds: [actor.userId] })).id);
+    const conversation = String((await chat.create(f.owner, { type, name: type === 'DIRECT' ? '' : 'Membership revocation', memberUserIds: [actor.userId] })).id);
     await chat.discovery.preferences(actor, { browser: false, inApp: true, sound: false, dnd: false, directMessages: true, push: true });
     return { actor, device, binding, token, registration, conversation };
   };
@@ -59,14 +59,14 @@ test('durable push uses canonical notifications and reauthorizes dispatch', { ti
   });
   await t.test('provider logout and membership loss after queuing cancel before external I/O', async () => {
     for (const cause of ['provider', 'membership', 'preferences', 'read']) {
-      const s = await setup(), message = await chat.post(f.owner, s.conversation, { body: 'Queued' });
+      const s = await setup(cause === 'membership' ? 'PRIVATE_CHANNEL' : 'DIRECT'), message = await chat.post(f.owner, s.conversation, { body: 'Queued' });
       prepare = async () => {
         if (cause === 'provider') await f.pg.query('DELETE FROM auth.sessions WHERE id=$1', [s.actor.sessionId]);
-        if (cause === 'membership') await f.pg.query('UPDATE conversation_members SET left_at=now() WHERE conversation_id=$1 AND user_id=$2', [s.conversation, s.actor.userId]);
+        if (cause === 'membership') await chat.removeMember(f.owner, s.conversation, s.actor.userId);
         if (cause === 'preferences') await f.pg.query('UPDATE communication_preferences SET dnd=true WHERE user_id=$1', [s.actor.userId]);
         if (cause === 'read') await chat.read(s.actor, s.conversation, message.id);
       };
-      assert.equal((await worker().process()).cancelled, 1); assert.equal(deliveries.length, 0);
+      assert.equal((await worker().process()).cancelled, 1, cause); assert.equal(deliveries.length, 0, cause);
     }
   });
   await t.test('bounded retries survive worker restarts and expiry', async () => {
@@ -90,6 +90,47 @@ test('durable push uses canonical notifications and reauthorizes dispatch', { ti
     assert.equal(stored.status, 'RETRY'); assert.equal(stored.last_error_code, 'PUSH_PROCESSING_UNAVAILABLE');
     await f.pg.query('UPDATE mobile_push_deliveries SET next_attempt_at=now()');
     assert.equal((await retrying.process()).accepted, 1); assert.equal(deliveries.length, 1);
+  });
+  await t.test('a failed outcome commit waits for sibling provider requests to drain', async () => {
+    const s = await setup();
+    await chat.post(f.owner,s.conversation,{body:'First queued delivery'});
+    await chat.post(f.owner,s.conversation,{body:'Second queued delivery'});
+    let release!: () => void, sending!: () => void, failed!: () => void, calls = 0, failFinish = true;
+    const gate = new Promise<void>(resolve => { release=resolve; });
+    const secondSending = new Promise<void>(resolve => { sending=resolve; });
+    const finishFailed = new Promise<void>(resolve => { failed=resolve; });
+    const fault = new Error('Outcome commit unavailable');
+    const interrupted = intercept(f.db, query => {
+      if (failFinish && query.includes('accepted_at=') && query.includes('RETURNING id')) { failFinish=false; throw fault; }
+    });
+    const db: CommunicationsDatabase = {
+      query: statement => interrupted.query(statement),
+      async transaction(work) {
+        try { return await interrupted.transaction(work); }
+        catch (error) { if(error===fault)failed(); throw error; }
+      },
+    };
+    const delayed: PushAdapter = {
+      matches: adapter.matches,
+      async send() {
+        if (++calls===1) await secondSending;
+        else { sending(); await gate; }
+        return {kind:'accepted'};
+      },
+    };
+    const processing = new MobilePushWorker(db,[delayed]).process();
+    let settled=false;
+    void processing.then(()=>{settled=true;},()=>{settled=true;});
+    try {
+      await Promise.all([secondSending,finishFailed]);
+      // The failing transaction has unwound; allow its promise rejection to
+      // propagate before checking that the still-held HTTP request owns the batch.
+      await new Promise<void>(resolve=>setImmediate(resolve));
+      assert.equal(settled,false,'The scheduler must not start another batch while a sibling delivery is in flight');
+    } finally { release(); await Promise.allSettled([processing]); }
+    await assert.rejects(processing,error=>error===fault);
+    assert.equal(calls,2);
+    assert.equal((await f.pg.query("SELECT count(*)::int AS n FROM mobile_push_deliveries WHERE status='ACCEPTED'")).rows[0].n,1);
   });
   await t.test('a late invalid response cannot remove a rotated token', async () => {
     const s = await setup(); await chat.post(f.owner, s.conversation, { body: 'Rotate while sending' });

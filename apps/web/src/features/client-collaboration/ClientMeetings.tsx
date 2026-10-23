@@ -27,7 +27,7 @@ function MeetingAdmission({ meeting, close }: { meeting: ClientMeeting; close: (
     catch (cause) { if (mounted.current) setError(callingError(cause)); } finally { if (mounted.current) setBusy(false); }
   }
   const ready = session?.state === 'APPROVED' && session.meeting && ['RINGING', 'ACTIVE'].includes(session.meeting.status);
-  const terminal = session && (!session.meeting || ['DENIED', 'EXPIRED', 'CANCELLED', 'REMOVED'].includes(session.state) || ['ENDED', 'CANCELLED', 'FAILED', 'EXPIRED'].includes(session.meeting.status));
+  const terminal = ['ENDED', 'CANCELLED', 'FAILED', 'EXPIRED'].includes(meeting.status) || session && (!session.meeting || ['DENIED', 'EXPIRED', 'CANCELLED', 'REMOVED'].includes(session.state) || ['ENDED', 'CANCELLED', 'FAILED', 'EXPIRED'].includes(session.meeting.status));
   const leave = async () => { if (busy) return; setBusy(true); try { if (gateway) await gateway.leave(); close(); } catch (cause) { setError(callingError(cause)); setBusy(false); } };
   return <section className="client-card client-admission" aria-label="Meeting admission"><h2>{terminal ? 'Meeting access closed' : meeting.title}</h2>{error && <p role="alert">{error}</p>}{terminal ? <p role="status">This meeting or your admission is no longer available.</p> : !credential ? <><p>The host will admit you. Your camera and microphone stay off until you choose to join.</p><button type="button" disabled={busy} onClick={() => void request()}>{busy ? 'Requesting admission…' : 'Request to join'}</button></> : !ready ? <p role="status">{session?.state === 'APPROVED' ? 'You have been admitted. Waiting for the host to open the meeting.' : 'You are in the waiting room. The host has been notified.'}</p> : null}<button type="button" disabled={busy} onClick={() => void leave()}>{credential ? 'Leave meeting' : 'Back to meetings'}</button>{credential && gateway && ready && session?.meeting && !terminal && <Suspense fallback={<p role="status">Opening call controls…</p>}><AdmittedCall credential={credential} session={{ ...session, meeting: session.meeting }} gateway={gateway} close={() => void leave()}/></Suspense>}</section>;
 }
@@ -49,7 +49,7 @@ export function ClientMeetings() {
         // Request to join action. It does not create admission or media credentials.
         openedTarget.current = meetingId;
         const target = visible[0]; setJoining(target && !['ENDED', 'CANCELLED', 'FAILED', 'EXPIRED'].includes(target.status) ? target : null);
-      } else setJoining(current => current && visible.some(item => item.id === current.id) ? current : null);
+      } else setJoining(current => current ? visible.find(item => item.id === current.id) ?? null : null);
     }).catch(() => { if (!controller.signal.aborted) { setRows([]); setJoining(null); setError('Meetings are unavailable or your access has changed.'); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [relationship.id, conversationId, meetingId, revision, refresh]);

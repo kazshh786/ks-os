@@ -40,7 +40,11 @@ export class MobilePushWorker {
       } catch { outcome = { kind: 'retry', code: 'PUSH_PROCESSING_UNAVAILABLE', retryAfterMs: 60000 }; }
       const result = await this.finish(row, outcome); summary[result]++;
     } };
-    await Promise.all(Array.from({ length: Math.min(4, rows.length) }, run));
+    // A failed finish must not release the process-level batch guard while
+    // sibling runners are still doing provider I/O or committing outcomes.
+    const runners = await Promise.allSettled(Array.from({ length: Math.min(4, rows.length) }, run));
+    const failure = runners.find(result => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
     return summary;
   }
   private async finish(row: PushDelivery, outcome: PushOutcome | { kind: 'cancelled'; code: string }): Promise<'accepted' | 'cancelled' | 'retry' | 'failed'> {
