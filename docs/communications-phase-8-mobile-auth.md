@@ -4,7 +4,7 @@ This is backend readiness for future native applications. No native app, product
 
 ## Reuse the existing identity provider
 
-Use the same Supabase project and existing user identities. Use an official provider SDK with Authorization Code + PKCE, an external system browser, a fresh verifier/state per attempt and an exactly registered callback. Production applications use claimed HTTPS Universal/App Links; a configured custom callback scheme is allowed only for sandbox clients. Native apps must never receive the API's service-role key, database credentials or a client secret.
+Use the same Supabase project and existing user identities. Use an official provider SDK with Authorization Code + PKCE, an external system browser, a fresh verifier/state per attempt and an exactly registered callback. Production applications use claimed HTTPS Universal/App Links; sandbox clients may use a custom callback scheme only when it exactly matches the configured reverse-domain application ID. Native apps must never receive the API's service-role key, database credentials or a client secret.
 
 After the callback, the native SDK exchanges the one-use authorization code with Supabase using the verifier retained on that installation. Access and refresh tokens go into iOS Keychain or Android Keystore-backed encrypted storage. Never log them, place them in notification payloads or URL query strings, or store them in ordinary preferences. The OAuth authorization code in the callback is the standard short-lived code, not an access or refresh token. Clear the callback promptly. Existing customer invitation acceptance continues through the first-party browser handoff; native applications must open that secure flow in the system browser, not copy an invitation verifier into a new unreviewed native credential exchange.
 
@@ -41,6 +41,8 @@ Revoking a registered mobile device removes its matching Supabase session and ma
 The migration function owner must have the intended provider-table permissions; grant execution only to the trusted API role. Review the deployed provider schema before release, and verify actual provider refresh failure after revocation on staging. Provider logout and JWT validation are separate: a signed JWT may remain cryptographically valid until expiry, but KSOS rejects its removed provider/device/app session. Notifications already accepted by Apple/Google and previously displayed notifications cannot be recalled.
 
 ## Verification boundary
+
+The private session helper checks provider-row presence, explicit `not_after`, identity confirmation and ban state. Hosted Supabase inactivity/time-box/single-session settings can also be enforced during provider refresh before asynchronous row cleanup; the helper does not reimplement all provider policy. Align provider settings with KSOS hard expiry and verify those cases on the deployed provider during staging. Registered native membership cutoffs use the original provider sign-in time even after JWT renewal or business switching.
 
 GitHub tests exercise production migration SQL, private grants, binding immutability, independently seeded staff/customer/provider sessions, cross-account denial, device-specific/all-other-device revocation, expired foreground credentials versus live background sessions, hard-expiry immutability, provider logout, account cutoffs, account/context rate limits and real PostgreSQL registration/revocation races.
 

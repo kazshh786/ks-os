@@ -42,7 +42,7 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
   // User/context limits supplement the global IP defence. Carrier NAT users do
   // not share one budget once authentication has resolved their identity.
   const mobileRate = (max:number) => ({config:{rateLimit:{max,timeWindow:'1 minute',hook:'preHandler' as const,
-    keyGenerator:(request:FastifyRequest)=>`mobile:${request.authIdentity?.authUserId??request.ip}:${request.applicationContext??'TENANT'}:${request.auth?.tenantId??(request.params as {relationshipId?:string})?.relationshipId??''}:${request.routeOptions.url}`}}});
+    keyGenerator:(request:FastifyRequest)=>`mobile:${request.authIdentity?.authUserId??request.ip}:${request.applicationContext??'TENANT'}:${request.auth?.tenantId??''}:${request.routeOptions.url}`}}});
   app.addHook('onSend', async (_request, reply, payload) => { reply.header('Cache-Control','no-store'); return payload; });
   app.addContentTypeParser('application/octet-stream',{parseAs:'buffer'},(_request,body,done)=>done(null,body));
 

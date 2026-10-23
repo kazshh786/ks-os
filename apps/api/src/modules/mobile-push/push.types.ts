@@ -1,3 +1,5 @@
+import { MobilePushReferencesSchema, type MobilePushReferences } from '@ks-os/contracts';
+
 export type PushProvider = 'APNS' | 'FCM';
 export type PushChannel = 'ALERT' | 'VOIP';
 export type PushEnvironment = 'SANDBOX' | 'PRODUCTION';
@@ -16,11 +18,11 @@ export interface PushAdapter { matches(target: Omit<PushTarget, 'token'>): boole
 export interface ProviderResponse { status: number; headers: Record<string, string | undefined>; body: string }
 export type ProviderRequest = { origin: string; path: string; headers: Record<string, string>; body: string };
 export type ProviderTransport = (request: ProviderRequest) => Promise<ProviderResponse>;
-export const pushReferences = (payload: PushPayload) => Object.fromEntries(Object.entries({
+export const pushReferences = (payload: PushPayload): MobilePushReferences => MobilePushReferencesSchema.parse(Object.fromEntries(Object.entries({
   version: '1', notificationId: payload.notificationId, tenantId: payload.tenantId, kind: payload.kind,
   context: payload.context, conversationId: payload.conversationId, meetingId: payload.meetingId,
   relationshipId: payload.relationshipId, expiresAt: payload.expiresAt,
-}).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+}).filter((entry): entry is [string, string] => typeof entry[1] === 'string')));
 export function retryAfter(value: string | undefined, now = Date.now()): number | undefined {
   if (!value) return undefined;
   const seconds = Number(value); const duration = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - now;

@@ -80,7 +80,7 @@ export function createCustomerChatServices(relationship: ClientRelationship, sco
   const files = createPhase4Api(base, request, authenticatedFetch, (url, body, signal, progress) => uploadWithAuth(url, body, signal, progress, 'CUSTOMER'));
   return { api, files, external: true, notificationName: relationship.businessName, messageLink: value => {
     const root = portalPath(relationship.id);
-    if (isMeetingNotice(value)) return root + '/meetings' + (value.conversationId ? '?' + new URLSearchParams({ conversationId: value.conversationId }) : '');
+    if (isMeetingNotice(value)) return root + '/meetings?' + new URLSearchParams({ ...(value.conversationId ? { conversationId: value.conversationId } : {}), ...(value.meetingId ? { meetingId: value.meetingId } : {}) });
     if (!value.conversationId) return root + '/messages';
     // Customer media always uses the explicit waiting-room admission flow, never a staff call route.
     return messageLink({ ...value, meetingId: null }).replace('/app/chat/', root + '/messages/');

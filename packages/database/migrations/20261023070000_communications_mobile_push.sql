@@ -73,12 +73,21 @@ CREATE TRIGGER enqueue_mobile_push AFTER INSERT ON internal_notifications FOR EA
 CREATE FUNCTION revoke_mobile_push() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  IF NEW.revoked_at IS NOT NULL AND OLD.revoked_at IS NULL THEN
-  UPDATE mobile_push_registrations SET revoked_at=now(),token_ciphertext='',updated_at=now() WHERE device_id=NEW.id AND revoked_at IS NULL;
-  UPDATE mobile_push_contexts SET enabled=false,updated_at=now() WHERE device_id=NEW.id;
-  UPDATE mobile_push_deliveries SET status='CANCELLED',last_error_code='DEVICE_REVOKED',updated_at=now() WHERE registration_id IN (SELECT id FROM mobile_push_registrations WHERE device_id=NEW.id) AND status IN ('PENDING','RETRY','PROCESSING');
+  UPDATE public.mobile_push_registrations SET revoked_at=now(),token_ciphertext='',updated_at=now() WHERE device_id=NEW.id AND revoked_at IS NULL;
+  UPDATE public.mobile_push_contexts SET enabled=false,updated_at=now() WHERE device_id=NEW.id;
+  UPDATE public.mobile_push_deliveries SET status='CANCELLED',last_error_code='DEVICE_REVOKED',updated_at=now() WHERE registration_id IN (SELECT id FROM public.mobile_push_registrations WHERE device_id=NEW.id) AND status IN ('PENDING','RETRY','PROCESSING');
  END IF; RETURN NEW;
 END $$;
 CREATE TRIGGER revoke_mobile_push AFTER UPDATE OF revoked_at ON mobile_devices FOR EACH ROW EXECUTE FUNCTION revoke_mobile_push();
+-- Provider account erasure removes credentials, but keeps a minimal revoked
+-- binding so a still-signed access JWT cannot become an unregistered web session.
+CREATE FUNCTION revoke_deleted_account_mobile_devices() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
+BEGIN
+ UPDATE public.mobile_devices SET revoked_at=coalesce(revoked_at,now()),revoke_reason='ACCOUNT_DELETED',device_name=NULL,updated_at=now() WHERE auth_user_id=OLD.id;
+ RETURN OLD;
+END $$;
+CREATE TRIGGER revoke_deleted_account_mobile_devices AFTER DELETE ON auth.users FOR EACH ROW EXECUTE FUNCTION public.revoke_deleted_account_mobile_devices();
+REVOKE ALL ON FUNCTION revoke_deleted_account_mobile_devices() FROM PUBLIC,anon,authenticated;
 DO $$ DECLARE name text; BEGIN
  FOREACH name IN ARRAY ARRAY['mobile_push_registrations','mobile_push_contexts','mobile_push_deliveries','mobile_push_attempts'] LOOP
   EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',name);

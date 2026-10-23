@@ -4,6 +4,24 @@ import { ApplicationContextSchema } from './authentication.js';
 export const MobilePushProviderSchema = z.enum(['APNS', 'FCM']);
 export const MobilePushChannelSchema = z.enum(['ALERT', 'VOIP']);
 export const MobilePushApplicationContextSchema = ApplicationContextSchema.extract(['TENANT', 'CUSTOMER']);
+export const MobilePushKindSchema = z.enum([
+  'CHAT_MESSAGE', 'CHAT_MENTION', 'CHAT_THREAD', 'CHAT_INVITATION',
+  'CALL_INCOMING', 'CALL_MISSED',
+  'MEETING_INVITATION', 'MEETING_UPDATED', 'MEETING_CANCELLED', 'MEETING_REMINDER',
+]);
+
+/** Versioned opaque references shared by APNs ksos and FCM data payloads. */
+export const MobilePushReferencesSchema = z.object({
+  version: z.literal('1'),
+  notificationId: z.string().uuid(),
+  tenantId: z.string().uuid(),
+  kind: MobilePushKindSchema,
+  context: MobilePushApplicationContextSchema,
+  relationshipId: z.string().uuid().optional(),
+  conversationId: z.string().uuid().optional(),
+  meetingId: z.string().uuid().optional(),
+  expiresAt: z.string().datetime(),
+}).strict();
 
 /** The device header and verified session determine the application and environment. */
 export const MobilePushRegistrationInputSchema = z.object({
@@ -50,6 +68,8 @@ export const MobilePushDisableContextResponseSchema = z.object({ data: z.object(
 
 export type MobilePushProvider = z.infer<typeof MobilePushProviderSchema>;
 export type MobilePushChannel = z.infer<typeof MobilePushChannelSchema>;
+export type MobilePushKind = z.infer<typeof MobilePushKindSchema>;
+export type MobilePushReferences = z.infer<typeof MobilePushReferencesSchema>;
 export type MobilePushRegistrationInput = z.infer<typeof MobilePushRegistrationInputSchema>;
 export type MobilePushRegistration = z.infer<typeof MobilePushRegistrationSchema>;
 export type MobilePushContextInput = z.infer<typeof MobilePushContextInputSchema>;

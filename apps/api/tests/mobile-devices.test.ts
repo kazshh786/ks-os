@@ -42,6 +42,10 @@ test('mobile devices reuse provider identity with isolated, revocable sessions',
     await assert.rejects(service.register(request(actor),{...registration(),authUserId:randomUUID()}));
     assert.throws(()=>mobileApplications({MOBILE_APPLICATIONS_JSON:JSON.stringify([{...appConfig,environment:'PRODUCTION',redirectUri:'ksos://callback'}])}),{code:'MOBILE_NOT_CONFIGURED'});
     assert.throws(()=>mobileApplications({MOBILE_APPLICATIONS_JSON:JSON.stringify([{...appConfig,redirectUri:'https://mobile.example.test/callback?token=x'}])}),{code:'MOBILE_NOT_CONFIGURED'});
+    for (const redirectUri of ['javascript:alert(1)', 'vbscript:msgbox(1)', 'data:text/html,test', 'file:///callback', 'http://mobile.example.test/callback', 'unrelated.app:/callback']) {
+      assert.throws(() => mobileApplications({ MOBILE_APPLICATIONS_JSON: JSON.stringify([{ ...appConfig, redirectUri }]) }), { code: 'MOBILE_NOT_CONFIGURED' });
+    }
+    assert.equal(mobileApplications({ MOBILE_APPLICATIONS_JSON: JSON.stringify([{ ...appConfig, redirectUri: 'test.ksos.mobile:/callback' }]) })[0].redirectUri, 'test.ksos.mobile:/callback');
   });
   await t.test('separate devices cannot substitute one another even for the same account', async () => {
     const first=await seed(),second=await anotherSession(first),one=await service.register(request(first),registration()),two=await service.register(request(second),registration());

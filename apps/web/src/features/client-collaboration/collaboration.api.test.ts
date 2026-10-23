@@ -19,8 +19,8 @@ describe('customer collaboration service scope', () => {
   });
   it('keeps meeting and fallback notification links inside the selected customer portal', () => {
     const services = createCustomerChatServices(relationship, () => new AbortController().signal);
-    expect(services.messageLink({ conversationId: 'channel-a', meetingId: 'meeting-a', type: 'MEETING_UPDATED', id: 'notification-a' })).toBe('/customer/collaboration/relationship-a/meetings?conversationId=channel-a');
-    expect(services.messageLink({ conversationId: null, meetingId: 'meeting-a', type: 'MEETING_INVITATION' })).toBe('/customer/collaboration/relationship-a/meetings');
+    expect(services.messageLink({ conversationId: 'channel-a', meetingId: 'meeting-a', type: 'MEETING_UPDATED', id: 'notification-a' })).toBe('/customer/collaboration/relationship-a/meetings?conversationId=channel-a&meetingId=meeting-a');
+    expect(services.messageLink({ conversationId: null, meetingId: 'meeting-a', type: 'MEETING_INVITATION' })).toBe('/customer/collaboration/relationship-a/meetings?meetingId=meeting-a');
     expect(services.messageLink({ conversationId: null, type: 'CHAT_INVITATION', id: 'notification-a' })).toBe('/customer/collaboration/relationship-a/messages');
     expect(services.messageLink({ conversationId: 'channel-a', meetingId: 'meeting-a', type: 'CALL_INCOMING', id: 'notification-a' })).toBe('/customer/collaboration/relationship-a/messages/channel-a');
   });

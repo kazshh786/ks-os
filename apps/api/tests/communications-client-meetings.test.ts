@@ -30,7 +30,7 @@ test('client meetings: tenant security, schedules, invitations, admission and re
   const capacity = async (tenantId: string, key: string, limit: number) => f.pg.query("INSERT INTO tenant_entitlement_overrides(tenant_id,entitlement_key,value_json,starts_at,expires_at) VALUES($1,$2,$3,now()-interval '1 minute',now()+interval '1 day')", [tenantId,key,JSON.stringify({limit})]);
   t.beforeEach(async () => {
     provider.liveRooms.clear(); provider.removals.length = 0; provider.issued.length = 0; provider.unavailable = false;
-    await f.pg.exec('TRUNCATE communication_meetings CASCADE; TRUNCATE tenant_plan_assignments,platform_plan_entitlements,tenant_entitlement_overrides,email_outbox,internal_notifications;');
+    await f.pg.exec('TRUNCATE communication_meetings CASCADE; TRUNCATE tenant_plan_assignments,platform_plan_entitlements,tenant_entitlement_overrides,email_outbox; TRUNCATE internal_notifications CASCADE;');
   });
 
   await t.test('guest and invitation records are API-only with database-enforced tenant references', async () => {

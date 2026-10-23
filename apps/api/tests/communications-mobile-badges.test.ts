@@ -5,7 +5,9 @@ import { createClientMeetingFixture } from './helpers/client-meetings-fixture.js
 
 test('authoritative badges reconcile message and notification reads across devices', { timeout: 300000 }, async t => {
   const { db, pg, owner, outsider, other } = await createClientMeetingFixture(t), service = new CommunicationsService(db);
-  const direct = await service.create(owner, { type: 'DIRECT', memberUserIds: [outsider.userId] });
+  const direct = await service.create(owner, { type: 'DIRECT', name: '', memberUserIds: [outsider.userId] });
+  const invitation = (await service.discovery.notifications(outsider)).data.find(row => row.type === 'CHAT_INVITATION');
+  assert.ok(invitation); await service.discovery.readNotification(outsider, invitation.id);
   const id = String(direct.id), first = await service.post(owner, id, { body: 'One' }), second = await service.post(owner, id, { body: 'Two' });
   assert.deepEqual(await service.badges.count(outsider), { unreadConversations: 1, unreadDirectMessages: 2, unreadClientConversations: 0, unreadNotifications: 2, missedCalls: 0 });
   assert.equal((await service.badges.count(owner)).unreadDirectMessages, 0);

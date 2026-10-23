@@ -52,4 +52,9 @@ test('customer push is explicitly enrolled and rechecks the exact tenant relatio
   assert.equal((await worker.process()).accepted, 1); assert.equal(sent[1].relationshipId, relationships[1].actor.userId);
   await f.pg.query('DELETE FROM auth.sessions WHERE id=$1', [sessionId]);
   await assert.rejects(chat.events(relationships[1].actor, null, '0'), { code: 'MOBILE_SESSION_REQUIRED' });
+  await f.pg.query('DELETE FROM auth.users WHERE id=$1', [authUserId]);
+  const erased = (await f.pg.query('SELECT revoked_at,device_name FROM mobile_devices WHERE id=$1', [device.id])).rows[0];
+  assert.ok(erased.revoked_at); assert.equal(erased.device_name, null);
+  assert.ok((await f.pg.query('SELECT token_ciphertext FROM mobile_push_registrations WHERE device_id=$1', [device.id])).rows.every(row => row.token_ciphertext === ''));
+  assert.ok((await f.pg.query('SELECT enabled FROM mobile_push_contexts WHERE device_id=$1', [device.id])).rows.every(row => !row.enabled));
 });

@@ -38,8 +38,8 @@ test('durable push uses canonical notifications and reauthorizes dispatch', { ti
     const binding = await requireMobileDevice(request(actor, String(device.id)), f.db), token = randomBytes(32).toString('hex');
     const registration = await push.register(binding, { provider: 'APNS', channel: 'ALERT', token });
     await push.enableContext(binding, actor);
+    const conversation = String((await chat.create(f.owner, { type: 'DIRECT', name: '', memberUserIds: [actor.userId] })).id);
     await chat.discovery.preferences(actor, { browser: false, inApp: true, sound: false, dnd: false, directMessages: true, push: true });
-    const conversation = String((await chat.create(f.owner, { type: 'DIRECT', memberUserIds: [actor.userId] })).id);
     return { actor, device, binding, token, registration, conversation };
   };
   const worker = () => new MobilePushWorker(f.db, [adapter], { random: () => 0 });

@@ -14,7 +14,7 @@ test('native calls: response binding, canonical notices and current authority',{
  const second={...f.attendee,sessionId:randomUUID()};
  await f.pg.query('INSERT INTO auth.sessions(id,user_id,created_at) VALUES($1,$2,$3)',[second.sessionId,second.authUserId,second.issuedAt]);
  await f.pg.query("INSERT INTO application_sessions(auth_session_id,auth_user_id,application_context,selected_tenant_user_id,security_version,expires_at) VALUES($1,$2,'TENANT',$3,1,$4)",[second.sessionId,second.authUserId,second.userId,second.expiresAt]);
- const create=async()=>{const c=await chat.create(f.owner,{type:'PRIVATE_CHANNEL',name:'Native call',memberUserIds:[f.attendee.userId]});return calls.create(f.owner,String(c.id),{type:'AUDIO',requestId:randomUUID()});};
+ const create=async()=>{const c=await chat.create(f.owner,{type:'PRIVATE_CHANNEL',name:`Native call ${randomUUID()}`,memberUserIds:[f.attendee.userId]});return calls.create(f.owner,String(c.id),{type:'AUDIO',requestId:randomUUID()});};
  const notice=async(id:string,type='CALL_INCOMING')=>(await f.db.query<MeetingNotificationReference&{id:string}>(sql`SELECT id,tenant_id AS "tenantId",recipient_user_id AS "recipientUserId",recipient_customer_relationship_id AS "recipientCustomerRelationshipId",chat_meeting_id AS "meetingId",meeting_version AS "meetingVersion",type,chat_conversation_id AS "conversationId" FROM internal_notifications WHERE chat_meeting_id=${id} AND type=${type} AND recipient_user_id=${f.attendee.userId}`))[0];
  t.beforeEach(async()=>{media.liveRooms.clear();await f.pg.exec('TRUNCATE communication_meetings CASCADE');});
  await t.test('first accepting session wins; other device cannot steal it through join; retries stay idempotent',async()=>{

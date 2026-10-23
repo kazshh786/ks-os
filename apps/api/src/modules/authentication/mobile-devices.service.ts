@@ -20,9 +20,11 @@ export function mobileApplications(env: Record<string, string | undefined> = pro
   const keys = new Set<string>();
   for (const app of applications) {
     const uri = new URL(app.redirectUri), key = `${app.platform}:${app.applicationId}:${app.environment}`;
-    // Production uses claimed HTTPS links. A configured custom scheme is allowed
-    // only for sandbox apps; no wildcard, arbitrary redirects, or credentials.
-    if (keys.has(key) || uri.username || uri.password || uri.search || uri.hash || app.redirectUri.includes('*') || (uri.protocol !== 'https:' && (app.environment !== 'SANDBOX' || ['http:', 'javascript:', 'data:', 'file:'].includes(uri.protocol)))) throw fail(503, 'MOBILE_NOT_CONFIGURED', 'Mobile sign-in is not configured.');
+    // Production uses claimed HTTPS links. Sandbox may use only the explicitly
+    // configured reverse-domain application ID as its custom callback scheme.
+    const allowedScheme = uri.protocol === 'https:' || (app.environment === 'SANDBOX'
+      && /^[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+$/i.test(app.applicationId) && uri.protocol === app.applicationId.toLowerCase() + ':');
+    if (keys.has(key) || uri.username || uri.password || uri.search || uri.hash || app.redirectUri.includes('*') || app.redirectUri !== app.redirectUri.trim() || !allowedScheme) throw fail(503, 'MOBILE_NOT_CONFIGURED', 'Mobile sign-in is not configured.');
     keys.add(key);
   }
   return applications;
