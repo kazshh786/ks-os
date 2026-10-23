@@ -56,7 +56,7 @@ describe('restricted client portal', () => {
     mount('/customer/collaboration/relationship-a/messages/channel-a'); const field = await screen.findByRole('combobox', { name: 'Message Your accounts' }); await userEvent.type(field, 'A mobile reply');
     const toggle = screen.getByRole('button', { name: 'Conversation options' }); expect(toggle).toHaveAttribute('aria-expanded', 'false'); await userEvent.click(toggle); expect(toggle).toHaveAttribute('aria-expanded', 'true'); expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toHaveClass('client-options-open');
     await userEvent.click(toggle); expect(toggle).toHaveAttribute('aria-expanded', 'false'); expect(screen.getByRole('combobox', { name: 'Message Your accounts' })).toBe(field); expect(field).toHaveValue('A mobile reply');
-    await userEvent.click(toggle); await userEvent.click(screen.getByRole('button', { name: 'Files', exact: true })); expect(toggle).toHaveAttribute('aria-expanded', 'false'); expect(screen.getByRole('heading', { name: 'Your accounts' })).toHaveFocus();
+    await userEvent.click(toggle); await userEvent.click(screen.getByRole('button', { name: 'Files' })); expect(toggle).toHaveAttribute('aria-expanded', 'false'); expect(screen.getByRole('heading', { name: 'Your accounts' })).toHaveFocus();
   });
   it('does not mount another relationship supplied in the URL', async () => { mount('/customer/collaboration/unknown/messages/channel-a'); await screen.findByRole('heading', { name: 'Choose a business' }); expect(mocks.channel).not.toHaveBeenCalled(); expect(mocks.callbacks).toHaveLength(0); });
   it('does not restore protected content from a late session refresh after sign out', async () => {
