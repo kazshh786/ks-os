@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { boolean, index, integer, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
-import { internalNotifications, tenants, users } from './schema.js';
-import { customerCollaborationRelationships } from './conversation-schema.js';
+import { customerCollaborationRelationships, internalNotifications, tenants, users } from './schema.js';
 import { mobileDevices } from './mobile-device-schema.js';
 
 // Migration 97 additionally owns principal exclusivity, RLS, scope triggers and queue fan-out.

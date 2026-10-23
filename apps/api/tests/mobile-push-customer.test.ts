@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { randomBytes, randomUUID } from 'node:crypto';
+import type { FastifyRequest } from 'fastify';
+import { MobileDevices, requireMobileDevice } from '../src/modules/authentication/mobile-devices.service.js';
+import { MobilePushService } from '../src/modules/mobile-push/push.service.js';
+import { MobilePushWorker } from '../src/modules/mobile-push/push.worker.js';
+import type { PushAdapter, PushPayload } from '../src/modules/mobile-push/push.types.js';
+import { CommunicationsService } from '../src/modules/communications/communications.service.js';
+import type { CommunicationsActor } from '../src/modules/communications/communications.authorization.js';
+import { createClientMeetingFixture } from './helpers/client-meetings-fixture.js';
+
+test('customer push is explicitly enrolled and rechecks the exact tenant relationship', { timeout: 300000 }, async t => {
+  const f = await createClientMeetingFixture(t), chat = new CommunicationsService(f.db);
+  const old = process.env.INTEGRATION_ENCRYPTION_KEY; process.env.INTEGRATION_ENCRYPTION_KEY = randomBytes(32).toString('hex');
+  t.after(() => { if (old === undefined) delete process.env.INTEGRATION_ENCRYPTION_KEY; else process.env.INTEGRATION_ENCRYPTION_KEY = old; });
+  const authUserId = randomUUID(), account = randomUUID(), sessionId = randomUUID(), applicationId = 'test.ksos.customer';
+  await f.pg.query('INSERT INTO auth.users(id,email_confirmed_at) VALUES($1,now())', [authUserId]);
+  await f.pg.query('INSERT INTO auth.sessions(id,user_id) VALUES($1,$2)', [sessionId, authUserId]);
+  await f.pg.query("INSERT INTO customer_accounts(id,auth_user_id,email_normalized,display_name) VALUES($1,$2,'mobile@example.test','Mobile customer')", [account, authUserId]);
+  await f.pg.query("INSERT INTO application_sessions(auth_session_id,auth_user_id,application_context,expires_at,hard_expires_at) VALUES($1,$2,'CUSTOMER',now()+interval '1 hour',now()+interval '1 day')", [sessionId, authUserId]);
+  const relationships: Array<{ actor: CommunicationsActor; conversation: string }> = [];
+  for (const [staff, client] of [[f.owner, f.customer], [f.other, f.otherCustomer]] as const) {
+    const relationship = randomUUID(), conversation = randomUUID();
+    await f.pg.query('INSERT INTO customer_collaboration_relationships(id,tenant_id,client_id,customer_account_id,created_by) VALUES($1,$2,$3,$4,$5)', [relationship, staff.tenantId, client.id, account, staff.userId]);
+    await f.pg.query("INSERT INTO conversations(id,tenant_id,client_id,primary_channel,customer_display_name,access_mode,conversation_type,name,created_by_user_id,external_client_channel) VALUES($1,$2,$3,'NATIVE','Private client','MEMBERS','CLIENT','Private client',$4,true)", [conversation, staff.tenantId, client.id, staff.userId]);
+    await f.pg.query("INSERT INTO conversation_members(tenant_id,conversation_id,user_id,role) VALUES($1,$2,$3,'OWNER')", [staff.tenantId, conversation, staff.userId]);
+    await f.pg.query("INSERT INTO conversation_members(tenant_id,conversation_id,customer_relationship_id,role) VALUES($1,$2,$3,'EXTERNAL')", [staff.tenantId, conversation, relationship]);
+    relationships.push({ conversation, actor: { tenantId: staff.tenantId, userId: relationship, customerRelationshipId: relationship, customerAccountId: account, kind: 'CUSTOMER', authUserId, sessionId, issuedAt: new Date(Date.now() - 1000).toISOString(), expiresAt: new Date(Date.now() + 3600000).toISOString() } });
+  }
+  const req = (deviceId?: string) => ({ applicationContext: 'CUSTOMER', headers: deviceId ? { 'x-ks-device-id': deviceId } : {}, requireIdentity: () => ({ authUserId, authSessionId: sessionId, issuedAt: relationships[0].actor.issuedAt, expiresAt: relationships[0].actor.expiresAt }) }) as unknown as FastifyRequest;
+  const devices = new MobileDevices(f.db, { MOBILE_APPLICATIONS_JSON: JSON.stringify([{ applicationId, platform: 'ANDROID', environment: 'SANDBOX', redirectUri: 'https://mobile.example.test/callback' }]) });
+  const device = await devices.register(req(), { applicationId, platform: 'ANDROID', environment: 'SANDBOX', installationId: randomUUID() });
+  const binding = await requireMobileDevice(req(String(device.id)), f.db), sent: PushPayload[] = [];
+  const adapter: PushAdapter = { matches: () => true, send: async (_target, payload) => { sent.push(payload); return { kind: 'accepted' }; } };
+  const push = new MobilePushService(f.db, [adapter]), worker = new MobilePushWorker(f.db, [adapter]);
+  await push.register(binding, { provider: 'FCM', channel: 'ALERT', token: randomBytes(32).toString('hex') });
+  for (const r of relationships) await chat.discovery.preferences(r.actor, { browser: false, inApp: true, sound: false, dnd: false, directMessages: true, push: true });
+  await push.enableContext(binding, relationships[0].actor);
+  await chat.post(f.other, relationships[1].conversation, { body: 'Unenrolled business' });
+  assert.equal((await worker.process()).claimed, 0, 'Account membership does not implicitly enable another tenant');
+  await chat.post(f.owner, relationships[0].conversation, { body: 'Confidential client details' });
+  assert.equal((await worker.process()).accepted, 1);
+  assert.equal(sent[0].relationshipId, relationships[0].actor.userId); assert.equal(sent[0].tenantId, f.owner.tenantId);
+  assert.ok(!JSON.stringify(sent[0]).includes('Confidential client details'));
+  await chat.post(f.owner, relationships[0].conversation, { body: 'Queued before revocation' });
+  await f.pg.query("UPDATE customer_collaboration_relationships SET status='REVOKED',revoked_at=now() WHERE id=$1", [relationships[0].actor.userId]);
+  assert.equal((await worker.process()).cancelled, 1); assert.equal(sent.length, 1);
+  await assert.rejects(push.enableContext(binding, relationships[0].actor));
+  await push.enableContext(binding, relationships[1].actor);
+  await chat.post(f.other, relationships[1].conversation, { body: 'Other authorized relationship survives' });
+  assert.equal((await worker.process()).accepted, 1); assert.equal(sent[1].relationshipId, relationships[1].actor.userId);
+  await f.pg.query('DELETE FROM auth.sessions WHERE id=$1', [sessionId]);
+  await assert.rejects(chat.events(relationships[1].actor, null, '0'), { code: 'MOBILE_SESSION_REQUIRED' });
+});

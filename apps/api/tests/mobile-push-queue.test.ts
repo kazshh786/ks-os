@@ -9,9 +9,19 @@ import type { PushAdapter, PushOutcome, PushPayload, PushTarget } from '../src/m
 import { CommunicationsService } from '../src/modules/communications/communications.service.js';
 import { createClientMeetingFixture } from './helpers/client-meetings-fixture.js';
 import type { CommunicationsActor } from '../src/modules/communications/communications.authorization.js';
+import type { CommunicationsDatabase } from '../src/modules/communications/communications.database.js';
+import type { SQL } from '@ks-os/database';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 const applicationId = 'test.ksos.mobile';
 const request = (a: CommunicationsActor, id?: string) => ({ applicationContext: 'TENANT', headers: id ? { 'x-ks-device-id': id } : {}, requireIdentity: () => ({ authUserId: a.authUserId, authSessionId: a.sessionId, issuedAt: a.issuedAt, expiresAt: a.expiresAt, email: 'test@example.test' }) }) as unknown as FastifyRequest;
+function intercept(db: CommunicationsDatabase, before: (query: string) => void | Promise<void>): CommunicationsDatabase {
+  const dialect = new PgDialect();
+  return {
+    async query<T extends Record<string, unknown>>(statement: SQL) { await before(dialect.sqlToQuery(statement).sql); return db.query<T>(statement); },
+    transaction: work => db.transaction(tx => work(intercept(tx, before))),
+  };
+}
 test('durable push uses canonical notifications and reauthorizes dispatch', { timeout: 300000 }, async t => {
   const f = await createClientMeetingFixture(t), chat = new CommunicationsService(f.db);
   const priorKey = process.env.INTEGRATION_ENCRYPTION_KEY; process.env.INTEGRATION_ENCRYPTION_KEY = randomBytes(32).toString('hex');
@@ -68,6 +78,19 @@ test('durable push uses canonical notifications and reauthorizes dispatch', { ti
     await chat.post(f.owner, s.conversation, { body: 'Expire me' }); await f.pg.query("UPDATE mobile_push_deliveries SET expires_at=now()-interval '1 second' WHERE status='PENDING'");
     assert.equal((await worker().process()).claimed, 0); assert.equal(deliveries.length, 2);
   });
+  await t.test('a temporary provider-session lookup failure retries without discarding the notification', async () => {
+    const s = await setup(); await chat.post(f.owner, s.conversation, { body: 'Keep this notification during a database outage' });
+    let unavailable = true;
+    const db = intercept(f.db, query => {
+      if (unavailable && query.includes('public.mobile_provider_session(')) { unavailable = false; throw new Error('Temporary provider session lookup outage'); }
+    });
+    const retrying = new MobilePushWorker(db, [adapter], { random: () => 0 });
+    assert.equal((await retrying.process()).retry, 1); assert.equal(deliveries.length, 0);
+    const stored = (await f.pg.query('SELECT status,last_error_code FROM mobile_push_deliveries')).rows[0];
+    assert.equal(stored.status, 'RETRY'); assert.equal(stored.last_error_code, 'PUSH_PROCESSING_UNAVAILABLE');
+    await f.pg.query('UPDATE mobile_push_deliveries SET next_attempt_at=now()');
+    assert.equal((await retrying.process()).accepted, 1); assert.equal(deliveries.length, 1);
+  });
   await t.test('a late invalid response cannot remove a rotated token', async () => {
     const s = await setup(); await chat.post(f.owner, s.conversation, { body: 'Rotate while sending' });
     const rotated = randomBytes(32).toString('hex'); beforeSend = async () => { await push.register(s.binding, { provider: 'APNS', channel: 'ALERT', token: rotated }); };
@@ -102,4 +125,27 @@ test('PostgreSQL queue leases allow concurrent workers without holding a transac
     await f.db.transaction(async db => { const { sql } = await import('@ks-os/database'); await db.query(sql`SELECT id FROM mobile_push_deliveries FOR UPDATE NOWAIT`); });
   } finally { release(); }
   assert.equal((await first).accepted, 1);
+});
+
+test('PostgreSQL context re-enable cannot resurrect a concurrently revoked device', { timeout: 120000, skip: !process.env.CLIENT_MEETINGS_TEST_DATABASE_URL }, async t => {
+  const f = await createClientMeetingFixture(t, { postgresUrl: process.env.CLIENT_MEETINGS_TEST_DATABASE_URL });
+  const devices = new MobileDevices(f.db, { MOBILE_APPLICATIONS_JSON: JSON.stringify([{ applicationId, platform: 'IOS', environment: 'SANDBOX', redirectUri: 'https://mobile.example.test/callback' }]) });
+  const device = await devices.register(request(f.owner), { applicationId, platform: 'IOS', environment: 'SANDBOX', installationId: randomUUID() });
+  const binding = await requireMobileDevice(request(f.owner, String(device.id)), f.db);
+  const push = new MobilePushService(f.db, []), context = await push.enableContext(binding, f.owner);
+  await push.disableContext(binding, String(context.id));
+  let release!: () => void, reached!: () => void, paused = false;
+  const gate = new Promise<void>(resolve => { release = resolve; }), lockedRead = new Promise<void>(resolve => { reached = resolve; });
+  const delayed = new MobilePushService(intercept(f.db, async query => {
+    if (!paused && /SELECT id FROM mobile_devices[\s\S]+FOR UPDATE/.test(query)) { paused = true; reached(); await gate; }
+  }), []);
+  const enabling = delayed.enableContext(binding, f.owner);
+  try {
+    await Promise.race([lockedRead, enabling.then(() => { throw new Error('Context mutation bypassed the locked device check'); })]);
+    await devices.revoke(request(f.owner), String(device.id));
+    release();
+    await assert.rejects(enabling, { code: 'PUSH_REGISTRATION_NOT_FOUND' });
+    const state = (await f.pg.query('SELECT c.enabled,d.revoked_at FROM mobile_push_contexts c JOIN mobile_devices d ON d.id=c.device_id WHERE c.id=$1', [context.id])).rows[0];
+    assert.equal(state.enabled, false); assert.ok(state.revoked_at);
+  } finally { release(); await Promise.allSettled([enabling]); }
 });

@@ -74,6 +74,33 @@ describe('restricted client portal', () => {
     mocks.meetingSession.mockResolvedValue({ ...guest, state: 'APPROVED', meeting: { ...meeting, status: 'ACTIVE' } }); act(() => mocks.callbacks.at(-1).event({ type: 'meeting.updated', meetingId: meeting.id, conversationId: channel.id })); await userEvent.click(await screen.findByRole('button', { name: 'Join customer call' })); expect(clientMeetingApi).toHaveBeenCalledWith(first.id, meeting.id, expect.objectContaining({ sessionId: guest.sessionId, csrfToken: guest.csrfToken })); expect(mocks.meetingJoin).toHaveBeenCalledWith('join-intent');
     await userEvent.selectOptions(screen.getByLabelText('Business'), second.id); await waitFor(() => expect(mocks.meetingLeave).toHaveBeenCalled()); expect(screen.queryByRole('region', { name: 'Native customer call' })).not.toBeInTheDocument();
   });
+  it('opens only the authorized meeting from a deep link without requesting admission or media', async () => {
+    mount('/customer/collaboration/relationship-a/meetings?meetingId=meeting-a');
+    await screen.findByRole('region', { name: 'Meeting admission' });
+    expect(collaborationApi.meetings).toHaveBeenCalledWith(first.id, 'meetingId=meeting-a', expect.any(AbortSignal));
+    expect(screen.getByRole('button', { name: 'Request to join' })).toBeInTheDocument();
+    expect(collaborationApi.requestMeeting).not.toHaveBeenCalled(); expect(mocks.meetingJoin).not.toHaveBeenCalled(); expect(mocks.gateway).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Back to meetings' }));
+    act(() => mocks.callbacks.at(-1).event({ type: 'meeting.updated', meetingId: meeting.id, conversationId: channel.id }));
+    await waitFor(() => expect(collaborationApi.meetings).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('region', { name: 'Meeting admission' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Show all my meetings' }));
+    await waitFor(() => expect(collaborationApi.meetings).toHaveBeenLastCalledWith(first.id, '', expect.any(AbortSignal)));
+    expect(collaborationApi.requestMeeting).not.toHaveBeenCalled();
+  });
+  it('does not substitute another meeting or open admission for an inaccessible deep-link target', async () => {
+    vi.mocked(collaborationApi.meetings).mockResolvedValue({ data: [], nextCursor: null });
+    mount('/customer/collaboration/relationship-a/meetings?meetingId=missing-meeting');
+    await screen.findByText('This meeting is no longer available or has not been shared with you.');
+    expect(collaborationApi.meetings).toHaveBeenCalledWith(first.id, 'meetingId=missing-meeting', expect.any(AbortSignal));
+    expect(screen.queryByRole('region', { name: 'Meeting admission' })).not.toBeInTheDocument(); expect(collaborationApi.requestMeeting).not.toHaveBeenCalled();
+  });
+  it('shows ended meeting history from a deep link without offering admission', async () => {
+    vi.mocked(collaborationApi.meetings).mockResolvedValue({ data: [{ ...meeting, status: 'ENDED' }], nextCursor: null });
+    mount('/customer/collaboration/relationship-a/meetings?meetingId=meeting-a');
+    await screen.findByRole('heading', { name: meeting.title });
+    expect(screen.queryByRole('region', { name: 'Meeting admission' })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Request to join' })).not.toBeInTheDocument(); expect(collaborationApi.requestMeeting).not.toHaveBeenCalled();
+  });
 });
 describe('verified invitations', () => {
   it('removes the invitation fragment before handoff and never puts the secret in login links or storage', async () => {

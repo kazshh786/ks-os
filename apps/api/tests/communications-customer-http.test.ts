@@ -81,8 +81,16 @@ test('customer HTTP boundary: private invitation handoff, explicit context, scop
     const browser=await app.inject({url:`${base}/sessions/${sessionId}`,headers:{authorization:'Bearer contact','x-ks-application-context':'CUSTOMER',cookie:mediaCookie}});assert.equal(browser.statusCode,403,'A browser without Origin cannot borrow the native exception');
     const bodyDevice=await app.inject({method:'POST',url:`${base}/request`,headers,payload:{conversationId:channel.id,requestId:randomUUID(),deviceId:device.id}});assert.equal(bodyDevice.statusCode,400);
     const publicAttempt=await app.inject({url:`/api/v1/public/meetings/sessions/${sessionId}`,headers});assert.equal(publicAttempt.statusCode,403,'Public guests never inherit native cookie bypass');
+    await meetings.admit(f.owner,meetingId,sessionId,true);
+    const joined=await app.inject({method:'POST',url:`${base}/sessions/${sessionId}/join`,headers,payload:{requestId:randomUUID()}});assert.equal(joined.statusCode,200,joined.body);assert.ok(joined.json().data.token);assert.equal(joined.headers['set-cookie'],undefined);
+    const left=await app.inject({method:'POST',url:`${base}/sessions/${sessionId}/leave`,headers,payload:{}});assert.equal(left.statusCode,200,left.body);
+    const replay=await app.inject({method:'POST',url:`${base}/sessions/${sessionId}/join`,headers,payload:{requestId:randomUUID()}});assert.equal(replay.statusCode,404,replay.body);
+    // The browser flow remains independently usable after the native admission ends.
+    const replacement=await app.inject({method:'POST',url:`${base}/request`,headers:auth,payload:{conversationId:channel.id,requestId:randomUUID()}});assert.equal(replacement.statusCode,200,replacement.body);
+    sessionId=replacement.json().data.sessionId;csrfToken=replacement.json().data.csrfToken;mediaCookie=String(replacement.headers['set-cookie']).split(';')[0];assert.ok(mediaCookie.startsWith('ksos_customer_meeting='));
   });
   await t.test('customer deep links resolve only explicit grants and exact meeting filtering does not broaden discovery',async()=>{
+    const issuedBefore=provider.issued.length;
     const actor=await collaboration.actor(contact.identity,relationshipId),links=new CommunicationLinks(f.db,()=>origin);
     const target={kind:'MEETING' as const,tenantId:f.owner.tenantId,relationshipId,meetingId};
     const resolved=await links.create(actor,target);assert.equal(resolved.webPath,`/customer/collaboration/${relationshipId}/meetings?meetingId=${meetingId}`);assert.equal(resolved.requiresAdmission,true);
@@ -90,7 +98,7 @@ test('customer HTTP boundary: private invitation handoff, explicit context, scop
     const missing=await app.inject({url:`${prefix}/${relationshipId}/meetings?meetingId=${randomUUID()}`,headers:auth});assert.equal(missing.statusCode,200);assert.deepEqual(missing.json().data,[]);
     await f.pg.query('UPDATE communication_meeting_customer_grants SET revoked_at=now() WHERE meeting_id=$1 AND conversation_id=$2',[meetingId,channel.id]);await assert.rejects(links.create(actor,target));
     assert.deepEqual((await meetings.customerList(actor,{meetingId})).data,[]);await f.pg.query('UPDATE communication_meeting_customer_grants SET revoked_at=NULL WHERE meeting_id=$1 AND conversation_id=$2',[meetingId,channel.id]);
-    assert.equal(provider.issued.length,0,'Opening a meeting link does not mint media credentials');
+    assert.equal(provider.issued.length,issuedBefore,'Opening a meeting link does not mint media credentials');
   });
   await t.test('media credentials cannot cross meeting routes or bypass authenticated customer-session revocation',async()=>{
     await meetings.admit(f.owner,meetingId,sessionId,true);

@@ -50,7 +50,7 @@ export function meetingNotificationVisibility(actor:CommunicationsActor,alias='n
   ${actor.kind==='CUSTOMER'?sql`AND EXISTS(SELECT 1 FROM communication_meeting_customer_grants ng JOIN conversations nc ON nc.id=ng.conversation_id AND nc.tenant_id=ng.tenant_id JOIN conversation_members nm ON nm.conversation_id=nc.id AND nm.tenant_id=nc.tenant_id WHERE ng.meeting_id=mn.id AND ng.conversation_id=${n}.chat_conversation_id AND ng.tenant_id=mn.tenant_id AND ng.revoked_at IS NULL AND nc.external_client_channel AND nc.archived_at IS NULL AND nc.client_id=mn.customer_id AND nm.customer_relationship_id=${actor.customerRelationshipId} AND nm.left_at IS NULL)`:sql``})`;
 }
 
-export interface MeetingNotificationReference {tenantId:string;recipientUserId:string|null;recipientCustomerRelationshipId:string|null;meetingId:string;meetingVersion:number;type:string;conversationId:string|null}
+export interface MeetingNotificationReference extends Record<string,unknown> {tenantId:string;recipientUserId:string|null;recipientCustomerRelationshipId:string|null;meetingId:string;meetingVersion:number;type:string;conversationId:string|null}
 /** Delivery is stricter than history. Device/provider/session and preferences are checked by the delivery worker. */
 export async function canDeliverMeetingNotification(db:CommunicationsDatabase,row:MeetingNotificationReference):Promise<boolean>{
  let actor:CommunicationsActor;

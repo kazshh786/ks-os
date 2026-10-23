@@ -13,7 +13,7 @@ import {
 } from '@ks-os/contracts';
 import { supabase } from '../lib/supabase.js';
 import { communicationsDatabase } from '../modules/communications/communications.database.js';
-import { checkRegisteredMobileSession, requireMobileDevice } from '../modules/authentication/mobile-devices.service.js';
+import { checkRegisteredMobileSession, registeredMobileSessionStartedAt, requireMobileDevice } from '../modules/authentication/mobile-devices.service.js';
 
 export interface AuthContext {
   authUserId: string;
@@ -41,6 +41,8 @@ export interface AuthIdentity {
   assuranceLevel: 'aal1' | 'aal2';
   expiresAt: string | null;
   issuedAt: string | null;
+  /** Verified provider creation time for registered native sessions only. */
+  sessionStartedAt?: string;
 }
 
 export interface AgencyAuthContext {
@@ -194,7 +196,7 @@ async function resolveTenant(request: FastifyRequest, claims: Record<string, unk
   const memberships = await db.select().from(users).where(and(
     eq(users.authUserId, authUserId), eq(users.accountStatus, 'ACTIVE'),
   ));
-  const issuedAt = typeof claims.iat === 'number' ? new Date(claims.iat * 1000) : null;
+  const issuedAt = request.authIdentity?.sessionStartedAt ? new Date(request.authIdentity.sessionStartedAt) : typeof claims.iat === 'number' ? new Date(claims.iat * 1000) : null;
   const activeMemberships = [] as typeof memberships;
   for (const membership of memberships) {
     if (membership.sessionsValidAfter && (!issuedAt || issuedAt <= membership.sessionsValidAfter)) continue;
@@ -281,6 +283,11 @@ const authPlugin: FastifyPluginAsync = async fastify => {
     };
     if (!request.applicationContext) return;
     try {
+      if ((request.applicationContext === 'TENANT' || request.applicationContext === 'CUSTOMER') && request.authIdentity.authSessionId) {
+        request.authIdentity.sessionStartedAt = await registeredMobileSessionStartedAt(communicationsDatabase(), {
+          authUserId: request.authIdentity.authUserId, authSessionId: request.authIdentity.authSessionId,
+        }) ?? undefined;
+      }
       if (request.applicationContext === 'AGENCY') await resolveAgency(request, claims);
       if (request.applicationContext === 'TENANT') {
         if (typeof request.headers['x-ks-support-session'] === 'string') {
@@ -297,7 +304,7 @@ const authPlugin: FastifyPluginAsync = async fastify => {
         const current = await getDatabase().execute(sql`SELECT public.customer_provider_session_is_current(${identity.authSessionId}::uuid,${identity.authUserId}::uuid) AS current`);
         if (!current.rows[0]?.current) { request.authIdentity = undefined; return; }
         const [customer] = await getDatabase().select().from(customerAccounts).where(eq(customerAccounts.authUserId, identity.authUserId)).limit(1);
-        const issuedAt = new Date(identity.issuedAt);
+        const issuedAt = new Date(identity.sessionStartedAt ?? identity.issuedAt);
         if (customer?.sessionsValidAfter && (!issuedAt || issuedAt <= customer.sessionsValidAfter)) { request.authIdentity = undefined; return; }
         const contextSession = await ensureApplicationSession({
           request, context: 'CUSTOMER', authUserId: identity.authUserId,

@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["REPLACE_WITH_APPLE_TEAM_ID.REPLACE_WITH_IOS_BUNDLE_ID"],
+        "components": [{"/": "/open", "comment": "KSOS authenticated communication resolver"}]
+      }
+    ]
+  }
+}

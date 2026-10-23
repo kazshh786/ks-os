@@ -42,7 +42,7 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
   // User/context limits supplement the global IP defence. Carrier NAT users do
   // not share one budget once authentication has resolved their identity.
   const mobileRate = (max:number) => ({config:{rateLimit:{max,timeWindow:'1 minute',hook:'preHandler' as const,
-    keyGenerator:(request:FastifyRequest)=>`mobile:${request.authIdentity?.authUserId??request.ip}:${request.applicationContext??'TENANT'}:${request.routeOptions.url}`}}});
+    keyGenerator:(request:FastifyRequest)=>`mobile:${request.authIdentity?.authUserId??request.ip}:${request.applicationContext??'TENANT'}:${request.auth?.tenantId??(request.params as {relationshipId?:string})?.relationshipId??''}:${request.routeOptions.url}`}}});
   app.addHook('onSend', async (_request, reply, payload) => { reply.header('Cache-Control','no-store'); return payload; });
   app.addContentTypeParser('application/octet-stream',{parseAs:'buffer'},(_request,body,done)=>done(null,body));
 
@@ -57,10 +57,10 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
   app.get('/meetings/config',async request=>({data:await service.meetings.config(await actor(request))}));
   app.get('/meetings/incoming',async request=>service.meetings.incoming(await actor(request)));
   app.get('/:conversationId/meetings',async request=>service.meetings.history(await actor(request),params.parse(request.params).conversationId,z.object({before:z.string().uuid().optional()}).strict().parse(request.query).before));
-  app.post('/:conversationId/meetings',{config:{rateLimit:{max:10,timeWindow:'1 minute'}}},async(request,reply)=>reply.code(201).send({data:await service.meetings.create(await actor(request),params.parse(request.params).conversationId,z.object({type:z.enum(['AUDIO','VIDEO']),requestId:z.string().uuid()}).strict().parse(request.body))}));
+  app.post('/:conversationId/meetings',mobileRate(10),async(request,reply)=>reply.code(201).send({data:await service.meetings.create(await actor(request),params.parse(request.params).conversationId,z.object({type:z.enum(['AUDIO','VIDEO']),requestId:z.string().uuid()}).strict().parse(request.body))}));
   app.get('/meetings/:meetingId',async request=>({data:await service.meetings.get(await actor(request),meetingParams.parse(request.params).meetingId)}));
-  app.post('/meetings/:meetingId/invitation',{config:{rateLimit:{max:30,timeWindow:'1 minute'}}},async request=>{const input=z.object({accept:z.boolean(),requestId:z.string().uuid().optional()}).strict().parse(request.body);return {data:await service.meetings.respond(await actor(request),meetingParams.parse(request.params).meetingId,input.accept,input.requestId)};});
-  app.post('/meetings/:meetingId/join',{config:{rateLimit:{max:12,timeWindow:'1 minute'}}},async request=>({data:await service.meetings.join(await actor(request),meetingParams.parse(request.params).meetingId,z.object({requestId:z.string().uuid()}).strict().parse(request.body).requestId)}));
+  app.post('/meetings/:meetingId/invitation',mobileRate(30),async request=>{const input=z.object({accept:z.boolean(),requestId:z.string().uuid().optional()}).strict().parse(request.body);return {data:await service.meetings.respond(await actor(request),meetingParams.parse(request.params).meetingId,input.accept,input.requestId)};});
+  app.post('/meetings/:meetingId/join',mobileRate(12),async request=>({data:await service.meetings.join(await actor(request),meetingParams.parse(request.params).meetingId,z.object({requestId:z.string().uuid()}).strict().parse(request.body).requestId)}));
   app.post('/meetings/:meetingId/leave',async request=>({data:await service.meetings.leave(await actor(request),meetingParams.parse(request.params).meetingId,z.object({sessionId:z.string().uuid()}).strict().parse(request.body).sessionId)}));
   app.post('/meetings/:meetingId/end',async request=>{empty.parse(request.body??{});return {data:await service.meetings.end(await actor(request),meetingParams.parse(request.params).meetingId)};});
   app.post('/meetings/:meetingId/participants/:userId/remove',async request=>{empty.parse(request.body??{});const p=meetingParams.extend({userId:z.string().uuid()}).parse(request.params);return {data:await service.meetings.remove(await actor(request),p.meetingId,p.userId)};});
@@ -88,7 +88,7 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
   app.put('/:conversationId/files/:fileId',{
     bodyLimit:fileLimits().maxBytes,
     onRequest:async request=>{await service.attachments.authorize(await actor(request),fileParams.parse(request.params).conversationId);if(incomingUploads>=2)throw communicationError(429,'UPLOAD_BUSY','Upload capacity is busy. Retry shortly.');incomingUploads++;uploadsInFlight.add(request);request.raw.once('aborted',()=>{if(uploadsInFlight.delete(request))incomingUploads--;});},
-    config:{rateLimit:{max:20,timeWindow:'1 minute'}},
+    ...mobileRate(20),
   },async request=>{
     const {conversationId,fileId}=fileParams.parse(request.params);
     if(!Buffer.isBuffer(request.body))throw communicationError(400,'FILE_BODY','Upload binary file data');
@@ -150,7 +150,7 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
     return { data: await service.removeMember(current, conversationId, userId) };
   });
   app.get('/:conversationId/messages', async request => service.messages(await actor(request), params.parse(request.params).conversationId, NativeMessageQuerySchema.parse(request.query)));
-  app.post('/:conversationId/messages', async (request, reply) => {
+  app.post('/:conversationId/messages', mobileRate(60), async (request, reply) => {
     const current = await actor(request);
     return reply.code(201).send({ data: await service.post(current, params.parse(request.params).conversationId, CreateNativeMessageSchema.parse(request.body)) });
   });

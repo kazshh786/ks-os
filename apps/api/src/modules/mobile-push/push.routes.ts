@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { z } from 'zod';
+import { MobilePushContextInputSchema, MobilePushResourceParamsSchema } from '@ks-os/contracts';
 import { requireMobileDevice } from '../authentication/mobile-devices.service.js';
 import { communicationError } from '../communications/communications.authorization.js';
 import { staffCommunicationsActor } from '../communications/communications.routes.js';
@@ -12,7 +12,7 @@ import type { PushAdapter } from './push.types.js';
 export async function mobilePushRoutes(app: FastifyInstance, options: { db?: CommunicationsDatabase; adapters?: PushAdapter[] } = {}) {
   const db = options.db ?? communicationsDatabase(); let adapters: PushAdapter[];
   try { adapters = options.adapters ?? configuredPushAdapters(); } catch { adapters = []; app.log.warn('Mobile push registration is unavailable because provider configuration is invalid.'); }
-  const service = new MobilePushService(db, adapters), params = z.object({ id: z.string().uuid() });
+  const service = new MobilePushService(db, adapters), params = MobilePushResourceParamsSchema;
   const rate = { config: { rateLimit: { max: 30, timeWindow: '1 minute', hook: 'preHandler' as const, keyGenerator: (request: FastifyRequest) => request.authIdentity?.authUserId ?? request.ip } } };
   app.addHook('onSend', async (_request, reply, body) => { reply.header('Cache-Control', 'no-store'); return body; });
   app.addHook('onClose', async () => { if (!options.adapters) for (const adapter of adapters) adapter.close?.(); });
@@ -22,7 +22,7 @@ export async function mobilePushRoutes(app: FastifyInstance, options: { db?: Com
   app.delete('/registrations/:id', rate, async request => ({ data: await service.revoke(await requireMobileDevice(request, db), params.parse(request.params).id) }));
   app.get('/contexts', rate, async request => ({ data: await service.contexts(await requireMobileDevice(request, db)) }));
   app.post('/contexts', rate, async request => {
-    const device = await requireMobileDevice(request, db), input = z.object({ relationshipId: z.string().uuid().optional() }).strict().parse(request.body);
+    const device = await requireMobileDevice(request, db), input = MobilePushContextInputSchema.parse(request.body);
     if ((device.context === 'CUSTOMER') !== Boolean(input.relationshipId)) throw communicationError(400, 'PUSH_CONTEXT_INVALID', 'Choose an authorised account context.');
     const actor = input.relationshipId ? await new ClientCollaboration(db).actor(collaborationIdentity(request), input.relationshipId) : staffCommunicationsActor(request);
     return { data: await service.enableContext(device, actor) };

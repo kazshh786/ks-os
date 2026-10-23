@@ -4,9 +4,10 @@ import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { ZodError } from 'zod';
-import { MobileDevices, checkRegisteredMobileSession, mobileApplications, requireMobileDevice, validateMobileDeviceSession } from '../src/modules/authentication/mobile-devices.service.js';
+import { MobileDevices, checkRegisteredMobileSession, mobileApplications, registeredMobileSessionStartedAt, requireMobileDevice, validateMobileDeviceSession } from '../src/modules/authentication/mobile-devices.service.js';
 import { mobileDeviceRoutes } from '../src/modules/authentication/mobile-devices.routes.js';
 import { createClientMeetingFixture } from './helpers/client-meetings-fixture.js';
+import { CommunicationsAuthorization } from '../src/modules/communications/communications.authorization.js';
 
 const appConfig = { applicationId: 'test.ksos.mobile', platform: 'IOS' as const, environment: 'SANDBOX' as const, redirectUri: 'https://mobile.example.test/auth/callback' };
 const env = { MOBILE_APPLICATIONS_JSON: JSON.stringify([appConfig]) };
@@ -85,6 +86,33 @@ test('mobile devices reuse provider identity with isolated, revocable sessions',
     await assert.rejects(requireMobileDevice(request(actor,'TENANT',String(device.id)),f.db),{code:'MOBILE_SESSION_REQUIRED'});
     await f.pg.query("UPDATE customer_accounts SET status='SUSPENDED' WHERE id=$1",[accountId]);
     await assert.rejects(validateMobileDeviceSession(f.db,{deviceId:String(device.id),authUserId:actor.authUserId,context:'CUSTOMER'}),{code:'MOBILE_SESSION_REQUIRED'});
+  });
+  await t.test('refresh cannot revive a revoked workspace while another workspace remains valid', async () => {
+    const actor = await seed(), secondUserId = randomUUID();
+    await f.pg.query("INSERT INTO users(id,tenant_id,auth_user_id,name,role) VALUES($1,$2,$3,'Second workspace','owner')", [secondUserId,f.other.tenantId,actor.authUserId]);
+    const device = await service.register(request(actor),registration());
+    const refreshed = {...actor,issuedAt:new Date().toISOString()};
+    const cutoff = new Date(Date.parse(actor.issuedAt)+500).toISOString();
+    await f.pg.query('UPDATE users SET sessions_valid_after=$1 WHERE id=$2',[cutoff,actor.userId]);
+    assert.equal(await registeredMobileSessionStartedAt(f.db,{authUserId:actor.authUserId,authSessionId:actor.sessionId}),actor.issuedAt);
+    // Device management remains available through the unaffected membership.
+    assert.equal((await validateMobileDeviceSession(f.db,{deviceId:String(device.id),authUserId:actor.authUserId,context:'TENANT'})).deviceId,device.id);
+    const auth = new CommunicationsAuthorization(f.db);
+    await assert.rejects(auth.authenticate(refreshed),{code:'AUTH_REQUIRED'});
+    const selected = Object.assign(request(refreshed,'TENANT',String(device.id)),{auth:{tenantUserId:actor.userId,tenantId:actor.tenantId}}) as FastifyRequest;
+    await assert.rejects(requireMobileDevice(selected,f.db),{code:'MOBILE_SESSION_REQUIRED'});
+    await f.pg.query('UPDATE application_sessions SET selected_tenant_user_id=$1 WHERE auth_session_id=$2',[secondUserId,actor.sessionId]);
+    assert.equal((await auth.authenticate({...refreshed,tenantId:f.other.tenantId,userId:secondUserId})).userId,secondUserId);
+    const fresh = await anotherSession({...actor,issuedAt:new Date().toISOString()});
+    await service.register(request(fresh),registration());
+    assert.equal((await auth.authenticate(fresh)).userId,actor.userId,'A new provider sign-in after the cutoff may regain the active membership');
+  });
+  await t.test('customer account cutoff uses provider sign-in time after access-token renewal', async () => {
+    const {identity:actor,accountId}=await f.seedCustomer();
+    const device=await service.register(request(actor,'CUSTOMER'),registration());
+    const startedAt=await registeredMobileSessionStartedAt(f.db,{authUserId:actor.authUserId,authSessionId:actor.sessionId});
+    await f.pg.query('UPDATE customer_accounts SET sessions_valid_after=$1 WHERE id=$2',[startedAt,accountId]);
+    await assert.rejects(requireMobileDevice(request({...actor,issuedAt:new Date(Date.now()+1000).toISOString()},'CUSTOMER',String(device.id)),f.db),{code:'MOBILE_SESSION_REQUIRED'});
   });
   await t.test('revoke others affects only owned mobile sessions and requires the current device binding', async () => {
     const actor=await seed(),second=await anotherSession(actor),browser=await anotherSession(actor),stranger=await seed();

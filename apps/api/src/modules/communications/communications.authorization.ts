@@ -36,8 +36,9 @@ export class CommunicationsAuthorization {
     if (new Date(actor.expiresAt).getTime() <= Date.now()) {
       throw communicationError(401, 'AUTH_REQUIRED', 'Authentication required');
     }
-    await checkRegisteredMobileSession(this.db, { authUserId: actor.authUserId, authSessionId: actor.sessionId,
+    const mobile = await checkRegisteredMobileSession(this.db, { authUserId: actor.authUserId, authSessionId: actor.sessionId,
       context: isCustomer(actor) ? 'CUSTOMER' : 'TENANT', issuedAt: actor.issuedAt, expiresAt: actor.expiresAt });
+    const authenticatedAt = mobile?.authIssuedAt ?? actor.issuedAt;
     if (isCustomer(actor)) {
       await validateCustomerProviderSession(this.db, actor);
       if (actor.userId !== actor.customerRelationshipId || !actor.customerAccountId) throw communicationError(401, 'AUTH_REQUIRED', 'Authentication required');
@@ -48,7 +49,7 @@ export class CommunicationsAuthorization {
           AND a.id=${actor.customerAccountId} AND a.auth_user_id=${actor.authUserId}
           AND r.status='ACTIVE' AND r.revoked_at IS NULL AND a.status='ACTIVE'
           AND t.is_active=true AND t.lifecycle_status NOT IN ('SUSPENDED','OFFBOARDING','OFFBOARDED')
-          AND (a.sessions_valid_after IS NULL OR a.sessions_valid_after < ${actor.issuedAt}::timestamptz)
+          AND (a.sessions_valid_after IS NULL OR a.sessions_valid_after < ${authenticatedAt}::timestamptz)
           AND s.auth_session_id=${actor.sessionId} AND s.application_context='CUSTOMER'
           AND s.revoked_at IS NULL AND s.expires_at>now() LIMIT 1`);
       if (!active) throw communicationError(401, 'AUTH_REQUIRED', 'Authentication required');
@@ -60,7 +61,7 @@ export class CommunicationsAuthorization {
       WHERE u.id=${actor.userId} AND u.tenant_id=${actor.tenantId} AND u.auth_user_id=${actor.authUserId}
         AND u.account_status='ACTIVE' AND t.is_active=true
         AND t.lifecycle_status NOT IN ('SUSPENDED','OFFBOARDING','OFFBOARDED')
-        AND (u.sessions_valid_after IS NULL OR u.sessions_valid_after < ${actor.issuedAt}::timestamptz)
+        AND (u.sessions_valid_after IS NULL OR u.sessions_valid_after < ${authenticatedAt}::timestamptz)
         AND s.auth_session_id=${actor.sessionId} AND s.application_context='TENANT'
         AND s.selected_tenant_user_id=u.id AND s.security_version=u.security_version
         AND s.revoked_at IS NULL AND s.expires_at > now() LIMIT 1`);

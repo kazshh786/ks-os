@@ -8,7 +8,8 @@ import type { SubscribeChat } from './MessageTimeline';
 import { isMeetingNotice,type ChatNotice } from './chat.phase4.api';
 import { useChatServices } from './ChatServices';
 export const shouldAlert=(p:ChatPreferences,notice:ChatNotice,conversationId?:string,focused=false)=>!p.dnd&&!(notice.conversationType==='DIRECT'&&!p.directMessages)&&!(notice.type?.startsWith('CALL_')&&p.incomingCalls===false)&&!(isMeetingNotice(notice)&&p.meetings===false)&&!notice.readAt&&!(focused&&notice.conversationId===conversationId&&!notice.meetingId);
-const noticeLabel=(type:string)=>({CHAT_MENTION:'Mention',CHAT_INVITATION:'Invitation',CHAT_THREAD:'Thread reply',CHAT_MESSAGE:'Message',CALL_INCOMING:'Incoming call',CALL_MISSED:'Missed call',MEETING_INVITATION:'Meeting invitation',MEETING_UPDATED:'Meeting updated',MEETING_CANCELLED:'Meeting cancelled',MEETING_REMINDER:'Meeting reminder'}[type]||'Activity');
+const noticeLabels:Record<string,string>={CHAT_MENTION:'Mention',CHAT_INVITATION:'Invitation',CHAT_THREAD:'Thread reply',CHAT_MESSAGE:'Message',CALL_INCOMING:'Incoming call',CALL_MISSED:'Missed call',MEETING_INVITATION:'Meeting invitation',MEETING_UPDATED:'Meeting updated',MEETING_CANCELLED:'Meeting cancelled',MEETING_REMINDER:'Meeting reminder'};
+const noticeLabel=(type:string)=>noticeLabels[type]||'Activity';
 export async function browserPermission(){
  if(typeof Notification==='undefined')return 'unsupported';
  if(Notification.permission==='denied')return 'denied';
@@ -28,12 +29,13 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
    setRows(page.data);setCursor(page.nextCursor);if(started===preferenceRevision.current&&!saving.current)setPreferences(p);
    for(const row of page.data){
     const fresh=initialized.current&&!seen.current.has(row.id);seen.current.add(row.id);
-    if(!deliver||!fresh||!shouldAlert(p,row,context.current,document.visibilityState==='visible'&&document.hasFocus()))continue;
+    if(!deliver||!fresh||started!==preferenceRevision.current||saving.current||!shouldAlert(p,row,context.current,document.visibilityState==='visible'&&document.hasFocus()))continue;
     // The native call invitation component owns incoming-call banners and browser alerts.
     // Canonical call rows remain in this history without producing a second alert.
     if(row.type==='CALL_INCOMING')continue;
     if(row.conversationId){const mode=await phase4Api.conversationPreference(row.conversationId);
      if(!mounted.current)return;
+     if(started!==preferenceRevision.current||saving.current)continue;
      if(mode.mode==='NONE'||mode.mode==='MENTIONS'&&row.type!=='CHAT_MENTION'&&!isMeetingNotice(row))continue;
     }
     if(p.inApp)setNotice(isMeetingNotice(row)||row.type==='CALL_MISSED'?'New meeting or call activity. Open notifications to view it.':'New Chat activity. Open notifications to view it.');

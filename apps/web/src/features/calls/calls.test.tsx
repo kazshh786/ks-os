@@ -98,6 +98,16 @@ describe('conversation calling', () => {
   });
 });
 describe('incoming calls', () => {
+  it('silences incoming invitations when call notifications are disabled', async () => {
+    vi.mocked(callsApi.incoming).mockResolvedValue([meeting]);
+    vi.mocked(phase4Api.preferences).mockResolvedValue({ inApp: true, browser: true, sound: true, dnd: false, directMessages: true, incomingCalls: false });
+    const alerts = vi.fn();class BrowserAlert {static permission = 'granted';constructor(...args:unknown[]){alerts(...args);}close = vi.fn();}
+    vi.stubGlobal('Notification', BrowserAlert);
+    render(<MemoryRouter><CallWorkspace subscribe={subscribe} revision={0}/></MemoryRouter>);
+    await act(async () => {});
+    expect(callsApi.incoming).toHaveBeenCalled();expect(screen.queryByRole('button', {name:'Accept'})).not.toBeInTheDocument();expect(alerts).not.toHaveBeenCalled();
+    expect(sdk.connect).not.toHaveBeenCalled();expect(sdk.preview).not.toHaveBeenCalled();
+  });
   it('accepts an invitation and opens pre-join without activating devices', async () => {
     vi.mocked(callsApi.incoming).mockResolvedValue([meeting]);
     render(<MemoryRouter><CallWorkspace subscribe={subscribe} revision={0} userId="ada"/></MemoryRouter>);

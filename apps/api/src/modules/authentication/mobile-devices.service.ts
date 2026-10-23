@@ -49,6 +49,21 @@ export async function mobileProviderSessionCurrent(db: CommunicationsDatabase, i
   if (!row?.startedAt) throw denied();
   return iso(row.startedAt);
 }
+/** Resolve the original sign-in before selecting a workspace. A refreshed JWT's
+ * iat must never move an existing native session past a membership cutoff. */
+export async function registeredMobileSessionStartedAt(db: CommunicationsDatabase, input: { authSessionId: string; authUserId: string }): Promise<string | null> {
+  try {
+    const [device] = await db.query<{ authIssuedAt: Date; revokedAt: Date | null }>(sql`SELECT auth_issued_at AS "authIssuedAt",revoked_at AS "revokedAt" FROM mobile_devices WHERE auth_session_id=${input.authSessionId} AND auth_user_id=${input.authUserId}`);
+    if (!device) return null;
+    if (device.revokedAt) throw denied();
+    const startedAt = await mobileProviderSessionCurrent(db, input);
+    if (startedAt !== iso(device.authIssuedAt)) throw denied();
+    return startedAt;
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode) throw error;
+    throw fail(503, 'MOBILE_SESSION_UNAVAILABLE', 'Session verification is temporarily unavailable.');
+  }
+}
 /** Background authorization deliberately checks the refreshable provider session
  * and immutable app hard expiry, not the last access JWT's short expiry. */
 export async function validateMobileDeviceSession(db: CommunicationsDatabase, input: { deviceId: string; authUserId: string; context: Context }): Promise<MobileDeviceBinding> {
@@ -64,6 +79,11 @@ export async function requireMobileDevice(request: FastifyRequest, db: Communica
   if (!parsed.success) throw denied();
   const device = await validateMobileDeviceSession(db, { deviceId: parsed.data, authUserId: actor.authUserId, context: actor.context });
   if (device.authSessionId !== actor.authSessionId) throw denied();
+  if (actor.context === 'TENANT' && request.auth) {
+    const [principal] = await db.query(sql`SELECT id FROM users WHERE id=${request.auth.tenantUserId} AND tenant_id=${request.auth.tenantId} AND auth_user_id=${actor.authUserId}
+      AND account_status='ACTIVE' AND (sessions_valid_after IS NULL OR sessions_valid_after<${device.authIssuedAt}::timestamptz)`);
+    if (!principal) throw denied();
+  }
   const updated = await db.query(sql`UPDATE mobile_devices SET last_seen_at=now(),last_authenticated_at=greatest(last_authenticated_at,${actor.issuedAt}::timestamptz),updated_at=now() WHERE id=${device.deviceId} AND revoked_at IS NULL RETURNING id`);
   if (!updated.length) throw denied();
   return device;
@@ -72,7 +92,7 @@ export async function requireMobileDevice(request: FastifyRequest, db: Communica
 export async function checkRegisteredMobileSession(db: CommunicationsDatabase, actor: MobileIdentity) {
   try {
     const [row] = await db.query<{ id: string }>(sql`SELECT id FROM mobile_devices WHERE auth_session_id=${actor.authSessionId} AND auth_user_id=${actor.authUserId}`);
-    if (row) await validateMobileDeviceSession(db, { deviceId: row.id, authUserId: actor.authUserId, context: actor.context });
+    return row ? await validateMobileDeviceSession(db, { deviceId: row.id, authUserId: actor.authUserId, context: actor.context }) : null;
   } catch (error) {
     if ((error as { statusCode?: number }).statusCode) throw error;
     // The auth plugin must not retain an already resolved staff context when

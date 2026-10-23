@@ -12,10 +12,10 @@ const fail = (statusCode: number, code: string, message: string) => Object.assig
 export class AuthenticationService {
   constructor(private db: ReturnType<typeof getDatabase> = getDatabase()) {}
 
-  private sessionIsCurrent(identity: { issuedAt: string | null }, validAfter: Date | null) {
+  private sessionIsCurrent(identity: { issuedAt: string | null; sessionStartedAt?: string }, validAfter: Date | null) {
     if (!validAfter) return true;
     if (!identity.issuedAt) return false;
-    return new Date(identity.issuedAt) > validAfter;
+    return new Date(identity.sessionStartedAt ?? identity.issuedAt) > validAfter;
   }
 
   private identity(request: FastifyRequest) {

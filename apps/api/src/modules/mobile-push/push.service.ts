@@ -1,18 +1,18 @@
 import { sql } from '@ks-os/database';
-import { z } from 'zod';
+import { MobilePushRegistrationInputSchema as PushRegistrationSchema, type MobilePushRegistrationInput } from '@ks-os/contracts';
 import { validateMobileDeviceSession, type MobileDeviceBinding } from '../authentication/mobile-devices.service.js';
 import { CommunicationsAuthorization, communicationError, customerId, staffId, type CommunicationsActor } from '../communications/communications.authorization.js';
 import type { CommunicationsDatabase } from '../communications/communications.database.js';
 import { encryptSecret, hashSecret } from '../integrations/integration-security.js';
 import type { PushAdapter } from './push.types.js';
 
-export const PushRegistrationSchema = z.object({ provider: z.enum(['APNS', 'FCM']), channel: z.enum(['ALERT', 'VOIP']), token: z.string().min(2).max(4096).refine(value => !/\s/.test(value)) }).strict();
+export { PushRegistrationSchema };
 const fields = sql`id,provider,channel,token_version AS "tokenVersion",last_seen_at AS "lastSeenAt",revoked_at AS "revokedAt",invalidated_at AS "invalidatedAt"`;
 const missing = () => communicationError(404, 'PUSH_REGISTRATION_NOT_FOUND', 'Push registration is unavailable.');
 export class MobilePushService {
   constructor(private db: CommunicationsDatabase, private adapters: PushAdapter[]) {}
   async registrations(device: MobileDeviceBinding) { await validateMobileDeviceSession(this.db, device); return this.db.query(sql`SELECT ${fields} FROM mobile_push_registrations WHERE device_id=${device.deviceId} ORDER BY created_at`); }
-  async register(device: MobileDeviceBinding, input: z.infer<typeof PushRegistrationSchema>) {
+  async register(device: MobileDeviceBinding, input: MobilePushRegistrationInput) {
     input = PushRegistrationSchema.parse(input);
     if ((device.platform === 'IOS') !== (input.provider === 'APNS') || input.provider === 'FCM' && input.channel !== 'ALERT') throw communicationError(400, 'PUSH_PLATFORM_MISMATCH', 'Choose the push provider for this device platform.');
     if (input.provider === 'APNS' && (!/^[a-f\d]{2,512}$/i.test(input.token) || input.token.length % 2)) throw communicationError(400, 'PUSH_TOKEN_FORMAT', 'The push token has an invalid format.');

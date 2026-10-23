@@ -17,6 +17,13 @@ describe('customer collaboration service scope', () => {
     const services = createCustomerChatServices(relationship, () => new AbortController().signal);
     await expect(services.api.people(null)).rejects.toMatchObject({ status: 403 }); expect(fetchWithAuth).not.toHaveBeenCalled(); await services.api.people('channel-a', false, 'Ada'); expect(fetchWithAuth).toHaveBeenCalledWith(expect.stringContaining('/channel-a/members?'), expect.anything());
   });
+  it('keeps meeting and fallback notification links inside the selected customer portal', () => {
+    const services = createCustomerChatServices(relationship, () => new AbortController().signal);
+    expect(services.messageLink({ conversationId: 'channel-a', meetingId: 'meeting-a', type: 'MEETING_UPDATED', id: 'notification-a' })).toBe('/customer/collaboration/relationship-a/meetings?conversationId=channel-a');
+    expect(services.messageLink({ conversationId: null, meetingId: 'meeting-a', type: 'MEETING_INVITATION' })).toBe('/customer/collaboration/relationship-a/meetings');
+    expect(services.messageLink({ conversationId: null, type: 'CHAT_INVITATION', id: 'notification-a' })).toBe('/customer/collaboration/relationship-a/messages');
+    expect(services.messageLink({ conversationId: 'channel-a', meetingId: 'meeting-a', type: 'CALL_INCOMING', id: 'notification-a' })).toBe('/customer/collaboration/relationship-a/messages/channel-a');
+  });
   it('aborts in-flight work when its relationship workspace is replaced', async () => {
     const scope = new AbortController(); const signals: AbortSignal[] = [];
     vi.mocked(fetchWithAuth).mockImplementation((_url, options) => { const captured = options?.signal as AbortSignal; signals.push(captured); return new Promise((_resolve, reject) => captured.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))); });
