@@ -93,7 +93,7 @@ export async function createClientMeetingFixture(t: TestContext, options: { post
     CREATE TABLE customer_client_links(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants);
     CREATE TABLE internal_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,recipient_user_id uuid REFERENCES users,type text,title text,message text,source_type text,source_id uuid,read_at timestamptz,created_at timestamptz DEFAULT now());
     CREATE TABLE integration_connections(id uuid PRIMARY KEY,kind text);
-    CREATE TABLE application_sessions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer,revoked_at timestamptz,expires_at timestamptz);
+    CREATE TABLE application_sessions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),public_reference uuid UNIQUE DEFAULT gen_random_uuid(),auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer DEFAULT 1,assurance_level text DEFAULT 'aal1',device_summary text,ip_hash text,revoked_at timestamptz,revoke_reason text,expires_at timestamptz,created_at timestamptz DEFAULT now(),last_seen_at timestamptz DEFAULT now(),UNIQUE(auth_session_id,application_context));
     CREATE TABLE account_access_audit_events(id uuid DEFAULT gen_random_uuid(),auth_user_id uuid,tenant_id uuid,tenant_user_id uuid,application_context text,action text,outcome text,metadata jsonb,occurred_at timestamptz DEFAULT now());
     CREATE TABLE email_suppressions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),recipient_email_normalized text);
     CREATE TABLE email_outbox(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid,recipient_email text,recipient_name text,reply_to_email text,template_key text,template_version text,template_data_json jsonb,idempotency_key text UNIQUE,status text,scheduled_for timestamptz,next_attempt_at timestamptz,related_entity_type text,related_entity_id uuid,created_at timestamptz DEFAULT now());
@@ -108,12 +108,18 @@ export async function createClientMeetingFixture(t: TestContext, options: { post
     '20261022100000_communications_meetings.sql',
     '20261022220000_communications_client_meetings.sql',
     '20261023010000_communications_client_channels.sql',
+    '20261023060000_mobile_device_sessions.sql',
+    '20261023070000_communications_mobile_push.sql',
+    '20261023080000_mobile_sync.sql',
+    '20261023090000_communications_native_calls.sql',
   ]) await pg.exec(readFileSync(new URL(`../../../../packages/database/migrations/${migration}`, import.meta.url), 'utf8'));
   const db = wrap(pg);
   async function seed(tenantId = randomUUID(), name = 'Test staff', role = 'staff'): Promise<CommunicationsActor> {
     const current = { tenantId, userId: randomUUID(), authUserId: randomUUID(), sessionId: randomUUID(),
       issuedAt: new Date(Date.now() - 1000).toISOString(), expiresAt: new Date(Date.now() + 3600000).toISOString() };
     await pg.query('INSERT INTO tenants(id) VALUES ($1) ON CONFLICT DO NOTHING', [tenantId]);
+    await pg.query('INSERT INTO auth.users(id,email,email_confirmed_at) VALUES($1,$2,now())', [current.authUserId, `staff-${current.authUserId}@example.test`]);
+    await pg.query('INSERT INTO auth.sessions(id,user_id,created_at) VALUES($1,$2,$3)', [current.sessionId,current.authUserId,current.issuedAt]);
     await pg.query('INSERT INTO users(id,tenant_id,auth_user_id,name,role) VALUES ($1,$2,$3,$4,$5)', [current.userId, tenantId, current.authUserId, name, role]);
     await pg.query("INSERT INTO application_sessions(auth_session_id,auth_user_id,application_context,selected_tenant_user_id,security_version,expires_at) VALUES ($1,$2,'TENANT',$3,1,$4)", [current.sessionId, current.authUserId, current.userId, current.expiresAt]);
     return current;

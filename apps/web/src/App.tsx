@@ -3,6 +3,7 @@ import React from 'react';
 const ClientPortal = React.lazy(() => import('./features/client-collaboration/ClientPortal'));
 const ClientInvitation = React.lazy(() => import('./features/client-collaboration/ClientInvitation'));
 const ChatPage = React.lazy(() => import('./features/chat/ChatPage'));
+const CommunicationLinkPage = React.lazy(() => import('./features/chat/CommunicationLinkPage'));
 const MeetingsPage = React.lazy(() => import('./features/meetings/MeetingsPage'));
 const GuestMeetingPage = React.lazy(() => import('./features/meetings/GuestMeetingPage'));
 import ProductOnboardingPage from './features/onboarding/ProductOnboardingPage';
@@ -144,6 +145,7 @@ const AppContent: React.FC = () => {
       )}
 
       <Routes>
+        <Route path="/open" element={<React.Suspense fallback={<p role="status">Opening communication…</p>}><CommunicationLinkPage /></React.Suspense>} />
         <Route path="/login" element={<Login />} />
         <Route path="/agency/login" element={<AgencyLoginPage />} />
         <Route path="/forgot-password" element={<PasswordRecoveryPage context="TENANT" mode="request" />} />

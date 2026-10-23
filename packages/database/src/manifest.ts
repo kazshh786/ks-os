@@ -100,4 +100,8 @@ export const MIGRATION_MANIFEST: MigrationManifestEntry[] = [
   { filename: '20261022100000_communications_meetings.sql', order: 93, description: 'Internal LiveKit meeting lifecycle, private participants, device sessions and verified webhook receipts' },
   { filename: '20261022220000_communications_client_meetings.sql', order: 94, description: 'Tenant scheduled client meetings, individual invitations, guest admissions and shared media session principals' },
   { filename: '20261023010000_communications_client_channels.sql', order: 95, description: 'Explicit customer collaboration relationships, invitation handoffs and tenant-scoped native conversation principals' },
+  { filename: '20261023060000_mobile_device_sessions.sql', order: 96, description: 'Provider-bound mobile devices, immutable hard session expiry and targeted session revocation' },
+  { filename: '20261023070000_communications_mobile_push.sql', order: 97, description: 'Encrypted device push registrations, explicit contexts, durable deliveries and shared preferences' },
+  { filename: '20261023080000_mobile_sync.sql', order: 98, description: 'Committed per-tenant journal positions and safe replay retention boundaries' },
+  { filename: '20261023090000_communications_native_calls.sql', order: 99, description: 'Atomic mobile call response ownership and persisted missed-call state' },
 ];

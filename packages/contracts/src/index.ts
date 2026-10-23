@@ -129,4 +129,6 @@ export * from './work.js';
 export * from './customer-360.js';
 
 export * from './native-communications.js';
+export * from './mobile-communications.js';
+export * from './mobile-authentication.js';
 export * from './invoices.js';

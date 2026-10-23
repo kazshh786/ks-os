@@ -152,6 +152,7 @@ export const conversationMembers = pgTable('conversation_members', {
 }));
 
 export const communicationEvents = pgTable('communication_events', {
+  syncPosition: bigint('sync_position', { mode: 'bigint' }).notNull(),
   actorCustomerRelationshipId: uuid('actor_customer_relationship_id').references(() => customerCollaborationRelationships.id),
   recipientCustomerRelationshipId: uuid('recipient_customer_relationship_id').references(() => customerCollaborationRelationships.id),
   id: bigint('id', { mode: 'bigint' }).generatedAlwaysAsIdentity().primaryKey(),
@@ -197,6 +198,12 @@ export const communicationPreferences=pgTable('communication_preferences',{
  userId:uuid('user_id').unique().references(()=>users.id,{onDelete:'cascade'}),
  browser:boolean('browser').default(false).notNull(),inApp:boolean('in_app').default(true).notNull(),
  sound:boolean('sound').default(false).notNull(),dnd:boolean('dnd').default(false).notNull(),directMessages:boolean('direct_messages').default(true).notNull(),
+});
+
+export const communicationSyncState = pgTable('communication_sync_state', {
+  tenantId: uuid('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
+  position: bigint('position', { mode: 'bigint' }).notNull().default(0n),
+  replayFloor: bigint('replay_floor', { mode: 'bigint' }).notNull().default(0n),
 });
 
 // Migration95 owns lifecycle checks, composite scope FKs and API-only privileges.

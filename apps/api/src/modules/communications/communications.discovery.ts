@@ -4,6 +4,7 @@ import type { ChatPreferences, ChatSearchQuerySchema } from '@ks-os/contracts';
 import { CommunicationsAuthorization, notFound, isCustomer, staffId, customerId, type CommunicationsActor } from './communications.authorization.js';
 import { defaultChatPreferences } from './communications.notifications.js';
 import type { CommunicationsDatabase } from './communications.database.js';
+import { notificationVisibility } from './communications.notification-visibility.js';
 
 export class CommunicationsDiscovery {
  constructor(private db:CommunicationsDatabase){}
@@ -34,13 +35,15 @@ export class CommunicationsDiscovery {
  }
  async preferences(actor:CommunicationsActor,input?:ChatPreferences){
   return this.scoped(actor,async db=>{
-   if(input)await db.query(sql`INSERT INTO communication_preferences(tenant_id,user_id,customer_relationship_id,browser,in_app,sound,dnd,direct_messages)
-     VALUES(${actor.tenantId},${staffId(actor)},${customerId(actor)},${input.browser},${input.inApp},${input.sound},${input.dnd},${input.directMessages})
-     ON CONFLICT(${isCustomer(actor)?sql`customer_relationship_id`:sql`user_id`}) DO UPDATE SET browser=excluded.browser,in_app=excluded.in_app,sound=excluded.sound,dnd=excluded.dnd,direct_messages=excluded.direct_messages`);
+   if(input)await db.query(sql`INSERT INTO communication_preferences(tenant_id,user_id,customer_relationship_id,browser,in_app,sound,dnd,direct_messages,push,meetings,incoming_calls,content_previews)
+     VALUES(${actor.tenantId},${staffId(actor)},${customerId(actor)},${input.browser},${input.inApp},${input.sound},${input.dnd},${input.directMessages},${input.push??false},${input.meetings??true},${input.incomingCalls??true},${input.contentPreviews??false})
+     ON CONFLICT(${isCustomer(actor)?sql`customer_relationship_id`:sql`user_id`}) DO UPDATE SET browser=excluded.browser,in_app=excluded.in_app,sound=excluded.sound,dnd=excluded.dnd,direct_messages=excluded.direct_messages,
+       push=coalesce(${input.push??null}::boolean,communication_preferences.push),meetings=coalesce(${input.meetings??null}::boolean,communication_preferences.meetings),
+       incoming_calls=coalesce(${input.incomingCalls??null}::boolean,communication_preferences.incoming_calls),content_previews=coalesce(${input.contentPreviews??null}::boolean,communication_preferences.content_previews)`);
    if(input)await db.query(sql`INSERT INTO communication_events(tenant_id,conversation_id,type,resource_id,recipient_user_id,recipient_customer_relationship_id)
      SELECT ${actor.tenantId},conversation_id,'notification.preferences_updated',${actor.userId},${staffId(actor)},${customerId(actor)}
      FROM conversation_members WHERE tenant_id=${actor.tenantId} AND coalesce(user_id,customer_relationship_id)=${actor.userId} AND left_at IS NULL LIMIT 1`);
-   const [row]=await db.query(sql`SELECT browser,in_app AS "inApp",sound,dnd,direct_messages AS "directMessages" FROM communication_preferences WHERE tenant_id=${actor.tenantId} AND coalesce(user_id,customer_relationship_id)=${actor.userId}`);
+   const [row]=await db.query(sql`SELECT browser,in_app AS "inApp",sound,dnd,direct_messages AS "directMessages",push,meetings,incoming_calls AS "incomingCalls",content_previews AS "contentPreviews" FROM communication_preferences WHERE tenant_id=${actor.tenantId} AND coalesce(user_id,customer_relationship_id)=${actor.userId}`);
    return row??defaultChatPreferences;
   });
  }
@@ -59,15 +62,13 @@ export class CommunicationsDiscovery {
    let cursor:{at:string;id:string}|undefined;
    if(after)cursor=z.object({at:z.string().datetime(),id:z.string().uuid()}).parse(JSON.parse(Buffer.from(after,'base64url').toString()));
    const rows=await db.query<{id:string;createdAt:string}>(sql`SELECT n.id,n.type,c.conversation_type AS "conversationType",n.chat_conversation_id AS "conversationId",n.chat_message_id AS "messageId",
-     msg.reply_to_message_id AS "parentMessageId",msg.sender_name AS "senderName",left(msg.body,160) AS preview,
-     CASE WHEN c.conversation_type='DIRECT' THEN coalesce(msg.sender_name,'Direct message') ELSE c.name END AS "conversationName",
+     msg.reply_to_message_id AS "parentMessageId",msg.sender_name AS "senderName",left(msg.body,160) AS preview,n.chat_meeting_id AS "meetingId",
+     CASE WHEN c.conversation_type='DIRECT' THEN coalesce(msg.sender_name,'Direct message') ELSE coalesce(c.name,meeting.title,'Meeting') END AS "conversationName",
      n.read_at AS "readAt",to_char(n.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "createdAt"
-     FROM internal_notifications n JOIN conversations c ON c.id=n.chat_conversation_id AND c.tenant_id=n.tenant_id
-     JOIN conversation_members m ON m.conversation_id=c.id AND m.tenant_id=c.tenant_id AND coalesce(m.user_id,m.customer_relationship_id)=${actor.userId} AND m.left_at IS NULL
+     FROM internal_notifications n LEFT JOIN conversations c ON c.id=n.chat_conversation_id AND c.tenant_id=n.tenant_id
+     LEFT JOIN communication_meetings meeting ON meeting.id=n.chat_meeting_id AND meeting.tenant_id=n.tenant_id
      LEFT JOIN conversation_messages msg ON msg.id=n.chat_message_id AND msg.conversation_id=c.id AND msg.deleted_at IS NULL
-     WHERE n.tenant_id=${actor.tenantId} AND coalesce(n.recipient_user_id,n.recipient_customer_relationship_id)=${actor.userId} AND n.source_type='CHAT'
-       AND (NOT ${isCustomer(actor)} OR c.external_client_channel=true)
-       AND (n.chat_message_id IS NULL OR msg.id IS NOT NULL)
+     WHERE ${notificationVisibility(actor)}
        ${cursor?sql`AND (n.created_at,n.id)<(${cursor.at}::timestamptz,${cursor.id}::uuid)`:sql``}
      ORDER BY n.created_at DESC,n.id DESC LIMIT 31`);
    const last=rows[29];
@@ -76,12 +77,11 @@ export class CommunicationsDiscovery {
  }
  async readNotification(actor:CommunicationsActor,id:string){
   return this.scoped(actor,async db=>{
-   const [row]=await db.query<{conversationId:string}>(sql`UPDATE internal_notifications n SET read_at=coalesce(read_at,now())
-    WHERE n.id=${id} AND n.tenant_id=${actor.tenantId} AND coalesce(n.recipient_user_id,n.recipient_customer_relationship_id)=${actor.userId} AND n.source_type='CHAT'
-    AND EXISTS(SELECT 1 FROM conversation_members m JOIN conversations c ON c.id=m.conversation_id AND c.tenant_id=m.tenant_id WHERE m.conversation_id=n.chat_conversation_id AND m.tenant_id=n.tenant_id AND coalesce(m.user_id,m.customer_relationship_id)=${actor.userId} AND m.left_at IS NULL AND (NOT ${isCustomer(actor)} OR c.external_client_channel=true))
-    RETURNING n.chat_conversation_id AS "conversationId"`);
-   if(!row)throw notFound();
-   await db.query(sql`INSERT INTO communication_events(tenant_id,conversation_id,type,resource_id,recipient_user_id,recipient_customer_relationship_id) VALUES(${actor.tenantId},${row.conversationId},'notification.read',${id},${staffId(actor)},${customerId(actor)})`);
+   const [row]=await db.query<{conversationId:string|null;meetingId:string|null}>(sql`UPDATE internal_notifications n SET read_at=now()
+    WHERE n.id=${id} AND n.read_at IS NULL AND ${notificationVisibility(actor)}
+    RETURNING n.chat_conversation_id AS "conversationId",n.chat_meeting_id AS "meetingId"`);
+   if(!row){const existing=await db.query(sql`SELECT n.id FROM internal_notifications n WHERE n.id=${id} AND ${notificationVisibility(actor)}`);if(!existing.length)throw notFound();return {read:true};}
+   await db.query(sql`INSERT INTO communication_events(tenant_id,conversation_id,meeting_id,type,resource_id,recipient_user_id,recipient_customer_relationship_id) VALUES(${actor.tenantId},${row.conversationId},${row.meetingId},'notification.read',${id},${staffId(actor)},${customerId(actor)})`);
    return {read:true};
   });
  }

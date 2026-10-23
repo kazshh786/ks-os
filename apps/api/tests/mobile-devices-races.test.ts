@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import type { FastifyRequest } from 'fastify';
+import { MobileDevices, requireMobileDevice } from '../src/modules/authentication/mobile-devices.service.js';
+import { createClientMeetingFixture } from './helpers/client-meetings-fixture.js';
+const postgresUrl=process.env.CLIENT_MEETINGS_TEST_DATABASE_URL;
+test('mobile devices: PostgreSQL registration and revocation races',{skip:!postgresUrl,timeout:120000},async t=>{
+  const f=await createClientMeetingFixture(t,{postgresUrl}),actor=f.owner;
+  await f.pg.query("UPDATE application_sessions SET hard_expires_at=now()+interval '1 day' WHERE auth_session_id=$1",[actor.sessionId]);
+  const input={applicationId:'test.ksos.races',platform:'IOS',environment:'SANDBOX',installationId:randomUUID()},env={MOBILE_APPLICATIONS_JSON:JSON.stringify([{...input,installationId:undefined,redirectUri:'https://example.test/callback'}])};
+  const one=new MobileDevices(f.db,env),two=new MobileDevices(f.db,env);
+  const request={applicationContext:'TENANT',headers:{},requireIdentity:()=>({authUserId:actor.authUserId,authSessionId:actor.sessionId,issuedAt:actor.issuedAt,expiresAt:actor.expiresAt,email:'verified@example.test',assuranceLevel:'aal1'})} as unknown as FastifyRequest;
+  const [first,second]=await Promise.all([one.register(request,input),two.register(request,input)]);
+  assert.equal(first.id,second.id);assert.equal((await f.pg.query('SELECT count(*)::int AS n FROM mobile_devices')).rows[0].n,1);
+  const current={...request,headers:{'x-ks-device-id':String(first.id)}} as FastifyRequest;
+  const outcomes=await Promise.allSettled([one.revoke(current,String(first.id)),two.register(current,input)]);
+  assert.equal(outcomes[0].status,'fulfilled');
+  await assert.rejects(requireMobileDevice(current,f.db),{code:'MOBILE_SESSION_REQUIRED'});
+  await assert.rejects(two.register(current,input),{code:'MOBILE_SESSION_REQUIRED'});
+  assert.equal((await f.pg.query('SELECT count(*)::int AS n FROM auth.sessions WHERE id=$1',[actor.sessionId])).rows[0].n,0);
+});

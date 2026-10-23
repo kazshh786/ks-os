@@ -1,5 +1,8 @@
 import { CommunicationsMeetings } from './communications.meetings.js';
 import { ClientMeetings } from './communications.client-meetings.js';
+import { CommunicationsSync } from './communications.sync.js';
+import { CommunicationLinks } from './communications.links.js';
+import { CommunicationBadges } from './communications.badges.js';
 import type { MeetingMediaProvider } from './communications.livekit.js';
 import { CommunicationsAttachments,attachmentFields } from './communications.attachments.js';
 import { CommunicationsDiscovery } from './communications.discovery.js';
@@ -39,7 +42,10 @@ export class CommunicationsService {
   readonly attachments:CommunicationsAttachments;
   readonly discovery:CommunicationsDiscovery;
   readonly meetings:CommunicationsMeetings;
-  constructor(private db: CommunicationsDatabase = communicationsDatabase(), options:{storage?:ChatStorage;scan?:FileScan;meetingsProvider?:MeetingMediaProvider}={}) {this.attachments=new CommunicationsAttachments(db,options.storage,options.scan);this.discovery=new CommunicationsDiscovery(db);this.meetings=new CommunicationsMeetings(db,options.meetingsProvider);}
+  readonly sync:CommunicationsSync;
+  readonly links:CommunicationLinks;
+  readonly badges:CommunicationBadges;
+  constructor(private db: CommunicationsDatabase = communicationsDatabase(), options:{storage?:ChatStorage;scan?:FileScan;meetingsProvider?:MeetingMediaProvider}={}) {this.attachments=new CommunicationsAttachments(db,options.storage,options.scan);this.discovery=new CommunicationsDiscovery(db);this.meetings=new CommunicationsMeetings(db,options.meetingsProvider);this.sync=new CommunicationsSync(db);this.links=new CommunicationLinks(db);this.badges=new CommunicationBadges(db);}
 
   private async journalLock(db: CommunicationsDatabase, actor: CommunicationsActor) {
     await db.query(sql`SELECT pg_advisory_xact_lock(hashtextextended(${actor.tenantId}, 8241))`);
@@ -52,7 +58,10 @@ export class CommunicationsService {
   }
 
   async capabilities(actor: CommunicationsActor) {
-    return new CommunicationsAuthorization(this.db).authenticate(actor);
+    return {...await new CommunicationsAuthorization(this.db).authenticate(actor),mobile:{apiVersion:1,
+      incrementalSync:/^[a-f0-9]{64}$/i.test(process.env.MOBILE_SYNC_CURSOR_KEY??''),
+      authoritativeBadges:true,deviceSessions:true,linkResolution:Boolean(process.env.MOBILE_LINK_ORIGIN),
+      idempotentMessageSubmission:true,atomicCallResponses:true,backgroundWebSocketRequired:false}};
   }
 
   async discover(actor: CommunicationsActor, query: z.infer<typeof ChannelDiscoveryQuerySchema>) {

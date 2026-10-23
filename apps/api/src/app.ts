@@ -1,5 +1,8 @@
 import websocket from '@fastify/websocket';
 import { communicationsRoutes } from './modules/communications/communications.routes.js';
+import { mobileDeviceRoutes } from './modules/authentication/mobile-devices.routes.js';
+import { mobilePushRoutes } from './modules/mobile-push/push.routes.js';
+import { startMobilePushWorker } from './modules/mobile-push/push.worker.js';
 import { clientCollaborationRoutes, customerCollaborationRoutes } from './modules/communications/communications.client-collaboration.routes.js';
 import { clientMeetingRoutes, publicMeetingRoutes } from './modules/communications/communications.client-meetings.routes.js';
 import { invoiceRoutes } from './modules/invoices/invoice.routes.js';
@@ -86,6 +89,10 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
       level: env.LOG_LEVEL,
       redact: [
         'req.headers.authorization',
+        'req.headers["x-ks-device-id"]',
+        'req.body.pushToken',
+        'req.body.token',
+        'req.body.installationId',
         'req.headers["x-ks-support-session"]',
         'req.headers["x-site-review-session"]',
         'req.headers["x-fact-finding-session"]',
@@ -247,6 +254,9 @@ export function buildApp(options: { beforeRegister?: (app: FastifyInstance) => v
   fastify.register(teamOperationsRoutes, { prefix: '/api/v1' });
   fastify.register(operationsRoutes, { prefix: '/api/v1/operations/issues' });
   fastify.register(communicationsRoutes, { prefix: '/api/v1/communications/conversations' });
+  fastify.register(mobileDeviceRoutes);
+  fastify.register(mobilePushRoutes, { prefix: '/api/v1/mobile/push' });
+  fastify.register(async app => { startMobilePushWorker(app); });
   fastify.register(clientCollaborationRoutes, { prefix: '/api/v1/client-collaboration' });
   fastify.register(customerCollaborationRoutes, { prefix: '/api/v1/customer/collaboration' });
   fastify.register(clientMeetingRoutes, { prefix: '/api/v1/meetings' });

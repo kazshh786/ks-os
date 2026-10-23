@@ -32,7 +32,7 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
     CREATE TABLE customer_client_links(id uuid PRIMARY KEY,tenant_id uuid REFERENCES tenants);
     CREATE TABLE internal_notifications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid REFERENCES tenants,recipient_user_id uuid REFERENCES users,type text,title text,message text,source_type text,source_id uuid,read_at timestamptz,created_at timestamptz DEFAULT now());
     CREATE TABLE integration_connections(id uuid PRIMARY KEY,kind text);
-    CREATE TABLE application_sessions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer,revoked_at timestamptz,expires_at timestamptz);
+    CREATE TABLE application_sessions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),auth_session_id uuid,auth_user_id uuid,application_context text,selected_tenant_user_id uuid,security_version integer,revoked_at timestamptz,revoke_reason text,created_at timestamptz DEFAULT now(),expires_at timestamptz);
     CREATE TABLE account_access_audit_events(id uuid DEFAULT gen_random_uuid(),auth_user_id uuid,tenant_id uuid,tenant_user_id uuid,application_context text,action text,outcome text,metadata jsonb,occurred_at timestamptz DEFAULT now());
   `);
   await pg.exec(collaborationIdentityFixtureSql);
@@ -48,6 +48,9 @@ test('communications foundation: real PostgreSQL migration, services, HTTP and W
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261022100000_communications_meetings.sql', import.meta.url), 'utf8'));
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261022220000_communications_client_meetings.sql', import.meta.url), 'utf8'));
   await pg.exec(readFileSync(new URL('../../../packages/database/migrations/20261023010000_communications_client_channels.sql', import.meta.url), 'utf8'));
+  for (const migration of ['20261023060000_mobile_device_sessions.sql','20261023070000_communications_mobile_push.sql','20261023080000_mobile_sync.sql','20261023090000_communications_native_calls.sql']) {
+    await pg.exec(readFileSync(new URL('../../../packages/database/migrations/' + migration, import.meta.url), 'utf8'));
+  }
   const dialect = new PgDialect();
   const wrap = (connection: PGlite | Transaction): CommunicationsDatabase => ({
     async query<T extends Record<string, unknown>>(statement: SQL) {

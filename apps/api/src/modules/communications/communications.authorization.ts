@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { effectiveCapabilities, type AccessProfile } from '@ks-os/auth';
 import type { CommunicationsDatabase } from './communications.database.js';
 import { validateCustomerProviderSession } from './communications.customer-provider.js';
+import { checkRegisteredMobileSession } from '../authentication/mobile-devices.service.js';
 
 export const CommunicationsActorSchema = z.object({
   tenantId: z.string().uuid(), userId: z.string().uuid(), authUserId: z.string().uuid(),
@@ -35,6 +36,8 @@ export class CommunicationsAuthorization {
     if (new Date(actor.expiresAt).getTime() <= Date.now()) {
       throw communicationError(401, 'AUTH_REQUIRED', 'Authentication required');
     }
+    await checkRegisteredMobileSession(this.db, { authUserId: actor.authUserId, authSessionId: actor.sessionId,
+      context: isCustomer(actor) ? 'CUSTOMER' : 'TENANT', issuedAt: actor.issuedAt, expiresAt: actor.expiresAt });
     if (isCustomer(actor)) {
       await validateCustomerProviderSession(this.db, actor);
       if (actor.userId !== actor.customerRelationshipId || !actor.customerAccountId) throw communicationError(401, 'AUTH_REQUIRED', 'Authentication required');

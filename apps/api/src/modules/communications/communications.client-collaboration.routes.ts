@@ -7,6 +7,7 @@ import { communicationError } from './communications.authorization.js';
 import { communicationsRoutes, staffCommunicationsActor } from './communications.routes.js';
 import { collaborationOrigin } from './communications.collaboration-secrets.js';
 import { guestCsrf, sameSecret, secretHash } from './communications.meeting-secrets.js';
+import { requireMobileDevice } from '../authentication/mobile-devices.service.js';
 
 const uuid=z.string().uuid(),empty=z.object({}).strict(),channel=z.object({channelId:uuid}),relationship=z.object({relationshipId:uuid}),meeting=relationship.extend({meetingId:uuid}),guest=meeting.extend({sessionId:uuid});
 const rate=(max:number)=>({config:{rateLimit:{max,timeWindow:'1 minute'}}});
@@ -33,9 +34,10 @@ export async function clientCollaborationRoutes(app:FastifyInstance,options:{ser
   app.delete('/channels/:channelId/meetings/:meetingId',rate(20),async request=>{const p=channel.extend({meetingId:uuid}).parse(request.params);return {data:await meetings.revokeCustomerGrant(staffCommunicationsActor(request),p.channelId,p.meetingId)};});
 }
 
-export async function customerCollaborationRoutes(app:FastifyInstance,options:{service?:ClientCollaboration;meetings?:ClientMeetings;chatService?:CommunicationsService}){
+export async function customerCollaborationRoutes(app:FastifyInstance,options:{service?:ClientCollaboration;meetings?:ClientMeetings;chatService?:CommunicationsService;requireDevice?:typeof requireMobileDevice}){
   const service=options.service??new ClientCollaboration(),meetings=options.meetings??new ClientMeetings();privacy(app);
   const actor=async(request:FastifyRequest)=>service.actor(collaborationIdentity(request),relationship.parse(request.params).relationshipId);
+  const native=async(request:FastifyRequest)=>{if(request.headers['x-ks-device-id']===undefined){origin(request);return false;}const device=await (options.requireDevice??requireMobileDevice)(request);if(device.context!=='CUSTOMER')throw communicationError(403,'MOBILE_CONTEXT_DENIED','Use your customer account.');return true;};
   app.get('/session',rate(60),async request=>({data:await service.session(collaborationIdentity(request))}));
   app.post('/invitations/handoff',{...rate(15),bodyLimit:2048},async(request,reply)=>{
     origin(request);const result=await service.handoff(z.object({invitationToken:z.string().max(100)}).strict().parse(request.body).invitationToken);
@@ -46,13 +48,13 @@ export async function customerCollaborationRoutes(app:FastifyInstance,options:{s
   app.post('/invitations/accept',rate(10),async request=>{origin(request);empty.parse(request.body??{});return {data:await service.accept(collaborationIdentity(request),cookie(request,pendingCookie,/^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/))};});
   app.get('/:relationshipId/meetings',rate(90),async request=>meetings.customerList(await actor(request),z.object({conversationId:uuid.optional(),after:uuid.optional()}).strict().parse(request.query)));
   app.post('/:relationshipId/meetings/:meetingId/request',rate(6),async(request,reply)=>{
-    origin(request);const p=meeting.parse(request.params),input=z.object({conversationId:uuid,requestId:uuid}).strict().parse(request.body);
+    const isNative=await native(request),p=meeting.parse(request.params),input=z.object({conversationId:uuid,requestId:uuid}).strict().parse(request.body);
     const result=await meetings.requestCustomer(await actor(request),p.meetingId,input.conversationId,input.requestId),{credential,...data}=result;
-    reply.header('Set-Cookie',`${guestCookie}=${credential}; Path=/api/v1/customer/collaboration/${p.relationshipId}/meetings/${p.meetingId}/sessions/${result.sessionId}; HttpOnly; SameSite=Lax; Max-Age=32400${collaborationOrigin().startsWith('https:')?'; Secure':''}`);
+    if(!isNative)reply.header('Set-Cookie',`${guestCookie}=${credential}; Path=/api/v1/customer/collaboration/${p.relationshipId}/meetings/${p.meetingId}/sessions/${result.sessionId}; HttpOnly; SameSite=Lax; Max-Age=32400${collaborationOrigin().startsWith('https:')?'; Secure':''}`);
     return {data};
   });
-  app.get('/:relationshipId/meetings/:meetingId/sessions/:sessionId',rate(90),async request=>{origin(request);const p=guest.parse(request.params);return {data:await meetings.customerGuestSession(await actor(request),p.meetingId,p.sessionId,cookie(request,guestCookie,/^[A-Za-z0-9_-]{43}$/),'state')};});
-  app.post('/:relationshipId/meetings/:meetingId/sessions/:sessionId/join',rate(12),async request=>{origin(request);const p=guest.parse(request.params);csrf(request,p.sessionId);return {data:await meetings.customerGuestSession(await actor(request),p.meetingId,p.sessionId,cookie(request,guestCookie,/^[A-Za-z0-9_-]{43}$/),'join',z.object({requestId:uuid}).strict().parse(request.body).requestId)};});
-  app.post('/:relationshipId/meetings/:meetingId/sessions/:sessionId/leave',rate(12),async request=>{origin(request);const p=guest.parse(request.params);csrf(request,p.sessionId);empty.parse(request.body??{});return {data:await meetings.customerGuestSession(await actor(request),p.meetingId,p.sessionId,cookie(request,guestCookie,/^[A-Za-z0-9_-]{43}$/),'leave')};});
+  app.get('/:relationshipId/meetings/:meetingId/sessions/:sessionId',rate(90),async request=>{const isNative=await native(request),p=guest.parse(request.params),a=await actor(request);return {data:isNative?await meetings.customerNativeGuestSession(a,p.meetingId,p.sessionId,'state'):await meetings.customerGuestSession(a,p.meetingId,p.sessionId,cookie(request,guestCookie,/^[A-Za-z0-9_-]{43}$/),'state')};});
+  app.post('/:relationshipId/meetings/:meetingId/sessions/:sessionId/join',rate(12),async request=>{const isNative=await native(request),p=guest.parse(request.params),a=await actor(request),input=z.object({requestId:uuid}).strict().parse(request.body);if(!isNative)csrf(request,p.sessionId);return {data:isNative?await meetings.customerNativeGuestSession(a,p.meetingId,p.sessionId,'join',input.requestId):await meetings.customerGuestSession(a,p.meetingId,p.sessionId,cookie(request,guestCookie,/^[A-Za-z0-9_-]{43}$/),'join',input.requestId)};});
+  app.post('/:relationshipId/meetings/:meetingId/sessions/:sessionId/leave',rate(12),async request=>{const isNative=await native(request),p=guest.parse(request.params),a=await actor(request);if(!isNative)csrf(request,p.sessionId);empty.parse(request.body??{});return {data:isNative?await meetings.customerNativeGuestSession(a,p.meetingId,p.sessionId,'leave'):await meetings.customerGuestSession(a,p.meetingId,p.sessionId,cookie(request,guestCookie,/^[A-Za-z0-9_-]{43}$/),'leave')};});
   await app.register(communicationsRoutes,{prefix:'/:relationshipId/chat',resolveActor:actor,customer:true,service:options.chatService});
 }

@@ -5,9 +5,11 @@ import { communicationsDatabase, type CommunicationsDatabase } from './communica
 import { LiveKitProvider, type MeetingMediaProvider } from './communications.livekit.js';
 import { ClientMeetings } from './communications.client-meetings.js';
 import { meetingLimits, reserveMeetingCapacity, reserveConnectionCapacity } from './communications.meeting-policy.js';
+import { createMeetingNotifications, invalidateCallNotifications } from './communications.meeting-notifications.js';
+import { mobileProviderSessionCurrent } from '../authentication/mobile-devices.service.js';
 
 export interface MeetingParticipantView extends Record<string,unknown> {userId:string;name:string;role:string;invitationState:string;joinedAt:Date|null;leftAt:Date|null;sessionCount:number}
-export interface MeetingView {id:string;conversationId:string;createdBy:string;status:string;type:string;title:string;createdAt:Date;startedAt:Date|null;endedAt:Date|null;endReason:string|null;expiresAt:Date;organizerName:string;conversationName:string;canManage:boolean;invitationState?:string;participants:MeetingParticipantView[]}
+export interface MeetingView {id:string;conversationId:string;createdBy:string;status:string;type:string;title:string;createdAt:Date;startedAt:Date|null;endedAt:Date|null;endReason:string|null;expiresAt:Date;organizerName:string;conversationName:string;canManage:boolean;invitationState?:string;callState:string;answeredOnThisSession:boolean;participants:MeetingParticipantView[]}
 type Meeting=Record<string,unknown>&{id:string;tenantId:string;conversationId:string;createdBy:string;room:string;status:string;type:string;createdAt:Date;startedAt:Date|null;endedAt:Date|null;expiresAt:Date};
 const fields=sql`m.id,m.tenant_id AS "tenantId",m.conversation_id AS "conversationId",m.created_by AS "createdBy",m.provider_room_name AS room,m.status,m.type,m.title,m.created_at AS "createdAt",m.started_at AS "startedAt",m.ended_at AS "endedAt",m.end_reason AS "endReason",m.expires_at AS "expiresAt",m.scheduled_start_at AS "scheduledStartAt"`;
 const live=['CREATED','RINGING','ACTIVE'];
@@ -31,7 +33,9 @@ export class CommunicationsMeetings {
   const participants=await db.query<MeetingParticipantView>(sql`SELECT p.user_id AS "userId",u.name,p.role,p.invitation_state AS "invitationState",p.joined_at AS "joinedAt",p.left_at AS "leftAt",
    (SELECT count(*)::int FROM communication_meeting_sessions s WHERE s.meeting_id=p.meeting_id AND s.user_id=p.user_id AND s.joined_at IS NOT NULL AND s.left_at IS NULL AND s.revoked_at IS NULL) AS "sessionCount"
    FROM communication_meeting_participants p JOIN users u ON u.id=p.user_id WHERE p.meeting_id=${m.id} ORDER BY p.invited_at,p.user_id LIMIT 200`);
-  return {id:m.id,conversationId:m.conversationId,createdBy:m.createdBy,status:m.status,type:m.type,title:String(m.title),createdAt:m.createdAt,startedAt:m.startedAt,endedAt:m.endedAt,endReason:m.endReason as string|null,expiresAt:m.expiresAt,...names,participants} satisfies MeetingView;
+  const [response]=await db.query<{session:string|null}>(sql`SELECT response_auth_session_id AS session FROM communication_meeting_participants WHERE meeting_id=${m.id} AND user_id=${actor.userId}`);
+  const callState=names.invitationState==='MISSED'?'MISSED':names.invitationState==='DECLINED'?'DECLINED':m.status==='ENDED'?'ENDED':['CANCELLED','FAILED'].includes(m.status)?'CANCELLED':names.invitationState==='ACCEPTED'?'ACCEPTED':new Date(m.expiresAt).getTime()<=Date.now()?'EXPIRED':'RINGING';
+  return {id:m.id,conversationId:m.conversationId,createdBy:m.createdBy,status:m.status,type:m.type,title:String(m.title),createdAt:m.createdAt,startedAt:m.startedAt,endedAt:m.endedAt,endReason:m.endReason as string|null,expiresAt:m.expiresAt,...names,callState,answeredOnThisSession:response?.session===actor.sessionId,participants} satisfies MeetingView;
  }
  async config(actor:CommunicationsActor){await new CommunicationsAuthorization(this.db).authenticate(actor);return {enabled:this.provider.enabled,participantLimit:this.provider.participantLimit,tokenTtlSeconds:this.provider.tokenTtlSeconds};}
  async get(actor:CommunicationsActor,id:string){return this.lock(actor.tenantId,async db=>this.view(db,actor,await this.access(db,actor,id)));}
@@ -49,7 +53,7 @@ export class CommunicationsMeetings {
     JOIN conversation_members cm ON cm.conversation_id=m.conversation_id AND cm.user_id=p.user_id AND cm.left_at IS NULL
     JOIN conversations c ON c.id=m.conversation_id LEFT JOIN communication_preferences pref ON pref.user_id=p.user_id AND pref.tenant_id=m.tenant_id
     WHERE m.tenant_id=${actor.tenantId} AND m.status IN ('RINGING','ACTIVE') AND m.expires_at>now() AND cm.notification_preference='ALL'
-     AND NOT coalesce(pref.dnd,false) AND (coalesce(pref.in_app,true) OR coalesce(pref.browser,false)) AND (c.conversation_type<>'DIRECT' OR coalesce(pref.direct_messages,true))
+     AND NOT coalesce(pref.dnd,false) AND coalesce(pref.incoming_calls,true) AND (coalesce(pref.in_app,true) OR coalesce(pref.browser,false) OR coalesce(pref.push,false)) AND (c.conversation_type<>'DIRECT' OR coalesce(pref.direct_messages,true))
     ORDER BY m.created_at DESC LIMIT 10`);
    return {data:await Promise.all(rows.map(m=>this.view(db,actor,m)))};
   });
@@ -73,6 +77,7 @@ export class CommunicationsMeetings {
    await db.query(sql`INSERT INTO communication_meeting_participants(meeting_id,tenant_id,user_id,role,invitation_state)
     SELECT ${id},${actor.tenantId},cm.user_id,CASE WHEN cm.user_id=${actor.userId} THEN 'ORGANIZER' ELSE 'PARTICIPANT' END,CASE WHEN cm.user_id=${actor.userId} THEN 'ACCEPTED' ELSE 'INVITED' END
     FROM conversation_members cm JOIN users u ON u.id=cm.user_id AND u.account_status='ACTIVE' WHERE cm.conversation_id=${conversationId} AND cm.tenant_id=${actor.tenantId} AND cm.left_at IS NULL ORDER BY (cm.user_id=${actor.userId}) DESC,cm.joined_at LIMIT 200`);
+   await db.query(sql`UPDATE communication_meeting_participants SET response_auth_session_id=${actor.sessionId},response_request_id=${input.requestId},responded_at=now() WHERE meeting_id=${id} AND user_id=${actor.userId}`);
    await this.event(db,meeting,'call.created');return {meeting,fresh:true};
   });
   if(created.fresh){
@@ -83,6 +88,7 @@ export class CommunicationsMeetings {
     if(m.status!=='CREATED'){await this.provider.deleteRoom(m.room);return;}
     await db.query(sql`UPDATE communication_meetings SET status='RINGING' WHERE id=${m.id}`);
     await this.event(db,m,'call.invited');
+    await createMeetingNotifications(db,m.id,'CALL_INCOMING',{excludeUserId:actor.userId});
    });
   }
   return this.get(actor,created.meeting.id);
@@ -92,17 +98,24 @@ export class CommunicationsMeetings {
   await db.query(sql`UPDATE communication_meetings SET status=${status},ended_at=now(),end_reason=${reason},cleanup_pending=true WHERE id=${m.id}`);
   await db.query(sql`UPDATE communication_meeting_sessions SET revoked_at=coalesce(revoked_at,now()),left_at=CASE WHEN joined_at IS NOT NULL THEN coalesce(left_at,now()) ELSE left_at END WHERE meeting_id=${m.id}`);
   await db.query(sql`UPDATE communication_meeting_participants SET left_at=coalesce(left_at,now()) WHERE meeting_id=${m.id} AND joined_at IS NOT NULL`);
+  await invalidateCallNotifications(db,m.id);
+  if(reason==='UNANSWERED'){
+   await db.query(sql`UPDATE communication_meeting_participants SET invitation_state='MISSED',responded_at=now() WHERE meeting_id=${m.id} AND invitation_state='INVITED'`);
+   await createMeetingNotifications(db,m.id,'CALL_MISSED');
+  }
   await this.event(db,m,status==='ENDED'?'call.ended':status==='FAILED'?'call.failed':'call.cancelled');
  }
- async respond(actor:CommunicationsActor,id:string,accept:boolean){
+ async respond(actor:CommunicationsActor,id:string,accept:boolean,requestId?:string){
   return this.lock(actor.tenantId,async db=>{
    const m=await this.access(db,actor,id);
-   if(!['RINGING','ACTIVE'].includes(m.status)||new Date(m.expiresAt).getTime()<=Date.now())throw communicationError(409,'INVITATION_EXPIRED','This call invitation has ended.');
-   const [p]=await db.query<{state:string}>(sql`SELECT invitation_state AS state FROM communication_meeting_participants WHERE meeting_id=${id} AND user_id=${actor.userId}`);
+   const [p]=await db.query<{state:string;session:string|null;request:string|null}>(sql`SELECT invitation_state AS state,response_auth_session_id AS session,response_request_id AS request FROM communication_meeting_participants WHERE meeting_id=${id} AND user_id=${actor.userId}`);
    if(!p||p.state==='REMOVED')throw notFound();
-   if(p.state===(accept?'ACCEPTED':'DECLINED'))return this.view(db,actor,m);
+   if(p.state===(accept?'ACCEPTED':'DECLINED')&&p.session===actor.sessionId)return this.view(db,actor,m);
+   if(p.state==='ACCEPTED'&&p.session&&p.session!==actor.sessionId)throw communicationError(409,'CALL_ANSWERED_ELSEWHERE','This call was answered on another device.');
+   if(!['RINGING','ACTIVE'].includes(m.status)||new Date(m.expiresAt).getTime()<=Date.now())throw communicationError(409,'INVITATION_EXPIRED','This call invitation has ended.');
    if(p.state!=='INVITED')throw communicationError(409,'INVITATION_ANSWERED','This invitation was already answered on another device.');
-   await db.query(sql`UPDATE communication_meeting_participants SET invitation_state=${accept?'ACCEPTED':'DECLINED'},responded_at=now() WHERE meeting_id=${id} AND user_id=${actor.userId}`);
+   await db.query(sql`UPDATE communication_meeting_participants SET invitation_state=${accept?'ACCEPTED':'DECLINED'},responded_at=now(),response_auth_session_id=${actor.sessionId},response_request_id=${requestId??null} WHERE meeting_id=${id} AND user_id=${actor.userId}`);
+   await invalidateCallNotifications(db,id,actor.userId);
    await this.event(db,m,accept?'call.accepted':'call.declined');
    const [c]=await db.query<{type:string}>(sql`SELECT conversation_type AS type FROM conversations WHERE id=${m.conversationId}`);
    if(!accept&&c.type==='DIRECT')await this.finish(db,m,'CANCELLED','DECLINED');
@@ -114,8 +127,11 @@ export class CommunicationsMeetings {
   return this.lock(actor.tenantId,async db=>{
    const m=await this.access(db,actor,id);await new CommunicationsAuthorization(db).requireConversation(actor,m.conversationId,'post');
    if(!['RINGING','ACTIVE'].includes(m.status)||m.status==='RINGING'&&new Date(m.expiresAt).getTime()<=Date.now())throw communicationError(409,'CALL_ENDED','This call is no longer joinable.');
-   const [existingParticipant]=await db.query<{state:string}>(sql`SELECT invitation_state AS state FROM communication_meeting_participants WHERE meeting_id=${id} AND user_id=${actor.userId}`);
+   const [existingParticipant]=await db.query<{state:string;session:string|null}>(sql`SELECT invitation_state AS state,response_auth_session_id AS session FROM communication_meeting_participants WHERE meeting_id=${id} AND user_id=${actor.userId}`);
    if(existingParticipant?.state==='REMOVED')throw communicationError(403,'CALL_REMOVED','You were removed from this call.');
+   if(existingParticipant&&['DECLINED','MISSED'].includes(existingParticipant.state))throw communicationError(409,'INVITATION_ANSWERED','This call invitation is no longer joinable.');
+   if(existingParticipant?.session&&existingParticipant.session!==actor.sessionId)throw communicationError(409,'CALL_ANSWERED_ELSEWHERE','This call was answered on another device.');
+   if(existingParticipant?.state==='INVITED'&&new Date(m.expiresAt).getTime()<=Date.now())throw communicationError(409,'INVITATION_EXPIRED','This call invitation has ended.');
    const [name]=await db.query<{name:string}>(sql`SELECT name FROM users WHERE id=${actor.userId}`);
    let [session]=await db.query<{id:string;identity:string;revokedAt:Date|null;leftAt:Date|null;expiresAt:Date}>(sql`SELECT id,identity,revoked_at AS "revokedAt",left_at AS "leftAt",token_expires_at AS "expiresAt" FROM communication_meeting_sessions WHERE meeting_id=${id} AND user_id=${actor.userId} AND auth_session_id=${actor.sessionId} AND request_id=${requestId}`);
    if(session&&(session.revokedAt||session.leftAt||new Date(session.expiresAt).getTime()<=Date.now()))throw communicationError(409,'JOIN_RETRY_EXPIRED','Start a new join attempt.');
@@ -127,7 +143,9 @@ export class CommunicationsMeetings {
      FROM communication_meeting_sessions WHERE tenant_id=${actor.tenantId}`);
     if(rate.recent>=10)throw communicationError(429,'TOKEN_RATE_LIMIT','Please wait before requesting another call connection.');
     if(rate.devices>=2||rate.capacity>=this.provider.participantLimit)throw communicationError(409,'CALL_CAPACITY','This call has reached its connection limit. Leave another device or try later.');
-    await db.query(sql`INSERT INTO communication_meeting_participants(meeting_id,tenant_id,user_id,role,invitation_state) VALUES(${id},${actor.tenantId},${actor.userId},'PARTICIPANT','ACCEPTED') ON CONFLICT(meeting_id,user_id) DO UPDATE SET invitation_state='ACCEPTED',responded_at=now()`);
+    await db.query(sql`INSERT INTO communication_meeting_participants(meeting_id,tenant_id,user_id,role,invitation_state,response_auth_session_id,response_request_id,responded_at) VALUES(${id},${actor.tenantId},${actor.userId},'PARTICIPANT','ACCEPTED',${actor.sessionId},${requestId},now()) ON CONFLICT(meeting_id,user_id) DO UPDATE SET invitation_state='ACCEPTED',responded_at=coalesce(communication_meeting_participants.responded_at,now()),response_auth_session_id=coalesce(communication_meeting_participants.response_auth_session_id,excluded.response_auth_session_id),response_request_id=coalesce(communication_meeting_participants.response_request_id,excluded.response_request_id)`);
+    await invalidateCallNotifications(db,id,actor.userId);
+    if(existingParticipant?.state!=='ACCEPTED')await this.event(db,m,'call.accepted');
     const sessionId=randomUUID(),identity='ksos_'+sessionId,expiry=new Date(Date.now()+this.provider.tokenTtlSeconds*1000).toISOString();
     await db.query(sql`INSERT INTO communication_meeting_sessions(id,tenant_id,meeting_id,participant_id,user_id,auth_session_id,auth_issued_at,request_id,identity,token_expires_at)
       VALUES(${sessionId},${actor.tenantId},${id},(SELECT id FROM communication_meeting_participants WHERE meeting_id=${id} AND user_id=${actor.userId}),${actor.userId},${actor.sessionId},${actor.issuedAt}::timestamptz,${requestId},${identity},${expiry}::timestamptz)`);
@@ -174,8 +192,8 @@ export class CommunicationsMeetings {
   for(const m of rows)await this.evict(m,userId);
  }
  private async sessionAllowed(db:CommunicationsDatabase,m:Meeting,identity:string){
-  const [session]=await db.query<Record<string,unknown>&{id:string;userId:string;joinedAt:Date|null;leftAt:Date|null;sid:string|null}>(sql`SELECT s.id,s.user_id AS "userId",s.joined_at AS "joinedAt",s.left_at AS "leftAt",s.provider_sid AS sid
-   FROM communication_meeting_sessions s JOIN communication_meeting_participants p ON p.meeting_id=s.meeting_id AND p.user_id=s.user_id AND p.invitation_state<>'REMOVED'
+  const [session]=await db.query<Record<string,unknown>&{id:string;userId:string;authUserId:string;authSessionId:string;joinedAt:Date|null;leftAt:Date|null;sid:string|null}>(sql`SELECT s.id,s.user_id AS "userId",u.auth_user_id AS "authUserId",s.auth_session_id AS "authSessionId",s.joined_at AS "joinedAt",s.left_at AS "leftAt",s.provider_sid AS sid
+   FROM communication_meeting_sessions s JOIN communication_meeting_participants p ON p.meeting_id=s.meeting_id AND p.user_id=s.user_id AND p.invitation_state='ACCEPTED' AND (p.response_auth_session_id IS NULL OR p.response_auth_session_id=s.auth_session_id)
    JOIN conversation_members cm ON cm.conversation_id=${m.conversationId} AND cm.tenant_id=s.tenant_id AND cm.user_id=s.user_id AND cm.left_at IS NULL
    JOIN conversations c ON c.id=cm.conversation_id AND c.archived_at IS NULL
    JOIN users u ON u.id=s.user_id AND u.tenant_id=s.tenant_id AND u.account_status='ACTIVE'
@@ -184,7 +202,7 @@ export class CommunicationsMeetings {
    WHERE s.meeting_id=${m.id} AND s.identity=${identity} AND s.revoked_at IS NULL
     AND (u.sessions_valid_after IS NULL OR u.sessions_valid_after<s.auth_issued_at)
     AND (s.joined_at IS NOT NULL OR s.token_expires_at>now()-interval '30 seconds')`);
-  return session;
+  if(session)try{await mobileProviderSessionCurrent(db,session);}catch{return undefined;}return session;
  }
  private async observe(db:CommunicationsDatabase,m:Meeting,roomExists:boolean,participants:{identity:string;sid:string}[]){
   if(m.scheduledStartAt){await new ClientMeetings(db,this.provider).observeSnapshot(db,m.id,roomExists,participants);return;}
@@ -197,6 +215,10 @@ export class CommunicationsMeetings {
   const [direct]=await db.query<{type:string;answered:boolean}>(sql`SELECT c.conversation_type AS type,EXISTS(SELECT 1 FROM communication_meeting_participants p WHERE p.meeting_id=${m.id} AND p.user_id<>${m.createdBy} AND p.invitation_state='ACCEPTED') AS answered FROM conversations c WHERE c.id=${m.conversationId}`);
   if(direct.type==='DIRECT'&&!direct.answered&&new Date(m.expiresAt).getTime()<Date.now()){
    await this.finish(db,m,'CANCELLED','UNANSWERED');if(roomExists)await this.provider.deleteRoom(m.room);return;
+  }
+  if(new Date(m.expiresAt).getTime()<=Date.now()){
+   const expired=await db.query(sql`UPDATE communication_meeting_participants SET invitation_state='MISSED',responded_at=now() WHERE meeting_id=${m.id} AND invitation_state='INVITED' RETURNING id`);
+   if(expired.length){await invalidateCallNotifications(db,m.id);await createMeetingNotifications(db,m.id,'CALL_MISSED');await this.event(db,m,'call.missed');}
   }
   const identities:string[]=[];
   for(const p of participants){

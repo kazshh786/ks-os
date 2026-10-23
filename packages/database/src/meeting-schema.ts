@@ -15,6 +15,7 @@ export const communicationMeetings=pgTable('communication_meetings',{
  expiresAt:time('expires_at').notNull(),lastReconciledAt:time('last_reconciled_at'),cleanupPending:boolean('cleanup_pending').notNull().default(false),
 },t=>({retry:unique().on(t.tenantId,t.createdBy,t.requestId)}));
 export const communicationMeetingParticipants=pgTable('communication_meeting_participants',{
+ responseAuthSessionId:uuid('response_auth_session_id'),responseRequestId:uuid('response_request_id'),
  id:uuid('id').primaryKey().defaultRandom(),
  meetingId:uuid('meeting_id').notNull().references(()=>communicationMeetings.id),tenantId:uuid('tenant_id').notNull().references(()=>tenants.id),
  userId:uuid('user_id').references(()=>users.id),guestName:text('guest_name'),role:text('role').notNull(),invitationState:text('invitation_state').notNull().default('INVITED'),

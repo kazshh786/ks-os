@@ -60,7 +60,7 @@ export const ChatAttachmentSchema = z.object({
  messageId:z.string().nullable().optional(), conversationId:z.string().optional(), scanStatus:z.string().optional(),
 });
 export type ChatAttachment = z.infer<typeof ChatAttachmentSchema>;
-export const ChatPreferencesSchema=z.object({browser:z.boolean(),inApp:z.boolean(),sound:z.boolean(),dnd:z.boolean(),directMessages:z.boolean()}).strict();
+export const ChatPreferencesSchema=z.object({browser:z.boolean(),inApp:z.boolean(),sound:z.boolean(),dnd:z.boolean(),directMessages:z.boolean(),push:z.boolean().optional(),meetings:z.boolean().optional(),incomingCalls:z.boolean().optional(),contentPreviews:z.boolean().optional()}).strict();
 export type ChatPreferences=z.infer<typeof ChatPreferencesSchema>;
 export const ChatSearchQuerySchema=z.object({
  q:z.string().trim().max(200).default(''), conversationId:z.string().uuid().optional(), senderId:z.string().uuid().optional(),
@@ -88,7 +88,7 @@ export const CommunicationsEventSchema = z.object({
   tenantId: z.string().uuid(),
   conversationId: z.string().uuid().nullable(),
   meetingId: z.string().uuid().nullable().optional(),
-  type: z.enum(['conversation.created', 'conversation.member_joined', 'conversation.member_left', 'message.created', 'conversation.read', 'conversation.updated', 'message.updated', 'message.deleted', 'message.reaction','notification.created','notification.read','notification.preferences_updated','call.created','call.invited','call.accepted','call.declined','call.cancelled','call.started','call.participant_joined','call.participant_left','call.ended','call.failed','meeting.scheduled','meeting.updated','meeting.cancelled','meeting.started','meeting.ended','guest.waiting','guest.admitted','guest.denied','guest.left','invitation.revoked']),
+  type: z.enum(['conversation.created', 'conversation.member_joined', 'conversation.member_left', 'message.created', 'conversation.read', 'conversation.updated', 'message.updated', 'message.deleted', 'message.reaction','notification.created','notification.read','notification.preferences_updated','call.created','call.invited','call.accepted','call.declined','call.cancelled','call.started','call.participant_joined','call.participant_left','call.ended','call.failed','call.missed','meeting.scheduled','meeting.updated','meeting.cancelled','meeting.started','meeting.ended','guest.waiting','guest.admitted','guest.denied','guest.left','invitation.revoked']),
   occurredAt: z.string().datetime(),
   // Invalidation events deliberately carry no message bodies or participant details.
   resourceId: z.string().uuid(),

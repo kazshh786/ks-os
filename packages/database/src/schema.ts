@@ -1391,6 +1391,7 @@ export const applicationSessions = pgTable('application_sessions', {
   ipHash: varchar('ip_hash', { length: 64 }),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+  hardExpiresAt: timestamp('hard_expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   revokeReason: varchar('revoke_reason', { length: 255 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

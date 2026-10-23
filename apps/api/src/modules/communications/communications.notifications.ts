@@ -3,7 +3,7 @@ import type { ChatPreferences } from '@ks-os/contracts';
 import type { CommunicationsDatabase } from './communications.database.js';
 import type { CommunicationsActor } from './communications.authorization.js';
 
-export const defaultChatPreferences:ChatPreferences={browser:false,inApp:true,sound:false,dnd:false,directMessages:true};
+export const defaultChatPreferences:ChatPreferences={browser:false,inApp:true,sound:false,dnd:false,directMessages:true,push:false,meetings:true,incomingCalls:true,contentPreviews:false};
 export async function notifyMessage(db:CommunicationsDatabase,actor:CommunicationsActor,id:string,messageId:string) {
   // One persisted record per message/recipient. No private content is copied into the general inbox.
   // DND suppresses transient delivery, while the persistent centre remains recoverable.
@@ -22,7 +22,7 @@ export async function notifyMessage(db:CommunicationsDatabase,actor:Communicatio
     WHERE c.id=${id} AND c.tenant_id=${actor.tenantId} AND m.left_at IS NULL
       AND (u.account_status='ACTIVE' OR (c.external_client_channel=true AND r.status='ACTIVE' AND a.status='ACTIVE'))
       AND coalesce(m.user_id,m.customer_relationship_id)<>${actor.userId} AND m.notification_preference<>'NONE'
-      AND (coalesce(p.in_app,true) OR coalesce(p.browser,false))
+      AND (coalesce(p.in_app,true) OR coalesce(p.browser,false) OR coalesce(p.push,false))
       AND (c.conversation_type<>'DIRECT' OR coalesce(p.direct_messages,true))
       AND (m.notification_preference='ALL' OR EXISTS(SELECT 1 FROM communication_mentions x WHERE x.message_id=msg.id AND coalesce(x.user_id,x.customer_relationship_id)=coalesce(m.user_id,m.customer_relationship_id)))
     ON CONFLICT DO NOTHING RETURNING id,recipient_user_id AS recipient,recipient_customer_relationship_id AS "customerRecipient"`);
@@ -32,7 +32,7 @@ export async function notifyInvitation(db:CommunicationsDatabase,actor:Communica
   if(userId===actor.userId)return;
   const [row]=await db.query<{id:string}>(sql`INSERT INTO internal_notifications(tenant_id,recipient_user_id,type,title,message,source_type,source_id,chat_conversation_id)
     SELECT ${actor.tenantId},${userId},'CHAT_INVITATION','Chat invitation','Open Chat to view this update.','CHAT',${sourceId},${id}
-    WHERE NOT EXISTS(SELECT 1 FROM communication_preferences WHERE user_id=${userId} AND in_app=false AND browser=false)
+    WHERE NOT EXISTS(SELECT 1 FROM communication_preferences WHERE user_id=${userId} AND in_app=false AND browser=false AND push=false)
     ON CONFLICT DO NOTHING RETURNING id`);
   if(row)await db.query(sql`INSERT INTO communication_events(tenant_id,conversation_id,type,resource_id,recipient_user_id) VALUES(${actor.tenantId},${id},'notification.created',${row.id},${userId})`);
 }

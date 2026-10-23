@@ -1,5 +1,6 @@
 import { fileLimits } from './communications.file-policy.js';
 import { ChatPreferencesSchema,ChatSearchQuerySchema,ChatFileQuerySchema } from '@ks-os/contracts';
+import { MobileSyncQuerySchema, CommunicationLinkTargetSchema, ResolveCommunicationLinkSchema } from '@ks-os/contracts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { CommunicationsPresence } from './communications.presence.js';
@@ -38,6 +39,10 @@ export function staffCommunicationsActor(request: FastifyRequest): Communication
 export async function communicationsRoutes(app: FastifyInstance, options: { service?: CommunicationsService; resolveActor?:(request:FastifyRequest)=>Promise<CommunicationsActor>|CommunicationsActor; customer?:boolean }) {
   const service = options.service ?? new CommunicationsService();
   const actor=async(request:FastifyRequest)=>options.resolveActor?options.resolveActor(request):staffCommunicationsActor(request);
+  // User/context limits supplement the global IP defence. Carrier NAT users do
+  // not share one budget once authentication has resolved their identity.
+  const mobileRate = (max:number) => ({config:{rateLimit:{max,timeWindow:'1 minute',hook:'preHandler' as const,
+    keyGenerator:(request:FastifyRequest)=>`mobile:${request.authIdentity?.authUserId??request.ip}:${request.applicationContext??'TENANT'}:${request.routeOptions.url}`}}});
   app.addHook('onSend', async (_request, reply, payload) => { reply.header('Cache-Control','no-store'); return payload; });
   app.addContentTypeParser('application/octet-stream',{parseAs:'buffer'},(_request,body,done)=>done(null,body));
 
@@ -54,7 +59,7 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
   app.get('/:conversationId/meetings',async request=>service.meetings.history(await actor(request),params.parse(request.params).conversationId,z.object({before:z.string().uuid().optional()}).strict().parse(request.query).before));
   app.post('/:conversationId/meetings',{config:{rateLimit:{max:10,timeWindow:'1 minute'}}},async(request,reply)=>reply.code(201).send({data:await service.meetings.create(await actor(request),params.parse(request.params).conversationId,z.object({type:z.enum(['AUDIO','VIDEO']),requestId:z.string().uuid()}).strict().parse(request.body))}));
   app.get('/meetings/:meetingId',async request=>({data:await service.meetings.get(await actor(request),meetingParams.parse(request.params).meetingId)}));
-  app.post('/meetings/:meetingId/invitation',{config:{rateLimit:{max:30,timeWindow:'1 minute'}}},async request=>({data:await service.meetings.respond(await actor(request),meetingParams.parse(request.params).meetingId,z.object({accept:z.boolean()}).strict().parse(request.body).accept)}));
+  app.post('/meetings/:meetingId/invitation',{config:{rateLimit:{max:30,timeWindow:'1 minute'}}},async request=>{const input=z.object({accept:z.boolean(),requestId:z.string().uuid().optional()}).strict().parse(request.body);return {data:await service.meetings.respond(await actor(request),meetingParams.parse(request.params).meetingId,input.accept,input.requestId)};});
   app.post('/meetings/:meetingId/join',{config:{rateLimit:{max:12,timeWindow:'1 minute'}}},async request=>({data:await service.meetings.join(await actor(request),meetingParams.parse(request.params).meetingId,z.object({requestId:z.string().uuid()}).strict().parse(request.body).requestId)}));
   app.post('/meetings/:meetingId/leave',async request=>({data:await service.meetings.leave(await actor(request),meetingParams.parse(request.params).meetingId,z.object({sessionId:z.string().uuid()}).strict().parse(request.body).sessionId)}));
   app.post('/meetings/:meetingId/end',async request=>{empty.parse(request.body??{});return {data:await service.meetings.end(await actor(request),meetingParams.parse(request.params).meetingId)};});
@@ -65,6 +70,10 @@ export async function communicationsRoutes(app: FastifyInstance, options: { serv
   app.addHook('onClose',async()=>{clearInterval(timer);});
   }
 
+  app.get('/sync',mobileRate(60),async request=>service.sync.page(await actor(request),MobileSyncQuerySchema.parse(request.query)));
+  app.get('/badges',mobileRate(60),async request=>({data:await service.badges.count(await actor(request))}));
+  app.post('/links',mobileRate(30),async request=>({data:await service.links.create(await actor(request),CommunicationLinkTargetSchema.parse(request.body))}));
+  app.post('/links/resolve',mobileRate(60),async request=>({data:await service.links.resolve(await actor(request),ResolveCommunicationLinkSchema.parse(request.body).url)}));
   app.get('/search',async request=>service.discovery.search(await actor(request),ChatSearchQuerySchema.parse(request.query)));
   app.get('/preferences',async request=>({data:await service.discovery.preferences(await actor(request))}));
   app.put('/preferences',async request=>({data:await service.discovery.preferences(await actor(request),ChatPreferencesSchema.parse(request.body))}));

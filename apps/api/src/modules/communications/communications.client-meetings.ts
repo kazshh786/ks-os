@@ -11,6 +11,8 @@ import { guestCredential, guestCsrf, guestMeetingsConfigured, invitationToken, i
 import { meetingLimits, reserveConnectionCapacity, reserveMeetingCapacity } from './communications.meeting-policy.js';
 import { enqueueMeetingEmail } from './communications.meeting-delivery.js';
 import { validateCustomerProviderSession } from './communications.customer-provider.js';
+import { createMeetingNotifications } from './communications.meeting-notifications.js';
+import { mobileProviderSessionCurrent } from '../authentication/mobile-devices.service.js';
 
 const uuid=z.string().uuid();
 export const ClientMeetingInputSchema=z.object({
@@ -139,7 +141,7 @@ export class ClientMeetings {
   const id=randomUUID();await db.query(sql`INSERT INTO communication_meetings(id,tenant_id,conversation_id,created_by,request_id,title,type,status,provider_room_name,audience,description,host_user_id,scheduled_start_at,scheduled_end_at,timezone,customer_id,appointment_id,appointment_version,guest_screen_share,expires_at)
    VALUES(${id},${actor.tenantId},NULL,${actor.userId},${input.requestId},${input.title},${input.type},'SCHEDULED',${'ksos-'+randomUUID()},${input.audience},${input.description},${input.hostUserId},${schedule.scheduledStartAt}::timestamptz,${schedule.scheduledEndAt}::timestamptz,${schedule.timezone},${input.customerId??null},${input.appointmentId??null},${schedule.appointmentVersion},${input.guestScreenShare},${new Date(new Date(schedule.scheduledEndAt).getTime()+1800000).toISOString()}::timestamptz)`);
   await db.query(sql`UPDATE communication_meetings SET request_fingerprint=${fingerprint(input)} WHERE id=${id}`);
-  const m=await this.row(db,id);await this.members(db,m,input);await this.event(db,m,'meeting.scheduled',actor.userId);return this.view(db,actor,m);
+  const m=await this.row(db,id);await this.members(db,m,input);await this.event(db,m,'meeting.scheduled',actor.userId);await createMeetingNotifications(db,id,'MEETING_INVITATION',{excludeUserId:actor.userId});return this.view(db,actor,m);
  });}
  async update(actor:CommunicationsActor,id:string,raw:unknown){const patch=ClientMeetingUpdateSchema.parse(raw);return this.lock(actor.tenantId,async db=>{
   const {m}=await this.access(db,actor,id,true);if(m.status!=='SCHEDULED'||m.version!==patch.version)throw conflict('MEETING_CHANGED','The meeting has changed or already started. Reload it before editing.');
@@ -155,6 +157,7 @@ export class ClientMeetings {
   for(const old of previous){const id=randomUUID();await db.query(sql`INSERT INTO communication_meeting_invitations(id,tenant_id,meeting_id,secret_hash,request_id,created_by,email,expires_at) VALUES(${id},${m.tenant_id},${m.id},${secretHash(invitationToken(id))},${randomUUID()},${m.created_by},${old.email},${iso(m.expires_at)}::timestamptz)`);}
  }
  private async queueUpdates(db:CommunicationsDatabase,m:Row,kind:'rescheduled'|'cancelled'){
+  await createMeetingNotifications(db,m.id,kind==='rescheduled'?'MEETING_UPDATED':'MEETING_CANCELLED');
   const invitations=await db.query<Row>(sql`SELECT DISTINCT ON (email) id,email FROM communication_meeting_invitations WHERE meeting_id=${m.id} AND email IS NOT NULL ${kind==='cancelled'?sql``:sql`AND revoked_at IS NULL`} ORDER BY email,created_at DESC,id DESC LIMIT 100`);
   for(const i of invitations)await enqueueMeetingEmail({tenantId:m.tenant_id,meetingId:m.id,invitationId:i.id,version:m.version,kind,to:i.email},db);
  }
@@ -169,6 +172,7 @@ export class ClientMeetings {
   await db.query(sql`UPDATE communication_meeting_invitations SET revoked_at=coalesce(revoked_at,now()),revoked_by=coalesce(revoked_by,${actor??null}::uuid) WHERE meeting_id=${m.id}`);
   await db.query(sql`UPDATE communication_meeting_participants SET left_at=coalesce(left_at,now()) WHERE meeting_id=${m.id} AND joined_at IS NOT NULL`);
   await this.event(db,m,status==='ENDED'?'meeting.ended':'meeting.cancelled',actor);
+  if(status!=='ENDED')await createMeetingNotifications(db,m.id,'MEETING_CANCELLED',{excludeUserId:actor});
  }
  private async deleteRoom(m:Row){try{await this.provider.deleteRoom(m.provider_room_name);await this.db.query(sql`UPDATE communication_meetings SET cleanup_pending=false WHERE id=${m.id}`);}catch{throw mediaUnavailable();}}
  async cancel(actor:CommunicationsActor,id:string){
@@ -286,8 +290,7 @@ export class ClientMeetings {
   const [c]=await db.query<Row>(sql`SELECT client_id FROM conversations WHERE id=${conversationId} AND tenant_id=${actor.tenantId} AND external_client_channel AND archived_at IS NULL`);
   if(!c||m.audience!=='EXTERNAL_CLIENT'||m.customer_id!==c.client_id||terminal.includes(m.status))throw unavailable();
   await db.query(sql`INSERT INTO communication_meeting_customer_grants(tenant_id,meeting_id,conversation_id,created_by) VALUES(${actor.tenantId},${meetingId},${conversationId},${actor.userId}) ON CONFLICT(meeting_id,conversation_id) DO UPDATE SET revoked_at=NULL`);
-  const notifications=await db.query<Row>(sql`INSERT INTO internal_notifications(tenant_id,recipient_customer_relationship_id,type,title,message,source_type,source_id,chat_conversation_id) SELECT ${actor.tenantId},cm.customer_relationship_id,'CHAT_INVITATION','Meeting invitation','Open your customer messages to view this invitation.','CHAT',${meetingId},${conversationId} FROM conversation_members cm JOIN customer_collaboration_relationships r ON r.id=cm.customer_relationship_id AND r.tenant_id=cm.tenant_id JOIN customer_accounts a ON a.id=r.customer_account_id LEFT JOIN communication_preferences p ON p.customer_relationship_id=r.id AND p.tenant_id=r.tenant_id WHERE cm.conversation_id=${conversationId} AND cm.tenant_id=${actor.tenantId} AND cm.left_at IS NULL AND cm.notification_preference<>'NONE' AND r.status='ACTIVE' AND r.revoked_at IS NULL AND a.status='ACTIVE' AND (coalesce(p.in_app,true) OR coalesce(p.browser,false)) ON CONFLICT DO NOTHING RETURNING id,recipient_customer_relationship_id`);
-  for(const row of notifications)await db.query(sql`INSERT INTO communication_events(tenant_id,conversation_id,type,resource_id,recipient_customer_relationship_id) VALUES(${actor.tenantId},${conversationId},'notification.created',${row.id},${row.recipient_customer_relationship_id})`);
+  await createMeetingNotifications(db,meetingId,'MEETING_INVITATION',{conversationId,customersOnly:true});
   await this.customerAudit(db,actor,'CUSTOMER_MEETING_SHARED',meetingId,conversationId);
   await this.event(db,m,'meeting.updated',actor.userId);return {granted:true};
  });}
@@ -331,6 +334,11 @@ export class ClientMeetings {
   if(actor.kind!=='CUSTOMER')throw unavailable();await new CommunicationsAuthorization(this.db).authenticate(actor);
   const [g]=await this.db.query(sql`SELECT id FROM communication_meeting_guests WHERE id=${id} AND meeting_id=${meetingId} AND tenant_id=${actor.tenantId} AND customer_relationship_id=${actor.customerRelationshipId} AND customer_auth_user_id=${actor.authUserId} AND customer_auth_session_id=${actor.sessionId}`);
   if(!g)throw unavailable();if(action==='join')return this.guestJoin(id,credential,uuid.parse(requestId),actor);if(action==='leave')return this.guestLeave(id,credential,actor);return this.guestState(id,credential,actor);
+ }
+ /** Only called after the native device guard. The verifier never leaves the server;
+  * customerGuestSession still checks the exact relationship/provider-session binding. */
+ async customerNativeGuestSession(actor:CommunicationsActor,meetingId:string,id:string,action:'state'|'join'|'leave',requestId?:string){
+  return this.customerGuestSession(actor,meetingId,id,guestCredential(id),action,requestId);
  }
  private async guest(db:CommunicationsDatabase,id:string,credential:string,customerActor?:CommunicationsActor){
   const [g]=await db.query<Row>(sql`SELECT g.*,i.revoked_at AS invitation_revoked,i.expires_at AS invitation_expires FROM communication_meeting_guests g LEFT JOIN communication_meeting_invitations i ON i.id=g.invitation_id JOIN tenants t ON t.id=g.tenant_id WHERE g.id=${id} AND t.is_active AND t.lifecycle_status NOT IN ('SUSPENDED','OFFBOARDING','OFFBOARDED')`);
@@ -393,7 +401,7 @@ export class ClientMeetings {
    const [s]=await db.query<Row>(sql`SELECT s.*,p.invitation_state,p.user_id AS participant_user FROM communication_meeting_sessions s JOIN communication_meeting_participants p ON p.id=s.participant_id WHERE s.meeting_id=${id} AND s.identity=${remote.identity} AND s.revoked_at IS NULL AND p.invitation_state<>'REMOVED' AND (s.joined_at IS NOT NULL OR s.token_expires_at>now()-interval '30 seconds')`);
    let allowed=false;
    if(s?.guest_session_id){const [g]=await db.query<Row>(sql`SELECT g.*,i.revoked_at AS invitation_revoked,i.expires_at AS invitation_expires,t.is_active,t.lifecycle_status FROM communication_meeting_guests g LEFT JOIN communication_meeting_invitations i ON i.id=g.invitation_id JOIN tenants t ON t.id=g.tenant_id WHERE g.id=${s.guest_session_id}`);allowed=Boolean(g&&g.state==='APPROVED'&&g.is_active&&!['SUSPENDED','OFFBOARDING','OFFBOARDED'].includes(g.lifecycle_status)&&this.guestValid(g,m)&&await this.customerGuestAllowed(db,g,m));}
-   else if(s){const [u]=await db.query<Row>(sql`SELECT u.auth_user_id FROM users u JOIN application_sessions app ON app.auth_user_id=u.auth_user_id AND app.auth_session_id=${s.auth_session_id} JOIN tenants t ON t.id=u.tenant_id WHERE u.id=${s.user_id} AND u.tenant_id=${m.tenant_id} AND u.account_status='ACTIVE' AND t.is_active AND t.lifecycle_status NOT IN ('SUSPENDED','OFFBOARDING','OFFBOARDED') AND app.application_context='TENANT' AND app.selected_tenant_user_id=u.id AND app.security_version=u.security_version AND app.revoked_at IS NULL AND app.expires_at>now() AND (u.sessions_valid_after IS NULL OR u.sessions_valid_after<${iso(s.auth_issued_at)}::timestamptz)`);allowed=Boolean(u);}
+   else if(s){const [u]=await db.query<Row>(sql`SELECT u.auth_user_id FROM users u JOIN application_sessions app ON app.auth_user_id=u.auth_user_id AND app.auth_session_id=${s.auth_session_id} JOIN tenants t ON t.id=u.tenant_id WHERE u.id=${s.user_id} AND u.tenant_id=${m.tenant_id} AND u.account_status='ACTIVE' AND t.is_active AND t.lifecycle_status NOT IN ('SUSPENDED','OFFBOARDING','OFFBOARDED') AND app.application_context='TENANT' AND app.selected_tenant_user_id=u.id AND app.security_version=u.security_version AND app.revoked_at IS NULL AND app.expires_at>now() AND (u.sessions_valid_after IS NULL OR u.sessions_valid_after<${iso(s.auth_issued_at)}::timestamptz)`);allowed=Boolean(u);if(u)try{await mobileProviderSessionCurrent(db,{authSessionId:s.auth_session_id,authUserId:u.auth_user_id});}catch{allowed=false;}}
    if(!s||!allowed){await this.provider.removeParticipant(m.provider_room_name,remote.identity);continue;}
    active.push(s.id);if(!s.joined_at||s.left_at||s.provider_sid!==remote.sid){await db.query(sql`UPDATE communication_meeting_sessions SET joined_at=coalesce(joined_at,now()),left_at=NULL,provider_sid=${remote.sid} WHERE id=${s.id}`);await db.query(sql`UPDATE communication_meeting_participants SET joined_at=coalesce(joined_at,now()),left_at=NULL WHERE id=${s.participant_id}`);await this.event(db,m,'meeting.updated');}
   }

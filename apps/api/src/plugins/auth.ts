@@ -12,6 +12,8 @@ import {
   isSupportPathBlocked, type AgencyCapability, type AgencyRole, type ApplicationContext,
 } from '@ks-os/contracts';
 import { supabase } from '../lib/supabase.js';
+import { communicationsDatabase } from '../modules/communications/communications.database.js';
+import { checkRegisteredMobileSession, requireMobileDevice } from '../modules/authentication/mobile-devices.service.js';
 
 export interface AuthContext {
   authUserId: string;
@@ -92,16 +94,17 @@ async function ensureApplicationSession(input: {
     eq(applicationSessions.authSessionId, input.authSessionId),
     eq(applicationSessions.applicationContext, input.context),
   )).limit(1);
-  const hardExpiry = new Date((existing?.createdAt?.getTime() || Date.now()) + input.hardTtlHours * 60 * 60 * 1000);
+  const ttl = Number.isFinite(input.hardTtlHours) && input.hardTtlHours > 0 ? Math.min(input.hardTtlHours, 720) : 24;
+  const hardExpiry = existing?.hardExpiresAt ?? new Date((existing?.createdAt?.getTime() || Date.now()) + ttl * 60 * 60 * 1000);
   const expiresAt = input.jwtExpiresAt < hardExpiry ? input.jwtExpiresAt : hardExpiry;
   if (expiresAt <= new Date() || existing?.revokedAt || (existing && input.securityVersion !== null && existing.securityVersion !== input.securityVersion)) return null;
   const [session] = await db.insert(applicationSessions).values({
     authSessionId: input.authSessionId, authUserId: input.authUserId, applicationContext: input.context,
     securityVersion: input.securityVersion ?? 1, assuranceLevel: input.assuranceLevel,
-    deviceSummary: safeDeviceSummary(input.request), ipHash: ipHashFor(input.request), expiresAt, lastSeenAt: new Date(),
+    deviceSummary: safeDeviceSummary(input.request), ipHash: ipHashFor(input.request), expiresAt, hardExpiresAt: hardExpiry, lastSeenAt: new Date(),
   }).onConflictDoUpdate({
     target: [applicationSessions.authSessionId, applicationSessions.applicationContext],
-    set: { assuranceLevel: input.assuranceLevel, expiresAt, lastSeenAt: new Date(), deviceSummary: safeDeviceSummary(input.request) },
+    set: { assuranceLevel: input.assuranceLevel, expiresAt, hardExpiresAt: sql`coalesce(${applicationSessions.hardExpiresAt},${hardExpiry})`, lastSeenAt: new Date(), deviceSummary: safeDeviceSummary(input.request) },
   }).returning();
   return session.revokedAt ? null : session;
 }
@@ -305,7 +308,13 @@ const authPlugin: FastifyPluginAsync = async fastify => {
         if (!contextSession || customer && customer.status !== 'ACTIVE') request.authIdentity = undefined;
         else request.customerSessionValidated = true;
       }
+      const mobileIdentity = request.authIdentity;
+      if ((request.applicationContext === 'TENANT' || request.applicationContext === 'CUSTOMER') && mobileIdentity?.authSessionId && mobileIdentity.issuedAt && mobileIdentity.expiresAt) {
+        await checkRegisteredMobileSession(communicationsDatabase(), { authUserId: mobileIdentity.authUserId, authSessionId: mobileIdentity.authSessionId, issuedAt: mobileIdentity.issuedAt, expiresAt: mobileIdentity.expiresAt, context: request.applicationContext });
+        if (request.headers['x-ks-device-id'] !== undefined) await requireMobileDevice(request);
+      }
     } catch (error) {
+      if (typeof request.headers['x-ks-device-id'] === 'string' || (error as { code?: string }).code === 'MOBILE_SESSION_REQUIRED') { request.authIdentity = undefined; request.auth = undefined; request.customerSessionValidated = false; }
       if (request.applicationContext === 'CUSTOMER') { request.authIdentity = undefined; request.customerSessionValidated = false; }
       if ((error as any)?.statusCode) throw error;
       request.log.error({ error }, 'Authentication context resolution failed');
