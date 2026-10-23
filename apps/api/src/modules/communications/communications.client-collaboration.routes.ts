@@ -46,7 +46,7 @@ export async function customerCollaborationRoutes(app:FastifyInstance,options:{s
   });
   app.get('/invitations/pending',rate(30),async request=>{origin(request);try{return {data:await service.pending(cookie(request,pendingCookie,/^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/))};}catch(error){if((error as {statusCode?:number}).statusCode===404)return {data:{available:false}};throw error;}});
   app.post('/invitations/accept',rate(10),async request=>{origin(request);empty.parse(request.body??{});return {data:await service.accept(collaborationIdentity(request),cookie(request,pendingCookie,/^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/))};});
-  app.get('/:relationshipId/meetings',rate(90),async request=>meetings.customerList(await actor(request),z.object({conversationId:uuid.optional(),after:uuid.optional()}).strict().parse(request.query)));
+  app.get('/:relationshipId/meetings',rate(90),async request=>meetings.customerList(await actor(request),z.object({conversationId:uuid.optional(),meetingId:uuid.optional(),after:uuid.optional()}).strict().parse(request.query)));
   app.post('/:relationshipId/meetings/:meetingId/request',rate(6),async(request,reply)=>{
     const isNative=await native(request),p=meeting.parse(request.params),input=z.object({conversationId:uuid,requestId:uuid}).strict().parse(request.body);
     const result=await meetings.requestCustomer(await actor(request),p.meetingId,input.conversationId,input.requestId),{credential,...data}=result;

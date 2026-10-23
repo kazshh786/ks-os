@@ -5,6 +5,10 @@ import { sql } from '@ks-os/database';
 import { CommunicationsService } from '../src/modules/communications/communications.service.js';
 import { CommunicationsSync } from '../src/modules/communications/communications.sync.js';
 import { createClientMeetingFixture } from './helpers/client-meetings-fixture.js';
+import { ClientCollaboration } from '../src/modules/communications/communications.client-collaboration.js';
+import { ClientMeetings } from '../src/modules/communications/communications.client-meetings.js';
+import { collaborationInvitationToken } from '../src/modules/communications/communications.collaboration-secrets.js';
+import { ClientMeetingTestMedia, clientMeetingEnvironment } from './helpers/client-meetings-media.js';
 
 test('mobile sync reconciles the canonical journal without leaking another principal', { timeout: 300000 }, async t => {
   const f = await createClientMeetingFixture(t), { pg, db, owner, outsider, other } = f;
@@ -84,4 +88,38 @@ test('sync resumes across out-of-order sequence allocation on real PostgreSQL', 
     assert.ok(BigInt(next.changes.at(-1)!.id) < BigInt(early.changes.at(-1)!.id));
     assert.ok(BigInt(next.changes.at(-1)!.position) > BigInt(early.changes.at(-1)!.position));
   } finally { resume(); await late; }
+});
+
+test('customer sync rechecks each meeting grant while retaining ordinary channel access', { timeout: 300000 }, async t => {
+  Object.assign(process.env, clientMeetingEnvironment, { CUSTOMER_COLLABORATION_SECRET: 'isolated-customer-sync-secret-2026', PUBLIC_CUSTOMER_PORTAL_ORIGIN: 'http://127.0.0.1:5173' });
+  const f = await createClientMeetingFixture(t), service = new CommunicationsService(f.db);
+  const meetings = new ClientMeetings(f.db, new ClientMeetingTestMedia());
+  const collaboration = new ClientCollaboration(f.db, { meetings, verifyEmail: async () => {} });
+  const contact = await f.seedCustomer('sync-contact@example.test');
+  const channels = [];
+  let relationshipId = '';
+  for (const name of ['First customer channel', 'Second customer channel']) {
+    const channel = await collaboration.create(f.owner, { clientId: f.customer.id, name, staffUserIds: [], requestId: randomUUID() });
+    const invite = await collaboration.invite(f.owner, channel.id, { email: contact.identity.email, requestId: randomUUID() });
+    const handoff = await collaboration.handoff(collaborationInvitationToken(invite.id));
+    relationshipId = (await collaboration.accept(contact.identity, handoff.credential)).relationshipId;
+    channels.push(channel);
+  }
+  const actor = await collaboration.actor(contact.identity, relationshipId);
+  const meeting = await meetings.create(f.owner, { requestId: randomUUID(), title: 'Customer meeting', description: '', audience: 'EXTERNAL_CLIENT', type: 'VIDEO', localStart: f.startsAt, timezone: 'UTC', durationMinutes: 60, hostUserId: f.owner.userId, customerId: f.customer.id, attendeeIds: [], cohostIds: [], guestScreenShare: false });
+  const sync = new CommunicationsSync(f.db, () => 'b'.repeat(64));
+  const snapshot = await sync.page(actor, { limit: 100 });
+  await meetings.grantCustomerChannel(f.owner, channels[0].id, meeting.id);
+  assert.ok((await sync.page(actor, { cursor: snapshot.cursor, limit: 100 })).changes.some(event => event.meetingId === meeting.id && event.conversationId === channels[0].id));
+  await meetings.grantCustomerChannel(f.owner, channels[1].id, meeting.id);
+  await meetings.revokeCustomerGrant(f.owner, channels[0].id, meeting.id);
+  const partial = await sync.page(actor, { cursor: snapshot.cursor, limit: 100 });
+  assert.ok(partial.changes.some(event => event.meetingId === meeting.id && event.conversationId === channels[1].id));
+  assert.ok(!partial.changes.some(event => event.meetingId === meeting.id && event.conversationId === channels[0].id), 'A second grant must not reveal events belonging to the revoked grant');
+  await meetings.revokeCustomerGrant(f.owner, channels[1].id, meeting.id);
+  const message = await service.post(f.owner, channels[0].id, { body: 'Channel membership remains valid' });
+  const hidden = await sync.page(actor, { cursor: snapshot.cursor, limit: 100 });
+  assert.ok(!hidden.changes.some(event => event.meetingId === meeting.id), 'Revoking meeting access hides already queued meeting events');
+  assert.ok(hidden.changes.some(event => event.resourceId === message.id));
+  assert.equal((await service.get(actor, channels[0].id)).id, channels[0].id);
 });

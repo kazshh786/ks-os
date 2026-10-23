@@ -47,7 +47,8 @@ export class MobilePushService {
     if (actor.authUserId !== device.authUserId || actor.sessionId !== device.authSessionId || (actor.kind === 'CUSTOMER') !== (device.context === 'CUSTOMER')) throw missing();
     return this.db.transaction(async db => {
       await validateMobileDeviceSession(db, device); await new CommunicationsAuthorization(db).authenticate(actor);
-      await db.query(sql`SELECT id FROM mobile_devices WHERE id=${device.deviceId} AND revoked_at IS NULL FOR UPDATE`);
+      const active = await db.query(sql`SELECT id FROM mobile_devices WHERE id=${device.deviceId} AND revoked_at IS NULL FOR UPDATE`);
+      if (!active.length) throw missing();
       const [count] = await db.query<{ total: number }>(sql`SELECT count(*)::int AS total FROM mobile_push_contexts WHERE device_id=${device.deviceId} AND enabled AND NOT(tenant_id=${actor.tenantId} AND coalesce(user_id,customer_relationship_id)=${actor.userId})`);
       if (count.total >= 50) throw communicationError(429, 'PUSH_CONTEXT_LIMIT', 'Disable an existing push context before adding another.');
       const [version] = await db.query<{ security_version: number }>(sql`SELECT security_version FROM users WHERE id=${staffId(actor)} AND tenant_id=${actor.tenantId}`);

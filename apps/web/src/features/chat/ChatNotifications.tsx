@@ -5,9 +5,10 @@ import { ChatError } from './chat.api';
 import { Bell,Settings } from 'lucide-react';
 import { ChatDialog } from './ChatDialog';
 import type { SubscribeChat } from './MessageTimeline';
-import type { ChatNotice } from './chat.phase4.api';
+import { isMeetingNotice,type ChatNotice } from './chat.phase4.api';
 import { useChatServices } from './ChatServices';
-export const shouldAlert=(p:ChatPreferences,notice:ChatNotice,conversationId?:string,focused=false)=>!p.dnd&&!(notice.conversationType==='DIRECT'&&!p.directMessages)&&!notice.readAt&&!(focused&&notice.conversationId===conversationId);
+export const shouldAlert=(p:ChatPreferences,notice:ChatNotice,conversationId?:string,focused=false)=>!p.dnd&&!(notice.conversationType==='DIRECT'&&!p.directMessages)&&!(notice.type?.startsWith('CALL_')&&p.incomingCalls===false)&&!(isMeetingNotice(notice)&&p.meetings===false)&&!notice.readAt&&!(focused&&notice.conversationId===conversationId&&!notice.meetingId);
+const noticeLabel=(type:string)=>({CHAT_MENTION:'Mention',CHAT_INVITATION:'Invitation',CHAT_THREAD:'Thread reply',CHAT_MESSAGE:'Message',CALL_INCOMING:'Incoming call',CALL_MISSED:'Missed call',MEETING_INVITATION:'Meeting invitation',MEETING_UPDATED:'Meeting updated',MEETING_CANCELLED:'Meeting cancelled',MEETING_REMINDER:'Meeting reminder'}[type]||'Activity');
 export async function browserPermission(){
  if(typeof Notification==='undefined')return 'unsupported';
  if(Notification.permission==='denied')return 'denied';
@@ -28,16 +29,20 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
    for(const row of page.data){
     const fresh=initialized.current&&!seen.current.has(row.id);seen.current.add(row.id);
     if(!deliver||!fresh||!shouldAlert(p,row,context.current,document.visibilityState==='visible'&&document.hasFocus()))continue;
-    const mode=await phase4Api.conversationPreference(row.conversationId);
-    if(!mounted.current)return;
-    if(mode.mode==='NONE'||mode.mode==='MENTIONS'&&row.type!=='CHAT_MENTION')continue;
-    if(p.inApp)setNotice('New Chat activity. Open notifications to view it.');
+    // The native call invitation component owns incoming-call banners and browser alerts.
+    // Canonical call rows remain in this history without producing a second alert.
+    if(row.type==='CALL_INCOMING')continue;
+    if(row.conversationId){const mode=await phase4Api.conversationPreference(row.conversationId);
+     if(!mounted.current)return;
+     if(mode.mode==='NONE'||mode.mode==='MENTIONS'&&row.type!=='CHAT_MENTION'&&!isMeetingNotice(row))continue;
+    }
+    if(p.inApp)setNotice(isMeetingNotice(row)||row.type==='CALL_MISSED'?'New meeting or call activity. Open notifications to view it.':'New Chat activity. Open notifications to view it.');
     if(p.browser&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
-     try{const notification=new Notification('New ' + notificationName + ' message activity',{body:'Open Chat to view your update.',tag:'ksos-chat-'+row.id,silent:!p.sound});
+     try{const notification=new Notification('New ' + notificationName + ' activity',{body:'Open notifications to view your update.',tag:'ksos-chat-'+row.id,silent:!p.sound});
       const dismiss=()=>{const timer=browserAlerts.current.get(notification);if(timer)clearTimeout(timer);browserAlerts.current.delete(notification);notification.close();};
       notification.onclick=()=>{if(mounted.current){window.focus();navigate(messageLink(row));}dismiss();};
       browserAlerts.current.set(notification,setTimeout(dismiss,15000));
-     }catch{/* Some mobile browsers require background push, which is outside this phase. */}
+     }catch{/* Native mobile alerts require a separately registered device and operating-system permission. */}
     }
    }
    initialized.current=true;
@@ -56,15 +61,15 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
  {open&&<ChatDialog title="Chat notifications" close={()=>setOpen(false)}>
  {error&&<p role="alert">{error}</p>}{!preferences&&<p role="status">Loading notifications…</p>}{preferences&&!rows.length&&<p>You are all caught up.</p>}
  <ul className="chat-notice-list">{rows.map(row=><li key={row.id} className={row.readAt?'':'chat-unread'}>
- <button type="button" onClick={()=>{void phase4Api.readNotice(row.id).then(()=>refresh()).catch(e=>setError(e.message));navigate(messageLink(row));setOpen(false);}}><strong>{row.type==='CHAT_MENTION'?'Mention':row.type==='CHAT_INVITATION'?'Invitation':row.type==='CHAT_THREAD'?'Thread reply':'Message'} · {row.conversationName}</strong><p>{row.senderName} {row.preview}</p><time>{new Date(row.createdAt).toLocaleString()}</time></button>
+ <button type="button" onClick={()=>{void phase4Api.readNotice(row.id).then(()=>refresh()).catch(e=>setError(e.message));navigate(messageLink(row));setOpen(false);}}><strong>{noticeLabel(row.type)} · {row.conversationName}</strong>{(row.senderName||row.preview)&&<p>{row.senderName} {row.preview}</p>}<time>{new Date(row.createdAt).toLocaleString()}</time></button>
  {!row.readAt&&<button type="button" onClick={()=>void phase4Api.readNotice(row.id).then(()=>refresh()).catch(e=>setError(e.message))}>Mark read</button>}</li>)}</ul>
  {cursor&&<button disabled={busy} onClick={()=>{setBusy(true);void phase4Api.notifications(cursor).then(page=>{setRows(values=>[...values,...page.data]);setCursor(page.nextCursor);}).catch(e=>setError(e.message)).finally(()=>setBusy(false));}}>Older notifications</button>}
  </ChatDialog>}
  {settings&&<ChatDialog title="Chat notification settings" close={()=>setSettings(false)}>
  <p>Browser alerts work while this portal is open. Some mobile browsers do not support them. Closing the browser stops these alerts.</p>
- {preferences?(<div className="chat-preferences">{(['inApp','sound','dnd','directMessages'] as const).filter(key=>!external||key!=='directMessages').map(key=><label className="chat-check" key={key}><input type="checkbox" disabled={busy} checked={preferences[key]} onChange={e=>void save({...preferences,[key]:e.target.checked})}/>{{inApp:'In-app alerts',sound:'Browser notification sound (when supported)',dnd:'Do Not Disturb',directMessages:'Direct message notifications'}[key]}</label>)}
+ {preferences?(<div className="chat-preferences">{(['inApp','sound','dnd','directMessages','push','meetings','incomingCalls','contentPreviews'] as const).filter(key=>!external||key!=='directMessages').map(key=><label className="chat-check" key={key}><input type="checkbox" disabled={busy} checked={preferences[key]??(key==='meetings'||key==='incomingCalls')} onChange={e=>void save({...preferences,[key]:e.target.checked})}/>{{inApp:'In-app alerts',sound:'Notification sound (when supported)',dnd:'Do Not Disturb',directMessages:'Direct message notifications',push:'Mobile push notifications',meetings:'Meeting notifications',incomingCalls:'Incoming and missed call notifications',contentPreviews:'Show conversation names in mobile alerts'}[key]}</label>)}
  <label className="chat-check"><input type="checkbox" disabled={busy} checked={preferences.browser} onChange={async e=>{if(!e.target.checked){void save({...preferences,browser:false});return;}const permission=await browserPermission();if(permission!=='granted'){setError(permission==='denied'?'Browser permission is denied. Change it in your browser site settings.':'Browser notifications are not supported here.');return;}void save({...preferences,browser:true});}}/>Browser notifications</label>
- <p>Do Not Disturb silences alerts; your notification history stays available.</p></div>):<p role="status">Loading settings…</p>}
+ <p>Mobile alerts also need a registered mobile app, permission on that device and this account selected for notifications. This setting does not request device permission.</p><p>Mobile alerts hide conversation names by default. Enabling names does not include message text or file contents.</p><p>Do Not Disturb silences alerts; your notification history stays available.</p></div>):<p role="status">Loading settings…</p>}
  {error&&<p role="alert">{error}</p>}
  </ChatDialog>}
  </div>;

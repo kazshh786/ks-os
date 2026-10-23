@@ -82,7 +82,7 @@ CREATE TRIGGER revoke_mobile_push AFTER UPDATE OF revoked_at ON mobile_devices F
 DO $$ DECLARE name text; BEGIN
  FOREACH name IN ARRAY ARRAY['mobile_push_registrations','mobile_push_contexts','mobile_push_deliveries','mobile_push_attempts'] LOOP
   EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',name);
-  EXECUTE format('REVOKE ALL ON %I FROM anon,authenticated',name);
+  EXECUTE format('REVOKE ALL ON %I FROM PUBLIC,anon,authenticated',name);
   EXECUTE format('GRANT SELECT,INSERT,UPDATE,DELETE ON %I TO service_role',name);
  END LOOP;
 END $$;

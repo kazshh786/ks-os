@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
+import type {} from '../../plugins/auth.js';
 import { z } from 'zod';
 import { sql } from '@ks-os/database';
 import { MobileDeviceRegistrationSchema } from '@ks-os/contracts';

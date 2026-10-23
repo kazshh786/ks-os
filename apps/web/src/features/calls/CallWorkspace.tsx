@@ -42,7 +42,7 @@ export function CallWorkspace({ subscribe, revision, userId }: { subscribe: Subs
       if (!settings.enabled) { setIncoming([]); for (const alert of browserAlerts.current.values()) alert.close(); browserAlerts.current.clear(); return; }
       const [meetings, preferences] = await Promise.all([callsApi.incoming(), phase4Api.preferences()]);
       if (!alive.current) return;
-      const eligible = preferences.dnd ? [] : meetings.filter(m => isJoinable(m) && Date.parse(m.expiresAt) > Date.now());
+      const eligible = preferences.dnd || preferences.incomingCalls === false ? [] : meetings.filter(m => isJoinable(m) && Date.parse(m.expiresAt) > Date.now());
       setIncoming(preferences.inApp ? eligible : []);
       const activeIds = new Set(eligible.map(meeting => meeting.id));
       for (const [id, alert] of browserAlerts.current) if (!activeIds.has(id) || !preferences.browser) { alert.close(); browserAlerts.current.delete(id); }

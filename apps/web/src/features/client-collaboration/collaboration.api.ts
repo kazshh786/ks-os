@@ -1,6 +1,6 @@
 import { fetchWithAuth, requestJson, uploadWithAuth, type AuthenticatedRequestInit } from '../../api/client';
 import { ChatError, createChatApi, type Page } from '../chat/chat.api';
-import { createPhase4Api, messageLink } from '../chat/chat.phase4.api';
+import { createPhase4Api, messageLink, isMeetingNotice } from '../chat/chat.phase4.api';
 import type { ChatServices } from '../chat/ChatServices';
 import type { NativeConversation } from '@ks-os/contracts';
 import type { GuestCredential, GuestSession, MeetingBrand, PublicMeeting } from '../meetings/meetings.api';
@@ -78,5 +78,11 @@ export function createCustomerChatServices(relationship: ClientRelationship, sco
   const scopedPeople = api.people;
   api.people = (id, ...args) => id ? scopedPeople(id, ...args) : Promise.reject(new ChatError('Choose a conversation to find its participants.', 403));
   const files = createPhase4Api(base, request, authenticatedFetch, (url, body, signal, progress) => uploadWithAuth(url, body, signal, progress, 'CUSTOMER'));
-  return { api, files, external: true, notificationName: relationship.businessName, messageLink: value => messageLink(value).replace('/app/chat/', portalPath(relationship.id) + '/messages/') };
+  return { api, files, external: true, notificationName: relationship.businessName, messageLink: value => {
+    const root = portalPath(relationship.id);
+    if (isMeetingNotice(value)) return root + '/meetings' + (value.conversationId ? '?' + new URLSearchParams({ conversationId: value.conversationId }) : '');
+    if (!value.conversationId) return root + '/messages';
+    // Customer media always uses the explicit waiting-room admission flow, never a staff call route.
+    return messageLink({ ...value, meetingId: null }).replace('/app/chat/', root + '/messages/');
+  } };
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { ZodError } from 'zod';
@@ -13,6 +13,8 @@ import { publicMeetingRoutes } from '../src/modules/communications/communication
 import { collaborationInvitationToken } from '../src/modules/communications/communications.collaboration-secrets.js';
 import { createClientMeetingFixture } from './helpers/client-meetings-fixture.js';
 import { ClientMeetingTestMedia, clientMeetingEnvironment } from './helpers/client-meetings-media.js';
+import { MobileDevices, requireMobileDevice } from '../src/modules/authentication/mobile-devices.service.js';
+import { CommunicationLinks } from '../src/modules/communications/communications.links.js';
 
 test('customer HTTP boundary: private invitation handoff, explicit context, scoped meeting cookies and CSRF',{timeout:240000},async t=>{
   const origin='https://portal.example.test';
@@ -23,6 +25,7 @@ test('customer HTTP boundary: private invitation handoff, explicit context, scop
   const invitation=await collaboration.invite(f.owner,channel.id,{email:contact.identity.email,requestId:randomUUID()}),token=collaborationInvitationToken(invitation.id);
   const app=Fastify();await app.register(rateLimit,{global:false});await app.register(websocket);
   app.decorateRequest('auth',undefined);app.decorateRequest('authIdentity',undefined);app.decorateRequest('applicationContext',undefined);app.decorateRequest('customerSessionValidated',false);
+  app.decorateRequest('requireIdentity',function(){if(!this.authIdentity)throw Object.assign(new Error('Sign in required'),{statusCode:401});return this.authIdentity;});
   app.addHook('onRequest',async request=>{
     request.applicationContext=request.headers['x-ks-application-context'] as 'CUSTOMER'|'TENANT'|'AGENCY'|undefined;
     if(request.headers.authorization!=='Bearer contact')return;
@@ -30,7 +33,7 @@ test('customer HTTP boundary: private invitation handoff, explicit context, scop
     request.customerSessionValidated=true;
   });
   app.setErrorHandler((error:Error&{statusCode?:number;code?:string},_request,reply)=>reply.code(error instanceof ZodError?400:error.statusCode??500).send({error:{code:error.code??'BAD_REQUEST',message:error.message}}));
-  await app.register(customerCollaborationRoutes,{prefix:'/api/v1/customer/collaboration',service:collaboration,meetings,chatService:chat});
+  await app.register(customerCollaborationRoutes,{prefix:'/api/v1/customer/collaboration',service:collaboration,meetings,chatService:chat,requireDevice:request=>requireMobileDevice(request,f.db)});
   await app.register(publicMeetingRoutes,{prefix:'/api/v1/public/meetings',service:meetings});await app.ready();t.after(()=>app.close());
   const prefix='/api/v1/customer/collaboration',auth={authorization:'Bearer contact','x-ks-application-context':'CUSTOMER',origin};
   let pendingCookie='',relationshipId='',sessionId='',meetingId='',mediaCookie='',csrfToken='';
@@ -65,6 +68,29 @@ test('customer HTTP boundary: private invitation handoff, explicit context, scop
     assert.equal((await app.inject({method:'POST',url:join,headers:{...auth,cookie:mediaCookie},payload:{requestId:randomUUID()}})).statusCode,403);
     assert.equal((await app.inject({method:'POST',url:join,headers:{...auth,cookie:mediaCookie,'x-ksos-csrf':csrfToken},payload:{requestId:randomUUID()}})).statusCode,404);
     assert.equal(provider.issued.length,0);
+  });
+  await t.test('native customer device uses the same waiting room without cookies and cannot fall back after device denial',async()=>{
+    const registration={applicationId:'test.ksos.customer-meetings',platform:'IOS' as const,environment:'SANDBOX' as const,installationId:randomUUID()},devices=new MobileDevices(f.db,{MOBILE_APPLICATIONS_JSON:JSON.stringify([{...registration,installationId:undefined,redirectUri:'https://portal.example.test/auth/callback'}])});
+    const identity={authUserId:contact.identity.authUserId,authSessionId:contact.identity.sessionId,email:contact.identity.email,assuranceLevel:'aal1' as const,issuedAt:contact.identity.issuedAt,expiresAt:contact.identity.expiresAt};
+    const registrationRequest={applicationContext:'CUSTOMER',headers:{},requireIdentity:()=>identity} as unknown as FastifyRequest;
+    const device=await devices.register(registrationRequest,registration),headers={authorization:'Bearer contact','x-ks-application-context':'CUSTOMER','x-ks-device-id':String(device.id)},base=`${prefix}/${relationshipId}/meetings/${meetingId}`;
+    const request=await app.inject({method:'POST',url:`${base}/request`,headers,payload:{conversationId:channel.id,requestId:randomUUID()}});assert.equal(request.statusCode,200,request.body);assert.equal(request.json().data.sessionId,sessionId);assert.equal(request.headers['set-cookie'],undefined);assert.equal(request.json().data.credential,undefined);
+    const state=await app.inject({url:`${base}/sessions/${sessionId}`,headers});assert.equal(state.statusCode,200,state.body);assert.equal(state.json().data.state,'WAITING');
+    const blocked=await app.inject({method:'POST',url:`${base}/sessions/${sessionId}/join`,headers,payload:{requestId:randomUUID()}});assert.equal(blocked.statusCode,404,blocked.body);assert.equal(provider.issued.length,0);
+    for(const invalid of [randomUUID(),'malformed']){const response=await app.inject({url:`${base}/sessions/${sessionId}`,headers:{...auth,cookie:mediaCookie,'x-ks-device-id':invalid}});assert.equal(response.statusCode,401,response.body);}
+    const browser=await app.inject({url:`${base}/sessions/${sessionId}`,headers:{authorization:'Bearer contact','x-ks-application-context':'CUSTOMER',cookie:mediaCookie}});assert.equal(browser.statusCode,403,'A browser without Origin cannot borrow the native exception');
+    const bodyDevice=await app.inject({method:'POST',url:`${base}/request`,headers,payload:{conversationId:channel.id,requestId:randomUUID(),deviceId:device.id}});assert.equal(bodyDevice.statusCode,400);
+    const publicAttempt=await app.inject({url:`/api/v1/public/meetings/sessions/${sessionId}`,headers});assert.equal(publicAttempt.statusCode,403,'Public guests never inherit native cookie bypass');
+  });
+  await t.test('customer deep links resolve only explicit grants and exact meeting filtering does not broaden discovery',async()=>{
+    const actor=await collaboration.actor(contact.identity,relationshipId),links=new CommunicationLinks(f.db,()=>origin);
+    const target={kind:'MEETING' as const,tenantId:f.owner.tenantId,relationshipId,meetingId};
+    const resolved=await links.create(actor,target);assert.equal(resolved.webPath,`/customer/collaboration/${relationshipId}/meetings?meetingId=${meetingId}`);assert.equal(resolved.requiresAdmission,true);
+    const filtered=await app.inject({url:`${prefix}/${relationshipId}/meetings?meetingId=${meetingId}`,headers:auth});assert.equal(filtered.statusCode,200,filtered.body);assert.deepEqual(filtered.json().data.map((m:{id:string})=>m.id),[meetingId]);
+    const missing=await app.inject({url:`${prefix}/${relationshipId}/meetings?meetingId=${randomUUID()}`,headers:auth});assert.equal(missing.statusCode,200);assert.deepEqual(missing.json().data,[]);
+    await f.pg.query('UPDATE communication_meeting_customer_grants SET revoked_at=now() WHERE meeting_id=$1 AND conversation_id=$2',[meetingId,channel.id]);await assert.rejects(links.create(actor,target));
+    assert.deepEqual((await meetings.customerList(actor,{meetingId})).data,[]);await f.pg.query('UPDATE communication_meeting_customer_grants SET revoked_at=NULL WHERE meeting_id=$1 AND conversation_id=$2',[meetingId,channel.id]);
+    assert.equal(provider.issued.length,0,'Opening a meeting link does not mint media credentials');
   });
   await t.test('media credentials cannot cross meeting routes or bypass authenticated customer-session revocation',async()=>{
     await meetings.admit(f.owner,meetingId,sessionId,true);

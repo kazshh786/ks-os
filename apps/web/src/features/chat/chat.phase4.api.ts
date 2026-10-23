@@ -2,7 +2,7 @@ import type { ChatAttachment,ChatPreferences } from '@ks-os/contracts';
 import { fetchWithAuth,uploadWithAuth } from '../../api/client';
 import { chatBase,chatRequest,ChatError,type Page } from './chat.api';
 export type SearchHit={id:string;conversationId:string;parentMessageId:string|null;senderName:string;conversationName:string;createdAt:string;excerpt:string;position:string};
-export type ChatNotice={id:string;type:string;conversationType?:string;conversationId:string;messageId:string|null;parentMessageId:string|null;senderName:string|null;conversationName:string;preview:string|null;createdAt:string;readAt:string|null};
+export type ChatNotice={id:string;type:string;conversationType?:string|null;conversationId:string|null;meetingId?:string|null;messageId:string|null;parentMessageId:string|null;senderName:string|null;conversationName:string;preview:string|null;createdAt:string;readAt:string|null};
 const data=async<T>(p:Promise<{data:T}>)=>(await p).data;
 export function createPhase4Api(base = chatBase, request: typeof chatRequest = chatRequest, authenticatedFetch: typeof fetchWithAuth = fetchWithAuth, upload: typeof uploadWithAuth = uploadWithAuth) { return {
  policy:()=>data(request<{data:{maxBytes:number;allowed:string[]}}>('/file-policy')),
@@ -27,7 +27,13 @@ export function createPhase4Api(base = chatBase, request: typeof chatRequest = c
  readNotice:(id:string)=>request(`/notifications/${id}/read`,'POST'),
 }; }
 export const phase4Api = createPhase4Api();
-export function messageLink(item:{conversationId:string;messageId?:string|null;id?:string;parentMessageId?:string|null}){
- const q=new URLSearchParams();if(item.messageId||item.id)q.set('message',item.messageId||item.id!);if(item.parentMessageId)q.set('thread',item.parentMessageId);
- return '/app/chat/'+item.conversationId+(q.size?'?'+q:'');
+export type NotificationTarget={conversationId:string|null;meetingId?:string|null;type?:string;messageId?:string|null;id?:string;parentMessageId?:string|null};
+export const isMeetingNotice=(item:Pick<NotificationTarget,'meetingId'|'type'>)=>Boolean(item.type?.startsWith('MEETING_')||(item.meetingId&&!item.type?.startsWith('CALL_')));
+export function messageLink(item:NotificationTarget){
+ if(item.meetingId&&isMeetingNotice(item))return '/app/meetings/'+encodeURIComponent(item.meetingId);
+ if(!item.conversationId)return '/app/chat';
+ const q=new URLSearchParams();
+ if(item.meetingId&&item.type?.startsWith('CALL_'))q.set('call',item.meetingId);
+ else {const messageId=item.messageId||(item.type?undefined:item.id);if(messageId)q.set('message',messageId);if(item.parentMessageId)q.set('thread',item.parentMessageId);}
+ return '/app/chat/'+encodeURIComponent(item.conversationId)+(q.size?'?'+q:'');
 }

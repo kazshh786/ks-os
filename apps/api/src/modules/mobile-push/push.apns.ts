@@ -45,7 +45,7 @@ export class ApnsAdapter implements PushAdapter {
   }
   async send(target: PushTarget, payload: PushPayload, deliveryId: string): Promise<PushOutcome> {
     if (!this.matches(target)) return { kind: 'rejected', code: 'APNS_APPLICATION_MISMATCH' };
-    if (!/^[a-f0-9]{32,512}$/i.test(target.token) || target.token.length % 2) return { kind: 'invalid', code: 'APNS_TOKEN_FORMAT' };
+    if (!/^[a-f0-9]{2,512}$/i.test(target.token) || target.token.length % 2) return { kind: 'invalid', code: 'APNS_TOKEN_FORMAT' };
     if (Date.parse(payload.expiresAt) <= this.clock()) return { kind: 'rejected', code: 'PUSH_EXPIRED' };
     const voip = target.channel === 'VOIP';
     if (voip && (payload.kind !== 'CALL_INCOMING' || !payload.meetingId)) return { kind: 'rejected', code: 'VOIP_CALL_ONLY' };

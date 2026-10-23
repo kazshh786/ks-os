@@ -1,0 +1,60 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { generateKeyPairSync, randomBytes, randomUUID, verify } from 'node:crypto';
+import { ApnsAdapter } from '../src/modules/mobile-push/push.apns.js';
+import { FcmAdapter } from '../src/modules/mobile-push/push.fcm.js';
+import { configuredPushAdapters } from '../src/modules/mobile-push/push.config.js';
+import type { ProviderRequest, ProviderResponse, PushPayload, PushTarget } from '../src/modules/mobile-push/push.types.js';
+
+const now = Date.now(), payload = (): PushPayload => ({ notificationId: randomUUID(), tenantId: randomUUID(), kind: 'CHAT_MESSAGE', context: 'TENANT', conversationId: randomUUID(), expiresAt: new Date(now + 3600000).toISOString(), title: 'KSOS', body: 'New message in KSOS', sound: false });
+test('APNs signs ES256 and enforces app, environment, expiry, VoIP and retry contracts without network', async () => {
+  const keys = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }), requests: ProviderRequest[] = [];
+  let response: ProviderResponse = { status: 200, headers: { 'apns-id': randomUUID() }, body: '' };
+  const adapter = new ApnsAdapter({ teamId: 'TESTTEAM01', keyId: 'TESTKEY001', applicationId: 'test.ksos.mobile', environment: 'SANDBOX', voipEnabled: true, privateKey: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() }, async request => { requests.push(request); return response; }, () => now);
+  const target: PushTarget = { provider: 'APNS', channel: 'ALERT', applicationId: 'test.ksos.mobile', environment: 'SANDBOX', token: randomBytes(32).toString('hex') }, data = payload(), delivery = randomUUID();
+  assert.equal((await adapter.send(target, data, delivery)).kind, 'accepted');
+  const request = requests[0]; assert.equal(request.origin, 'https://api.sandbox.push.apple.com'); assert.equal(request.headers['apns-id'], delivery);
+  assert.equal(request.headers['apns-topic'], target.applicationId); assert.equal(request.headers['apns-push-type'], 'alert');
+  const jwt = request.headers.authorization.slice(7).split('.');
+  assert.equal(verify('sha256', Buffer.from(jwt.slice(0, 2).join('.')), { key: keys.publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(jwt[2], 'base64url')), true);
+  assert.equal(JSON.parse(Buffer.from(jwt[1], 'base64url').toString()).iss, 'TESTTEAM01');
+  assert.deepEqual(JSON.parse(request.body).ksos.notificationId, data.notificationId);
+  await adapter.send(target, data, delivery); assert.equal(requests[1].headers.authorization, request.headers.authorization, 'Provider JWT is cached');
+  assert.equal((await adapter.send({ ...target, environment: 'PRODUCTION' }, data, delivery)).kind, 'rejected');
+  assert.equal((await adapter.send(target, { ...data, expiresAt: new Date(now - 1).toISOString() }, delivery)).kind, 'rejected');
+  assert.equal((await adapter.send({ ...target, channel: 'VOIP' }, data, delivery)).kind, 'rejected');
+  await adapter.send({ ...target, channel: 'VOIP' }, { ...data, kind: 'CALL_INCOMING', meetingId: randomUUID() }, delivery);
+  assert.equal(requests.at(-1)!.headers['apns-push-type'], 'voip'); assert.equal(requests.at(-1)!.headers['apns-expiration'], '0'); assert.equal(requests.at(-1)!.headers['apns-topic'], target.applicationId + '.voip');
+  response = { status: 410, headers: {}, body: JSON.stringify({ reason: 'Unregistered', timestamp: now - 5000 }) };
+  assert.deepEqual(await adapter.send(target, data, delivery), { kind: 'invalid', code: 'APNS_Unregistered', invalidSince: now - 5000 });
+  response = { status: 503, headers: { 'retry-after': '1200' }, body: '{"reason":"ServiceUnavailable"}' };
+  assert.deepEqual(await adapter.send(target, data, delivery), { kind: 'retry', code: 'APNS_ServiceUnavailable', retryAfterMs: 1200000 });
+  response = { status: 403, headers: {}, body: '{"reason":"InvalidProviderToken"}' };
+  assert.equal((await adapter.send(target, data, delivery)).kind, 'rejected');
+  assert.deepEqual(configuredPushAdapters({ MOBILE_PUSH_ENABLED: 'false' }), []);
+});
+
+test('FCM uses scoped OAuth and HTTP v1 with safe priority and error classification', async () => {
+  const keys = generateKeyPairSync('rsa', { modulusLength: 2048 }), requests: ProviderRequest[] = [], accessToken = randomBytes(24).toString('base64url');
+  let response: ProviderResponse = { status: 200, headers: {}, body: '{"name":"projects/test-project/messages/test-message"}' };
+  const adapter = new FcmAdapter({ projectId: 'test-project', clientEmail: 'test@test-project.iam.gserviceaccount.com', applicationId: 'test.ksos.mobile', environment: 'SANDBOX', privateKey: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() }, async request => {
+    requests.push(request); return request.origin === 'https://oauth2.googleapis.com' ? { status: 200, headers: {}, body: JSON.stringify({ access_token: accessToken, expires_in: 3600 }) } : response;
+  }, () => now);
+  await Promise.all([adapter.prepare(), adapter.prepare()]); assert.equal(requests.length, 1, 'Concurrent authorization uses one exchange');
+  const assertion = new URLSearchParams(requests[0].body).get('assertion')!.split('.'), claims = JSON.parse(Buffer.from(assertion[1], 'base64url').toString());
+  assert.equal(claims.scope, 'https://www.googleapis.com/auth/firebase.messaging'); assert.equal(claims.aud, 'https://oauth2.googleapis.com/token');
+  assert.equal(verify('RSA-SHA256', Buffer.from(assertion.slice(0, 2).join('.')), keys.publicKey, Buffer.from(assertion[2], 'base64url')), true);
+  const target: PushTarget = { provider: 'FCM', channel: 'ALERT', applicationId: 'test.ksos.mobile', environment: 'SANDBOX', token: randomBytes(32).toString('base64url') }, data = payload();
+  assert.equal((await adapter.send(target, data, randomUUID())).kind, 'accepted');
+  assert.equal(requests.at(-1)!.path, '/v1/projects/test-project/messages:send');
+  let sent = JSON.parse(requests.at(-1)!.body).message; assert.equal(sent.android.priority, 'NORMAL'); assert.equal(sent.android.restricted_package_name, target.applicationId);
+  await adapter.send(target, { ...data, kind: 'CALL_INCOMING', meetingId: randomUUID() }, randomUUID());
+  sent = JSON.parse(requests.at(-1)!.body).message; assert.equal(sent.android.priority, 'HIGH'); assert.equal(sent.android.ttl, '0s'); assert.equal(sent.notification, undefined, 'Calling client receives data rather than a generic background tray alert');
+  response = { status: 400, headers: {}, body: '{"error":{"status":"INVALID_ARGUMENT"}}' };
+  assert.equal((await adapter.send(target, data, randomUUID())).kind, 'rejected', 'A payload error must not invalidate a token');
+  response = { status: 404, headers: {}, body: '{"error":{"details":[{"@type":"type.googleapis.com/google.firebase.fcm.v1.FcmError","errorCode":"UNREGISTERED"}]}}' };
+  assert.equal((await adapter.send(target, data, randomUUID())).kind, 'invalid');
+  response = { status: 429, headers: { 'retry-after': '120' }, body: '{"error":{"status":"RESOURCE_EXHAUSTED"}}' };
+  assert.deepEqual(await adapter.send(target, data, randomUUID()), { kind: 'retry', code: 'FCM_RESOURCE_EXHAUSTED', retryAfterMs: 120000 });
+  assert.equal((await adapter.send({ ...target, applicationId: 'other.app' }, data, randomUUID())).kind, 'rejected');
+});

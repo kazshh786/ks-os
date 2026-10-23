@@ -68,7 +68,11 @@ export class CommunicationsSync {
             OR EXISTS(SELECT 1 FROM conversation_members m JOIN conversations c ON c.id=m.conversation_id AND c.tenant_id=m.tenant_id
               WHERE m.tenant_id=e.tenant_id AND m.conversation_id=e.conversation_id AND c.access_mode='MEMBERS'
                 AND coalesce(m.user_id,m.customer_relationship_id)=${actor.userId} AND m.left_at IS NULL
-                AND (NOT ${isCustomer(actor)} OR (c.external_client_channel AND c.client_id=(SELECT client_id FROM customer_collaboration_relationships WHERE id=${actor.userId}))))
+                AND (NOT ${isCustomer(actor)} OR (c.external_client_channel AND c.client_id=(SELECT client_id FROM customer_collaboration_relationships WHERE id=${actor.userId})))
+                AND (e.meeting_id IS NULL OR EXISTS(SELECT 1 FROM communication_meetings cm WHERE cm.id=e.meeting_id AND cm.tenant_id=e.tenant_id
+                  AND ${currentMeetingAccessSql(actor, 'cm', access)}
+                  AND (NOT ${isCustomer(actor)} OR EXISTS(SELECT 1 FROM communication_meeting_customer_grants grant_row
+                    WHERE grant_row.meeting_id=cm.id AND grant_row.tenant_id=e.tenant_id AND grant_row.conversation_id=e.conversation_id AND grant_row.revoked_at IS NULL)))))
             OR (e.conversation_id IS NULL AND EXISTS(SELECT 1 FROM communication_meetings cm WHERE cm.id=e.meeting_id AND cm.tenant_id=e.tenant_id AND ${currentMeetingAccessSql(actor, 'cm', access)}))
           )) AS visible
         FROM batch e ORDER BY e.sync_position`);

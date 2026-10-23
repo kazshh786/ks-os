@@ -192,6 +192,7 @@ export const communicationMentions = pgTable('communication_mentions', {
 }, table => ({ identity:primaryKey({name:'communication_mentions_pkey',columns:[table.messageId,table.startOffset]}),recipientIdx:index('communication_mentions_recipient_idx').on(table.tenantId,table.userId,table.messageId) }));
 
 export const communicationPreferences=pgTable('communication_preferences',{
+ push:boolean('push').default(false).notNull(),meetings:boolean('meetings').default(true).notNull(),incomingCalls:boolean('incoming_calls').default(true).notNull(),contentPreviews:boolean('content_previews').default(false).notNull(),
  id:uuid('id').defaultRandom().primaryKey(),
  customerRelationshipId:uuid('customer_relationship_id').unique().references(()=>customerCollaborationRelationships.id),
  tenantId:uuid('tenant_id').notNull().references(()=>tenants.id,{onDelete:'cascade'}),

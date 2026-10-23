@@ -26,7 +26,10 @@ export async function authorizePush(db: CommunicationsDatabase, delivery: PushDe
   if (!row) return { reason: 'PUSH_ACCESS_CHANGED' };
   if (!row.push || row.dnd) return { reason: 'PUSH_PREFERENCE' };
   try { await validateMobileDeviceSession(db, { deviceId: row.device_id, authUserId: row.auth_user_id, context: row.application_context }); }
-  catch { return { reason: 'PUSH_SESSION_REVOKED' }; }
+  catch (error) {
+    if ((error as { statusCode?: number }).statusCode === 401 || (error as { statusCode?: number }).statusCode === 403) return { reason: 'PUSH_SESSION_REVOKED' };
+    throw error; // A database outage is retryable, never evidence of revocation.
+  }
   if (row.application_context === 'TENANT') {
     const [principal] = await db.query(sql`SELECT id FROM users WHERE id=${row.context_user} AND id=${row.recipient_user_id} AND tenant_id=${row.tenant_id} AND auth_user_id=${row.auth_user_id}
       AND account_status='ACTIVE' AND security_version=${row.security_version} AND (sessions_valid_after IS NULL OR sessions_valid_after<${new Date(row.auth_issued_at).toISOString()}::timestamptz)`);

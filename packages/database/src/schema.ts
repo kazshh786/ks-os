@@ -842,6 +842,7 @@ export const automationActionRuns = pgTable('automation_action_runs', {
 });
 
 export const internalNotifications = pgTable('internal_notifications', {
+  chatMeetingId:uuid('chat_meeting_id'),meetingVersion:integer('meeting_version'),expiresAt:timestamp('expires_at',{withTimezone:true}), // Migration 97 owns the meeting FK.
   recipientCustomerRelationshipId: uuid('recipient_customer_relationship_id').references(() => customerCollaborationRelationships.id),
   chatConversationId:uuid('chat_conversation_id'),chatMessageId:uuid('chat_message_id'), // Composite scope FKs are owned by migration 92.
   id: uuid('id').defaultRandom().primaryKey(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
