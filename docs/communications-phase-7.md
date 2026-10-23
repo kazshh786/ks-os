@@ -75,9 +75,20 @@ Commercial limits use existing entitlement configuration and server-side seriali
 
 All installs, application builds and tests run in GitHub. Local work is limited to source preparation from the exact Phase 6 GitHub snapshot and review of returned evidence.
 
-Pending GitHub results: build, typecheck, lint, full regression suite, customer identity/invitation tests, migration constraints, PostgreSQL races, shared-engine isolation, HTTP/WebSocket revocation, portal browser/accessibility checks and Phase 1–6 media/browser regression checks. Do not treat this paragraph as a passing result.
+The [Phase 7 review report](https://github.com/kazshh786/ks-os/pull/252) records final counts and exact GitHub run links; its [checks tab](https://github.com/kazshh786/ks-os/pull/252/checks) is authoritative for the current head. The branch `codex/communications-phase-7` builds directly on Phase 6 commit `0a04e64cc8d2919b149f4aa6d876c4fb661afdb2`, preserving the unmerged Phase 1–6 stack.
 
-Inherited release findings from Phase 6: 63 dependency audit findings (1 critical, 32 high, 26 moderate, 4 low), and CodeQL alert 216 concerning the guest verifier cookie. These are not suppressed or represented as newly fixed by Phase 7. Current Phase 7 security results must be reviewed separately.
+| Verification layer | Coverage |
+| --- | --- |
+| Unit and component tests | Customer context and provider validation, invitation/email policy, scoped request adapters, portal branding/switching/revocation/logout, CRM creation, pending meeting admission and cleanup. |
+| Database and integration tests | Migration 95 constraints/RLS/provider helper, many contacts/businesses, verified invitations, real PostgreSQL acceptance/capacity/revocation races, stale invitations after email changes, upload admission across staff/customer routes, shared messages/files/search/notifications and current membership. |
+| HTTP and realtime security | First-party handoff and meeting cookies, explicit CUSTOMER context, CSRF and replay checks, provider logout, conversation and workspace socket closure, slow-storage revocation and denial of staff-only surfaces. |
+| Browser evidence | Production portal components backed by the disposable real database/API/WebSocket engine: staff/customer message exchange, threads, reactions, refresh, search, authorized download, desktop/mobile layout and axe checks. Existing internal-chat browser coverage also runs. |
+| Media evidence | Isolated self-hosted LiveKit, six Chromium sessions, three rooms and two businesses, actual audio/video, controlled screen sharing and targeted revocation. Existing Phase 5/6 UI and media suites also run. |
+| Build and delivery checks | Production build, repository lint, TypeScript, complete package regression suite and migration plan. No production database or media service is used. |
+
+The main suite intentionally skips browser/media cases unless their dedicated verification flags are enabled; the separate browser/media jobs execute those cases. Pre-existing unconfigured CRM/invoice/sales integration tests remain explicitly reported as skipped, not passed. Production TLS/NAT/TURN, physical Safari/iOS/Android, real email delivery and capacity require a later approved staging/release check.
+
+The inherited production dependency audit still reports 63 findings (1 critical, 32 high, 26 moderate, 4 low); dependencies were not upgraded in this phase. Phase 7 CodeQL and secret results are reported separately from that failing audit, and Vercel is excluded as requested. `.gitleaksignore` contains one exact historical fingerprint for an invented unit-test fixture string, now generated at runtime; no operational credential or general scanning rule is excluded.
 
 ## Phase 8 readiness
 
