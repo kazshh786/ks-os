@@ -43,7 +43,7 @@ test('customer principals use the shared messaging engine with tenant and custom
 
  await t.test('explicit relationships expose only their own new external channels',async()=>{
   const page=await service.list(alice,{limit:30});assert.deepEqual(page.data.map(x=>x.id),[id]);
-  const view=NativeConversationSchema.parse(await service.get(alice,id));assert.equal(view.externalClientChannel,true);assert.equal(view.clientId,customer.id);
+  const view=NativeConversationSchema.parse(JSON.parse(JSON.stringify(await service.get(alice,id))));assert.equal(view.externalClientChannel,true);assert.equal(view.clientId,customer.id);
   await denied(service.get(alice,privateBob));await denied(service.get(alice,otherChannel));await denied(service.get(alice,internalId));
   await denied(service.get({...alice,tenantId:other.tenantId},otherChannel));await denied(service.get({...alice,userId:bob.userId},privateBob));
   assert.equal((await service.get(aliceOther,otherChannel)).id,otherChannel);
@@ -58,7 +58,7 @@ test('customer principals use the shared messaging engine with tenant and custom
  });
  await t.test('messages derive customer authorship, deduplicate retries and prevent impersonation',async()=>{
   const input={body:'Private tax correspondence',clientMessageId:randomUUID()};
-  const first=NativeMessageSchema.parse(await service.post(alice,id,input));messageId=first.id;assert.equal(first.senderId,alice.userId);assert.equal(first.senderName,'Alice');
+  const first=NativeMessageSchema.parse(JSON.parse(JSON.stringify(await service.post(alice,id,input))));messageId=first.id;assert.equal(first.senderId,alice.userId);assert.equal(first.senderName,'Alice');
   assert.equal((await service.post(alice,id,input)).id,first.id);
   await assert.rejects(service.post(alice,id,{...input,body:'Changed retry'}),{code:'RETRY_CONFLICT'});
   const row=(await pg.query('SELECT sender_user_id,sender_customer_relationship_id,sender_type FROM conversation_messages WHERE id=$1',[first.id])).rows[0];assert.equal(row.sender_user_id,null);assert.equal(row.sender_type,'CUSTOMER');assert.equal(row.sender_customer_relationship_id,alice.userId);
@@ -117,7 +117,8 @@ test('customer principals use the shared messaging engine with tenant and custom
   assert.equal((await app.inject({url:`${base}/${privateBob}/messages`,headers})).statusCode,404);
   assert.equal((await app.inject({url:`${base}/people`,headers})).statusCode,403);
   const ticket=await service.ticket(alice,id),socket=await app.injectWS(`${base}/${id}/events?ticket=${ticket.ticket}&after=${ticket.cursor}`);t.after(()=>socket.close());
-  const delivered=once(socket,'message');await service.post(owner,id,{body:'Realtime customer update'});assert.equal(JSON.parse(String((await delivered)[0])).type,'message.created');
+  const delivered=new Promise<{type:string;resourceId:string}>((resolve,reject)=>{const timer=setTimeout(()=>{socket.off('message',receive);reject(new Error('Customer message event was not delivered'));},10000);const receive=(raw:unknown)=>{const event=JSON.parse(String(raw));if(event.type==='message.created'){clearTimeout(timer);socket.off('message',receive);resolve(event);}};socket.on('message',receive);});
+  const posted=await service.post(owner,id,{body:'Realtime customer update'});assert.equal((await delivered).resourceId,posted.id);
   const globalTicket=await service.ticket(alice,null),globalSocket=await app.injectWS(`${base}/events?ticket=${globalTicket.ticket}&after=${globalTicket.cursor}`);t.after(()=>globalSocket.close());
   const watching=new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Customer workspace watch did not become ready')),10000);globalSocket.on('message',raw=>{if(JSON.parse(String(raw)).type==='ephemeral.snapshot'){clearTimeout(timer);resolve();}});});
   globalSocket.send(JSON.stringify({type:'watch',conversationId:id,userIds:[]}));await watching;
