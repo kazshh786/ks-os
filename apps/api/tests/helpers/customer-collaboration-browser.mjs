@@ -11,20 +11,26 @@ export async function verifyCustomerCollaborationBrowser({ apiOrigin, relationsh
   const workerRequire = createRequire(path.join(root, 'apps/site-worker/package.json')), webRequire = createRequire(path.join(webRoot, 'package.json'));
   const { chromium } = workerRequire('playwright'), { createServer } = await import(pathToFileURL(webRequire.resolve('vite')).href);
   const artifacts = path.join(root, 'artifacts/customer-collaboration'); await mkdir(artifacts, { recursive: true });
-  const vite = await createServer({ root: webRoot, configFile: path.join(webRoot, 'vite.config.ts'), optimizeDeps: { entries: ['tests/fixtures/customer-collaboration-entry.tsx'] }, resolve: { alias: [
+  // The staff browser suite runs in a parallel Node worker with different aliases.
+  // Its dependency optimizer must never invalidate this fixture's module cache.
+  const vite = await createServer({ root: webRoot, cacheDir: path.join(webRoot, 'node_modules/.vite-customer-collaboration'), configFile: path.join(webRoot, 'vite.config.ts'), optimizeDeps: { entries: ['tests/fixtures/customer-collaboration-entry.tsx'] }, resolve: { alias: [
     { find: '../../api/client', replacement: path.join(webRoot, 'tests/fixtures/chat-client.ts') },
     { find: '../../lib/supabase', replacement: path.join(webRoot, 'tests/fixtures/customer-collaboration-auth.ts') },
   ] }, server: { host: '127.0.0.1', port: 0, hmr: false, proxy: { '/api': { target: apiOrigin, changeOrigin: true, ws: true } } }, plugins: [{ name: 'customer-portal-browser-fixture', configureServer(server) { server.middlewares.use(async (request, response, next) => {
     if (!request.url?.startsWith('/customer/')) return next();
     try { const html = await server.transformIndexHtml(request.url, '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Client collaboration verification</title></head><body><div id="root"></div><script type="module" src="/tests/fixtures/customer-collaboration-entry.tsx"></script></body></html>'); response.setHeader('Content-Type', 'text/html'); response.end(html); } catch (error) { next(error); }
   }); } }] });
-  let browser, page; const errors = [], forbidden = [], evidence = [];
+  let browser, page; const errors = [], forbidden = [], evidence = [], consoleErrors = [], failedRequests = [], failedResponses = [];
+  const requestPath = value => { try { return new URL(value).pathname; } catch { return 'unknown'; } };
   const staffPost = async (suffix, body) => { const response = await fetch(apiOrigin + '/api/v1/communications/conversations/' + conversationId + suffix, { method: 'POST', headers: { authorization: 'Bearer ' + staffToken, 'content-type': 'application/json' }, body: JSON.stringify(body) }); assert.ok(response.ok, 'Staff fixture request ' + suffix + ': ' + response.status); return response.json(); };
   try {
     await vite.listen(); const origin = 'http://127.0.0.1:' + vite.httpServer.address().port;
     browser = await chromium.launch({ headless: true }); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, extraHTTPHeaders: { authorization: 'Bearer ' + customerToken } });
     await context.route('**/*', route => { const url = new URL(route.request().url()); if (url.pathname.startsWith('/api/v1/') && !url.pathname.startsWith('/api/v1/customer/')) forbidden.push(url.pathname); return url.hostname === '127.0.0.1' ? route.continue() : route.abort(); });
     page = await context.newPage(); page.setDefaultTimeout(25000); page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => { if (message.type() === 'error' && consoleErrors.length < 30) consoleErrors.push(message.text().slice(0, 1000)); });
+    page.on('requestfailed', request => { if (failedRequests.length < 30) failedRequests.push({ path: requestPath(request.url()), error: request.failure()?.errorText }); });
+    page.on('response', response => { if (response.status() >= 400 && failedResponses.length < 30) failedResponses.push({ path: requestPath(response.url()), status: response.status() }); });
     const capture = async (name, selector = '.client-portal') => {
       if (!await page.evaluate(() => Boolean(window.axe))) await page.addScriptTag({ path: workerRequire.resolve('axe-core/axe.min.js') });
       const result = await page.locator(selector).first().evaluate(async element => window.axe.run(element, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } }));
@@ -33,7 +39,7 @@ export async function verifyCustomerCollaborationBrowser({ apiOrigin, relationsh
       await page.screenshot({ path: path.join(artifacts, name + '.png'), fullPage: true, animations: 'disabled' }); evidence.push(name + ' layout and accessibility');
     };
     const portal = origin + '/customer/collaboration/' + relationshipId;
-    await page.goto(portal + '/messages/' + conversationId); const composer = page.getByRole('combobox', { name: /^Message / }); await composer.waitFor();
+    const navigation = await page.goto(portal + '/messages/' + conversationId); assert.ok(navigation?.ok(), 'Customer portal fixture document loaded'); const composer = page.getByRole('combobox', { name: /^Message / }); await composer.waitFor();
     const incoming = 'Browser staff update ' + Date.now(); await staffPost('/messages', { body: incoming, clientMessageId: crypto.randomUUID(), mentions: [] }); await page.getByRole('region', { name: 'Channel messages', exact: true }).getByText(incoming, { exact: true }).waitFor();
     const outgoing = 'Customer browser reply ' + Date.now(); await composer.fill(outgoing); await composer.press('Enter'); await page.getByRole('region', { name: 'Channel messages', exact: true }).getByText(outgoing, { exact: true }).waitFor();
     const persisted = await fetch(apiOrigin + '/api/v1/communications/conversations/' + conversationId + '/messages', { headers: { authorization: 'Bearer ' + staffToken } }); const messages = await persisted.json(); assert.ok(messages.data.some(value => value.body === outgoing && value.senderId === relationshipId), 'Customer message persisted with the relationship principal and is visible to staff');
@@ -50,6 +56,11 @@ export async function verifyCustomerCollaborationBrowser({ apiOrigin, relationsh
     assert.deepEqual(forbidden, [], 'Customer UI made no internal or public-guest API calls'); assert.deepEqual(errors, [], 'No browser runtime errors');
     evidence.push('Real staff-to-customer WebSocket delivery, customer-to-staff persisted message, thread, reaction, refresh history, scoped files and customer navigation');
     await writeFile(path.join(artifacts, 'customer-collaboration-browser-verification.json'), JSON.stringify({ environment: 'GitHub Chromium production React UI with real disposable PostgreSQL/HTTP/WebSocket messaging', evidence }, null, 2));
-  } catch (error) { await page?.screenshot({ path: path.join(artifacts, 'customer-collaboration-browser-failure.png'), fullPage: true, animations: 'disabled' }).catch(() => {}); throw error; }
+  } catch (error) {
+    const diagnostics = { path: page ? requestPath(page.url()) : null, runtimeErrors: errors, consoleErrors, failedRequests, failedResponses };
+    await writeFile(path.join(artifacts, 'customer-collaboration-browser-failure.json'), JSON.stringify(diagnostics, null, 2));
+    console.error('Customer portal browser diagnostics:', JSON.stringify(diagnostics));
+    await page?.screenshot({ path: path.join(artifacts, 'customer-collaboration-browser-failure.png'), fullPage: true, animations: 'disabled' }).catch(() => {}); throw error;
+  }
   finally { await browser?.close(); await vite.close(); }
 }
