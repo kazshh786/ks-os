@@ -1,0 +1,4 @@
+# Historical, synthetic unit-test fixture only: an invented invitation signing
+# string in a pure test with example.test origins. Never an operational credential.
+# The live source now generates the test key at runtime. Keep scanning all other findings.
+75d78a690803f8d2d358c2de46fd8eb535602ff8:apps/api/tests/communications-collaboration-policy.test.ts:generic-api-key:7

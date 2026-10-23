@@ -23,7 +23,7 @@ function MeetingAdmission({ meeting, close }: { meeting: ClientMeeting; close: (
   }, [gateway, revision]);
   async function request() {
     setBusy(true); setError('');
-    try { const value = await collaborationApi.requestMeeting(relationship.id, meeting.id, meeting.conversationId, requestId.current); if (!mounted.current) return; if (!value.csrfToken) throw new Error('The meeting could not establish a secure session.'); const next = { sessionId: value.sessionId, csrfToken: value.csrfToken, requestId: requestId.current }; setCredential(next); setSession({ ...value, name: value.name || displayName }); }
+    try { const value = await collaborationApi.requestMeeting(relationship.id, meeting.id, meeting.conversationId, requestId.current); if (!value.csrfToken) throw new Error('The meeting could not establish a secure session.'); const next = { sessionId: value.sessionId, csrfToken: value.csrfToken, requestId: requestId.current }; if (!mounted.current) { void clientMeetingApi(relationship.id, meeting.id, next).leave().catch(() => undefined); return; } setCredential(next); setSession({ ...value, name: value.name || displayName }); }
     catch (cause) { if (mounted.current) setError(callingError(cause)); } finally { if (mounted.current) setBusy(false); }
   }
   const ready = session?.state === 'APPROVED' && session.meeting && ['RINGING', 'ACTIVE'].includes(session.meeting.status);

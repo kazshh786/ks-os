@@ -1,4 +1,4 @@
-import { render,screen,fireEvent,waitFor,cleanup } from '@testing-library/react';
+import { render,screen,fireEvent,waitFor,cleanup,act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach,beforeEach,expect,it,vi } from 'vitest';
@@ -65,4 +65,18 @@ it('image thumbnails use the authenticated thumbnail request and revoke blob URL
  vi.mocked(phase4Api.content).mockResolvedValue(new Blob(['image'],{type:'image/webp'}));
  const {unmount}=render(<AttachmentCard conversationId={id} attachment={{id,fileName:'image.png',mimeType:'image/webp',sizeBytes:50,status:'AVAILABLE',thumbnail:true,uploadedBy:id,createdAt:'2026-10-11T00:00:00Z'}}/>);
  await screen.findByRole('img');expect(phase4Api.content).toHaveBeenCalledWith(id,id,true,expect.any(AbortSignal));unmount();expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:private');
+});
+it('closes outstanding browser alerts when their workspace unmounts',async()=>{
+ const close=vi.fn(),subscribe=()=>()=>{};class BrowserAlert { static permission='granted';onclick:(()=>void)|null=null;close=close; }
+ vi.stubGlobal('Notification',BrowserAlert);vi.mocked(phase4Api.preferences).mockResolvedValue({...pref,browser:true});vi.mocked(phase4Api.conversationPreference).mockResolvedValue({mode:'ALL'});
+ const {rerender,unmount}=render(<MemoryRouter><ChatNotifications subscribe={subscribe} revision={0}/></MemoryRouter>);
+ await act(async()=>{});
+ vi.mocked(phase4Api.notifications).mockResolvedValue({data:[{id,type:'CHAT_MESSAGE',conversationId:id,messageId:id,parentMessageId:null,senderName:'Ada',conversationName:'Shared plan',preview:'An update',createdAt:'2026-10-11T00:00:00Z',readAt:null}],nextCursor:null});
+ rerender(<MemoryRouter><ChatNotifications subscribe={subscribe} revision={1}/></MemoryRouter>);
+ await screen.findByText('New Chat activity. Open notifications to view it.');unmount();expect(close).toHaveBeenCalledTimes(1);
+});
+it('aborts an in-flight attachment preview when the conversation is removed',async()=>{
+ const create=vi.fn();vi.stubGlobal('URL',Object.assign(URL,{createObjectURL:create,revokeObjectURL:vi.fn()}));let finish!:(blob:Blob)=>void;vi.mocked(phase4Api.content).mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const {unmount}=render(<AttachmentCard conversationId={id} attachment={{id,fileName:'image.png',mimeType:'image/png',sizeBytes:50,status:'AVAILABLE',thumbnail:false,uploadedBy:id,createdAt:'2026-10-11T00:00:00Z'}}/>);
+ await userEvent.click(screen.getByRole('button',{name:'Preview'}));const signal=vi.mocked(phase4Api.content).mock.calls.at(-1)![3]!;unmount();await act(async()=>finish(new Blob(['image'])));expect(signal.aborted).toBe(true);expect(create).not.toHaveBeenCalled();
 });

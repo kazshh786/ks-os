@@ -293,12 +293,12 @@ const authPlugin: FastifyPluginAsync = async fastify => {
         // require the current provider session and a confirmed, unchanged identity.
         const current = await getDatabase().execute(sql`SELECT public.customer_provider_session_is_current(${identity.authSessionId}::uuid,${identity.authUserId}::uuid) AS current`);
         if (!current.rows[0]?.current) { request.authIdentity = undefined; return; }
-        const [customer] = await getDatabase().select().from(customerAccounts).where(eq(customerAccounts.authUserId, request.authIdentity.authUserId)).limit(1);
-        const issuedAt = request.authIdentity.issuedAt ? new Date(request.authIdentity.issuedAt) : null;
+        const [customer] = await getDatabase().select().from(customerAccounts).where(eq(customerAccounts.authUserId, identity.authUserId)).limit(1);
+        const issuedAt = new Date(identity.issuedAt);
         if (customer?.sessionsValidAfter && (!issuedAt || issuedAt <= customer.sessionsValidAfter)) { request.authIdentity = undefined; return; }
         const contextSession = await ensureApplicationSession({
-          request, context: 'CUSTOMER', authUserId: request.authIdentity.authUserId,
-          authSessionId: request.authIdentity.authSessionId, assuranceLevel,
+          request, context: 'CUSTOMER', authUserId: identity.authUserId,
+          authSessionId: identity.authSessionId, assuranceLevel,
           jwtExpiresAt: new Date(Number(claims.exp || 0) * 1000), securityVersion: 1,
           hardTtlHours: Number(process.env.CUSTOMER_SESSION_HARD_TTL_HOURS || 720),
         });

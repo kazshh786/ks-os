@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
+import rateLimit from '@fastify/rate-limit';
 import { WebSocket } from 'ws';
 import { NativeConversationSchema, NativeMessageSchema } from '@ks-os/contracts';
 import { CommunicationsService } from '../src/modules/communications/communications.service.js';
@@ -95,7 +96,7 @@ test('customer principals use the shared messaging engine with tenant and custom
   await assert.rejects(service.attachments.reserve(alice,id,{name:'huge.txt',size:1024**3}),{code:'FILE_TOO_LARGE'});
  });
  await t.test('HTTP and WebSocket tickets validate the relationship and stop protected delivery on removal',async httpT=>{
-  const app=Fastify();await app.register(websocket);const actors:Record<string,CommunicationsActor>={alice,bob};
+  const app=Fastify();await app.register(rateLimit,{max:300,timeWindow:'1 minute'});await app.register(websocket);const actors:Record<string,CommunicationsActor>={alice,bob};
   app.decorateRequest('auth',undefined);app.decorateRequest('authIdentity',undefined);
   app.decorateRequest('requireAuth',function(){if(!this.auth)throw Object.assign(new Error('Denied'),{statusCode:401});});
   app.addHook('onRequest',async request=>{

@@ -18,6 +18,7 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
  const navigate=useNavigate(),[open,setOpen]=useState(false),[settings,setSettings]=useState(false),[preferences,setPreferences]=useState<ChatPreferences|null>(null);
  const [rows,setRows]=useState<ChatNotice[]>([]),[cursor,setCursor]=useState<string|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
  const preferenceRevision=useRef(0),saving=useRef(false);
+ const browserAlerts=useRef(new Map<Notification,ReturnType<typeof setTimeout>>());
  const seen=useRef(new Set<string>()),initialized=useRef(false),context=useRef(conversationId),mounted=useRef(true);context.current=conversationId;
  const refresh=useCallback(async(deliver=false)=>{
   try {
@@ -33,8 +34,9 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
     if(p.inApp)setNotice('New Chat activity. Open notifications to view it.');
     if(p.browser&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
      try{const notification=new Notification('New ' + notificationName + ' message activity',{body:'Open Chat to view your update.',tag:'ksos-chat-'+row.id,silent:!p.sound});
-      notification.onclick=()=>{window.focus();navigate(messageLink(row));notification.close();};
-      setTimeout(()=>notification.close(),15000);
+      const dismiss=()=>{const timer=browserAlerts.current.get(notification);if(timer)clearTimeout(timer);browserAlerts.current.delete(notification);notification.close();};
+      notification.onclick=()=>{if(mounted.current){window.focus();navigate(messageLink(row));}dismiss();};
+      browserAlerts.current.set(notification,setTimeout(dismiss,15000));
      }catch{/* Some mobile browsers require background push, which is outside this phase. */}
     }
    }
@@ -44,7 +46,7 @@ export function ChatNotifications({subscribe,revision,conversationId}:{subscribe
  },[navigate,phase4Api,messageLink,notificationName]);
  useEffect(()=>{mounted.current=true;void refresh();const timer=setInterval(()=>void refresh(true),30000);
   const stop=subscribe(event=>{if(event.type.startsWith('notification.')||event.type==='conversation.member_left'||event.type==='message.deleted')void refresh(true);});
-  return()=>{mounted.current=false;clearInterval(timer);stop();};
+  return()=>{mounted.current=false;clearInterval(timer);stop();for(const [notification,timeout] of browserAlerts.current){clearTimeout(timeout);notification.onclick=null;notification.close();}browserAlerts.current.clear();};
  },[refresh,subscribe]);
  useEffect(()=>{if(revision)void refresh(true);},[revision,refresh]);
  const save=async(next:ChatPreferences)=>{const previous=preferences;preferenceRevision.current++;saving.current=true;setPreferences(next);setBusy(true);setError('');try{setPreferences(await phase4Api.savePreferences(next));}catch(e){setPreferences(previous);setError(e instanceof Error?e.message:'Settings could not be saved');}finally{saving.current=false;setBusy(false);}};

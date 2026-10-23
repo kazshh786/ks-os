@@ -48,6 +48,9 @@ CREATE FUNCTION check_collaboration_invitation() RETURNS trigger LANGUAGE plpgsq
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM conversations WHERE id=NEW.conversation_id AND tenant_id=NEW.tenant_id AND client_id=NEW.client_id AND external_client_channel) OR NOT EXISTS(SELECT 1 FROM users WHERE id=NEW.created_by AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'COLLABORATION_INVITATION_SCOPE_INVALID' USING ERRCODE='23514'; END IF;
  IF TG_OP='UPDATE' AND (NEW.id,NEW.tenant_id,NEW.client_id,NEW.conversation_id,NEW.email_normalized,NEW.secret_hash,NEW.created_by,NEW.request_id) IS DISTINCT FROM (OLD.id,OLD.tenant_id,OLD.client_id,OLD.conversation_id,OLD.email_normalized,OLD.secret_hash,OLD.created_by,OLD.request_id) THEN RAISE EXCEPTION 'COLLABORATION_INVITATION_IMMUTABLE' USING ERRCODE='23514'; END IF;
+ IF TG_OP='UPDATE' THEN
+  IF (OLD.status='ACCEPTED' AND NEW.status NOT IN ('ACCEPTED','REVOKED')) OR (OLD.status IN ('REVOKED','EXPIRED') AND NEW.status IN ('PENDING','ACCEPTED')) OR (OLD.accepted_customer_account_id IS NOT NULL AND (NEW.accepted_customer_account_id,NEW.accepted_at) IS DISTINCT FROM (OLD.accepted_customer_account_id,OLD.accepted_at)) THEN RAISE EXCEPTION 'COLLABORATION_INVITATION_CONSUMED' USING ERRCODE='23514'; END IF;
+ END IF;
  IF NEW.accepted_customer_account_id IS NOT NULL AND (TG_OP='INSERT' OR NEW.accepted_customer_account_id IS DISTINCT FROM OLD.accepted_customer_account_id) AND NOT EXISTS(SELECT 1 FROM customer_accounts WHERE id=NEW.accepted_customer_account_id AND email_normalized=NEW.email_normalized) THEN RAISE EXCEPTION 'COLLABORATION_INVITATION_ACCOUNT_INVALID' USING ERRCODE='23514'; END IF;
  RETURN NEW;
 END $$;
@@ -57,6 +60,12 @@ CREATE TABLE customer_collaboration_handoffs (
  secret_hash varchar(64) NOT NULL UNIQUE CHECK(length(secret_hash)=64),expires_at timestamptz NOT NULL,consumed_at timestamptz,created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX collaboration_handoff_expiry ON customer_collaboration_handoffs(expires_at);
+CREATE FUNCTION check_collaboration_handoff() RETURNS trigger LANGUAGE plpgsql SET search_path=public AS $$
+BEGIN
+ IF (NEW.id,NEW.invitation_id,NEW.secret_hash,NEW.expires_at) IS DISTINCT FROM (OLD.id,OLD.invitation_id,OLD.secret_hash,OLD.expires_at) OR (OLD.consumed_at IS NOT NULL AND NEW.consumed_at IS DISTINCT FROM OLD.consumed_at) THEN RAISE EXCEPTION 'COLLABORATION_HANDOFF_IMMUTABLE' USING ERRCODE='23514'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER collaboration_handoff_scope BEFORE UPDATE ON customer_collaboration_handoffs FOR EACH ROW EXECUTE FUNCTION check_collaboration_handoff();
 
 -- Historical rows retain their principal after revocation; authorization rechecks active access.
 CREATE FUNCTION collaboration_principal_matches(p_tenant uuid,p_conversation uuid,p_relationship uuid) RETURNS boolean LANGUAGE sql STABLE SET search_path=public AS $$
@@ -78,6 +87,9 @@ CREATE INDEX native_customer_sender_search ON conversation_messages(tenant_id,se
 CREATE INDEX native_effective_sender_search ON conversation_messages(tenant_id,(coalesce(sender_user_id,sender_customer_relationship_id)),native_position DESC) WHERE channel_type='NATIVE' AND deleted_at IS NULL;
 CREATE OR REPLACE FUNCTION check_communication_scope() RETURNS trigger LANGUAGE plpgsql SET search_path=public AS $$
 BEGIN
+ IF TG_TABLE_NAME='conversation_messages' AND TG_OP='UPDATE' THEN
+  IF (NEW.sender_customer_relationship_id IS NOT NULL OR OLD.sender_customer_relationship_id IS NOT NULL) AND (NEW.sender_customer_relationship_id,NEW.sender_user_id,NEW.tenant_id,NEW.conversation_id,NEW.channel_type) IS DISTINCT FROM (OLD.sender_customer_relationship_id,OLD.sender_user_id,OLD.tenant_id,OLD.conversation_id,OLD.channel_type) THEN RAISE EXCEPTION 'COMMUNICATION_AUTHOR_IMMUTABLE' USING ERRCODE='23514'; END IF;
+ END IF;
  IF TG_TABLE_NAME='conversation_members' THEN
   IF NOT EXISTS(SELECT 1 FROM conversations WHERE id=NEW.conversation_id AND tenant_id=NEW.tenant_id AND access_mode='MEMBERS')
    OR (NEW.user_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM users WHERE id=NEW.user_id AND tenant_id=NEW.tenant_id))
@@ -90,7 +102,6 @@ BEGIN
    OR (NEW.sender_customer_relationship_id IS NOT NULL AND NOT collaboration_principal_matches(NEW.tenant_id,NEW.conversation_id,NEW.sender_customer_relationship_id))
    OR (NEW.reply_to_message_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM conversation_messages WHERE id=NEW.reply_to_message_id AND conversation_id=NEW.conversation_id AND tenant_id=NEW.tenant_id AND reply_to_message_id IS NULL AND channel_type='NATIVE')) THEN RAISE EXCEPTION 'COMMUNICATION_SCOPE_INVALID' USING ERRCODE='23514'; END IF;
   IF TG_OP='INSERT' AND NEW.sender_customer_relationship_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM conversation_members m JOIN customer_collaboration_relationships r ON r.id=m.customer_relationship_id JOIN customer_accounts a ON a.id=r.customer_account_id WHERE m.tenant_id=NEW.tenant_id AND m.conversation_id=NEW.conversation_id AND m.customer_relationship_id=NEW.sender_customer_relationship_id AND m.left_at IS NULL AND r.status='ACTIVE' AND a.status='ACTIVE') THEN RAISE EXCEPTION 'COMMUNICATION_CUSTOMER_MEMBERSHIP_REQUIRED' USING ERRCODE='23514'; END IF;
-  IF TG_OP='UPDATE' AND (NEW.sender_customer_relationship_id IS NOT NULL OR OLD.sender_customer_relationship_id IS NOT NULL) AND (NEW.sender_customer_relationship_id,NEW.sender_user_id,NEW.tenant_id,NEW.conversation_id) IS DISTINCT FROM (OLD.sender_customer_relationship_id,OLD.sender_user_id,OLD.tenant_id,OLD.conversation_id) THEN RAISE EXCEPTION 'COMMUNICATION_AUTHOR_IMMUTABLE' USING ERRCODE='23514'; END IF;
  ELSIF EXISTS(SELECT 1 FROM conversations WHERE id=NEW.conversation_id AND access_mode='MEMBERS') THEN RAISE EXCEPTION 'COMMUNICATION_SCOPE_INVALID' USING ERRCODE='23514';
  END IF;
  RETURN NEW;
@@ -189,7 +200,7 @@ CREATE FUNCTION customer_provider_session_is_current(p_session_id uuid,p_auth_us
 $$;
 REVOKE ALL ON FUNCTION customer_provider_session_is_current(uuid,uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION customer_provider_session_is_current(uuid,uuid) TO service_role;
-REVOKE ALL ON FUNCTION check_customer_collaboration_relationship(),check_collaboration_channel(),check_collaboration_invitation(),collaboration_principal_matches(uuid,uuid,uuid),check_collaboration_attachment(),check_collaboration_recipient(),check_customer_meeting_grant(),check_customer_meeting_guest() FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION check_customer_collaboration_relationship(),check_collaboration_channel(),check_collaboration_invitation(),check_collaboration_handoff(),collaboration_principal_matches(uuid,uuid,uuid),check_collaboration_attachment(),check_collaboration_recipient(),check_customer_meeting_grant(),check_customer_meeting_guest() FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION collaboration_principal_matches(uuid,uuid,uuid) TO service_role;
 ALTER TABLE customer_collaboration_relationships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customer_collaboration_invitations ENABLE ROW LEVEL SECURITY;

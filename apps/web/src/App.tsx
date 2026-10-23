@@ -1,7 +1,7 @@
-import ClientPortal from './features/client-collaboration/ClientPortal';
-import ClientInvitation from './features/client-collaboration/ClientInvitation';
 import { InvoiceWorkspace, InvoiceDetailPage, InvoiceCreatePage } from './features/invoices/InvoicePages';
 import React from 'react';
+const ClientPortal = React.lazy(() => import('./features/client-collaboration/ClientPortal'));
+const ClientInvitation = React.lazy(() => import('./features/client-collaboration/ClientInvitation'));
 const ChatPage = React.lazy(() => import('./features/chat/ChatPage'));
 const MeetingsPage = React.lazy(() => import('./features/meetings/MeetingsPage'));
 const GuestMeetingPage = React.lazy(() => import('./features/meetings/GuestMeetingPage'));
@@ -288,8 +288,8 @@ const AppContent: React.FC = () => {
           <Route path="settings/security" element={<SecuritySettingsPage context="AGENCY" />} />
         </Route>
 
-        <Route path="/customer/collaboration/*" element={<ClientPortal />} />
-        <Route path="/customer/invite" element={<ClientInvitation />} />
+        <Route path="/customer/collaboration/*" element={<React.Suspense fallback={<p role="status">Opening your client portal…</p>}><ClientPortal /></React.Suspense>} />
+        <Route path="/customer/invite" element={<React.Suspense fallback={<p role="status">Checking your invitation…</p>}><ClientInvitation /></React.Suspense>} />
         <Route path="/customer/login" element={<CustomerLoginPage />} />
         <Route path="/customer/auth/callback" element={<CustomerAuthCallbackPage />} />
         <Route path="/customer/claim/:token" element={<CustomerClaimPage />} />

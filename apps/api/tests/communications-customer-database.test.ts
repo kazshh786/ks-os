@@ -72,6 +72,9 @@ test('customer collaboration: production migration enforces principal and tenant
     await denied(f.pg.query('UPDATE conversation_messages SET sender_user_id=$1 WHERE id=$2', [f.owner.userId, id]));
     await denied(f.pg.query('UPDATE conversation_messages SET sender_customer_relationship_id=$1 WHERE id=$2', [rBob, id]));
     await denied(f.pg.query("UPDATE conversation_messages SET sender_type='STAFF' WHERE id=$1", [id]));
+    const legacy = randomUUID();
+    await f.pg.query("INSERT INTO conversations(id,tenant_id,primary_channel,customer_display_name) VALUES($1,$2,'EMAIL','Legacy customer')", [legacy, f.owner.tenantId]);
+    await denied(f.pg.query("UPDATE conversation_messages SET channel_type='EMAIL',conversation_id=$1,sender_customer_relationship_id=NULL WHERE id=$2", [legacy, id]));
     const nonMember = await channel();
     await denied(message(nonMember, rAlice));
   });
@@ -122,8 +125,15 @@ test('customer collaboration: production migration enforces principal and tenant
     await f.pg.query('INSERT INTO customer_collaboration_invitations(id,tenant_id,client_id,conversation_id,email_normalized,secret_hash,expires_at,created_by,request_id) VALUES($1,$2,$3,$4,$5,$6,now()+interval \'1 day\',$7,$8)', [id, f.owner.tenantId, f.customer.id, c, alice.identity.email, 'a'.repeat(64), f.owner.userId, randomUUID()]);
     await denied(f.pg.query("UPDATE customer_collaboration_invitations SET status='ACCEPTED',accepted_at=now(),accepted_customer_account_id=$1 WHERE id=$2", [bob.accountId, id]));
     await f.pg.query("UPDATE customer_collaboration_invitations SET status='ACCEPTED',accepted_at=now(),accepted_customer_account_id=$1 WHERE id=$2", [alice.accountId, id]);
+    await denied(f.pg.query("UPDATE customer_collaboration_invitations SET status='PENDING',accepted_at=NULL,accepted_customer_account_id=NULL WHERE id=$1", [id]));
+    const handoff = randomUUID();
+    await f.pg.query("INSERT INTO customer_collaboration_handoffs(id,invitation_id,secret_hash,expires_at) VALUES($1,$2,$3,now()+interval '30 minutes')", [handoff, id, 'c'.repeat(64)]);
+    await f.pg.query('UPDATE customer_collaboration_handoffs SET consumed_at=now() WHERE id=$1', [handoff]);
+    await denied(f.pg.query('UPDATE customer_collaboration_handoffs SET consumed_at=NULL WHERE id=$1', [handoff]));
+    await denied(f.pg.query("UPDATE customer_collaboration_handoffs SET expires_at=now()+interval '1 day' WHERE id=$1", [handoff]));
     await f.pg.query('UPDATE customer_accounts SET email_normalized=$1 WHERE id=$2', ['alice-new@example.test', alice.accountId]);
     await f.pg.query("UPDATE customer_collaboration_invitations SET status='REVOKED',revoked_at=now() WHERE id=$1", [id]);
+    await denied(f.pg.query("UPDATE customer_collaboration_invitations SET status='ACCEPTED',revoked_at=NULL WHERE id=$1", [id]));
     await denied(f.pg.query('UPDATE customer_collaboration_invitations SET conversation_id=$1 WHERE id=$2', [cOtherClient, id]));
   });
 

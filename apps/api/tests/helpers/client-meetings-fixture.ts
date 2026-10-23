@@ -35,6 +35,13 @@ export async function createClientMeetingFixture(t: TestContext, options: { post
     const require = createRequire(new URL('../../../../packages/database/package.json', import.meta.url));
     const { Pool } = require('pg') as typeof import('pg');
     const admin = new Pool({ connectionString: options.postgresUrl, max: 1 });
+    // Roles are cluster-wide even though each test suite owns a separate database.
+    // Serialize their creation in the shared CI administration database.
+    await admin.query(`BEGIN; SELECT pg_advisory_xact_lock(8241095);
+      DO $$ BEGIN CREATE ROLE anon; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+      DO $$ BEGIN CREATE ROLE authenticated; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+      DO $$ BEGIN CREATE ROLE service_role; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+      COMMIT;`).catch(async error => { await admin.end(); throw error; });
     const database = `ksos_client_meetings_test_${randomUUID().replaceAll('-', '')}`;
     await admin.query(`CREATE DATABASE ${database}`);
     url.pathname = `/${database}`;

@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { collaborationHash, collaborationInvitationToken, collaborationOrigin, collaborationSecretMatches } from '../src/modules/communications/communications.collaboration-secrets.js';
 import { collaborationEmailCancellationCode, type CollaborationEmailSnapshot } from '../src/modules/email/collaboration-email-policy.js';
 import { validateEmailTemplateData } from '../src/modules/email/email-safety.js';
 
-const id='a56f0175-d7e4-4b30-b584-c295e922fe95',env={CUSTOMER_COLLABORATION_SECRET:'isolated-collaboration-test-key-32-characters',PUBLIC_CUSTOMER_PORTAL_ORIGIN:'https://portal.example.test'};
+const id='a56f0175-d7e4-4b30-b584-c295e922fe95',env={CUSTOMER_COLLABORATION_SECRET:randomBytes(32).toString('base64url'),PUBLIC_CUSTOMER_PORTAL_ORIGIN:'https://portal.example.test'};
 test('customer invitations use a purpose-specific secret and safe configured origin',()=>{
   const token=collaborationInvitationToken(id,env);
   assert.match(token,/^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/);

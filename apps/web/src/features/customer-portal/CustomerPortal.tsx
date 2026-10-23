@@ -121,6 +121,8 @@ export function CustomerLoginPage() {
       if (claim) callback.searchParams.set('claim', claim);
       if (collaboration) callback.searchParams.set('collaboration', '1');
       await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: callback.toString() } });
+    } catch {
+      // Keep the same neutral confirmation for transport failures and unknown accounts.
     } finally {
       // Deliberately neutral — neither Supabase errors nor account existence are revealed.
       setBusy(false);
@@ -216,7 +218,7 @@ export function CustomerAuthCallbackPage() {
       const { data } = await supabase.auth.getSession();
       if (!active) return;
       const claim = search.get('claim');
-  const collaboration = search.get('collaboration') === '1';
+      const collaboration = search.get('collaboration') === '1';
       if (data.session) navigate(collaboration ? '/customer/invite' : claim ? `/customer/claim/${claim}` : '/customer', { replace: true });
       else setError(true);
     })().catch(() => active && setError(true));

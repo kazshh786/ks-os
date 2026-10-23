@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router';
 import type { CustomerOverview } from '@ks-os/contracts';
 import { Customer360View } from './Customer360Page';
 vi.mock('../meetings/CustomerMeetings', () => ({ CustomerMeetings: () => null }));
+vi.mock('../client-collaboration/CustomerClientChannels', () => ({ CustomerClientChannels: () => null }));
 
 const { fetchWithAuth } = vi.hoisted(() => ({ fetchWithAuth: vi.fn() }));
 vi.mock('../../api/client', () => ({ fetchWithAuth, responseError: () => new Error('Request unavailable') }));

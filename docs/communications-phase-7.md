@@ -44,6 +44,25 @@ Staff create and manage client channels from Chat and the existing customer deta
 
 Phase 6 scheduled/instant client meetings are reused with explicit channel grants and customer guest-session bindings. A channel membership alone is not a reusable public guest credential. Portal meeting projections contain permitted meeting summaries and the caller's admission state; waiting-room approval remains required. Customer token issuance and media reconciliation recheck relationship, membership, provider/application session and meeting grant. Contact removal and channel archive revoke future issuance and request media removal, with reconciliation handling provider cleanup failures. Existing media capacity and room isolation remain authoritative.
 
+## API and realtime surface
+
+All routes below are under `/api/v1`. Staff operations require a current TENANT session and the relevant CRM/channel permissions. Customer operations require the validated CUSTOMER context; a relationship in the URL is validated against that account before selecting a business.
+
+| Prefix | Routes and purpose |
+| --- | --- |
+| `/client-collaboration` | `GET /customers`, `/config`, `/channels`; `POST /channels` creates a dedicated external channel with an idempotent request ID. |
+| `/client-collaboration/channels/:channelId` | `GET /access`; `POST /invitations`, `/invitations/:invitationId/revoke`, `/contacts`; `DELETE /contacts/:relationshipId`; `GET/POST /meetings` and `DELETE /meetings/:meetingId` manage explicit channel grants. |
+| `/client-collaboration/relationships/:relationshipId` | `POST /revoke` removes that customer relationship across the business's client channels. |
+| `/customer/collaboration` | `GET /session`; `POST /invitations/handoff`, `GET /invitations/pending`, `POST /invitations/accept`. Handoff requires the configured first-party origin; acceptance also requires the intended currently verified account. |
+| `/customer/collaboration/:relationshipId/chat` | The existing conversation API for list/detail, messages, threads, read cursors, reactions, permitted member rosters, search, attachments, notifications/preferences, realtime tickets and events. Staff-only operations remain denied. |
+| `/customer/collaboration/:relationshipId/meetings` | `GET /`; `POST /:meetingId/request`; `GET /:meetingId/sessions/:sessionId`; `POST /:meetingId/sessions/:sessionId/join` and `/leave`. Requests bind the customer identity and channel grant, use a scoped HttpOnly verifier and enforce origin/CSRF checks. |
+
+`ClientCollaboration` owns relationship/invitation lifecycle and `CommunicationsAuthorization` validates the shared customer principal. `CommunicationsService`, attachment/discovery/notification services and `ClientMeetings` remain the canonical engines. Channel update, archive and staff membership use the existing staff communications routes.
+
+Existing message, reaction, read-state, membership, attachment and recipient notification events are reused. Explicitly granted customer channels additionally receive safe meeting-created/updated/started/ended events; host waiting-room details and admission administration are not broadcast to customers. Reconnect replay rechecks current membership. Portal switches and sign-out dispose old subscriptions.
+
+Customer meeting admission is bound to the authenticated session and JWT expiry. Reloading with the same live session can recover its admission; expiry or a new authentication session requires a fresh request and host approval.
+
 ## Schema, operations and retention
 
 Migration order 95 adds collaboration relationships, hashed invitations/handoffs, explicit meeting grants, the immutable external channel marker and distinct external principal columns on existing tables. Tenant/customer constraints, principal checks, uniqueness and access indexes protect privileged writes as well as API queries. New tables are API-only with RLS enabled and grants revoked from public/anonymous/authenticated roles. Existing rows remain internal or legacy; no automatic access backfill occurs.

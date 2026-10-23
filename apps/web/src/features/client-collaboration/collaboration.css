@@ -8,8 +8,11 @@
 .client-portal input,.client-portal select,.client-entry input,.client-access input,.client-access select,.client-form input,.client-form select,.client-form textarea { width:100%;min-height:42px;border:1px solid #a9bbc7;border-radius:8px;background:#fff;color:#182b3a;padding:8px 10px;font:inherit; }
 .client-portal label,.client-form label,.client-access label { display:grid;gap:6px;font-size:.875rem;font-weight:600; }
 .client-nav { padding:24px 18px;display:flex;flex-direction:column;gap:20px;border-right:1px solid #d6e1e8;background:#fff;overflow:auto; }
-.client-nav .meetings-brand { flex-wrap:wrap;gap:10px; }
-.client-nav .meetings-brand strong { overflow-wrap:anywhere; }
+.client-portal .meeting-brand,.client-businesses .meeting-brand { display:flex;align-items:center;gap:10px;min-width:0; }
+.client-portal .meeting-brand img,.client-businesses .meeting-brand img { width:42px;height:42px;object-fit:contain; }
+.client-portal .meeting-brand-fallback,.client-businesses .meeting-brand-fallback { width:40px;height:40px;flex-shrink:0;display:grid;place-items:center;border-radius:10px;background:var(--meeting-accent,#155e75);color:var(--meeting-on-accent,#fff);font-weight:700; }
+.client-nav .meeting-brand { flex-wrap:wrap;gap:10px; }
+.client-nav .meeting-brand strong { overflow-wrap:anywhere; }
 .client-welcome { margin:0;color:#435b6b;font-size:.9rem; }
 .client-nav nav { display:grid;gap:8px; }
 .client-nav nav a { display:block;padding:12px 14px;border-radius:9px;color:#28485d;font-weight:600;text-decoration:none; }
@@ -36,6 +39,10 @@
 .client-back { font-size:.8rem; }
 .client-conversation .chat-timeline { flex:1;min-height:0; }
 .client-conversation .chat-timeline-shell { flex:1;min-height:0; }
+.client-portal { --chat-border:#d6e1e8;--chat-muted:#4b6272; }
+.client-portal .chat-composer textarea { width:100%;min-height:60px;max-height:200px;border:0;padding:0;color:#182b3a;background:#fff;font:inherit;font-size:14px;line-height:1.6;resize:vertical; }
+.client-portal .chat-primary { background:var(--meeting-accent);color:var(--meeting-on-accent);border-color:var(--meeting-accent); }
+.client-portal .chat-thread-link { color:#125671; }
 .client-conversation>.chat-thread { position:absolute;inset:0 0 0 auto;width:min(460px,100%);height:100%;z-index:3;background:#fff;box-shadow:-8px 0 30px #172b3a22; }
 .client-conversation .chat-message { min-width:0; }
 .client-conversation .chat-message-body { overflow-wrap:anywhere; }
@@ -74,4 +81,4 @@
 .client-meeting-list p { margin:5px 0;color:#435b6b; }
 .client-admission { margin:24px 0 0;border-color:#91b0bf; }
 @media(max-width:1100px) { .client-portal { grid-template-columns:190px minmax(0,1fr); }.client-messages { grid-template-columns:220px minmax(0,1fr); }.client-nav { padding:18px 12px; }.client-conversation-header { padding:16px; } }
-@media(max-width:760px) { .client-portal { display:flex;flex-direction:column;height:100dvh; }.client-nav { display:block;flex-shrink:0;padding:12px 16px;border-right:0;border-bottom:1px solid #d6e1e8;overflow:visible; }.client-nav .meetings-brand { font-size:.95rem; }.client-nav .meetings-brand img { max-height:30px; }.client-welcome,.client-connection { display:none; }.client-nav>label { margin:10px 0; }.client-nav>button { position:absolute;right:16px;top:10px;min-height:36px;font-size:.8rem; }.client-nav .meetings-brand { padding-right:75px; }.client-nav nav { display:flex;gap:4px;justify-content:space-between; }.client-nav nav a { padding:10px 8px;font-size:.9rem; }.client-main { flex:1; }.client-alerts { padding:4px 12px; }.client-messages { display:flex; }.client-conversations { flex:1;min-width:0;border-right:0;padding:20px; }.client-conversation { display:none;flex:1; }.client-conversation-open .client-conversations { display:none; }.client-conversation-open .client-conversation { display:flex; }.client-conversation-header { padding:12px 16px; }.client-conversation-header h2 { font-size:1.1rem; }.client-conversation-header p { font-size:.85rem; }.client-card { margin:16px;padding:20px; }.client-card>dl { grid-template-columns:1fr;gap:4px; }.client-card dd { margin-bottom:12px; }.client-meeting-list>li { align-items:flex-start;flex-direction:column;gap:10px; }.client-entry,.client-businesses { padding:20px; }.client-entry>.client-card { margin:20px 0;padding:22px; }.client-admission { margin:20px 0 0; }.client-portal button { min-height:44px; }.client-portal .chat-message-actions button { min-height:32px; } }
+@media(max-width:760px) { .client-portal { display:flex;flex-direction:column;height:100dvh; }.client-nav { display:block;flex-shrink:0;padding:12px 16px;border-right:0;border-bottom:1px solid #d6e1e8;overflow:visible; }.client-nav .meeting-brand { font-size:.95rem; }.client-nav .meeting-brand img { max-height:30px; }.client-welcome,.client-connection { display:none; }.client-nav>label { margin:10px 0; }.client-nav>button { position:absolute;right:16px;top:10px;min-height:36px;font-size:.8rem; }.client-nav .meeting-brand { padding-right:75px; }.client-nav nav { display:flex;gap:4px;justify-content:space-between; }.client-nav nav a { padding:10px 8px;font-size:.9rem; }.client-main { flex:1; }.client-alerts { padding:4px 12px; }.client-messages { display:flex; }.client-conversations { flex:1;min-width:0;border-right:0;padding:20px; }.client-conversation { display:none;flex:1; }.client-conversation-open .client-conversations { display:none; }.client-conversation-open .client-conversation { display:flex; }.client-conversation-header { padding:12px 16px; }.client-conversation-header h2 { font-size:1.1rem; }.client-conversation-header p { font-size:.85rem; }.client-card { margin:16px;padding:20px; }.client-card>dl { grid-template-columns:1fr;gap:4px; }.client-card dd { margin-bottom:12px; }.client-meeting-list>li { align-items:flex-start;flex-direction:column;gap:10px; }.client-entry,.client-businesses { padding:20px; }.client-entry>.client-card { margin:20px 0;padding:22px; }.client-admission { margin:20px 0 0; }.client-portal button { min-height:44px; }.client-portal .chat-message-actions button { min-height:32px; } }

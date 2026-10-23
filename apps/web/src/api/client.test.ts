@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchWithAuth } from './client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchWithAuth, uploadWithAuth } from './client';
 
 const { getSession, refreshSession, signOut } = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -15,6 +15,7 @@ const session = (accessToken: string) => ({
   data: { session: { access_token: accessToken } },
   error: null,
 });
+afterEach(() => vi.unstubAllGlobals());
 
 describe('fetchWithAuth', () => {
   beforeEach(() => {
@@ -45,6 +46,20 @@ describe('fetchWithAuth', () => {
 
     const [, request] = vi.mocked(fetch).mock.calls[0];
     expect(new Headers(request?.headers).get('Content-Type')).toBe('text/plain');
+  });
+
+  it('strips staff support credentials from explicit CUSTOMER requests even when supplied as a header', async () => {
+    getSession.mockResolvedValue(session('customer-token')); sessionStorage.setItem('ks-os-support-session', 'staff-support-secret');
+    await fetchWithAuth('/api/v1/customer/collaboration/session', { authContext: 'CUSTOMER', headers: { 'X-KS-Support-Session': 'caller-supplied-secret' } });
+    const headers = new Headers(vi.mocked(fetch).mock.calls[0][1]?.headers); expect(headers.get('X-KS-Application-Context')).toBe('CUSTOMER'); expect(headers.get('Authorization')).toBe('Bearer customer-token'); expect(headers.has('X-KS-Support-Session')).toBe(false);
+  });
+
+  it('uses the CUSTOMER ledger context for file uploads without a staff support header', async () => {
+    const headers = new Headers(); sessionStorage.setItem('ks-os-support-session', 'staff-support-secret'); getSession.mockResolvedValue(session('customer-token'));
+    class UploadRequest { upload = { onprogress: null }; timeout = 0; responseText = '{}'; status = 200; onload: (() => void) | null = null; onerror = null; ontimeout = null; onabort = null; open() {} setRequestHeader(key: string, value: string) { headers.set(key, value); } send() { queueMicrotask(() => this.onload?.()); } abort() {} }
+    vi.stubGlobal('XMLHttpRequest', UploadRequest);
+    await uploadWithAuth('/api/v1/customer/collaboration/relationship-a/chat/channel-a/files/file-a', new Blob(['file']), new AbortController().signal, vi.fn(), 'CUSTOMER');
+    expect(headers.get('X-KS-Application-Context')).toBe('CUSTOMER'); expect(headers.get('Authorization')).toBe('Bearer customer-token'); expect(headers.has('X-KS-Support-Session')).toBe(false);
   });
 
   it('retries with a token already rotated by another auth listener', async () => {
