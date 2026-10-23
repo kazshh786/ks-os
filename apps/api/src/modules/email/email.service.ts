@@ -30,6 +30,10 @@ import {
   validateEmailTemplateData,
 } from './email-safety.js';
 import { EmailSettingsService, emailBrandingTemplateData } from './email-settings.service.js';
+import { invitationToken, invitationUrl, secretHash } from '../communications/communications.meeting-secrets.js';
+import { meetingEmailCancellationCode, meetingEmailTemplateData, type MeetingEmailKind, type MeetingEmailSnapshot } from './meeting-email-policy.js';
+import { collaborationHash, collaborationInvitationToken, collaborationInvitationUrl } from '../communications/communications.collaboration-secrets.js';
+import { collaborationEmailCancellationCode, type CollaborationEmailSnapshot } from './collaboration-email-policy.js';
 
 export type EnqueueEmailParams = {
   tenantId?: string;
@@ -46,6 +50,8 @@ export type EnqueueEmailParams = {
 };
 
 const SUBJECTS: Record<string, string> = {
+  'customer-collaboration-invitation': 'Your secure customer collaboration invitation',
+  'meeting-notification': 'Your meeting invitation',
   'booking-confirmed': 'Your booking is confirmed',
   'booking-rescheduled': 'Your booking has been rescheduled',
   'booking-cancelled': 'Your booking has been cancelled',
@@ -68,6 +74,8 @@ const SUBJECTS: Record<string, string> = {
 };
 
 const FROM_ENV: Record<string, string> = {
+  'customer-collaboration-invitation': 'EMAIL_AUTH_FROM',
+  'meeting-notification': 'EMAIL_BOOKINGS_FROM',
   'booking-confirmed': 'EMAIL_BOOKINGS_FROM',
   'booking-rescheduled': 'EMAIL_BOOKINGS_FROM',
   'booking-cancelled': 'EMAIL_BOOKINGS_FROM',
@@ -125,7 +133,8 @@ export class EmailService {
       }
     }
 
-    const [suppression] = await dbOrTx.select({ id: emailSuppressions.id })
+    const rawExecutor = typeof dbOrTx.query === 'function';
+    const [suppression] = rawExecutor ? await dbOrTx.query(sql`SELECT id FROM email_suppressions WHERE recipient_email_normalized=${recipient.email} LIMIT 1`) : await dbOrTx.select({ id: emailSuppressions.id })
       .from(emailSuppressions)
       .where(eq(emailSuppressions.recipientEmailNormalized, recipient.email))
       .limit(1);
@@ -134,7 +143,11 @@ export class EmailService {
     const scheduledFor = params.scheduledFor ?? new Date();
     if (!Number.isFinite(scheduledFor.getTime())) return { queued: false, reason: 'INVALID_SCHEDULE' as const };
 
-    await dbOrTx.insert(emailOutbox).values({
+    if (rawExecutor) {
+      await dbOrTx.query(sql`INSERT INTO email_outbox(tenant_id,recipient_email,recipient_name,reply_to_email,template_key,template_version,template_data_json,idempotency_key,status,scheduled_for,next_attempt_at,related_entity_type,related_entity_id)
+        VALUES(${params.tenantId ?? null}::uuid,${recipient.email},${normalizeEmailDisplayName(params.recipientName) ?? null},${normalizedReplyTo ?? null},${params.templateKey},${params.templateVersion || '1.0.0'},${JSON.stringify(templateDataJson)}::jsonb,${params.idempotencyKey},'PENDING',${scheduledFor.toISOString()}::timestamptz,${scheduledFor.toISOString()}::timestamptz,${params.relatedEntityType ?? null},${params.relatedEntityId ?? null}::uuid)
+        ON CONFLICT(idempotency_key) DO NOTHING`);
+    } else await dbOrTx.insert(emailOutbox).values({
       ...params,
       recipientEmail: recipient.email,
       recipientName: normalizeEmailDisplayName(params.recipientName),
@@ -214,6 +227,43 @@ export class EmailService {
         );
         const templateValidation = validateEmailTemplateData(email.template_key, templateData, production);
         if (!templateValidation.valid) throw new Error(templateValidation.errorCode);
+
+        if (email.template_key === 'customer-collaboration-invitation') {
+          const invitationId = String(templateData.invitationId);
+          const [suppressed] = await db.select({ id: emailSuppressions.id }).from(emailSuppressions).where(eq(emailSuppressions.recipientEmailNormalized, recipient.email)).limit(1);
+          const result = await db.execute(sql`SELECT i.id,i.tenant_id AS "tenantId",i.email_normalized AS email,i.secret_hash AS "secretHash",i.status,i.expires_at AS "expiresAt",i.revoked_at AS "revokedAt",c.archived_at AS "archivedAt",c.external_client_channel AS external,c.name AS "channelName",t.is_active AS "tenantActive",t.lifecycle_status AS "tenantStatus" FROM customer_collaboration_invitations i JOIN conversations c ON c.id=i.conversation_id AND c.tenant_id=i.tenant_id AND c.client_id=i.client_id JOIN tenants t ON t.id=i.tenant_id WHERE i.id=${invitationId}::uuid AND i.tenant_id=${email.tenant_id}::uuid`);
+          const snapshot = result.rows[0] as unknown as CollaborationEmailSnapshot | undefined;
+          const code = collaborationEmailCancellationCode(snapshot,{invitationId,tenantId:email.tenant_id,recipient:recipient.email,derivedHash:collaborationHash(collaborationInvitationToken(invitationId))});
+          if (suppressed || code || email.related_entity_type !== 'customer_collaboration_invitation' || email.related_entity_id !== invitationId) {
+            await db.update(emailOutbox).set({status:'CANCELLED',lastErrorCode:suppressed?'EMAIL_SUPPRESSED':code || 'COLLABORATION_INVITATION_SCOPE_CHANGED'}).where(eq(emailOutbox.id,email.id)); continue;
+          }
+          Object.assign(templateData,{invitationUrl:collaborationInvitationUrl(invitationId),channelName:snapshot!.channelName,expiresLabel:new Date(snapshot!.expiresAt).toISOString(),emailSubject:'Your secure customer collaboration invitation'});
+        }
+
+        if (email.template_key === 'meeting-notification') {
+          const [suppressed] = await db.select({ id: emailSuppressions.id }).from(emailSuppressions).where(eq(emailSuppressions.recipientEmailNormalized, recipient.email)).limit(1);
+          if (suppressed) {
+            await db.update(emailOutbox).set({ status: 'CANCELLED', lastErrorCode: 'EMAIL_SUPPRESSED' }).where(eq(emailOutbox.id, email.id));
+            continue;
+          }
+          const meetingId = String(templateData.meetingId), invitationId = String(templateData.invitationId);
+          const kind = templateData.kind as MeetingEmailKind;
+          const rows = await db.execute(sql`SELECT m.tenant_id AS "tenantId",m.id AS "meetingId",i.id AS "invitationId",m.version,m.status,
+            i.email AS "invitationEmail",i.secret_hash AS "invitationHash",i.revoked_at AS "revokedAt",i.expires_at AS "expiresAt",t.is_active AS "tenantActive",t.lifecycle_status AS "tenantStatus",
+            m.title,m.scheduled_start_at AS "scheduledStartAt",m.scheduled_end_at AS "scheduledEndAt",m.timezone,u.name AS "hostName"
+            FROM communication_meeting_invitations i
+            JOIN communication_meetings m ON m.id=i.meeting_id AND m.tenant_id=i.tenant_id
+            JOIN tenants t ON t.id=m.tenant_id
+            JOIN users u ON u.id=m.host_user_id AND u.tenant_id=m.tenant_id
+            WHERE i.id=${invitationId}::uuid AND m.id=${meetingId}::uuid AND m.tenant_id=${email.tenant_id}::uuid LIMIT 1`);
+          const snapshot = rows.rows[0] as unknown as MeetingEmailSnapshot | undefined;
+          const code = meetingEmailCancellationCode(snapshot, { tenantId: email.tenant_id, meetingId, invitationId, version: Number(templateData.version), kind, recipientEmail: recipient.email, derivedInvitationHash: kind === 'cancelled' ? undefined : secretHash(invitationToken(invitationId)) });
+          if (code || email.related_entity_type !== 'communication_meeting_invitation' || email.related_entity_id !== invitationId) {
+            await db.update(emailOutbox).set({ status: 'CANCELLED', lastErrorCode: code || 'MEETING_NOTIFICATION_SCOPE_CHANGED' }).where(eq(emailOutbox.id, email.id));
+            continue;
+          }
+          Object.assign(templateData, meetingEmailTemplateData(snapshot!, kind, kind === 'cancelled' ? undefined : invitationUrl(invitationId)));
+        }
 
         if (email.related_entity_type === 'appointment' && email.related_entity_id) {
           const [appointment] = await db.select({

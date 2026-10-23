@@ -1,0 +1,106 @@
+.client-portal,.client-entry,.client-businesses { --meeting-accent:#155e75;--meeting-on-accent:#fff;color:#182b3a;font-family:Inter,system-ui,sans-serif;background:#f5f8fa; }
+.client-portal { display:grid;grid-template-columns:230px minmax(0,1fr);min-height:100dvh;height:100dvh;overflow:hidden; }
+.client-portal *,.client-entry *,.client-businesses *,.client-access *,.client-form * { box-sizing:border-box; }
+.client-portal button,.client-entry button,.client-businesses button,.client-access button,.client-form button { min-height:40px;border:1px solid #b7c5cd;border-radius:8px;padding:8px 12px;background:#fff;color:#18394c;font:inherit;cursor:pointer; }
+.client-portal button:disabled,.client-form button:disabled { opacity:.65;cursor:default; }
+.client-portal :focus-visible,.client-entry :focus-visible,.client-access :focus-visible,.client-form :focus-visible { outline:3px solid #0e7490;outline-offset:3px; }
+.client-portal a,.client-entry a,.client-businesses a,.client-access a { color:#125671;text-underline-offset:3px; }
+.client-portal input,.client-portal select,.client-entry input,.client-access input,.client-access select,.client-form input,.client-form select,.client-form textarea { width:100%;min-height:42px;border:1px solid #a9bbc7;border-radius:8px;background:#fff;color:#182b3a;padding:8px 10px;font:inherit; }
+.client-portal label,.client-form label,.client-access label { display:grid;gap:6px;font-size:.875rem;font-weight:600; }
+.client-nav { padding:24px 18px;display:flex;flex-direction:column;gap:20px;border-right:1px solid #d6e1e8;background:#fff;overflow:auto; }
+.client-portal .meeting-brand,.client-businesses .meeting-brand { display:flex;align-items:center;gap:10px;min-width:0; }
+.client-portal .meeting-brand img,.client-businesses .meeting-brand img { width:42px;height:42px;object-fit:contain; }
+.client-portal .meeting-brand-fallback,.client-businesses .meeting-brand-fallback { width:40px;height:40px;flex-shrink:0;display:grid;place-items:center;border-radius:10px;background:var(--meeting-accent,#155e75);color:var(--meeting-on-accent,#fff);font-weight:700; }
+.client-nav .meeting-brand { flex-wrap:wrap;gap:10px; }
+.client-nav .meeting-brand strong { overflow-wrap:anywhere; }
+.client-welcome { margin:0;color:#435b6b;font-size:.9rem; }
+.client-nav nav { display:grid;gap:8px; }
+.client-nav nav a { display:block;padding:12px 14px;border-radius:9px;color:#28485d;font-weight:600;text-decoration:none; }
+.client-nav nav a[aria-current=page] { background:var(--meeting-accent);color:var(--meeting-on-accent); }
+.client-connection { margin-top:auto;font-size:.8rem;color:#4b6475; }
+.client-main { min-width:0;min-height:0;display:flex;flex-direction:column;overflow:auto; }
+.client-alerts { background:#fff;border-bottom:1px solid #d6e1e8;padding:8px 20px; }
+.client-alerts .chat-notifications { max-width:100%; }
+.client-messages { min-height:0;flex:1;display:grid;grid-template-columns:270px minmax(0,1fr); }
+.client-conversations { padding:24px 16px;overflow:auto;background:#f8fafc;border-right:1px solid #d6e1e8; }
+.client-conversations h1 { margin:0 0 22px;font-size:1.5rem; }
+.client-conversations>button { margin:12px 0;width:100%; }
+.client-conversations ul,.client-meeting-list,.client-access ul,.client-businesses ul { list-style:none;margin:0;padding:0; }
+.client-conversations li a { display:grid;gap:6px;padding:14px 12px;margin:4px 0;border-radius:9px;text-decoration:none;color:#243f51;overflow-wrap:anywhere; }
+.client-conversations li a[aria-current=page] { background:#dcecf2;box-shadow:inset 3px 0 var(--meeting-accent); }
+.client-conversations small { color:#4c6270;line-height:1.5; }
+.client-unread { color:#125671;font-size:.8rem;font-weight:700; }
+.client-conversation { display:flex;flex-direction:column;min-height:0;min-width:0;background:#fff;overflow:hidden;position:relative; }
+.client-conversation-header { padding:20px 24px;border-bottom:1px solid #d6e1e8;flex-shrink:0; }
+.client-conversation-header h2 { margin:8px 0;font-size:1.25rem;overflow-wrap:anywhere; }
+.client-conversation-header p { color:#4b6272;margin:8px 0; }
+.client-conversation-header nav { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
+.client-conversation-header nav a { padding:10px; }
+.client-portal .client-options-toggle { display:none; }
+.client-back { font-size:.8rem; }
+.client-conversation .chat-timeline { flex:1;min-height:0; }
+.client-conversation .chat-timeline-shell { flex:1;min-height:0; }
+.client-portal { --chat-border:#d6e1e8;--chat-muted:#4b6272; }
+.client-portal .chat-composer textarea { width:100%;min-height:60px;max-height:200px;border:0;padding:0;color:#182b3a;background:#fff;font:inherit;font-size:14px;line-height:1.6;resize:vertical; }
+.client-portal .chat-primary { background:var(--meeting-accent);color:var(--meeting-on-accent);border-color:var(--meeting-accent); }
+.client-portal .chat-thread-link { color:#125671; }
+.client-conversation>.chat-thread { position:absolute;inset:0 0 0 auto;width:min(460px,100%);height:100%;z-index:3;background:#fff;box-shadow:-8px 0 30px #172b3a22; }
+.client-conversation .chat-message { min-width:0; }
+.client-conversation .chat-message-body { overflow-wrap:anywhere; }
+.client-conversation .chat-files-panel { overflow:auto; }
+.client-empty { margin:auto;padding:32px;max-width:500px;text-align:center;color:#435c6c;line-height:1.6; }
+.client-empty h2 { color:#18394c; }
+.client-card { margin:28px;padding:28px;background:#fff;border:1px solid #d6e1e8;border-radius:16px;line-height:1.6; }
+.client-card h1 { font-size:1.6rem;margin:0 0 12px; }
+.client-card>label { max-width:540px;margin:20px 0; }
+.client-card>button { margin:12px 8px 0 0; }
+.client-card>dl { display:grid;grid-template-columns:160px 1fr;gap:12px; }
+.client-card dd { margin:0; }
+.client-entry,.client-businesses { min-height:100dvh;padding:clamp(20px,7vw,80px); }
+.client-entry>.client-card { margin:auto;max-width:620px; }
+.client-businesses { max-width:none; }
+.client-businesses ul { display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,360px));gap:20px;margin:28px 0; }
+.client-businesses li>a { display:grid;gap:18px;background:#fff;padding:24px;border:1px solid #c3d5df;border-radius:14px;text-decoration:none; }
+.client-eyebrow { text-transform:uppercase;letter-spacing:.12em;color:#466171;font-size:.75rem;font-weight:700; }
+.client-primary { display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;border-radius:8px;background:var(--meeting-accent,#155e75);color:var(--meeting-on-accent,#fff)!important;text-decoration:none;font-weight:600; }
+.client-external-warning { flex-shrink:0;margin:0;padding:10px 18px;background:#fff4d9;border-bottom:1px solid #d8c99b;color:#62470d;font-size:.875rem;line-height:1.5; }
+.client-external-label { color:#73500b!important;font-weight:700; }
+.client-access { padding:18px;line-height:1.6;overflow:auto; }
+.client-access h3 { margin:0 0 12px; }
+.client-access .client-external-warning { border:1px solid #d8c99b;border-radius:8px; }
+.client-access li { display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid #e1e8ed; }
+.client-access li>span,.client-access li>div { flex:1;min-width:130px;overflow-wrap:anywhere; }
+.client-access small,.client-meeting-list small { display:block;color:#4b6272; }
+.client-access li button { font-size:.8rem; }
+.client-form { display:grid;gap:16px;margin:18px 0; }
+.client-form fieldset { min-width:0;border:1px solid #cbd8df;padding:14px;border-radius:8px; }
+.client-form label:has(input[type=checkbox]) { display:flex;align-items:center;font-weight:400;margin:8px 0; }
+.client-form input[type=checkbox] { width:18px;min-height:18px;flex-shrink:0; }
+.client-form .client-form-actions { display:flex;gap:10px;flex-wrap:wrap; }
+.client-meeting-list>li { display:flex;gap:18px;align-items:center;justify-content:space-between;padding:20px 0;border-bottom:1px solid #d6e1e8; }
+.client-meeting-list h2 { font-size:1.1rem;margin:0; }
+.client-meeting-list p { margin:5px 0;color:#435b6b; }
+.client-admission { margin:24px 0 0;border-color:#91b0bf; }
+@media(max-width:1100px) { .client-portal { grid-template-columns:190px minmax(0,1fr); }.client-messages { grid-template-columns:220px minmax(0,1fr); }.client-nav { padding:18px 12px; }.client-conversation-header { padding:16px; } }
+@media(max-width:760px) { .client-portal { display:flex;flex-direction:column;height:100dvh; }.client-nav { display:block;flex-shrink:0;padding:12px 16px;border-right:0;border-bottom:1px solid #d6e1e8;overflow:visible; }.client-nav .meeting-brand { font-size:.95rem; }.client-nav .meeting-brand img { max-height:30px; }.client-welcome,.client-connection { display:none; }.client-nav>label { margin:10px 0; }.client-nav>button { position:absolute;right:16px;top:10px;min-height:36px;font-size:.8rem; }.client-nav .meeting-brand { padding-right:75px; }.client-nav nav { display:flex;gap:4px;justify-content:space-between; }.client-nav nav a { padding:10px 8px;font-size:.9rem; }.client-main { flex:1; }.client-alerts { padding:4px 12px; }.client-messages { display:flex; }.client-conversations { flex:1;min-width:0;border-right:0;padding:20px; }.client-conversation { display:none;flex:1; }.client-conversation-open .client-conversations { display:none; }.client-conversation-open .client-conversation { display:flex; }.client-conversation-header { padding:12px 16px; }.client-conversation-header h2 { font-size:1.1rem; }.client-conversation-header p { font-size:.85rem; }.client-card { margin:16px;padding:20px; }.client-card>dl { grid-template-columns:1fr;gap:4px; }.client-card dd { margin-bottom:12px; }.client-meeting-list>li { align-items:flex-start;flex-direction:column;gap:10px; }.client-entry,.client-businesses { padding:20px; }.client-entry>.client-card { margin:20px 0;padding:22px; }.client-admission { margin:20px 0 0; }.client-portal button { min-height:44px; }.client-portal .chat-message-actions button { min-height:32px; } }
+@media(max-width:760px) {
+  .client-conversation-header { padding:8px 12px;max-height:50%;overflow:auto; }
+  .client-conversation-topline { display:flex;align-items:center;justify-content:space-between;gap:8px; }
+  .client-conversation-topline .client-back { display:flex;align-items:center;min-height:44px; }
+  .client-portal .client-options-toggle { display:inline-flex;align-items:center;font-size:.8rem;padding:8px; }
+  .client-conversation-header h2 { margin:4px 0; }
+  .client-conversation-options:not(.client-options-open) { display:none; }
+  .client-conversation-options nav { margin-top:10px; }
+  .client-portal .chat-composer { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;padding:8px;flex-shrink:0; }
+  .client-portal .chat-composer>label { grid-column:1/-1;margin:0; }
+  .client-portal .chat-composer-field { grid-column:1/-1;display:grid; }
+  .client-portal .chat-composer textarea { height:52px;min-height:52px;max-height:120px;line-height:1.5; }
+  .client-portal .chat-upload-controls { grid-column:1;min-width:0;padding:0; }
+  .client-portal .chat-composer .chat-attach-button { display:inline-flex;align-items:center;width:auto;min-height:44px;margin:0;font-size:.8rem;line-height:1.3; }
+  .client-portal .chat-upload-controls ul { margin:6px 0 0;max-height:100px;overflow:auto; }
+  .client-portal .chat-upload-controls ul:empty { display:none; }
+  .client-portal .chat-composer-footer { grid-column:2;align-self:start;margin:0; }
+  .client-portal .chat-composer-footer button { display:inline-flex;align-items:center;gap:6px; }
+  .client-portal .chat-composer-footer small { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap; }
+  .client-portal .chat-composer>.chat-error { grid-column:1/-1; }
+}

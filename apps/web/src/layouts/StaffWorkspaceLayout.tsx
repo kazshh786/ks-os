@@ -1,3 +1,4 @@
+import { WorkspaceChatNotifications } from '../features/chat/WorkspaceChatNotifications';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { CircleHelp, Clipboard, ExternalLink, Plus, Store } from 'lucide-react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router';
@@ -38,7 +39,7 @@ export const StaffWorkspaceLayout: React.FC = () => {
   const isCustomerInboxWorkspace = location.pathname === '/app/operations' && new URLSearchParams(location.search).get('view') !== 'system';
   const isImmersiveWorkspace = isCalendarWorkspace || isCustomerInboxWorkspace;
   const isEmailStudioWorkspace = location.pathname === '/app/email-marketing/automated-emails';
-  const usesFullBleedContent = isImmersiveWorkspace || isEmailStudioWorkspace;
+  const usesFullBleedContent = isImmersiveWorkspace || isEmailStudioWorkspace || location.pathname.startsWith('/app/chat');
 
   const toggleCollapsed = () => {
     setCollapsed(value => {
@@ -111,6 +112,7 @@ export const StaffWorkspaceLayout: React.FC = () => {
       <SupportModeBanner />
       {auth.businessProfile && auth.role === 'owner' && !auth.productOnboarding && location.pathname !== '/app/onboarding' && <div className="border-b border-indigo-100 bg-indigo-50 px-6 py-3 text-sm"><Link to="/app/onboarding" className="font-bold text-indigo-700 underline">Set up KSOS for the way your business works</Link></div>}
       {isImmersiveWorkspace ? <div className="lg:hidden">{workspaceHeader}</div> : workspaceHeader}
+      {!location.pathname.startsWith('/app/chat') && groups.some(group => group.items.some(item => item.id === 'chat')) && <div className="border-b border-slate-200 bg-white px-3 py-1 sm:px-6"><WorkspaceChatNotifications key={auth.businessReference}/></div>}
       <main id="main-content" className={`min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain ${usesFullBleedContent ? 'p-0' : 'p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-6 lg:p-8'}`}><Outlet /></main>
     </div>
   </div>;

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import {
   accountAccessAuditEvents, agencySessions, agencySupportSessions, agencyUsers, applicationSessions,
-  customerAccounts, getDatabase, platformAuditEvents, tenants, users,
+  customerAccounts, getDatabase, platformAuditEvents, tenants, users, sql,
 } from '@ks-os/database';
 import { effectiveCapabilities, type Permission } from '@ks-os/auth';
 import {
@@ -12,6 +12,8 @@ import {
   isSupportPathBlocked, type AgencyCapability, type AgencyRole, type ApplicationContext,
 } from '@ks-os/contracts';
 import { supabase } from '../lib/supabase.js';
+import { communicationsDatabase } from '../modules/communications/communications.database.js';
+import { checkRegisteredMobileSession, registeredMobileSessionStartedAt, requireMobileDevice } from '../modules/authentication/mobile-devices.service.js';
 
 export interface AuthContext {
   authUserId: string;
@@ -39,6 +41,8 @@ export interface AuthIdentity {
   assuranceLevel: 'aal1' | 'aal2';
   expiresAt: string | null;
   issuedAt: string | null;
+  /** Verified provider creation time for registered native sessions only. */
+  sessionStartedAt?: string;
 }
 
 export interface AgencyAuthContext {
@@ -61,6 +65,7 @@ declare module 'fastify' {
     authIdentity?: AuthIdentity;
     agencyAuth?: AgencyAuthContext;
     applicationContext?: ApplicationContext;
+    customerSessionValidated?: boolean;
     requireAuth: () => void;
     requireIdentity: () => AuthIdentity;
     requireContext: (context: ApplicationContext) => void;
@@ -91,16 +96,17 @@ async function ensureApplicationSession(input: {
     eq(applicationSessions.authSessionId, input.authSessionId),
     eq(applicationSessions.applicationContext, input.context),
   )).limit(1);
-  const hardExpiry = new Date((existing?.createdAt?.getTime() || Date.now()) + input.hardTtlHours * 60 * 60 * 1000);
+  const ttl = Number.isFinite(input.hardTtlHours) && input.hardTtlHours > 0 ? Math.min(input.hardTtlHours, 720) : 24;
+  const hardExpiry = existing?.hardExpiresAt ?? new Date((existing?.createdAt?.getTime() || Date.now()) + ttl * 60 * 60 * 1000);
   const expiresAt = input.jwtExpiresAt < hardExpiry ? input.jwtExpiresAt : hardExpiry;
   if (expiresAt <= new Date() || existing?.revokedAt || (existing && input.securityVersion !== null && existing.securityVersion !== input.securityVersion)) return null;
   const [session] = await db.insert(applicationSessions).values({
     authSessionId: input.authSessionId, authUserId: input.authUserId, applicationContext: input.context,
     securityVersion: input.securityVersion ?? 1, assuranceLevel: input.assuranceLevel,
-    deviceSummary: safeDeviceSummary(input.request), ipHash: ipHashFor(input.request), expiresAt, lastSeenAt: new Date(),
+    deviceSummary: safeDeviceSummary(input.request), ipHash: ipHashFor(input.request), expiresAt, hardExpiresAt: hardExpiry, lastSeenAt: new Date(),
   }).onConflictDoUpdate({
     target: [applicationSessions.authSessionId, applicationSessions.applicationContext],
-    set: { assuranceLevel: input.assuranceLevel, expiresAt, lastSeenAt: new Date(), deviceSummary: safeDeviceSummary(input.request) },
+    set: { assuranceLevel: input.assuranceLevel, expiresAt, hardExpiresAt: sql`coalesce(${applicationSessions.hardExpiresAt},${hardExpiry})`, lastSeenAt: new Date(), deviceSummary: safeDeviceSummary(input.request) },
   }).returning();
   return session.revokedAt ? null : session;
 }
@@ -190,7 +196,7 @@ async function resolveTenant(request: FastifyRequest, claims: Record<string, unk
   const memberships = await db.select().from(users).where(and(
     eq(users.authUserId, authUserId), eq(users.accountStatus, 'ACTIVE'),
   ));
-  const issuedAt = typeof claims.iat === 'number' ? new Date(claims.iat * 1000) : null;
+  const issuedAt = request.authIdentity?.sessionStartedAt ? new Date(request.authIdentity.sessionStartedAt) : typeof claims.iat === 'number' ? new Date(claims.iat * 1000) : null;
   const activeMemberships = [] as typeof memberships;
   for (const membership of memberships) {
     if (membership.sessionsValidAfter && (!issuedAt || issuedAt <= membership.sessionsValidAfter)) continue;
@@ -240,6 +246,7 @@ const authPlugin: FastifyPluginAsync = async fastify => {
   fastify.decorateRequest('authIdentity', undefined);
   fastify.decorateRequest('agencyAuth', undefined);
   fastify.decorateRequest('applicationContext', undefined);
+  fastify.decorateRequest('customerSessionValidated', false);
   fastify.decorateRequest('requireAuth', function (this: FastifyRequest) {
     if (!this.auth) throw Object.assign(new Error('Authentication required'), { statusCode: 401, code: 'AUTH_REQUIRED' });
   });
@@ -276,6 +283,11 @@ const authPlugin: FastifyPluginAsync = async fastify => {
     };
     if (!request.applicationContext) return;
     try {
+      if ((request.applicationContext === 'TENANT' || request.applicationContext === 'CUSTOMER') && request.authIdentity.authSessionId) {
+        request.authIdentity.sessionStartedAt = await registeredMobileSessionStartedAt(communicationsDatabase(), {
+          authUserId: request.authIdentity.authUserId, authSessionId: request.authIdentity.authSessionId,
+        }) ?? undefined;
+      }
       if (request.applicationContext === 'AGENCY') await resolveAgency(request, claims);
       if (request.applicationContext === 'TENANT') {
         if (typeof request.headers['x-ks-support-session'] === 'string') {
@@ -284,19 +296,33 @@ const authPlugin: FastifyPluginAsync = async fastify => {
         }
         await resolveTenant(request, claims);
       }
-      if (request.applicationContext === 'CUSTOMER' && request.authIdentity.authSessionId) {
-        const [customer] = await getDatabase().select().from(customerAccounts).where(eq(customerAccounts.authUserId, request.authIdentity.authUserId)).limit(1);
-        const issuedAt = request.authIdentity.issuedAt ? new Date(request.authIdentity.issuedAt) : null;
+      if (request.applicationContext === 'CUSTOMER') {
+        const identity = request.authIdentity;
+        if (!identity.authSessionId || !identity.issuedAt || !identity.expiresAt || !identity.email || claims.is_anonymous === true || !Number.isFinite(new Date(identity.expiresAt).getTime()) || new Date(identity.expiresAt).getTime() <= Date.now()) { request.authIdentity = undefined; return; }
+        // A signed JWT alone can outlive provider sign-out. Customer sessions also
+        // require the current provider session and a confirmed, unchanged identity.
+        const current = await getDatabase().execute(sql`SELECT public.customer_provider_session_is_current(${identity.authSessionId}::uuid,${identity.authUserId}::uuid) AS current`);
+        if (!current.rows[0]?.current) { request.authIdentity = undefined; return; }
+        const [customer] = await getDatabase().select().from(customerAccounts).where(eq(customerAccounts.authUserId, identity.authUserId)).limit(1);
+        const issuedAt = new Date(identity.sessionStartedAt ?? identity.issuedAt);
         if (customer?.sessionsValidAfter && (!issuedAt || issuedAt <= customer.sessionsValidAfter)) { request.authIdentity = undefined; return; }
         const contextSession = await ensureApplicationSession({
-          request, context: 'CUSTOMER', authUserId: request.authIdentity.authUserId,
-          authSessionId: request.authIdentity.authSessionId, assuranceLevel,
+          request, context: 'CUSTOMER', authUserId: identity.authUserId,
+          authSessionId: identity.authSessionId, assuranceLevel,
           jwtExpiresAt: new Date(Number(claims.exp || 0) * 1000), securityVersion: 1,
           hardTtlHours: Number(process.env.CUSTOMER_SESSION_HARD_TTL_HOURS || 720),
         });
-        if (!contextSession) request.authIdentity = undefined;
+        if (!contextSession || customer && customer.status !== 'ACTIVE') request.authIdentity = undefined;
+        else request.customerSessionValidated = true;
+      }
+      const mobileIdentity = request.authIdentity;
+      if ((request.applicationContext === 'TENANT' || request.applicationContext === 'CUSTOMER') && mobileIdentity?.authSessionId && mobileIdentity.issuedAt && mobileIdentity.expiresAt) {
+        await checkRegisteredMobileSession(communicationsDatabase(), { authUserId: mobileIdentity.authUserId, authSessionId: mobileIdentity.authSessionId, issuedAt: mobileIdentity.issuedAt, expiresAt: mobileIdentity.expiresAt, context: request.applicationContext });
+        if (request.headers['x-ks-device-id'] !== undefined) await requireMobileDevice(request);
       }
     } catch (error) {
+      if (typeof request.headers['x-ks-device-id'] === 'string' || (error as { code?: string }).code === 'MOBILE_SESSION_REQUIRED') { request.authIdentity = undefined; request.auth = undefined; request.customerSessionValidated = false; }
+      if (request.applicationContext === 'CUSTOMER') { request.authIdentity = undefined; request.customerSessionValidated = false; }
       if ((error as any)?.statusCode) throw error;
       request.log.error({ error }, 'Authentication context resolution failed');
     }

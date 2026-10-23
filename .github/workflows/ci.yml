@@ -58,11 +58,146 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter site-worker exec playwright install --with-deps chromium
+      - name: Install Chromium and system dependencies
+        run: |
+          # The runner's Azure HTTP mirror has repeatedly stalled browser setup.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          pnpm --filter site-worker exec playwright install --with-deps chromium
       - run: pnpm build
       - run: pnpm lint
       - run: pnpm typecheck
-      - run: pnpm test
+      # Finish every package's tests so one failure cannot hide API/security coverage.
+      # --no-bail still exits nonzero if any package fails.
+      - run: pnpm --recursive --no-bail test
         env:
           BOOKING_INTEGRITY_TEST_DATABASE_URL: postgresql://postgres_ci:postgres_ci_password@127.0.0.1:5432/ks_os_ci
+          CLIENT_MEETINGS_TEST_DATABASE_URL: postgresql://postgres_ci:postgres_ci_password@127.0.0.1:5432/ks_os_ci
       - run: pnpm db:migrations:plan
+
+  communications:
+    name: Communications browser verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://isolated_test:isolated_test@127.0.0.1:5432/isolated_test
+      COMMUNICATIONS_BROWSER_TEST: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.13.1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium and system dependencies
+        run: |
+          # The runner's Azure HTTP mirror has repeatedly stalled browser setup.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          pnpm --filter site-worker exec playwright install --with-deps chromium
+      - run: pnpm --filter api... build
+      - name: Exercise the real communications database, HTTP and browser flows
+        working-directory: apps/api
+        run: node --import ./tests/test-environment.mjs --import tsx --test tests/communications-foundation.test.ts tests/communications-customer-engine.test.ts
+      - name: Upload communications browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: communications-browser
+          path: artifacts/communications
+          if-no-files-found: ignore
+      - name: Upload customer portal browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: communications-customer-portal
+          path: artifacts/customer-collaboration
+          if-no-files-found: ignore
+
+  meetings:
+    name: Self-hosted LiveKit media verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://isolated_test:isolated_test@127.0.0.1:5432/isolated_test
+      COMMUNICATIONS_MEDIA_TEST: '1'
+      LIVEKIT_ENABLED: 'true'
+      LIVEKIT_URL: ws://127.0.0.1:7880
+      LIVEKIT_API_URL: http://127.0.0.1:7880
+      LIVEKIT_API_KEY: ksos-test-key
+      LIVEKIT_API_SECRET: ksos-isolated-test-secret-never-production-2026
+      MEETING_INVITATION_SECRET: ksos-isolated-guest-invitation-secret-never-production-2026
+      PUBLIC_MEETING_ORIGIN: http://127.0.0.1:4179
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.13.1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium and system dependencies
+        run: |
+          # The runner's Azure HTTP mirror has repeatedly stalled browser setup.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          pnpm --filter site-worker exec playwright install --with-deps chromium
+      - id: calling-build
+        run: pnpm --filter api... build
+      - name: Validate review-only infrastructure template in an isolated network
+        run: bash scripts/deploy/livekit/verify-template-ci.sh
+      - name: Start isolated media server
+        run: |
+          docker run -d --name ksos-livekit-ci --network host -v "$PWD/apps/api/tests/helpers/livekit-ci.yaml:/etc/livekit.yaml:ro" livekit/livekit-server:v1.13.10 --config /etc/livekit.yaml
+          for i in $(seq 1 30); do curl --fail --silent http://127.0.0.1:7880/ && exit 0; sleep 1; done
+          docker logs ksos-livekit-ci
+          exit 1
+      - name: Verify permissions, lifecycle and real two-browser media
+        working-directory: apps/api
+        run: node --import ./tests/test-environment.mjs --import tsx --test tests/communications-meetings.test.ts tests/communications-meetings-media.test.ts
+      - name: Verify native calling UI on desktop and mobile
+        if: ${{ !cancelled() && steps.calling-build.outcome == 'success' }}
+        run: node apps/api/tests/helpers/meetings-ui-browser.mjs
+      - name: Verify multi-tenant guests in three simultaneous media rooms
+        if: ${{ !cancelled() && steps.calling-build.outcome == 'success' }}
+        working-directory: apps/api
+        run: node --import ./tests/test-environment.mjs --import tsx --test tests/communications-client-meetings-media.test.ts
+      - name: Verify customer channel admission and isolated real media
+        if: ${{ !cancelled() && steps.calling-build.outcome == 'success' }}
+        working-directory: apps/api
+        run: node --import ./tests/test-environment.mjs --import tsx --test tests/communications-customer-media.test.ts
+      - name: Media server diagnostics
+        if: failure()
+        run: docker logs ksos-livekit-ci
+      - name: Verify client meeting dashboard, waiting room and mobile guest UI
+        if: ${{ !cancelled() && steps.calling-build.outcome == 'success' }}
+        run: node apps/api/tests/helpers/client-meetings-ui-browser.mjs
+      - name: Final media server diagnostics
+        if: failure()
+        run: docker logs ksos-livekit-ci
+      - name: Upload meeting evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: communications-meetings
+          path: artifacts/meetings
+          if-no-files-found: ignore
+      - name: Stop isolated media server
+        if: always()
+        run: docker rm -f ksos-livekit-ci
+      - name: Upload client meeting evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: communications-client-meetings
+          path: artifacts/client-meetings
+          if-no-files-found: ignore
+      - name: Upload customer collaboration media evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: communications-customer-collaboration-media
+          path: artifacts/customer-collaboration-media
+          if-no-files-found: ignore

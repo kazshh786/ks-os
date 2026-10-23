@@ -26,6 +26,7 @@ export interface EmailBrandingProps {
 interface BaseEmailLayoutProps extends EmailBrandingProps {
   children: ReactNode;
   previewText?: string;
+  title?: string;
 }
 
 export const BaseEmailLayout = ({
@@ -41,6 +42,7 @@ export const BaseEmailLayout = ({
   emailTheme,
   children,
   previewText,
+  title,
 }: BaseEmailLayoutProps) => {
   const design = getEmailDesign(emailDesignStyle, {
     ...emailTheme,
@@ -48,11 +50,11 @@ export const BaseEmailLayout = ({
   });
   return (
     <Html lang="en" dir="ltr">
-      <Head />
+      <Head><title>{title || previewText || `Email from ${businessName}`}</title></Head>
       {previewText ? <Preview>{previewText}</Preview> : null}
       <Tailwind>
         <Body style={{ backgroundColor: design.tokens.canvas, fontFamily: design.typography.body, margin: 0 }}>
-          <Container style={{ margin: '32px auto', maxWidth: '620px', padding: '0 14px' }}>
+          <Container lang="en" dir="ltr" style={{ margin: '32px auto', maxWidth: '620px', padding: '0 14px' }}>
             <BrandLogoPanel
               businessName={businessName}
               businessLogoUrl={businessLogoUrl}

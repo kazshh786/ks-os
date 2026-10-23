@@ -23,8 +23,8 @@ describe('business navigation',()=>{
     for(const type of ['logistics','agency'])expect(resolve(type).some(item=>['fleet','routes','projects','dispatch'].includes(item.id))).toBe(false);
   });
   it('filters permission-denied and unentitled engines',()=>{
-    expect(resolve('salon','staff').map(item=>item.id)).toEqual(['security']);
-    expect(resolve('salon','staff',['CLIENTS_VIEW_BASIC']).map(item=>item.id)).toEqual(['customers','security']);
+    expect(resolve('salon','staff').map(item=>item.id)).toEqual(['chat','security']);
+    expect(resolve('salon','staff',['CLIENTS_VIEW_BASIC']).map(item=>item.id)).toEqual(['chat','customers','security']);
     expect(resolve('agency','staff',['SALES_VIEW_OWN']).some(item=>item.id==='sales')).toBe(true);
     expect(resolve('agency','staff',[]).some(item=>item.id==='sales')).toBe(false);
     expect(resolve('agency','staff',['WORK_VIEW_OWN']).some(item=>item.id==='work')).toBe(true);

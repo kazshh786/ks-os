@@ -235,6 +235,18 @@ export const customerClientLinks = pgTable('customer_client_links', {
   customerStatusIdx: index('customer_client_links_customer_status_idx').on(table.customerAccountId, table.status),
 }));
 
+// A purpose-separated many-contact collaboration grant; legacy booking links stay unchanged.
+export const customerCollaborationRelationships = pgTable('customer_collaboration_relationships', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'restrict' }),
+  customerAccountId: uuid('customer_account_id').notNull().references(() => customerAccounts.id, { onDelete: 'restrict' }),
+  status: text('status').default('ACTIVE').notNull(),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, table => ({ identity: uniqueIndex('customer_collaboration_relationship_identity').on(table.id, table.tenantId), account: uniqueIndex('customer_collaboration_relationship_account').on(table.tenantId, table.clientId, table.customerAccountId) }));
+
 export const customerAccountClaims = pgTable('customer_account_claims', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
@@ -830,6 +842,9 @@ export const automationActionRuns = pgTable('automation_action_runs', {
 });
 
 export const internalNotifications = pgTable('internal_notifications', {
+  chatMeetingId:uuid('chat_meeting_id'),meetingVersion:integer('meeting_version'),expiresAt:timestamp('expires_at',{withTimezone:true}), // Migration 97 owns the meeting FK.
+  recipientCustomerRelationshipId: uuid('recipient_customer_relationship_id').references(() => customerCollaborationRelationships.id),
+  chatConversationId:uuid('chat_conversation_id'),chatMessageId:uuid('chat_message_id'), // Composite scope FKs are owned by migration 92.
   id: uuid('id').defaultRandom().primaryKey(), tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   recipientUserId: uuid('recipient_user_id').references(() => users.id, { onDelete: 'set null' }), recipientRole: varchar('recipient_role', { length: 20 }),
   type: varchar('type', { length: 60 }).notNull(), title: varchar('title', { length: 160 }).notNull(), message: varchar('message', { length: 500 }).notNull(),
@@ -1377,6 +1392,7 @@ export const applicationSessions = pgTable('application_sessions', {
   ipHash: varchar('ip_hash', { length: 64 }),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+  hardExpiresAt: timestamp('hard_expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   revokeReason: varchar('revoke_reason', { length: 255 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -4564,3 +4580,5 @@ export const siteChangeProposals = pgTable('site_change_proposals', {
   reviewQueueIdx: index('site_change_proposals_review_queue_idx').on(table.tenantId, table.siteId, table.status, table.createdAt),
   reviewerIdx: index('site_change_proposals_reviewer_idx').on(table.reviewedByAgencyUserId),
 }));
+
+export { communicationMeetings,communicationMeetingParticipants,communicationMeetingSessions,communicationMeetingWebhooks,communicationMeetingInvitations,communicationMeetingGuests } from './meeting-schema.js';

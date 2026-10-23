@@ -12,6 +12,23 @@ function createEnv(response: Response) {
 }
 
 describe('Cloudflare web worker', () => {
+  it('preserves the upstream WebSocket handle and forwards the upgrade and original host', async () => {
+    const {env}=createEnv(new Response('unused'));
+    const upgrade={status:101,webSocket:{accept:vi.fn()}} as unknown as Response;
+    const upstream=vi.fn<(request:Request)=>Promise<Response>>().mockResolvedValue(upgrade);
+    vi.stubGlobal('fetch',upstream);
+    try {
+      const response=await worker.fetch(new Request('https://team.kasimshah.com/api/v1/communications/conversations/events?ticket=test',{
+        headers:{Upgrade:'websocket',Connection:'Upgrade'},
+      }),env);
+      expect(response).toBe(upgrade);
+      const forwarded=upstream.mock.calls[0][0];
+      expect(forwarded.url).toBe('https://api.kasimshah.com/api/v1/communications/conversations/events?ticket=test');
+      expect(forwarded.headers.get('upgrade')).toBe('websocket');
+      expect(forwarded.headers.get('x-forwarded-host')).toBe('team.kasimshah.com');
+    } finally {vi.unstubAllGlobals();}
+  });
+
   it('serves HTML navigation with cache disabled and validators removed', async () => {
     const { env, assetFetch } = createEnv(
       new Response('<!doctype html><html><body><div id="root"></div></body></html>', {

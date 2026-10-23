@@ -1,0 +1,10 @@
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Route, Routes } from 'react-router';
+import MeetingsPage from '../../src/features/meetings/MeetingsPage';
+import GuestMeetingPage from '../../src/features/meetings/GuestMeetingPage';
+import { clientMeetingsFixture } from './client-meetings-ui-api';
+import '../../src/index.css';
+import '../../src/features/chat/chat.css';
+Object.assign(window, { clientMeetingsFixture });
+createRoot(document.getElementById('root')!).render(<BrowserRouter><Routes><Route path="/app/meetings/*" element={<div style={{ minHeight: '100dvh', background: '#f8fafc' }}><MeetingsPage/></div>}/><Route path="/meet" element={<GuestMeetingPage/>}/></Routes></BrowserRouter>);

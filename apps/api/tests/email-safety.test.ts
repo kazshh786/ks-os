@@ -18,6 +18,7 @@ const futureIso = '2026-08-10T10:00:00.000Z';
 const expiryIso = '2026-08-11T10:00:00.000Z';
 
 const validTemplatePayloads: Record<string, Record<string, unknown>> = {
+  'meeting-notification': { meetingId: '11111111-1111-4111-8111-111111111111', invitationId: '22222222-2222-4222-8222-222222222222', version: 1, kind: 'invite' },
   'booking-confirmed': { tenantName: 'KS OS', customerName: 'Test Customer', startTime: futureIso, serviceName: 'Consultation' },
   'booking-rescheduled': { tenantName: 'KS OS', clientName: 'Test Customer', startTime: futureIso, serviceName: 'Consultation' },
   'booking-cancelled': { tenantName: 'KS OS', clientName: 'Test Customer', startTime: futureIso, serviceName: 'Consultation' },
@@ -75,8 +76,8 @@ test('production blocks reserved and Resend test domains without breaking non-pr
   assert.equal(normalizeAndValidateEmailAddress('customer@example-business.co.uk', true).valid, true);
 });
 
-test('all 19 production templates satisfy an explicit token contract', () => {
-  assert.equal(Object.keys(validTemplatePayloads).length, 19);
+test('all 20 production templates satisfy an explicit token contract', () => {
+  assert.equal(Object.keys(validTemplatePayloads).length, 20);
   for (const [templateKey, payload] of Object.entries(validTemplatePayloads)) {
     assert.deepEqual(validateEmailTemplateData(templateKey, payload, true), { valid: true }, templateKey);
   }

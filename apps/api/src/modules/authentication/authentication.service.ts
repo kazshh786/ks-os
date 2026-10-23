@@ -12,10 +12,10 @@ const fail = (statusCode: number, code: string, message: string) => Object.assig
 export class AuthenticationService {
   constructor(private db: ReturnType<typeof getDatabase> = getDatabase()) {}
 
-  private sessionIsCurrent(identity: { issuedAt: string | null }, validAfter: Date | null) {
+  private sessionIsCurrent(identity: { issuedAt: string | null; sessionStartedAt?: string }, validAfter: Date | null) {
     if (!validAfter) return true;
     if (!identity.issuedAt) return false;
-    return new Date(identity.issuedAt) > validAfter;
+    return new Date(identity.sessionStartedAt ?? identity.issuedAt) > validAfter;
   }
 
   private identity(request: FastifyRequest) {
@@ -137,13 +137,17 @@ export class AuthenticationService {
 
   async revokeSession(request: FastifyRequest, sessionReference: string) {
     const identity = this.identity(request);
-    const [session] = await this.db.update(applicationSessions).set({ revokedAt: new Date(), revokeReason: 'SELF_SERVICE_REVOCATION' }).where(and(
-      eq(applicationSessions.publicReference, sessionReference), eq(applicationSessions.authUserId, identity.authUserId), isNull(applicationSessions.revokedAt),
-    )).returning();
-    if (!session) throw fail(404, 'AUTH_SESSION_EXPIRED', 'Session not found or already ended.');
-    if (session.applicationContext === 'AGENCY') await this.db.update(agencySessions).set({ revokedAt: new Date(), revokeReason: 'SELF_SERVICE_REVOCATION' }).where(and(eq(agencySessions.authSessionId, session.authSessionId), isNull(agencySessions.revokedAt)));
-    await this.db.insert(accountAccessAuditEvents).values({ authUserId: identity.authUserId, applicationContext: session.applicationContext, action: 'SESSION_REVOKED', requestId: request.id, metadata: { current: session.authSessionId === identity.authSessionId } });
-    return { revoked: true, current: session.authSessionId === identity.authSessionId };
+    return this.db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${identity.authUserId},8241096))`);
+      const [session] = await tx.update(applicationSessions).set({ revokedAt: new Date(), revokeReason: 'SELF_SERVICE_REVOCATION' }).where(and(
+        eq(applicationSessions.publicReference, sessionReference), eq(applicationSessions.authUserId, identity.authUserId), isNull(applicationSessions.revokedAt),
+      )).returning();
+      if (!session) throw fail(404, 'AUTH_SESSION_EXPIRED', 'Session not found or already ended.');
+      await tx.execute(sql`SELECT public.revoke_mobile_device(d.id,${identity.authUserId}::uuid,'SELF_SERVICE_REVOCATION') FROM mobile_devices d WHERE d.auth_user_id=${identity.authUserId} AND d.auth_session_id=${session.authSessionId}`);
+      if (session.applicationContext === 'AGENCY') await tx.update(agencySessions).set({ revokedAt: new Date(), revokeReason: 'SELF_SERVICE_REVOCATION' }).where(and(eq(agencySessions.authSessionId, session.authSessionId), isNull(agencySessions.revokedAt)));
+      await tx.insert(accountAccessAuditEvents).values({ authUserId: identity.authUserId, applicationContext: session.applicationContext, action: 'SESSION_REVOKED', requestId: request.id, metadata: { current: session.authSessionId === identity.authSessionId } });
+      return { revoked: true, current: session.authSessionId === identity.authSessionId };
+    });
   }
 
   async logout(request: FastifyRequest, all: boolean) {
@@ -152,6 +156,8 @@ export class AuthenticationService {
     if (!context) throw fail(400, 'AUTH_CONTEXT_REQUIRED', 'Choose an account context.');
     const now = new Date();
     await this.db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${identity.authUserId},8241096))`);
+      await tx.execute(sql`SELECT public.revoke_mobile_device(d.id,${identity.authUserId}::uuid,${all ? 'GLOBAL_SIGN_OUT' : 'LOCAL_SIGN_OUT'}) FROM mobile_devices d WHERE d.auth_user_id=${identity.authUserId} AND ${all ? sql`true` : sql`d.auth_session_id=${identity.authSessionId}`} ORDER BY d.id`);
       await tx.update(applicationSessions).set({ revokedAt: now, revokeReason: all ? 'GLOBAL_SIGN_OUT' : 'LOCAL_SIGN_OUT' }).where(and(
         eq(applicationSessions.authUserId, identity.authUserId),
         all ? sql`true` : and(eq(applicationSessions.authSessionId, identity.authSessionId), eq(applicationSessions.applicationContext, context)),

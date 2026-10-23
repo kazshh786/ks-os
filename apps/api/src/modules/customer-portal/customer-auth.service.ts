@@ -2,6 +2,8 @@ import type { FastifyRequest } from 'fastify';
 import { customerAccounts, getDatabase } from '@ks-os/database';
 import { eq } from 'drizzle-orm';
 import { customerError } from './customer-portal.errors.js';
+import { getSupabaseAdmin } from '../../lib/supabase-admin.js';
+import { normalizeAndValidateEmailAddress } from '../email/email-safety.js';
 
 export type CustomerIdentity = {
   authUserId: string;
@@ -15,19 +17,28 @@ export type CustomerAuthContext = CustomerIdentity & {
 };
 
 export function normalizeCustomerEmail(email: string) {
-  return email.trim().toLocaleLowerCase('en-US');
+  const result = normalizeAndValidateEmailAddress(email);
+  if (!result.valid) throw customerError(401, 'CUSTOMER_AUTH_REQUIRED', 'A verified email address is required.');
+  return result.email;
+}
+
+export async function verifyCustomerEmail(identity: CustomerIdentity) {
+  const { data, error } = await getSupabaseAdmin().auth.admin.getUserById(identity.authUserId);
+  if (error || !data.user?.email || !data.user.email_confirmed_at || data.user.is_anonymous || normalizeCustomerEmail(data.user.email) !== normalizeCustomerEmail(identity.email)) {
+    throw customerError(403, 'CUSTOMER_ACCESS_DENIED', 'Sign in with the verified email address that received this invitation.');
+  }
 }
 
 export class CustomerAuthService {
   requireIdentity(request: FastifyRequest): CustomerIdentity {
-    // A staff identity never doubles as a customer context. A deliberately
-    // provisioned customer identity must use a distinct Supabase Auth user.
-    if (request.auth) {
+    // The same verified identity may hold explicit memberships in several
+    // contexts, but a customer request never inherits staff or agency authority.
+    if (request.auth || request.agencyAuth || request.applicationContext !== 'CUSTOMER') {
       throw customerError(403, 'CUSTOMER_ACCESS_DENIED', 'This session cannot access the customer portal.');
     }
 
     const identity = request.authIdentity;
-    if (!identity?.authUserId || !identity.email) {
+    if (!identity?.authUserId || !identity.email || !identity.authSessionId || !identity.issuedAt || !identity.expiresAt || !request.customerSessionValidated || !Number.isFinite(Date.parse(identity.issuedAt)) || !Number.isFinite(Date.parse(identity.expiresAt)) || Date.parse(identity.expiresAt) <= Date.now()) {
       throw customerError(401, 'CUSTOMER_AUTH_REQUIRED', 'Sign in is required to continue.');
     }
 

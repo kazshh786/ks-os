@@ -111,6 +111,7 @@ export function CustomerLoginPage() {
   const [busy, setBusy] = useState(false);
   const [search] = useSearchParams();
   const claim = search.get('claim');
+  const collaboration = search.get('collaboration') === '1';
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -118,7 +119,10 @@ export function CustomerLoginPage() {
     try {
       const callback = new URL('/customer/auth/callback', window.location.origin);
       if (claim) callback.searchParams.set('claim', claim);
+      if (collaboration) callback.searchParams.set('collaboration', '1');
       await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: callback.toString() } });
+    } catch {
+      // Keep the same neutral confirmation for transport failures and unknown accounts.
     } finally {
       // Deliberately neutral — neither Supabase errors nor account existence are revealed.
       setBusy(false);
@@ -167,7 +171,7 @@ export function CustomerLoginPage() {
           ) : (
             <form className="space-y-4" onSubmit={submit}>
               <div>
-                <label className="block text-sm font-medium text-slate-300">
+                <label htmlFor="customer-email" className="block text-sm font-medium text-slate-300">
                   Email address
                 </label>
                 <input
@@ -214,7 +218,8 @@ export function CustomerAuthCallbackPage() {
       const { data } = await supabase.auth.getSession();
       if (!active) return;
       const claim = search.get('claim');
-      if (data.session) navigate(claim ? `/customer/claim/${claim}` : '/customer', { replace: true });
+      const collaboration = search.get('collaboration') === '1';
+      if (data.session) navigate(collaboration ? '/customer/invite' : claim ? `/customer/claim/${claim}` : '/customer', { replace: true });
       else setError(true);
     })().catch(() => active && setError(true));
     return () => { active = false; };
@@ -279,7 +284,7 @@ export function CustomerClaimPage() {
             <span className="text-4xl">🔒</span>
             <h1 className="mt-4 text-xl font-bold text-slate-900">This secure link is unavailable</h1>
             <p className="mt-2 text-sm text-slate-600">
-              It may have expired or already been used. Ask your salon to send a new link.
+              It may have expired or already been used. Ask the business to send a new link.
             </p>
             <Link
               to="/customer/login"
@@ -291,7 +296,7 @@ export function CustomerClaimPage() {
         ) : (
           <>
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-violet-600" />
-            <p className="mt-4 text-slate-600">Securely linking your salon account…</p>
+            <p className="mt-4 text-slate-600">Securely linking your customer account…</p>
           </>
         )}
       </div>
@@ -312,7 +317,8 @@ export function CustomerPortalLayout() {
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await fetchWithAuth('/api/v1/auth/logout', { method: 'POST', authContext: 'CUSTOMER' }).catch(() => undefined);
+    await supabase.auth.signOut({ scope: 'local' });
     navigate('/customer/login', { replace: true });
   };
 
@@ -344,6 +350,7 @@ export function CustomerPortalLayout() {
   }
 
   const navLinks = [
+    { to: '/customer/collaboration', label: 'Messages' },
     { to: '/customer/appointments', label: 'Appointments' },
     { to: '/customer/forms',        label: 'Forms' },
     { to: '/customer/payments',     label: 'Payments' },

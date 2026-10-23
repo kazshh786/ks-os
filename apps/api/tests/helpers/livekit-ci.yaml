@@ -1,0 +1,16 @@
+# Disposable loopback-only GitHub runner service. Never use these public test keys in a deployment.
+port: 7880
+bind_addresses:
+  - 127.0.0.1
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+  node_ip: 127.0.0.1
+  enable_loopback_candidate: true
+keys:
+  ksos-test-key: ksos-isolated-test-secret-never-production-2026
+room:
+  auto_create: false
+logging:
+  level: warn
